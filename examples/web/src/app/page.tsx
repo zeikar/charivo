@@ -50,21 +50,34 @@ export default function Home() {
       // Dynamic imports
       const { Charivo } = await import('@charivo/core')
       const { StubLLMAdapter } = await import('@charivo/adapter-llm-stub')
+      const { Live2DRenderer } = await import('@charivo/render-live2d')
 
       const instance = new Charivo()
-      const renderer = new WebRenderer()
+
+      // Canvas 요소 생성
+      const canvas = document.createElement('canvas')
+      canvas.width = 200
+      canvas.height = 200
+      canvas.style.border = '2px solid #ccc'
+      canvas.style.borderRadius = '8px'
+
+      const live2dRenderer = new Live2DRenderer(canvas)
       const llmAdapter = new StubLLMAdapter()
 
-      console.log('📦 Created instances:', { instance, renderer, llmAdapter })
+      console.log('📦 Created instances:', { instance, live2dRenderer, llmAdapter })
 
       // 메시지 콜백 설정
-      renderer.setMessageCallback((message, character) => {
+      live2dRenderer.setMessageCallback((message, character) => {
         console.log('📨 Message callback triggered:', message, character)
         setMessages(prev => [...prev, { ...message, character }])
       })
 
-      await renderer.initialize()
-      instance.attachRenderer(renderer)
+      await live2dRenderer.initialize()
+
+      // Live2D 모델 로드
+      await live2dRenderer.loadModel('/models/miko.model3.json')
+
+      instance.attachRenderer(live2dRenderer)
       instance.attachLLM(llmAdapter)
 
       // 캐릭터 추가
@@ -75,11 +88,18 @@ export default function Home() {
         personality: '친근하고 도움이 되는 성격'
       }
       instance.addCharacter(character)
+      live2dRenderer.setCharacter(character)
 
       // 이벤트 리스너
       instance.on('character:speak', ({ character, message }) => {
         console.log(`🎵 ${character.name}: "${message}"`)
       })
+
+      // Canvas를 DOM에 추가
+      const canvasContainer = document.getElementById('live2d-canvas')
+      if (canvasContainer) {
+        canvasContainer.appendChild(canvas)
+      }
 
       console.log('✅ Charivo initialization complete')
       setCharivo(instance)
@@ -113,11 +133,25 @@ export default function Home() {
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
-              🎭 Charivo Demo
+              🎭 Charivo Live2D Demo
             </h1>
             <p className="text-gray-600 dark:text-gray-300">
               미코와 대화해보세요!
             </p>
+          </div>
+
+          {/* Live2D 캐릭터 영역 */}
+          <div className="flex justify-center mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg">
+              <div className="text-center mb-2">
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+                  🎮 Live2D Character
+                </span>
+              </div>
+              <div id="live2d-canvas" className="flex justify-center">
+                {/* Canvas가 여기에 동적으로 추가됩니다 */}
+              </div>
+            </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">

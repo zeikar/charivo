@@ -41,6 +41,9 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@charivo/render-live2d':
+        specifier: workspace:*
+        version: link:../../packages/render-live2d
       '@charivo/render-stub':
         specifier: workspace:*
         version: link:../../packages/render-stub
