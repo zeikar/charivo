@@ -35,6 +35,15 @@ importers:
 
   examples/web:
     dependencies:
+      '@charivo/adapter-llm-stub':
+        specifier: workspace:*
+        version: link:../../packages/adapter-llm-stub
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@charivo/render-stub':
+        specifier: workspace:*
+        version: link:../../packages/render-stub
       next:
         specifier: 15.5.3
         version: 15.5.3(react-dom@19.1.0)(react@19.1.0)
