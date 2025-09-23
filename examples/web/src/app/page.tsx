@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { Charivo } from '@charivo/core'
+import { StubLLMAdapter } from '@charivo/adapter-llm-stub'
+// Live2DRenderer uses browser-only APIs; import dynamically in useEffect
 
 // 웹용 렌더러
 class WebRenderer {
@@ -47,11 +50,6 @@ export default function Home() {
     const initCharivo = async () => {
       console.log('🚀 Starting Charivo initialization...')
 
-      // Dynamic imports
-      const { Charivo } = await import('@charivo/core')
-      const { StubLLMAdapter } = await import('@charivo/adapter-llm-stub')
-      const { Live2DRenderer } = await import('@charivo/render-live2d')
-
       const instance = new Charivo()
 
       // Canvas 요소 생성
@@ -61,7 +59,8 @@ export default function Home() {
       canvas.style.border = '2px solid #ccc'
       canvas.style.borderRadius = '8px'
 
-      const live2dRenderer = new Live2DRenderer(canvas)
+  const { Live2DRenderer } = await import('@charivo/render-live2d')
+  const live2dRenderer = new Live2DRenderer(canvas)
       const llmAdapter = new StubLLMAdapter()
 
       console.log('📦 Created instances:', { instance, live2dRenderer, llmAdapter })
@@ -74,18 +73,18 @@ export default function Home() {
 
       await live2dRenderer.initialize()
 
-      // Live2D 모델 로드
-      await live2dRenderer.loadModel('/models/miko.model3.json')
+      // Live2D 모델 로드 (Hiyori 모델)
+      await live2dRenderer.loadModel('/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json')
 
       instance.attachRenderer(live2dRenderer)
       instance.attachLLM(llmAdapter)
 
-      // 캐릭터 추가
+      // 캐릭터 추가 (Hiyori)
       const character = {
-        id: 'miko',
-        name: '미코',
-        description: '귀여운 AI 어시스턴트',
-        personality: '친근하고 도움이 되는 성격'
+        id: 'hiyori',
+        name: 'Hiyori',
+        description: '귀여운 Live2D 캐릭터',
+        personality: '밝고 활발한 성격'
       }
       instance.addCharacter(character)
       live2dRenderer.setCharacter(character)
@@ -113,7 +112,7 @@ export default function Home() {
 
     setIsLoading(true)
     try {
-      await charivo.userSay(input, 'miko')
+      await charivo.userSay(input, 'hiyori')
       setInput('')
     } finally {
       setIsLoading(false)
@@ -136,7 +135,7 @@ export default function Home() {
               🎭 Charivo Live2D Demo
             </h1>
             <p className="text-gray-600 dark:text-gray-300">
-              미코와 대화해보세요!
+              Hiyori와 대화해보세요!
             </p>
           </div>
 
@@ -148,7 +147,7 @@ export default function Home() {
                   🎮 Live2D Character
                 </span>
               </div>
-              <div id="live2d-canvas" className="flex justify-center">
+              <div id="live2d-canvas" className="flex justify-center" style={{ width: 360, height: 540 }}>
                 {/* Canvas가 여기에 동적으로 추가됩니다 */}
               </div>
             </div>

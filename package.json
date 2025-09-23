@@ -17,6 +17,11 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "clean": "pnpm -r exec rm -rf dist && pnpm -r exec rm -rf .turbo"
   },
+  "pnpm": {
+    "overrides": {
+      "pixi.js": "6.5.10"
+    }
+  },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
     "@typescript-eslint/eslint-plugin": "^8.44.0",
