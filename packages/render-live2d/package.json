@@ -3,19 +3,19 @@
   "version": "0.0.0",
   "description": "Live2D rendering engine for Charivo",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/renderer.js",
+  "types": "dist/renderer.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/renderer.d.ts",
+      "import": "./dist/renderer.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },

@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/renderer.ts",
+    "src/utils/**/*.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}
