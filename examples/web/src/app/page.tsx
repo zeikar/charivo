@@ -1,48 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Charivo } from '@charivo/core'
+import { useState, useEffect, type KeyboardEvent } from 'react'
+import { Charivo, type Message, type Character } from '@charivo/core'
 import { StubLLMAdapter } from '@charivo/adapter-llm-stub'
-// Live2DRenderer uses browser-only APIs; import dynamically in useEffect
 
-// 웹용 렌더러
-class WebRenderer {
-  private messageCallback?: (message: any, character?: any) => void
-
-  setMessageCallback(callback: (message: any, character?: any) => void) {
-    this.messageCallback = callback
-  }
-
-  async initialize() {
-    console.log('🎭 WebRenderer initialized')
-  }
-
-  async render(message: any, character?: any) {
-    // 콘솔 출력 (ConsoleRenderer와 동일한 로직)
-    const timestamp = message.timestamp.toLocaleTimeString()
-
-    if (message.type === 'user') {
-      console.log(`👤 [${timestamp}] User: ${message.content}`)
-    } else if (message.type === 'character' && character) {
-      console.log(`🎭 [${timestamp}] ${character.name}: ${message.content}`)
-    } else {
-      console.log(`ℹ️ [${timestamp}] System: ${message.content}`)
-    }
-
-    // 웹 UI 업데이트
-    if (this.messageCallback) {
-      this.messageCallback(message, character)
-    }
-  }
-
-  async destroy() {
-    console.log('🎭 WebRenderer destroyed')
-  }
-}
+// 메시지 렌더링에 사용할 확장 타입
+type ChatMessage = Message & { character?: Character }
 
 export default function Home() {
-  const [charivo, setCharivo] = useState<any | null>(null)
-  const [messages, setMessages] = useState<any[]>([])
+  const [charivo, setCharivo] = useState<Charivo | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -59,32 +26,40 @@ export default function Home() {
       canvas.style.border = '2px solid #ccc'
       canvas.style.borderRadius = '8px'
 
-  const { Live2DRenderer } = await import('@charivo/render-live2d')
-  const live2dRenderer = new Live2DRenderer(canvas)
+      const { Live2DRenderer } = await import('@charivo/render-live2d')
+      const live2dRenderer = new Live2DRenderer(canvas)
       const llmAdapter = new StubLLMAdapter()
 
-      console.log('📦 Created instances:', { instance, live2dRenderer, llmAdapter })
+      console.log('📦 Created instances:', {
+        instance,
+        live2dRenderer,
+        llmAdapter,
+      })
 
       // 메시지 콜백 설정
-      live2dRenderer.setMessageCallback((message, character) => {
-        console.log('📨 Message callback triggered:', message, character)
-        setMessages(prev => [...prev, { ...message, character }])
-      })
+      live2dRenderer.setMessageCallback(
+        (message: Message, character?: Character) => {
+          console.log('📨 Message callback triggered:', message, character)
+          setMessages(prev => [...prev, { ...message, character }])
+        }
+      )
 
       await live2dRenderer.initialize()
 
       // Live2D 모델 로드 (Hiyori 모델)
-      await live2dRenderer.loadModel('/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json')
+      await live2dRenderer.loadModel(
+        '/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json'
+      )
 
       instance.attachRenderer(live2dRenderer)
       instance.attachLLM(llmAdapter)
 
       // 캐릭터 추가 (Hiyori)
-      const character = {
+      const character: Character = {
         id: 'hiyori',
         name: 'Hiyori',
         description: '귀여운 Live2D 캐릭터',
-        personality: '밝고 활발한 성격'
+        personality: '밝고 활발한 성격',
       }
       instance.addCharacter(character)
       live2dRenderer.setCharacter(character)
@@ -119,7 +94,7 @@ export default function Home() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -147,7 +122,11 @@ export default function Home() {
                   🎮 Live2D Character
                 </span>
               </div>
-              <div id="live2d-canvas" className="flex justify-center" style={{ width: 360, height: 540 }}>
+              <div
+                id="live2d-canvas"
+                className="flex justify-center"
+                style={{ width: 360, height: 540 }}
+              >
                 {/* Canvas가 여기에 동적으로 추가됩니다 */}
               </div>
             </div>
@@ -161,9 +140,9 @@ export default function Home() {
                 </div>
               )}
 
-              {messages.map((msg, idx) => (
+              {messages.map(msg => (
                 <div
-                  key={idx}
+                  key={msg.id}
                   className={`flex ${
                     msg.type === 'user' ? 'justify-end' : 'justify-start'
                   }`}
@@ -182,7 +161,9 @@ export default function Home() {
                     )}
                     <div className="text-sm">{msg.content}</div>
                     <div className="text-xs opacity-70 mt-1">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
+                      {msg.timestamp instanceof Date
+                        ? msg.timestamp.toLocaleTimeString()
+                        : new Date(msg.timestamp).toLocaleTimeString()}
                     </div>
                   </div>
                 </div>
@@ -193,8 +174,14 @@ export default function Home() {
                   <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2">
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      <div
+                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                        style={{ animationDelay: '0.1s' }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                        style={{ animationDelay: '0.2s' }}
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -206,7 +193,7 @@ export default function Home() {
                 <input
                   type="text"
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={e => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="메시지를 입력하세요..."
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
