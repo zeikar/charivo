@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "pnpm -w build",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
