@@ -37,7 +37,7 @@ export class OpenAIAdapter implements CoreLLMAdapter {
     // OpenAI 메시지 형식으로 변환
     const openAIMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...this.messageHistory.map(msg => ({
+      ...this.messageHistory.map((msg) => ({
         role: msg.type === "user" ? ("user" as const) : ("assistant" as const),
         content: msg.content,
       })),
@@ -59,7 +59,7 @@ export class OpenAIAdapter implements CoreLLMAdapter {
           .json()
           .catch(() => ({ error: "Unknown error" }));
         throw new Error(
-          `API call failed: ${errorData.error || response.statusText}`
+          `API call failed: ${errorData.error || response.statusText}`,
         );
       }
 

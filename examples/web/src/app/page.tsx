@@ -1,105 +1,105 @@
-'use client'
+"use client";
 
-import { useState, useEffect, type KeyboardEvent } from 'react'
-import { Charivo, type Message, type Character } from '@charivo/core'
-import { createOpenAIAdapter } from '@charivo/adapter-llm-openai'
+import { useState, useEffect, type KeyboardEvent } from "react";
+import { Charivo, type Message, type Character } from "@charivo/core";
+import { createOpenAIAdapter } from "@charivo/adapter-llm-openai";
 
 // 메시지 렌더링에 사용할 확장 타입
-type ChatMessage = Message & { character?: Character }
+type ChatMessage = Message & { character?: Character };
 
 export default function Home() {
-  const [charivo, setCharivo] = useState<Charivo | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [charivo, setCharivo] = useState<Charivo | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const initCharivo = async () => {
-      console.log('🚀 Starting Charivo initialization...')
+      console.log("🚀 Starting Charivo initialization...");
 
-      const instance = new Charivo()
+      const instance = new Charivo();
 
       // Canvas 요소 생성
-      const canvas = document.createElement('canvas')
-      canvas.width = 200
-      canvas.height = 200
-      canvas.style.border = '2px solid #ccc'
-      canvas.style.borderRadius = '8px'
+      const canvas = document.createElement("canvas");
+      canvas.width = 200;
+      canvas.height = 200;
+      canvas.style.border = "2px solid #ccc";
+      canvas.style.borderRadius = "8px";
 
-      const { Live2DRenderer } = await import('@charivo/render-live2d')
-      const live2dRenderer = new Live2DRenderer(canvas)
-      const llmAdapter = createOpenAIAdapter('/api/chat')
+      const { Live2DRenderer } = await import("@charivo/render-live2d");
+      const live2dRenderer = new Live2DRenderer(canvas);
+      const llmAdapter = createOpenAIAdapter("/api/chat");
 
-      console.log('📦 Created instances:', {
+      console.log("📦 Created instances:", {
         instance,
         live2dRenderer,
         llmAdapter,
-      })
+      });
 
       // 메시지 콜백 설정
       live2dRenderer.setMessageCallback(
         (message: Message, character?: Character) => {
-          console.log('📨 Message callback triggered:', message, character)
-          setMessages(prev => [...prev, { ...message, character }])
-        }
-      )
+          console.log("📨 Message callback triggered:", message, character);
+          setMessages((prev) => [...prev, { ...message, character }]);
+        },
+      );
 
-      await live2dRenderer.initialize()
+      await live2dRenderer.initialize();
 
       // Live2D 모델 로드 (Hiyori 모델)
       await live2dRenderer.loadModel(
-        '/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json'
-      )
+        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
+      );
 
-      instance.attachRenderer(live2dRenderer)
-      instance.attachLLM(llmAdapter)
+      instance.attachRenderer(live2dRenderer);
+      instance.attachLLM(llmAdapter);
 
       // 캐릭터 추가 (Hiyori)
       const character: Character = {
-        id: 'hiyori',
-        name: 'Hiyori',
-        description: '귀여운 Live2D 캐릭터',
-        personality: '밝고 활발한 성격',
-      }
-      instance.addCharacter(character)
-      live2dRenderer.setCharacter(character)
+        id: "hiyori",
+        name: "Hiyori",
+        description: "귀여운 Live2D 캐릭터",
+        personality: "밝고 활발한 성격",
+      };
+      instance.addCharacter(character);
+      live2dRenderer.setCharacter(character);
 
       // 이벤트 리스너
-      instance.on('character:speak', ({ character, message }) => {
-        console.log(`🎵 ${character.name}: "${message}"`)
-      })
+      instance.on("character:speak", ({ character, message }) => {
+        console.log(`🎵 ${character.name}: "${message}"`);
+      });
 
       // Canvas를 DOM에 추가
-      const canvasContainer = document.getElementById('live2d-canvas')
+      const canvasContainer = document.getElementById("live2d-canvas");
       if (canvasContainer) {
-        canvasContainer.appendChild(canvas)
+        canvasContainer.appendChild(canvas);
       }
 
-      console.log('✅ Charivo initialization complete')
-      setCharivo(instance)
-    }
+      console.log("✅ Charivo initialization complete");
+      setCharivo(instance);
+    };
 
-    initCharivo().catch(console.error)
-  }, [])
+    initCharivo().catch(console.error);
+  }, []);
 
   const handleSend = async () => {
-    if (!charivo || !input.trim()) return
+    if (!charivo || !input.trim()) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      await charivo.userSay(input, 'hiyori')
-      setInput('')
+      await charivo.userSay(input, "hiyori");
+      setInput("");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -140,21 +140,21 @@ export default function Home() {
                 </div>
               )}
 
-              {messages.map(msg => (
+              {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={`flex ${
-                    msg.type === 'user' ? 'justify-end' : 'justify-start'
+                    msg.type === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
                   <div
                     className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                      msg.type === 'user'
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white'
+                      msg.type === "user"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white"
                     }`}
                   >
-                    {msg.type !== 'user' && msg.character && (
+                    {msg.type !== "user" && msg.character && (
                       <div className="text-xs font-semibold mb-1 text-purple-600 dark:text-purple-400">
                         {msg.character.name}
                       </div>
@@ -176,11 +176,11 @@ export default function Home() {
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
                       <div
                         className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                        style={{ animationDelay: '0.1s' }}
+                        style={{ animationDelay: "0.1s" }}
                       ></div>
                       <div
                         className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                        style={{ animationDelay: '0.2s' }}
+                        style={{ animationDelay: "0.2s" }}
                       ></div>
                     </div>
                   </div>
@@ -193,7 +193,7 @@ export default function Home() {
                 <input
                   type="text"
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={(e) => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="메시지를 입력하세요..."
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
@@ -212,5 +212,5 @@ export default function Home() {
         </div>
       </div>
     </div>
-  )
+  );
 }

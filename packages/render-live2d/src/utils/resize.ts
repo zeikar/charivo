@@ -1,46 +1,49 @@
-export type ResizeTeardown = () => void
+export type ResizeTeardown = () => void;
 
 export function setupResponsiveResize(
   canvas: HTMLCanvasElement,
-  resize: () => void
+  resize: () => void,
 ): ResizeTeardown {
-  let resizeObserver: ResizeObserver | undefined
-  let mutationObserver: MutationObserver | undefined
-  let windowResizeHandler: (() => void) | undefined
+  let resizeObserver: ResizeObserver | undefined;
+  let mutationObserver: MutationObserver | undefined;
+  let windowResizeHandler: (() => void) | undefined;
 
   // Initial run
-  setTimeout(resize, 0)
+  setTimeout(resize, 0);
 
   try {
-    resizeObserver = new ResizeObserver(() => resize())
-    const parentEl = canvas.parentElement
+    resizeObserver = new ResizeObserver(() => resize());
+    const parentEl = canvas.parentElement;
     if (parentEl) {
-      resizeObserver.observe(parentEl)
-    } else if (typeof MutationObserver !== 'undefined') {
+      resizeObserver.observe(parentEl);
+    } else if (typeof MutationObserver !== "undefined") {
       mutationObserver = new MutationObserver(() => {
         if (canvas.parentElement) {
-          resizeObserver?.observe(canvas.parentElement)
-          resize()
-          mutationObserver?.disconnect()
-          mutationObserver = undefined
+          resizeObserver?.observe(canvas.parentElement);
+          resize();
+          mutationObserver?.disconnect();
+          mutationObserver = undefined;
         }
-      })
-      mutationObserver.observe(document.body, { childList: true, subtree: true })
+      });
+      mutationObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
     }
   } catch {
-    windowResizeHandler = resize
-    window.addEventListener('resize', windowResizeHandler)
+    windowResizeHandler = resize;
+    window.addEventListener("resize", windowResizeHandler);
   }
 
   return () => {
     try {
       if (resizeObserver && canvas.parentElement) {
-        resizeObserver.unobserve(canvas.parentElement)
+        resizeObserver.unobserve(canvas.parentElement);
       }
-      mutationObserver?.disconnect()
+      mutationObserver?.disconnect();
       if (windowResizeHandler) {
-        window.removeEventListener('resize', windowResizeHandler)
+        window.removeEventListener("resize", windowResizeHandler);
       }
     } catch {}
-  }
+  };
 }

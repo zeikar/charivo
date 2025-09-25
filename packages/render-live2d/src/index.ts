@@ -1,1 +1,1 @@
-export { Live2DRenderer, createLive2DRenderer } from './renderer'
+export { Live2DRenderer, createLive2DRenderer } from "./renderer";
