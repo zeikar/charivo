@@ -24,6 +24,11 @@ export class Charivo {
 
   addCharacter(character: Character): void {
     this.characters.set(character.id, character)
+    
+    // LLM Adapter에 캐릭터 설정 (만약 한 명의 캐릭터만 사용하는 경우)
+    if (this.llmAdapter) {
+      this.llmAdapter.setCharacter(character)
+    }
   }
 
   async userSay(content: string, characterId?: string): Promise<void> {
@@ -43,7 +48,10 @@ export class Charivo {
     if (this.llmAdapter && characterId) {
       const character = this.characters.get(characterId)
       if (character) {
-        const response = await this.llmAdapter.generate(content, characterId)
+        // LLM 어댑터에 캐릭터 설정 (만약 여러 캐릭터를 사용하는 경우)
+        this.llmAdapter.setCharacter(character)
+        
+        const response = await this.llmAdapter.generateResponse(userMessage)
 
         const characterMessage: Message = {
           id: Date.now().toString() + '_response',

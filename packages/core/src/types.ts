@@ -37,7 +37,9 @@ export interface CharivoConfig {
 }
 
 export interface LLMAdapter {
-  generate(prompt: string, characterId?: string): Promise<string>
+  generateResponse(message: Message): Promise<string>
+  setCharacter(character: Character): void
+  clearHistory(): void
 }
 
 export interface Renderer {
@@ -49,6 +51,6 @@ export interface Renderer {
 export type EventMap = {
   'message:sent': { message: Message }
   'message:received': { message: Message }
-  'character:speak': { character: Character, message: string }
-  'error': { error: Error }
+  'character:speak': { character: Character; message: string }
+  error: { error: Error }
 }

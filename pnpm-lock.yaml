@@ -38,6 +38,9 @@ importers:
 
   examples/web:
     dependencies:
+      '@charivo/adapter-llm-openai':
+        specifier: workspace:^
+        version: link:../../packages/adapter-llm-openai
       '@charivo/adapter-llm-stub':
         specifier: workspace:*
         version: link:../../packages/adapter-llm-stub
@@ -53,6 +56,9 @@ importers:
       next:
         specifier: 15.5.3
         version: 15.5.3(react-dom@19.1.0)(react@19.1.0)
+      openai:
+        specifier: ^4.28.4
+        version: 4.104.0
       react:
         specifier: 19.1.0
         version: 19.1.0
