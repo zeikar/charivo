@@ -2,7 +2,31 @@
   "name": "charivo",
   "version": "0.0.0",
   "private": true,
-  "description": "Charivo - Interactive character system",
+  "description": "A modular Live2D + LLM framework for interactive character experiences",
+  "keywords": [
+    "live2d",
+    "llm",
+    "ai",
+    "character",
+    "chatbot",
+    "tts",
+    "animation",
+    "typescript",
+    "framework"
+  ],
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
