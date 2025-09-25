@@ -8,7 +8,7 @@ export class WebTTSAdapter implements TTSAdapter {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       throw new Error("Web Speech API is not supported in this environment");
     }
-    
+
     this.synthesis = window.speechSynthesis;
     this.loadVoices();
   }
@@ -19,7 +19,7 @@ export class WebTTSAdapter implements TTSAdapter {
       this.voices = voices;
     } else {
       // Some browsers load voices asynchronously
-      this.synthesis.addEventListener('voiceschanged', () => {
+      this.synthesis.addEventListener("voiceschanged", () => {
         this.voices = this.synthesis.getVoices();
       });
     }
@@ -44,7 +44,9 @@ export class WebTTSAdapter implements TTSAdapter {
           utterance.volume = Math.max(0, Math.min(1, options.volume));
         }
         if (options.voice) {
-          const voice = this.voices.find(v => v.name === options.voice || v.voiceURI === options.voice);
+          const voice = this.voices.find(
+            (v) => v.name === options.voice || v.voiceURI === options.voice,
+          );
           if (voice) {
             utterance.voice = voice;
           }
@@ -84,7 +86,9 @@ export class WebTTSAdapter implements TTSAdapter {
   }
 
   setVoice(voiceId: string): void {
-    const voice = this.voices.find(v => v.name === voiceId || v.voiceURI === voiceId);
+    const voice = this.voices.find(
+      (v) => v.name === voiceId || v.voiceURI === voiceId,
+    );
     if (!voice) {
       console.warn(`Voice "${voiceId}" not found`);
     }
@@ -116,15 +120,15 @@ export class WebTTSAdapter implements TTSAdapter {
 
   // Helper methods for voice selection
   getVoicesByLanguage(language: string): SpeechSynthesisVoice[] {
-    return this.voices.filter(voice => voice.lang.startsWith(language));
+    return this.voices.filter((voice) => voice.lang.startsWith(language));
   }
 
   getDefaultVoice(language?: string): SpeechSynthesisVoice | undefined {
     if (language) {
       const languageVoices = this.getVoicesByLanguage(language);
-      return languageVoices.find(voice => voice.default) || languageVoices[0];
+      return languageVoices.find((voice) => voice.default) || languageVoices[0];
     }
-    return this.voices.find(voice => voice.default) || this.voices[0];
+    return this.voices.find((voice) => voice.default) || this.voices[0];
   }
 }
 

@@ -77,13 +77,15 @@ export class Charivo {
         if (this.ttsAdapter) {
           try {
             this.eventBus.emit("tts:start", { text: response, characterId });
-            
-            const ttsOptions = character.voice ? {
-              rate: character.voice.rate,
-              pitch: character.voice.pitch,
-              volume: character.voice.volume,
-              voice: character.voice.voiceId,
-            } : undefined;
+
+            const ttsOptions = character.voice
+              ? {
+                  rate: character.voice.rate,
+                  pitch: character.voice.pitch,
+                  volume: character.voice.volume,
+                  voice: character.voice.voiceId,
+                }
+              : undefined;
 
             await this.ttsAdapter.speak(response, ttsOptions);
             this.eventBus.emit("tts:end", { characterId });

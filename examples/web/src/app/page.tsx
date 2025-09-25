@@ -56,14 +56,14 @@ export default function Home() {
         (message: Message, character?: Character) => {
           console.log("📨 Message callback triggered:", message, character);
           setMessages((prev) => [...prev, { ...message, character }]);
-        }
+        },
       );
 
       await live2dRenderer.initialize();
 
       // Live2D 모델 로드 (Hiyori 모델)
       await live2dRenderer.loadModel(
-        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json"
+        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
       );
 
       instance.attachRenderer(live2dRenderer);
@@ -79,7 +79,8 @@ export default function Home() {
         id: "hiyori",
         name: "Hiyori",
         description: "A cute Live2D character who loves to chat and help users",
-        personality: "Bright, cheerful, and helpful personality. Always responds in English and loves engaging conversations.",
+        personality:
+          "Bright, cheerful, and helpful personality. Always responds in English and loves engaging conversations.",
         voice: {
           rate: 1.0,
           pitch: 1.2,
@@ -150,9 +151,7 @@ export default function Home() {
           <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
             🧩✨ Charivo Live2D Demo
           </h1>
-          <p className="text-gray-600 dark:text-gray-300">
-            Chat with Hiyori!
-          </p>
+          <p className="text-gray-600 dark:text-gray-300">Chat with Hiyori!</p>
         </div>
 
         {/* Main Layout: Character (Left) + Chat (Right) */}
@@ -168,7 +167,7 @@ export default function Home() {
                   Your Live2D AI Character
                 </p>
               </div>
-              
+
               <div className="flex justify-center items-center flex-1 min-h-[500px]">
                 <div
                   id="live2d-canvas"
@@ -243,7 +242,9 @@ export default function Home() {
                       {msg.type !== "user" && msg.character && (
                         <div className="flex items-center space-x-2 mb-1">
                           <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                            <span className="text-xs text-white font-bold">H</span>
+                            <span className="text-xs text-white font-bold">
+                              H
+                            </span>
                           </div>
                           <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
                             {msg.character.name}
@@ -257,7 +258,9 @@ export default function Home() {
                             : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white rounded-bl-none"
                         }`}
                       >
-                        <div className="text-sm leading-relaxed">{msg.content}</div>
+                        <div className="text-sm leading-relaxed">
+                          {msg.content}
+                        </div>
                         <div className="text-xs opacity-70 mt-1">
                           {msg.timestamp instanceof Date
                             ? msg.timestamp.toLocaleTimeString()
@@ -273,7 +276,9 @@ export default function Home() {
                     <div className="max-w-[75%]">
                       <div className="flex items-center space-x-2 mb-1">
                         <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                          <span className="text-xs text-white font-bold">H</span>
+                          <span className="text-xs text-white font-bold">
+                            H
+                          </span>
                         </div>
                         <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
                           Hiyori
