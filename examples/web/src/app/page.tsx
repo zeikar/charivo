@@ -12,6 +12,8 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isTTSEnabled, setIsTTSEnabled] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
     const initCharivo = async () => {
@@ -30,10 +32,23 @@ export default function Home() {
       const live2dRenderer = new Live2DRenderer(canvas);
       const llmAdapter = createOpenAIAdapter("/api/chat");
 
+      // TTS 어댑터 생성 (브라우저 환경에서만)
+      let ttsAdapter;
+      try {
+        const { createWebTTSAdapter } = await import(
+          "@charivo/adapter-tts-web"
+        );
+        ttsAdapter = createWebTTSAdapter();
+      } catch (error) {
+        console.warn("TTS not supported:", error);
+        setIsTTSEnabled(false);
+      }
+
       console.log("📦 Created instances:", {
         instance,
         live2dRenderer,
         llmAdapter,
+        ttsAdapter,
       });
 
       // 메시지 콜백 설정
@@ -41,32 +56,58 @@ export default function Home() {
         (message: Message, character?: Character) => {
           console.log("📨 Message callback triggered:", message, character);
           setMessages((prev) => [...prev, { ...message, character }]);
-        },
+        }
       );
 
       await live2dRenderer.initialize();
 
       // Live2D 모델 로드 (Hiyori 모델)
       await live2dRenderer.loadModel(
-        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
+        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json"
       );
 
       instance.attachRenderer(live2dRenderer);
       instance.attachLLM(llmAdapter);
 
-      // 캐릭터 추가 (Hiyori)
+      // TTS 어댑터 연결
+      if (ttsAdapter) {
+        instance.attachTTS(ttsAdapter);
+      }
+
+      // Add character (Hiyori)
       const character: Character = {
         id: "hiyori",
         name: "Hiyori",
-        description: "귀여운 Live2D 캐릭터",
-        personality: "밝고 활발한 성격",
+        description: "A cute Live2D character",
+        personality: "Bright and cheerful personality.",
+        voice: {
+          rate: 1.0,
+          pitch: 1.2,
+          volume: 0.8,
+        },
       };
       instance.addCharacter(character);
       live2dRenderer.setCharacter(character);
 
-      // 이벤트 리스너
+      // Event listeners
       instance.on("character:speak", ({ character, message }) => {
         console.log(`🎵 ${character.name}: "${message}"`);
+      });
+
+      // TTS event listeners
+      instance.on("tts:start", ({ text, characterId }) => {
+        console.log(`🔊 TTS started for ${characterId}: "${text}"`);
+        setIsSpeaking(true);
+      });
+
+      instance.on("tts:end", ({ characterId }) => {
+        console.log(`🔇 TTS ended for ${characterId}`);
+        setIsSpeaking(false);
+      });
+
+      instance.on("tts:error", ({ error }) => {
+        console.error("❌ TTS Error:", error);
+        setIsSpeaking(false);
       });
 
       // Canvas를 DOM에 추가
@@ -110,7 +151,7 @@ export default function Home() {
               🎭 Charivo Live2D Demo
             </h1>
             <p className="text-gray-600 dark:text-gray-300">
-              Hiyori와 대화해보세요!
+              Chat with Hiyori!
             </p>
           </div>
 
@@ -127,7 +168,7 @@ export default function Home() {
                 className="flex justify-center"
                 style={{ width: 360, height: 540 }}
               >
-                {/* Canvas가 여기에 동적으로 추가됩니다 */}
+                {/* Canvas will be dynamically added here */}
               </div>
             </div>
           </div>
@@ -136,7 +177,7 @@ export default function Home() {
             <div className="h-96 overflow-y-auto p-4 space-y-4">
               {messages.length === 0 && (
                 <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                  대화를 시작해보세요! 👋
+                  Start chatting! 👋
                 </div>
               )}
 
@@ -189,13 +230,32 @@ export default function Home() {
             </div>
 
             <div className="border-t dark:border-gray-700 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={isTTSEnabled}
+                      onChange={(e) => setIsTTSEnabled(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>🔊 Enable TTS</span>
+                  </label>
+                  {isSpeaking && (
+                    <div className="flex items-center space-x-1 text-sm text-blue-600 dark:text-blue-400">
+                      <div className="animate-pulse">🎵</div>
+                      <span>Speaking...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="flex space-x-2">
                 <input
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="메시지를 입력하세요..."
+                  placeholder="Enter your message..."
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   disabled={isLoading}
                 />
@@ -204,7 +264,7 @@ export default function Home() {
                   disabled={isLoading || !input.trim()}
                   className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  전송
+                  Send
                 </button>
               </div>
             </div>

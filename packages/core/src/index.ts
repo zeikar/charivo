@@ -1,5 +1,5 @@
 import { EventBus } from "./bus";
-import { Character, Message, LLMAdapter, Renderer } from "./types";
+import { Character, Message, LLMAdapter, Renderer, TTSAdapter } from "./types";
 
 export * from "./types";
 export * from "./bus";
@@ -8,6 +8,7 @@ export class Charivo {
   private eventBus: EventBus;
   private llmAdapter?: LLMAdapter;
   private renderer?: Renderer;
+  private ttsAdapter?: TTSAdapter;
   private characters: Map<string, Character> = new Map();
 
   constructor() {
@@ -20,6 +21,10 @@ export class Charivo {
 
   attachLLM(adapter: LLMAdapter): void {
     this.llmAdapter = adapter;
+  }
+
+  attachTTS(adapter: TTSAdapter): void {
+    this.ttsAdapter = adapter;
   }
 
   addCharacter(character: Character): void {
@@ -66,6 +71,25 @@ export class Charivo {
 
         if (this.renderer) {
           await this.renderer.render(characterMessage, character);
+        }
+
+        // TTS로 음성 출력
+        if (this.ttsAdapter) {
+          try {
+            this.eventBus.emit("tts:start", { text: response, characterId });
+            
+            const ttsOptions = character.voice ? {
+              rate: character.voice.rate,
+              pitch: character.voice.pitch,
+              volume: character.voice.volume,
+              voice: character.voice.voiceId,
+            } : undefined;
+
+            await this.ttsAdapter.speak(response, ttsOptions);
+            this.eventBus.emit("tts:end", { characterId });
+          } catch (error) {
+            this.eventBus.emit("tts:error", { error: error as Error });
+          }
         }
       }
     }

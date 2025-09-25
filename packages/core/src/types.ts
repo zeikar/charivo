@@ -4,6 +4,12 @@ export interface Character {
   description?: string;
   personality?: string;
   avatar?: string;
+  voice?: {
+    voiceId?: string;
+    rate?: number;
+    pitch?: number;
+    volume?: number;
+  };
 }
 
 export interface Message {
@@ -48,9 +54,29 @@ export interface Renderer {
   destroy(): Promise<void>;
 }
 
+export interface TTSOptions {
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+  voice?: string;
+}
+
+export interface TTSAdapter {
+  speak(text: string, options?: TTSOptions): Promise<void>;
+  stop(): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  setVoice(voiceId: string): void;
+  getAvailableVoices(): Promise<SpeechSynthesisVoice[]>;
+  isSupported(): boolean;
+}
+
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
   "character:speak": { character: Character; message: string };
+  "tts:start": { text: string; characterId?: string };
+  "tts:end": { characterId?: string };
+  "tts:error": { error: Error };
   error: { error: Error };
 };
