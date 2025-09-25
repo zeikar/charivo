@@ -78,8 +78,8 @@ export default function Home() {
       const character: Character = {
         id: "hiyori",
         name: "Hiyori",
-        description: "A cute Live2D character",
-        personality: "Bright and cheerful personality.",
+        description: "A cute Live2D character who loves to chat and help users",
+        personality: "Bright, cheerful, and helpful personality. Always responds in English and loves engaging conversations.",
         voice: {
           rate: 1.0,
           pitch: 1.2,
@@ -145,94 +145,70 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
-              🎭 Charivo Live2D Demo
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300">
-              Chat with Hiyori!
-            </p>
-          </div>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
+            🧩✨ Charivo Live2D Demo
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300">
+            Chat with Hiyori!
+          </p>
+        </div>
 
-          {/* Live2D 캐릭터 영역 */}
-          <div className="flex justify-center mb-6">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg">
-              <div className="text-center mb-2">
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                  🎮 Live2D Character
-                </span>
+        {/* Main Layout: Character (Left) + Chat (Right) */}
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Left Side - Live2D Character */}
+          <div className="flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-lg h-full">
+              <div className="text-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
+                  🎮 Hiyori
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Your Live2D AI Character
+                </p>
               </div>
-              <div
-                id="live2d-canvas"
-                className="flex justify-center"
-                style={{ width: 360, height: 540 }}
-              >
-                {/* Canvas will be dynamically added here */}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
-            <div className="h-96 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 && (
-                <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                  Start chatting! 👋
-                </div>
-              )}
-
-              {messages.map((msg) => (
+              
+              <div className="flex justify-center items-center flex-1 min-h-[500px]">
                 <div
-                  key={msg.id}
-                  className={`flex ${
-                    msg.type === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  id="live2d-canvas"
+                  className="flex justify-center items-center bg-gradient-to-b from-blue-50 to-blue-100 dark:from-gray-700 dark:to-gray-800 rounded-lg"
+                  style={{ width: 400, height: 600 }}
                 >
-                  <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                      msg.type === "user"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white"
-                    }`}
-                  >
-                    {msg.type !== "user" && msg.character && (
-                      <div className="text-xs font-semibold mb-1 text-purple-600 dark:text-purple-400">
-                        {msg.character.name}
-                      </div>
-                    )}
-                    <div className="text-sm">{msg.content}</div>
-                    <div className="text-xs opacity-70 mt-1">
-                      {msg.timestamp instanceof Date
-                        ? msg.timestamp.toLocaleTimeString()
-                        : new Date(msg.timestamp).toLocaleTimeString()}
-                    </div>
-                  </div>
+                  {/* Canvas will be dynamically added here */}
                 </div>
-              ))}
+              </div>
 
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                    </div>
+              {/* Character Status */}
+              <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-gray-600 dark:text-gray-300">
+                      Online
+                    </span>
                   </div>
+                  {isSpeaking && (
+                    <div className="flex items-center space-x-1 text-blue-600 dark:text-blue-400">
+                      <div className="animate-pulse">🎵</div>
+                      <span>Speaking...</span>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
+          </div>
 
-            <div className="border-t dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between mb-2">
+          {/* Right Side - Chat Interface */}
+          <div className="flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+              {/* Chat Header */}
+              <div className="bg-blue-500 dark:bg-blue-600 p-4">
+                <h2 className="text-xl font-semibold text-white mb-2">
+                  💬 Chat with Hiyori
+                </h2>
                 <div className="flex items-center space-x-2">
-                  <label className="flex items-center space-x-1 text-sm text-gray-600 dark:text-gray-300">
+                  <label className="flex items-center space-x-1 text-sm text-blue-100">
                     <input
                       type="checkbox"
                       checked={isTTSEnabled}
@@ -241,31 +217,106 @@ export default function Home() {
                     />
                     <span>🔊 Enable TTS</span>
                   </label>
-                  {isSpeaking && (
-                    <div className="flex items-center space-x-1 text-sm text-blue-600 dark:text-blue-400">
-                      <div className="animate-pulse">🎵</div>
-                      <span>Speaking...</span>
-                    </div>
-                  )}
                 </div>
               </div>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Enter your message..."
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                  disabled={isLoading}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={isLoading || !input.trim()}
-                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Send
-                </button>
+
+              {/* Chat Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[400px] max-h-[500px]">
+                {messages.length === 0 && (
+                  <div className="text-center text-gray-500 dark:text-gray-400 py-12">
+                    <div className="text-4xl mb-4">👋</div>
+                    <p className="text-lg font-medium mb-2">Start chatting!</p>
+                    <p className="text-sm">
+                      Say hello to Hiyori and begin your conversation
+                    </p>
+                  </div>
+                )}
+
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.type === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div className="max-w-[75%]">
+                      {msg.type !== "user" && msg.character && (
+                        <div className="flex items-center space-x-2 mb-1">
+                          <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-xs text-white font-bold">H</span>
+                          </div>
+                          <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
+                            {msg.character.name}
+                          </span>
+                        </div>
+                      )}
+                      <div
+                        className={`px-4 py-3 rounded-lg ${
+                          msg.type === "user"
+                            ? "bg-blue-500 text-white rounded-br-none"
+                            : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white rounded-bl-none"
+                        }`}
+                      >
+                        <div className="text-sm leading-relaxed">{msg.content}</div>
+                        <div className="text-xs opacity-70 mt-1">
+                          {msg.timestamp instanceof Date
+                            ? msg.timestamp.toLocaleTimeString()
+                            : new Date(msg.timestamp).toLocaleTimeString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[75%]">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                          <span className="text-xs text-white font-bold">H</span>
+                        </div>
+                        <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
+                          Hiyori
+                        </span>
+                      </div>
+                      <div className="bg-gray-100 dark:bg-gray-700 rounded-lg rounded-bl-none px-4 py-3">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
+                          <div
+                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Input */}
+              <div className="border-t dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700">
+                <div className="flex space-x-3">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder="Type your message to Hiyori..."
+                    className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                    disabled={isLoading}
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={isLoading || !input.trim()}
+                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium"
+                  >
+                    {isLoading ? "..." : "Send"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
