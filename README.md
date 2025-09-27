@@ -8,7 +8,7 @@ Charivo lets you create interactive AI characters with Live2D animations, voice 
 
 - 🧩 **Live2D Integration** - Bring characters to life with smooth 2D animations
 - 🤖 **LLM Support** - Connect to OpenAI or implement custom LLM adapters
-- 🔊 **Text-to-Speech** - Built-in TTS with Web Speech API
+- 🔊 **Text-to-Speech** - Multiple TTS options: Web Speech API, OpenAI TTS
 - 📦 **Modular Architecture** - Plugin-based system for easy extensibility
 - ⚡ **TypeScript First** - Full type safety and IntelliSense support
 - 🎨 **Framework Agnostic** - Use with React, Vue, or vanilla JavaScript
@@ -41,7 +41,9 @@ pnpm dev
 ```typescript
 import { Charivo } from "@charivo/core";
 import { createOpenAIAdapter } from "@charivo/adapter-llm-openai";
-import { createWebTTSAdapter } from "@charivo/adapter-tts-web";
+import { createRemoteTTSAdapter } from "@charivo/adapter-tts-remote"; // Client-side HTTP adapter
+// or
+// import { createWebTTSAdapter } from "@charivo/adapter-tts-web"; // Browser Speech API
 import { Live2DRenderer } from "@charivo/render-live2d";
 
 // Create Charivo instance
@@ -49,7 +51,7 @@ const charivo = new Charivo();
 
 // Set up components
 const llmAdapter = createOpenAIAdapter("/api/chat");
-const ttsAdapter = createWebTTSAdapter();
+const ttsAdapter = createRemoteTTSAdapter({ apiEndpoint: "/api/tts" }); // Calls server API
 const renderer = new Live2DRenderer(canvasElement);
 
 // Connect adapters
@@ -81,6 +83,8 @@ await charivo.userSay("Hello!", "hiyori");
 | [`@charivo/adapter-llm-openai`](./packages/adapter-llm-openai) | OpenAI GPT integration |
 | [`@charivo/adapter-llm-stub`](./packages/adapter-llm-stub) | Stub adapter for testing |
 | [`@charivo/adapter-tts-web`](./packages/adapter-tts-web) | Web Speech API TTS integration |
+| [`@charivo/adapter-tts-remote`](./packages/adapter-tts-remote) | Remote HTTP TTS adapter (client-side) |
+| [`@charivo/adapter-tts-openai`](./packages/adapter-tts-openai) | OpenAI TTS integration (server-side) |
 | [`@charivo/render-live2d`](./packages/render-live2d) | Live2D character rendering |
 | [`@charivo/render-stub`](./packages/render-stub) | Stub renderer for testing |
 | [`@charivo/shared`](./packages/shared) | Shared utilities and types |
@@ -145,6 +149,52 @@ class CustomLLMAdapter implements LLMAdapter {
 ```
 
 ### TTS Adapter
+
+Charivo provides multiple TTS (Text-to-Speech) options:
+
+#### Web Speech API (Browser-native)
+```typescript
+import { TTSAdapter, TTSOptions } from "@charivo/core";
+import { createWebTTSAdapter } from "@charivo/adapter-tts-web";
+
+// Uses browser's built-in speech synthesis
+const webTTSAdapter = createWebTTSAdapter();
+```
+
+#### Remote TTS (Server-powered, Client-safe)
+```typescript
+import { createRemoteTTSAdapter } from "@charivo/adapter-tts-remote";
+
+// Client-side adapter that calls your server API
+// Requires server-side implementation (see /api/tts route)
+const remoteTTSAdapter = createRemoteTTSAdapter({
+  apiEndpoint: "/api/tts", // Your server endpoint
+  defaultVoice: "alloy",
+  defaultModel: "tts-1-hd"
+});
+```
+
+**⚠️ Important**: The Remote TTS adapter is a **client-side HTTP adapter** that calls your server API. This design keeps API keys secure on the server side. You need to implement a server endpoint like `/api/tts` that handles the actual TTS API calls.
+
+#### OpenAI TTS (Server-side only)
+```typescript
+import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+
+// Server-side adapter that directly calls OpenAI API
+// ⚠️ Only use in Node.js/server environments
+const openaiTTSAdapter = createOpenAITTSAdapter({
+  apiKey: process.env.OPENAI_API_KEY!, // Server-side only!
+  defaultVoice: "alloy",
+  defaultModel: "tts-1-hd"
+});
+
+// Generate audio data (server-side)
+const audioBuffer = await openaiTTSAdapter.generateSpeech("Hello world!");
+```
+
+**🔐 Security Note**: This adapter directly calls OpenAI API and should only be used in server environments. For client-side usage, use the Remote TTS adapter above.
+
+#### Custom TTS Adapter
 ```typescript
 import { TTSAdapter, TTSOptions } from "@charivo/core";
 

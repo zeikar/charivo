@@ -1,7 +1,7 @@
 {
-  "name": "@charivo/adapter-tts-openai",
+  "name": "@charivo/adapter-tts-remote",
   "version": "0.1.0",
-  "description": "OpenAI TTS adapter for Charivo (server-side)",
+  "description": "Remote HTTP TTS adapter for Charivo (client-side)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,8 +10,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
-    "openai": "^4.47.1"
+    "@charivo/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

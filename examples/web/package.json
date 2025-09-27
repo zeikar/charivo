@@ -13,6 +13,7 @@
     "@charivo/adapter-llm-openai": "workspace:^",
     "@charivo/adapter-llm-stub": "workspace:*",
     "@charivo/adapter-tts-openai": "workspace:*",
+    "@charivo/adapter-tts-remote": "workspace:*",
     "@charivo/adapter-tts-web": "workspace:*",
     "@charivo/core": "workspace:*",
     "@charivo/render-live2d": "workspace:*",

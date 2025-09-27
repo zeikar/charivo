@@ -16,14 +16,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Charivo Live2D Demo | Interactive AI Character Framework",
   description:
-    "Experience Charivo - a modular Live2D + LLM framework for interactive character experiences. Chat with Hiyori featuring real-time 2D animations, AI conversations, and voice synthesis using OpenAI GPT and OpenAI TTS API.",
+    "Experience Charivo - a modular Live2D + LLM framework for interactive character experiences. Chat with Hiyori featuring real-time 2D animations, AI conversations, and voice synthesis using OpenAI GPT and Remote TTS API.",
   keywords: [
     "Live2D",
     "LLM",
     "AI",
     "Character",
     "Chatbot",
-    "TTS",
+    "Remote TTS",
     "Animation",
     "TypeScript",
     "Framework",

@@ -47,6 +47,9 @@ importers:
       '@charivo/adapter-tts-openai':
         specifier: workspace:*
         version: link:../../packages/adapter-tts-openai
+      '@charivo/adapter-tts-remote':
+        specifier: workspace:*
+        version: link:../../packages/adapter-tts-remote
       '@charivo/adapter-tts-web':
         specifier: workspace:*
         version: link:../../packages/adapter-tts-web
@@ -130,6 +133,22 @@ importers:
         version: 5.9.2
 
   packages/adapter-tts-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      openai:
+        specifier: ^4.47.1
+        version: 4.104.0
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/adapter-tts-remote:
     dependencies:
       '@charivo/core':
         specifier: workspace:*

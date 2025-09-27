@@ -1,10 +1,27 @@
+import OpenAI from "openai";
 import { TTSAdapter, TTSOptions } from "@charivo/core";
 
+/**
+ * Configuration options for OpenAI TTS Adapter (Server-side)
+ *
+ * ⚠️ SERVER-SIDE ONLY: This adapter directly calls OpenAI TTS API and should
+ * only be used in Node.js server environments where API keys can be kept secure.
+ *
+ * For client-side usage, use @charivo/adapter-tts-remote instead.
+ */
 export interface OpenAITTSConfig {
-  apiEndpoint?: string;
+  /** OpenAI API key (required) */
+  apiKey: string;
+  /** OpenAI API base URL (default: "https://api.openai.com/v1") */
+  baseURL?: string;
+  /** Default OpenAI voice */
   defaultVoice?: OpenAIVoice;
+  /** Default OpenAI TTS model */
   defaultModel?: "tts-1" | "tts-1-hd";
+  /** Request timeout in milliseconds */
   timeout?: number;
+  /** Allow usage in browser (dangerous - exposes API key) */
+  dangerouslyAllowBrowser?: boolean;
 }
 
 export type OpenAIVoice =
@@ -15,127 +32,86 @@ export type OpenAIVoice =
   | "nova"
   | "shimmer";
 
+/**
+ * OpenAI TTS Adapter - Server-side adapter for direct OpenAI TTS integration
+ *
+ * 🔐 SECURITY WARNING: This adapter is designed for SERVER-SIDE use only as it
+ * directly calls OpenAI API with your API key. Using this in client-side code
+ * will expose your API key to users.
+ *
+ * 🏗️ ARCHITECTURE:
+ * Node.js Server → OpenAITTSAdapter → OpenAI TTS API
+ *
+ * 📋 USE CASES:
+ * - Server-side pre-generation of speech
+ * - Node.js applications
+ * - Server-side rendering with TTS
+ * - API endpoints that serve audio
+ *
+ * 💡 CLIENT-SIDE ALTERNATIVE:
+ * For browser/client usage, use @charivo/adapter-tts-remote which calls your server API.
+ *
+ * ⚠️ BROWSER USAGE:
+ * If you absolutely must use this in browser (not recommended), set
+ * `dangerouslyAllowBrowser: true` in config. This will expose your API key.
+ *
+ * @implements {TTSAdapter}
+ */
 export class OpenAITTSAdapter implements TTSAdapter {
-  private config: Required<OpenAITTSConfig>;
-  private currentAudio: HTMLAudioElement | null = null;
-  private audioContext: AudioContext | null = null;
+  private openai: OpenAI;
+  private config: Required<Omit<OpenAITTSConfig, "dangerouslyAllowBrowser">> & {
+    dangerouslyAllowBrowser?: boolean;
+  };
 
-  constructor(config: OpenAITTSConfig = {}) {
+  constructor(config: OpenAITTSConfig) {
+    // Security check for browser environment
+    if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
+      throw new Error(
+        "⚠️ SECURITY WARNING: OpenAITTSAdapter should not be used in browser environments as it exposes your API key. " +
+          "Use @charivo/adapter-tts-remote instead for client-side usage. " +
+          "If you absolutely must use this in browser, set dangerouslyAllowBrowser: true",
+      );
+    }
+
+    if (!config.apiKey) {
+      throw new Error("OpenAI API key is required");
+    }
+
     this.config = {
-      apiEndpoint: "/api/tts",
+      baseURL: "https://api.openai.com/v1",
       defaultVoice: "alloy",
       defaultModel: "tts-1",
       timeout: 30000,
       ...config,
     };
 
-    // Initialize audio context for better browser compatibility
-    if (typeof window !== "undefined") {
-      this.audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
-    }
+    this.openai = new OpenAI({
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseURL,
+      timeout: this.config.timeout,
+      dangerouslyAllowBrowser: config.dangerouslyAllowBrowser,
+    });
   }
 
-  async speak(text: string, options?: TTSOptions): Promise<void> {
-    try {
-      // Stop any currently playing audio
-      await this.stop();
-
-      const voice = this.getVoiceFromOptions(options);
-      const model = this.config.defaultModel;
-      const speed = options?.rate || 1.0;
-
-      // Call API endpoint to generate speech
-      const response = await fetch(this.config.apiEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          voice,
-          model,
-          speed,
-          format: "mp3",
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(
-          `TTS API call failed: ${errorData.error || response.statusText}`,
-        );
-      }
-
-      // Get audio data from response
-      const audioBuffer = await response.arrayBuffer();
-
-      // Create audio element and play
-      return new Promise((resolve, reject) => {
-        const audio = new Audio();
-        const blob = new Blob([audioBuffer], { type: "audio/mp3" });
-        const audioUrl = URL.createObjectURL(blob);
-
-        audio.src = audioUrl;
-        this.currentAudio = audio;
-
-        // Apply volume if specified
-        if (options?.volume !== undefined) {
-          audio.volume = Math.max(0, Math.min(1, options.volume));
-        }
-
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          this.currentAudio = null;
-          resolve();
-        };
-
-        audio.onerror = (error) => {
-          URL.revokeObjectURL(audioUrl);
-          this.currentAudio = null;
-          reject(new Error(`Audio playback error: ${error}`));
-        };
-
-        // Resume audio context if suspended (required by some browsers)
-        if (this.audioContext && this.audioContext.state === "suspended") {
-          this.audioContext.resume().then(() => {
-            audio.play().catch(reject);
-          });
-        } else {
-          audio.play().catch(reject);
-        }
-      });
-    } catch (error) {
-      throw new Error(
-        `OpenAI TTS Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+  async speak(_text: string, _options?: TTSOptions): Promise<void> {
+    // Server-side adapter doesn't play audio, it generates it
+    // This method could be used to save to file or stream
+    throw new Error(
+      "speak() method is not implemented for server-side adapter. " +
+        "Use generateSpeech() to get audio data instead.",
+    );
   }
 
   async stop(): Promise<void> {
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
-      this.currentAudio = null;
-    }
+    // No-op for server-side adapter
   }
 
   async pause(): Promise<void> {
-    if (this.currentAudio && !this.currentAudio.paused) {
-      this.currentAudio.pause();
-    }
+    // No-op for server-side adapter
   }
 
   async resume(): Promise<void> {
-    if (this.currentAudio && this.currentAudio.paused) {
-      try {
-        await this.currentAudio.play();
-      } catch (error) {
-        throw new Error(`Failed to resume audio: ${error}`);
-      }
-    }
+    // No-op for server-side adapter
   }
 
   setVoice(voiceId: string): void {
@@ -143,7 +119,7 @@ export class OpenAITTSAdapter implements TTSAdapter {
       this.config.defaultVoice = voiceId as OpenAIVoice;
     } else {
       console.warn(
-        `Invalid OpenAI voice: ${voiceId}. Using default voice: ${this.config.defaultVoice}`,
+        `Invalid OpenAI voice: ${voiceId}. Valid voices: ${this.getValidVoices().join(", ")}`,
       );
     }
   }
@@ -199,7 +175,44 @@ export class OpenAITTSAdapter implements TTSAdapter {
   }
 
   isSupported(): boolean {
-    return typeof window !== "undefined" && typeof fetch !== "undefined";
+    return !!this.config.apiKey;
+  }
+
+  // OpenAI-specific methods for server-side usage
+
+  /**
+   * Generate speech audio data using OpenAI TTS
+   *
+   * @param text - Text to convert to speech
+   * @param options - TTS options
+   * @returns Promise<ArrayBuffer> - Audio data
+   */
+  async generateSpeech(
+    text: string,
+    options?: TTSOptions & {
+      format?: "mp3" | "opus" | "aac" | "flac";
+    },
+  ): Promise<ArrayBuffer> {
+    try {
+      const voice = this.getVoiceFromOptions(options);
+      const model = this.config.defaultModel;
+      const speed = Math.max(0.25, Math.min(4.0, options?.rate || 1.0));
+      const format = options?.format || "mp3";
+
+      const response = await this.openai.audio.speech.create({
+        model,
+        voice,
+        input: text,
+        response_format: format,
+        speed,
+      });
+
+      return await response.arrayBuffer();
+    } catch (error) {
+      throw new Error(
+        `OpenAI TTS Error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   // Helper methods
@@ -211,18 +224,14 @@ export class OpenAITTSAdapter implements TTSAdapter {
   }
 
   private isValidVoice(voice: string): boolean {
-    const validVoices: OpenAIVoice[] = [
-      "alloy",
-      "echo",
-      "fable",
-      "onyx",
-      "nova",
-      "shimmer",
-    ];
-    return validVoices.includes(voice as OpenAIVoice);
+    return this.getValidVoices().includes(voice as OpenAIVoice);
   }
 
-  // Additional methods for OpenAI-specific functionality
+  private getValidVoices(): OpenAIVoice[] {
+    return ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+  }
+
+  // Configuration methods
   setModel(model: "tts-1" | "tts-1-hd"): void {
     this.config.defaultModel = model;
   }
@@ -231,17 +240,50 @@ export class OpenAITTSAdapter implements TTSAdapter {
     return this.config.defaultModel;
   }
 
-  setApiEndpoint(endpoint: string): void {
-    this.config.apiEndpoint = endpoint;
-  }
-
-  getApiEndpoint(): string {
-    return this.config.apiEndpoint;
+  getApiKey(): string {
+    return this.config.apiKey;
   }
 }
 
+/**
+ * Factory function to create OpenAI TTS Adapter (Server-side)
+ *
+ * 📖 USAGE EXAMPLES:
+ *
+ * Basic usage:
+ * ```typescript
+ * import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+ *
+ * const adapter = createOpenAITTSAdapter({
+ *   apiKey: process.env.OPENAI_API_KEY!,
+ *   defaultVoice: "alloy",
+ *   defaultModel: "tts-1-hd"
+ * });
+ *
+ * // Generate audio data
+ * const audioBuffer = await adapter.generateSpeech("Hello world!");
+ *
+ * // Save to file (Node.js only)
+ * await adapter.generateSpeechToFile("Hello world!", "./output.mp3");
+ * ```
+ *
+ * API endpoint usage:
+ * ```typescript
+ * // Express.js example
+ * app.post('/api/tts', async (req, res) => {
+ *   const { text } = req.body;
+ *   const audioBuffer = await adapter.generateSpeech(text);
+ *
+ *   res.set('Content-Type', 'audio/mpeg');
+ *   res.send(Buffer.from(audioBuffer));
+ * });
+ * ```
+ *
+ * @param config - Configuration options including API key
+ * @returns OpenAITTSAdapter instance
+ */
 export function createOpenAITTSAdapter(
-  config?: OpenAITTSConfig,
+  config: OpenAITTSConfig,
 ): OpenAITTSAdapter {
   return new OpenAITTSAdapter(config);
 }

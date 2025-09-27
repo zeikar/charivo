@@ -35,10 +35,10 @@ export default function Home() {
       // TTS 어댑터 생성 (브라우저 환경에서만)
       let ttsAdapter;
       try {
-        const { createOpenAITTSAdapter } = await import(
-          "@charivo/adapter-tts-openai"
+        const { createRemoteTTSAdapter } = await import(
+          "@charivo/adapter-tts-remote"
         );
-        ttsAdapter = createOpenAITTSAdapter();
+        ttsAdapter = createRemoteTTSAdapter();
       } catch (error) {
         console.warn("TTS not supported:", error);
         setIsTTSEnabled(false);
@@ -231,7 +231,7 @@ export default function Home() {
                       onChange={(e) => setIsTTSEnabled(e.target.checked)}
                       className="rounded"
                     />
-                    <span>🔊 Voice Synthesis (OpenAI TTS)</span>
+                    <span>🔊 Voice Synthesis (Remote TTS API)</span>
                   </label>
                 </div>
               </div>
