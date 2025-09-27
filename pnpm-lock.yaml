@@ -44,6 +44,9 @@ importers:
       '@charivo/adapter-llm-stub':
         specifier: workspace:*
         version: link:../../packages/adapter-llm-stub
+      '@charivo/adapter-tts-openai':
+        specifier: workspace:*
+        version: link:../../packages/adapter-tts-openai
       '@charivo/adapter-tts-web':
         specifier: workspace:*
         version: link:../../packages/adapter-tts-web
@@ -114,6 +117,19 @@ importers:
         version: 5.9.2
 
   packages/adapter-llm-stub:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/adapter-tts-openai:
     dependencies:
       '@charivo/core':
         specifier: workspace:*

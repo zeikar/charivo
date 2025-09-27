@@ -35,10 +35,10 @@ export default function Home() {
       // TTS 어댑터 생성 (브라우저 환경에서만)
       let ttsAdapter;
       try {
-        const { createWebTTSAdapter } = await import(
-          "@charivo/adapter-tts-web"
+        const { createOpenAITTSAdapter } = await import(
+          "@charivo/adapter-tts-openai"
         );
-        ttsAdapter = createWebTTSAdapter();
+        ttsAdapter = createOpenAITTSAdapter();
       } catch (error) {
         console.warn("TTS not supported:", error);
         setIsTTSEnabled(false);
@@ -158,7 +158,7 @@ export default function Home() {
             Experience the power of Charivo - a modular Live2D + LLM framework.
             Chat with Hiyori and explore real-time 2D animations, AI
             conversations powered by OpenAI GPT, and natural voice synthesis
-            using Web Speech API.
+            using OpenAI TTS API.
           </p>
           <div className="flex justify-center items-center space-x-3 text-xs text-gray-400">
             <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
@@ -171,7 +171,7 @@ export default function Home() {
               OpenAI
             </span>
             <span className="bg-pink-100 text-pink-800 px-2 py-1 rounded">
-              TTS
+              OpenAI TTS
             </span>
           </div>
         </div>
@@ -231,7 +231,7 @@ export default function Home() {
                       onChange={(e) => setIsTTSEnabled(e.target.checked)}
                       className="rounded"
                     />
-                    <span>🔊 Voice Synthesis (Web Speech API)</span>
+                    <span>🔊 Voice Synthesis (OpenAI TTS)</span>
                   </label>
                 </div>
               </div>
