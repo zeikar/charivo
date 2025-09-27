@@ -56,14 +56,14 @@ export default function Home() {
         (message: Message, character?: Character) => {
           console.log("📨 Message callback triggered:", message, character);
           setMessages((prev) => [...prev, { ...message, character }]);
-        }
+        },
       );
 
       await live2dRenderer.initialize();
 
       // Live2D 모델 로드 (Hiyori 모델)
       await live2dRenderer.loadModel(
-        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json"
+        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
       );
 
       instance.attachRenderer(live2dRenderer);

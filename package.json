@@ -40,7 +40,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --parallel typecheck",
-    "clean": "pnpm -r exec rm -rf dist && pnpm -r exec rm -rf .turbo"
+    "clean": "pnpm -r exec rm -rf dist && pnpm -r exec rm -rf .turbo",
+    "setup:hooks": "./scripts/setup-hooks.sh"
   },
   "pnpm": {
     "overrides": {

@@ -28,6 +28,9 @@ pnpm install
 # Build packages
 pnpm build
 
+# Set up pre-commit hooks (recommended for contributors)
+pnpm setup:hooks
+
 # Run the demo
 cd examples/web
 pnpm dev
@@ -193,11 +196,40 @@ Main orchestrator class that manages all components.
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
+### Development Setup
+
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/charivo.git
+   cd charivo
+   ```
+3. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+4. Set up pre-commit hooks:
+   ```bash
+   pnpm setup:hooks
+   ```
+   This installs Git hooks that automatically run linting and formatting checks before each commit.
+
+5. Create your feature branch (`git checkout -b feature/amazing-feature`)
+6. Make your changes and commit (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
+
+### Code Quality
+
+This project uses pre-commit hooks to maintain code quality:
+- **ESLint** for code linting
+- **Prettier** for code formatting  
+- **TypeScript** for type checking
+
+The hooks run automatically before each commit. If you need to bypass them (not recommended):
+```bash
+git commit --no-verify -m "your message"
+```
 
 ## 📄 License
 

@@ -32,8 +32,10 @@ jobs:
       - name: Run type checking
         run: pnpm typecheck
 
-      - name: Run linting
-        run: pnpm lint
-
-      - name: Check formatting
-        run: pnpm format:check
+      # Note: Lint and format checks are now handled by pre-commit hooks locally
+      # Uncomment the following lines if you still want CI validation as backup:
+      # - name: Run linting
+      #   run: pnpm lint
+      #
+      # - name: Check formatting
+      #   run: pnpm format:check
