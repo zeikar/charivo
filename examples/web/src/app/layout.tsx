@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     siteName: "Charivo Framework",
     images: [
       {
-        url: "/og-image.png", // 나중에 추가할 수 있는 OG 이미지
+        url: "https://dogimg.vercel.app/api/og?url=https://charivo.vercel.app",
         width: 1200,
         height: 630,
         alt: "Charivo Live2D Demo - Interactive AI Character Framework",
@@ -56,7 +56,8 @@ export const metadata: Metadata = {
     title: "Charivo Live2D Demo | Interactive AI Character Framework",
     description:
       "Modular Live2D + LLM framework for interactive character experiences with animations and voice",
-    images: ["/og-image.png"],
+    images: ["https://dogimg.vercel.app/api/og?url=https://charivo.vercel.app"],
+    creator: "@zeikar_dev",
   },
   manifest: "/manifest.json", // PWA manifest (옵션)
   category: "developer",
@@ -81,8 +82,19 @@ export default function RootLayout({
       <head>
         {/* Favicons and App Icons */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link
+          rel="icon"
+          href="/icons/favicon-16x16.png"
+          sizes="16x16"
+          type="image/png"
+        />
+        <link
+          rel="icon"
+          href="/icons/favicon-32x32.png"
+          sizes="32x32"
+          type="image/png"
+        />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* Structured Data */}
         <script
@@ -94,7 +106,7 @@ export default function RootLayout({
               name: "Charivo Live2D Demo",
               description:
                 "Interactive demonstration of Charivo framework - a modular Live2D + LLM system for building AI characters with animations, voice synthesis, and natural language conversations",
-              url: "https://charivo-demo.vercel.app",
+              url: "https://charivo.vercel.app",
               applicationCategory: "DeveloperApplication",
               operatingSystem: "Web Browser",
               programmingLanguage: "TypeScript",
