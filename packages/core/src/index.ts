@@ -1,5 +1,11 @@
 import { EventBus } from "./bus";
-import { Character, Message, LLMAdapter, Renderer, TTSAdapter } from "./types";
+import {
+  Character,
+  Message,
+  LLMAdapter,
+  Renderer,
+  ClientTTSAdapter,
+} from "./types";
 
 export * from "./types";
 export * from "./bus";
@@ -8,7 +14,7 @@ export class Charivo {
   private eventBus: EventBus;
   private llmAdapter?: LLMAdapter;
   private renderer?: Renderer;
-  private ttsAdapter?: TTSAdapter;
+  private ttsAdapter?: ClientTTSAdapter;
   private characters: Map<string, Character> = new Map();
 
   constructor() {
@@ -23,7 +29,7 @@ export class Charivo {
     this.llmAdapter = adapter;
   }
 
-  attachTTS(adapter: TTSAdapter): void {
+  attachTTS(adapter: ClientTTSAdapter): void {
     this.ttsAdapter = adapter;
   }
 
