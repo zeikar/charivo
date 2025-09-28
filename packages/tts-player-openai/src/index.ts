@@ -19,7 +19,11 @@ export class OpenAITTSPlayer implements TTSPlayer {
   private currentAudio: HTMLAudioElement | null = null;
 
   constructor(config: OpenAITTSPlayerConfig) {
-    this.provider = createOpenAITTSProvider(config);
+    // 브라우저에서 사용하기 위해 dangerouslyAllowBrowser를 자동으로 true로 설정
+    this.provider = createOpenAITTSProvider({
+      ...config,
+      dangerouslyAllowBrowser: true,
+    });
   }
 
   async speak(text: string, options?: TTSOptions): Promise<void> {
