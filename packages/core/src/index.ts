@@ -1,12 +1,12 @@
 import { EventBus } from "./bus";
-import { Character, Message, LLMAdapter, Renderer, TTSPlayer } from "./types";
+import { Character, Message, Renderer, TTSPlayer, LLMManager } from "./types";
 
 export * from "./types";
 export * from "./bus";
 
 export class Charivo {
   private eventBus: EventBus;
-  private llmAdapter?: LLMAdapter;
+  private llmManager?: LLMManager;
   private renderer?: Renderer;
   private ttsAdapter?: TTSPlayer;
   private characters: Map<string, Character> = new Map();
@@ -19,8 +19,8 @@ export class Charivo {
     this.renderer = renderer;
   }
 
-  attachLLM(adapter: LLMAdapter): void {
-    this.llmAdapter = adapter;
+  attachLLM(manager: LLMManager): void {
+    this.llmManager = manager;
   }
 
   attachTTS(adapter: TTSPlayer): void {
@@ -30,9 +30,9 @@ export class Charivo {
   addCharacter(character: Character): void {
     this.characters.set(character.id, character);
 
-    // LLM Adapter에 캐릭터 설정 (만약 한 명의 캐릭터만 사용하는 경우)
-    if (this.llmAdapter) {
-      this.llmAdapter.setCharacter(character);
+    // LLM Manager에 캐릭터 설정 (만약 한 명의 캐릭터만 사용하는 경우)
+    if (this.llmManager) {
+      this.llmManager.setCharacter(character);
     }
   }
 
@@ -50,13 +50,13 @@ export class Charivo {
       await this.renderer.render(userMessage);
     }
 
-    if (this.llmAdapter && characterId) {
+    if (this.llmManager && characterId) {
       const character = this.characters.get(characterId);
       if (character) {
-        // LLM 어댑터에 캐릭터 설정 (만약 여러 캐릭터를 사용하는 경우)
-        this.llmAdapter.setCharacter(character);
+        // LLM Manager에 캐릭터 설정 (만약 여러 캐릭터를 사용하는 경우)
+        this.llmManager.setCharacter(character);
 
-        const response = await this.llmAdapter.generateResponse(userMessage);
+        const response = await this.llmManager.generateResponse(userMessage);
 
         const characterMessage: Message = {
           id: Date.now().toString() + "_response",
@@ -95,6 +95,23 @@ export class Charivo {
         }
       }
     }
+  }
+
+  /**
+   * LLM Manager 관련 편의 메소드들
+   */
+  clearHistory(): void {
+    if (this.llmManager) {
+      this.llmManager.clearHistory();
+    }
+  }
+
+  getHistory(): Message[] {
+    return this.llmManager ? this.llmManager.getHistory() : [];
+  }
+
+  getCurrentCharacter(): Character | null {
+    return this.llmManager ? this.llmManager.getCharacter() : null;
   }
 
   on<K extends keyof import("./types").EventMap>(

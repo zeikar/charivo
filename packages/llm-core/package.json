@@ -1,7 +1,7 @@
 {
-  "name": "@charivo/llm-client-openai",
+  "name": "@charivo/llm-core",
   "version": "0.1.0",
-  "description": "OpenAI LLM client for Charivo (local/testing)",
+  "description": "Core utilities and helpers for LLM functionality in Charivo",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,9 +10,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
-    "@charivo/llm-core": "workspace:*",
-    "@charivo/llm-provider-openai": "workspace:*"
+    "@charivo/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

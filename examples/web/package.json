@@ -10,7 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@charivo/llm-core": "workspace:*",
     "@charivo/llm-client-remote": "workspace:^",
+    "@charivo/llm-client-openai": "workspace:*",
     "@charivo/llm-client-stub": "workspace:*",
     "@charivo/llm-provider-openai": "workspace:*",
     "@charivo/tts-provider-openai": "workspace:*",

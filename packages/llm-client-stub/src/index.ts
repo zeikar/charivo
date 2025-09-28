@@ -1,6 +1,12 @@
-import { LLMAdapter, Character, Message } from "@charivo/core";
+import { LLMClient } from "@charivo/core";
 
-export class StubLLMAdapter implements LLMAdapter {
+/**
+ * Stub LLM Client - 테스트용 Stateless 클라이언트
+ *
+ * 실제 API 호출 없이 미리 정의된 응답을 순환하며 반환
+ * 개발 및 테스트 환경에서 사용
+ */
+export class StubLLMClient implements LLMClient {
   private responses: string[] = [
     "안녕하세요! 저는 테스트용 캐릭터입니다.",
     "오늘 날씨가 정말 좋네요!",
@@ -13,18 +19,11 @@ export class StubLLMAdapter implements LLMAdapter {
   ];
 
   private responseIndex = 0;
-  private character: Character | null = null;
 
-  setCharacter(character: Character): void {
-    this.character = character;
-  }
-
-  clearHistory(): void {
-    // Stub에서는 히스토리를 관리하지 않으므로 아무것도 하지 않음
-    this.character;
-  }
-
-  async generateResponse(_message: Message): Promise<string> {
+  async call(
+    _messages: Array<{ role: string; content: string }>,
+  ): Promise<string> {
+    // 실제 API 호출을 시뮬레이션하기 위한 딜레이
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const response = this.responses[this.responseIndex % this.responses.length];
@@ -32,4 +31,8 @@ export class StubLLMAdapter implements LLMAdapter {
 
     return response;
   }
+}
+
+export function createStubLLMClient(): StubLLMClient {
+  return new StubLLMClient();
 }

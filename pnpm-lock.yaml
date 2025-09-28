@@ -41,12 +41,18 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@charivo/llm-client-openai':
+        specifier: workspace:*
+        version: link:../../packages/llm-client-openai
       '@charivo/llm-client-remote':
         specifier: workspace:^
         version: link:../../packages/llm-client-remote
       '@charivo/llm-client-stub':
         specifier: workspace:*
         version: link:../../packages/llm-client-stub
+      '@charivo/llm-core':
+        specifier: workspace:*
+        version: link:../../packages/llm-core
       '@charivo/llm-provider-openai':
         specifier: workspace:*
         version: link:../../packages/llm-provider-openai
@@ -123,6 +129,9 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
+      '@charivo/llm-core':
+        specifier: workspace:*
+        version: link:../llm-core
       '@charivo/llm-provider-openai':
         specifier: workspace:*
         version: link:../llm-provider-openai
@@ -139,6 +148,9 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
+      '@charivo/llm-core':
+        specifier: workspace:*
+        version: link:../llm-core
       openai:
         specifier: ^4.28.4
         version: 4.104.0
@@ -151,6 +163,19 @@ importers:
         version: 5.9.2
 
   packages/llm-client-stub:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/llm-core:
     dependencies:
       '@charivo/core':
         specifier: workspace:*

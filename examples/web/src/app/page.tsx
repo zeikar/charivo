@@ -2,13 +2,15 @@
 
 import { useState, useEffect, type KeyboardEvent } from "react";
 import { Charivo, type Message, type Character } from "@charivo/core";
-import { createRemoteLLMClient } from "@charivo/llm-client-remote";
 
 // 메시지 렌더링에 사용할 확장 타입
 type ChatMessage = Message & { character?: Character };
 
 // TTS 플레이어 타입 정의
 type TTSPlayerType = "remote" | "web" | "openai" | "none";
+
+// LLM 클라이언트 타입 정의
+type LLMClientType = "remote" | "openai" | "stub";
 
 export default function Home() {
   const [charivo, setCharivo] = useState<Charivo | null>(null);
@@ -17,8 +19,52 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTTSPlayer, setSelectedTTSPlayer] =
     useState<TTSPlayerType>("remote");
+  const [selectedLLMClient, setSelectedLLMClient] =
+    useState<LLMClientType>("remote");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [ttsError, setTtsError] = useState<string | null>(null);
+  const [llmError, setLlmError] = useState<string | null>(null);
+
+  // LLM 클라이언트 생성 함수
+  const createLLMClient = async (type: LLMClientType) => {
+    setLlmError(null);
+
+    try {
+      switch (type) {
+        case "remote": {
+          const { createRemoteLLMClient } = await import(
+            "@charivo/llm-client-remote"
+          );
+          return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
+        }
+        case "openai": {
+          // 브라우저에서 OpenAI 직접 호출 (테스트용)
+          const apiKey = prompt(
+            "Enter your OpenAI API key for testing (not recommended for production):",
+          );
+          if (!apiKey) {
+            throw new Error("API key is required for OpenAI LLM");
+          }
+          const { createOpenAILLMClient } = await import(
+            "@charivo/llm-client-openai"
+          );
+          return createOpenAILLMClient({ apiKey });
+        }
+        case "stub":
+        default: {
+          const { createStubLLMClient } = await import(
+            "@charivo/llm-client-stub"
+          );
+          return createStubLLMClient();
+        }
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setLlmError(`Failed to load ${type} LLM client: ${errorMsg}`);
+      console.error("LLM Client Error:", error);
+      throw error;
+    }
+  };
 
   // TTS 플레이어 생성 함수
   const createTTSPlayer = async (type: TTSPlayerType) => {
@@ -78,12 +124,16 @@ export default function Home() {
 
       const { Live2DRenderer } = await import("@charivo/render-live2d");
       const live2dRenderer = new Live2DRenderer(canvas);
-      const llmAdapter = createRemoteLLMClient({ apiEndpoint: "/api/chat" });
+
+      // LLM Manager 초기화
+      const llmClient = await createLLMClient(selectedLLMClient);
+      const { createLLMManager } = await import("@charivo/llm-core");
+      const llmManager = createLLMManager(llmClient);
 
       console.log("📦 Created instances:", {
         instance,
         live2dRenderer,
-        llmAdapter,
+        llmManager,
       });
 
       // 메시지 콜백 설정
@@ -102,7 +152,7 @@ export default function Home() {
       );
 
       instance.attachRenderer(live2dRenderer);
-      instance.attachLLM(llmAdapter);
+      instance.attachLLM(llmManager);
 
       // 초기 TTS 플레이어 설정
       const ttsPlayer = await createTTSPlayer(selectedTTSPlayer);
@@ -173,6 +223,27 @@ export default function Home() {
 
     updateTTSPlayer();
   }, [selectedTTSPlayer, charivo]);
+
+  // LLM 클라이언트 변경 시 재초기화
+  useEffect(() => {
+    const updateLLMClient = async () => {
+      if (!charivo) return;
+
+      try {
+        const llmClient = await createLLMClient(selectedLLMClient);
+        const { createLLMManager } = await import("@charivo/llm-core");
+        const llmManager = createLLMManager(llmClient);
+
+        // 기존 히스토리 클리어하고 새 매니저 연결
+        charivo.clearHistory();
+        charivo.attachLLM(llmManager);
+      } catch (error) {
+        console.error("Failed to update LLM client:", error);
+      }
+    };
+
+    updateLLMClient();
+  }, [selectedLLMClient, charivo]);
 
   const handleSend = async () => {
     if (!charivo || !input.trim()) return;
@@ -265,14 +336,79 @@ export default function Home() {
           {/* Right Side - Chat Interface (좀 더 좁게) */}
           <div className="lg:col-span-2 flex flex-col">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
-              {/* Chat Header - TTS 선택 옵션 포함 */}
+              {/* Chat Header - LLM 및 TTS 선택 옵션 포함 */}
               <div className="bg-blue-500 dark:bg-blue-600 p-4">
                 <h2 className="text-lg font-semibold text-white mb-1">
                   💬 AI Chat Interface
                 </h2>
                 <p className="text-blue-100 text-xs mb-3">
-                  Modular LLM integration with OpenAI GPT
+                  Modular LLM + TTS integration with multiple providers
                 </p>
+
+                {/* LLM 클라이언트 선택 */}
+                <div className="space-y-3 mb-4">
+                  <div className="text-sm font-medium text-white">
+                    🧠 LLM Client Options:
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="llmClient"
+                        value="remote"
+                        checked={selectedLLMClient === "remote"}
+                        onChange={(e) =>
+                          setSelectedLLMClient(e.target.value as LLMClientType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>Remote API</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="llmClient"
+                        value="openai"
+                        checked={selectedLLMClient === "openai"}
+                        onChange={(e) =>
+                          setSelectedLLMClient(e.target.value as LLMClientType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>OpenAI Direct</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="llmClient"
+                        value="stub"
+                        checked={selectedLLMClient === "stub"}
+                        onChange={(e) =>
+                          setSelectedLLMClient(e.target.value as LLMClientType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>Test Stub</span>
+                    </label>
+                  </div>
+
+                  {/* 선택된 LLM 클라이언트 설명 */}
+                  <div className="text-xs text-blue-200 bg-blue-600/50 p-2 rounded">
+                    {selectedLLMClient === "remote" &&
+                      "🌐 Calls server LLM API (secure, recommended)"}
+                    {selectedLLMClient === "openai" &&
+                      "⚡ Direct OpenAI API (test only, requires API key)"}
+                    {selectedLLMClient === "stub" &&
+                      "🎭 Mock responses for testing (no API calls)"}
+                  </div>
+
+                  {/* LLM 에러 표시 */}
+                  {llmError && (
+                    <div className="text-xs text-red-200 bg-red-600/50 p-2 rounded">
+                      ⚠️ {llmError}
+                    </div>
+                  )}
+                </div>
 
                 {/* TTS 플레이어 선택 */}
                 <div className="space-y-3">

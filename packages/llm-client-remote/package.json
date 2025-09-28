@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
+    "@charivo/llm-core": "workspace:*",
     "openai": "^4.28.4"
   },
   "devDependencies": {

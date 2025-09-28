@@ -57,6 +57,20 @@ export interface LLMProvider {
   setCharacter?(character: Character): void;
 }
 
+// 단순한 LLM 호출 클라이언트 (stateless)
+export interface LLMClient {
+  call(messages: Array<{ role: string; content: string }>): Promise<string>;
+}
+
+// LLM 매니저 (세션 관리, 히스토리, 캐릭터 관리)
+export interface LLMManager {
+  setCharacter(character: Character): void;
+  getCharacter(): Character | null;
+  clearHistory(): void;
+  getHistory(): Message[];
+  generateResponse(message: Message): Promise<string>;
+}
+
 export interface Renderer {
   render(message: Message, character?: Character): Promise<void>;
   initialize(): Promise<void>;
