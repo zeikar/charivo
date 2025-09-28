@@ -31,7 +31,7 @@ export class OpenAILLMProvider implements LLMProvider {
       dangerouslyAllowBrowser: config.dangerouslyAllowBrowser,
     });
 
-    this.model = config.model || "gpt-4o-mini";
+    this.model = config.model || "gpt-4.1-nano";
     this.temperature = config.temperature || 0.7;
     this.maxTokens = config.maxTokens || 1000;
   }

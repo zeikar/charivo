@@ -12,7 +12,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
 
   constructor(config: RemoteTTSConfig = {}) {
     this.apiEndpoint = config.apiEndpoint || "/api/tts";
-    this.defaultVoice = config.defaultVoice || "alloy";
+    this.defaultVoice = config.defaultVoice || "marin";
   }
 
   async speak(text: string, options?: TTSOptions): Promise<void> {

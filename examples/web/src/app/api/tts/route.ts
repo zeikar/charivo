@@ -4,15 +4,15 @@ import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 // OpenAI TTS Provider 초기화
 const ttsProvider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!,
-  defaultVoice: "alloy",
-  defaultModel: "tts-1-hd",
+  defaultVoice: "marin",
+  defaultModel: "gpt-4o-mini-tts",
 });
 
 export async function POST(request: NextRequest) {
   try {
     const {
       text,
-      voice = "alloy",
+      voice = "marin",
       speed = 1.0,
       format = "mp3",
     } = await request.json();

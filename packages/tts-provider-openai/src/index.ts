@@ -1,10 +1,19 @@
 import OpenAI from "openai";
 import { TTSProvider, TTSOptions } from "@charivo/core";
 
+type OpenAITTSModel = "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts";
+
 export interface OpenAITTSConfig {
   apiKey: string;
-  defaultVoice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
-  defaultModel?: "tts-1" | "tts-1-hd";
+  defaultVoice?:
+    | "alloy"
+    | "echo"
+    | "fable"
+    | "marin"
+    | "onyx"
+    | "nova"
+    | "shimmer";
+  defaultModel?: OpenAITTSModel;
   /**
    * Allow usage in browser (dangerous - exposes API key)
    * Only use for testing/development
@@ -15,6 +24,7 @@ export interface OpenAITTSConfig {
 export class OpenAITTSProvider implements TTSProvider {
   private openai: OpenAI;
   private defaultVoice: string;
+  private defaultModel: OpenAITTSModel;
 
   constructor(config: OpenAITTSConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
@@ -27,11 +37,16 @@ export class OpenAITTSProvider implements TTSProvider {
       apiKey: config.apiKey,
       dangerouslyAllowBrowser: config.dangerouslyAllowBrowser,
     });
-    this.defaultVoice = config.defaultVoice || "alloy";
+    this.defaultVoice = config.defaultVoice || "marin";
+    this.defaultModel = config.defaultModel || "gpt-4o-mini-tts";
   }
 
   setVoice(voice: string): void {
     this.defaultVoice = voice;
+  }
+
+  setModel(model: OpenAITTSModel): void {
+    this.defaultModel = model;
   }
 
   async generateSpeech(
@@ -39,8 +54,8 @@ export class OpenAITTSProvider implements TTSProvider {
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
     const response = await this.openai.audio.speech.create({
-      model: "tts-1-hd",
-      voice: (options?.voice || this.defaultVoice) as any,
+      model: this.defaultModel,
+      voice: options?.voice || this.defaultVoice,
       input: text,
       speed: options?.rate || 1.0,
     });

@@ -4,8 +4,7 @@ import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
 // OpenAI LLM Provider 초기화
 const llmProvider = createOpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-4o-mini",
-  temperature: 0.7,
+  model: "gpt-4.1-nano",
 });
 
 export async function POST(request: NextRequest) {
