@@ -1,21 +1,21 @@
 import { LLMClient } from "@charivo/core";
 
 /**
- * Stub LLM Client - 테스트용 Stateless 클라이언트
+ * Stub LLM Client - Stateless client for testing
  *
- * 실제 API 호출 없이 미리 정의된 응답을 순환하며 반환
- * 개발 및 테스트 환경에서 사용
+ * Returns predefined responses in rotation without making real API calls
+ * Used in development and testing environments
  */
 export class StubLLMClient implements LLMClient {
   private responses: string[] = [
-    "안녕하세요! 저는 테스트용 캐릭터입니다.",
-    "오늘 날씨가 정말 좋네요!",
-    "무엇을 도와드릴까요?",
-    "흥미로운 질문이네요. 더 자세히 알려주실 수 있나요?",
-    "네, 알겠습니다!",
-    "그렇군요. 재미있는 이야기네요.",
-    "저도 그렇게 생각해요.",
-    "음... 그건 어려운 질문이네요.",
+    "Hello! I'm a test character.",
+    "The weather is really nice today!",
+    "How can I help you?",
+    "That's an interesting question. Could you tell me more?",
+    "Yes, understood!",
+    "I see. That's an interesting story.",
+    "I think so too.",
+    "Hmm... that's a difficult question.",
   ];
 
   private responseIndex = 0;
