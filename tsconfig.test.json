@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals"],
+    "paths": {
+      "@charivo/core": ["packages/core/src/index.ts"],
+      "@charivo/llm-core": ["packages/llm-core/src/index.ts"],
+      "@charivo/llm-client-openai": ["packages/llm-client-openai/src/index.ts"],
+      "@charivo/llm-client-remote": ["packages/llm-client-remote/src/index.ts"],
+      "@charivo/llm-client-stub": ["packages/llm-client-stub/src/index.ts"],
+      "@charivo/llm-provider-openai": [
+        "packages/llm-provider-openai/src/index.ts"
+      ],
+      "@charivo/render-live2d": ["packages/render-live2d/src/index.ts"],
+      "@charivo/render-stub": ["packages/render-stub/src/index.ts"],
+      "@charivo/shared": ["packages/shared/src/index.ts"],
+      "@charivo/tts-player-openai": ["packages/tts-player-openai/src/index.ts"],
+      "@charivo/tts-player-remote": ["packages/tts-player-remote/src/index.ts"],
+      "@charivo/tts-player-web": ["packages/tts-player-web/src/index.ts"],
+      "@charivo/tts-provider-openai": [
+        "packages/tts-provider-openai/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/**/*.test.ts",
+    "packages/**/*.test.tsx",
+    "packages/**/__tests__/**/*.ts",
+    "packages/**/__tests__/**/*.tsx",
+    "vitest.setup.ts",
+    "vitest.config.ts"
+  ]
+}

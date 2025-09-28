@@ -281,6 +281,22 @@ The hooks run automatically before each commit. If you need to bypass them (not 
 git commit --no-verify -m "your message"
 ```
 
+### Testing
+
+Run the unit test suite (powered by [Vitest](https://vitest.dev/)) across every package:
+
+```bash
+pnpm test
+```
+
+For an interactive watch mode during development:
+
+```bash
+pnpm test:watch
+```
+
+The configuration lives in `vitest.config.ts` with shared setup in `vitest.setup.ts`, and tests reside beside each package under `packages/*/__tests__`.
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
