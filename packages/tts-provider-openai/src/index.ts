@@ -58,7 +58,8 @@ export class OpenAITTSProvider implements TTSProvider {
       voice: options?.voice || this.defaultVoice,
       input: text,
       speed: options?.rate || 1.0,
-    });
+      format: "wav",
+    } as Parameters<typeof this.openai.audio.speech.create>[0]);
 
     return await response.arrayBuffer();
   }

@@ -10,12 +10,7 @@ const ttsProvider = createOpenAITTSProvider({
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      text,
-      voice = "marin",
-      speed = 1.0,
-      format = "mp3",
-    } = await request.json();
+    const { text, voice = "marin", speed = 1.0 } = await request.json();
 
     if (!text || typeof text !== "string") {
       return NextResponse.json(
@@ -32,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     return new NextResponse(audioBuffer, {
       headers: {
-        "Content-Type": format === "mp3" ? "audio/mpeg" : `audio/${format}`,
+        "Content-Type": "audio/wav",
         "Content-Length": audioBuffer.byteLength.toString(),
       },
     });

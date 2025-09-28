@@ -25,6 +25,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
         text,
         voice: options?.voice || this.defaultVoice,
         speed: options?.rate || 1.0,
+        format: "wav",
       }),
     });
 
@@ -33,7 +34,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
     }
 
     const audioBuffer = await response.arrayBuffer();
-    const blob = new Blob([audioBuffer], { type: "audio/mp3" });
+    const blob = new Blob([audioBuffer], { type: "audio/wav" });
     const audioUrl = URL.createObjectURL(blob);
 
     return new Promise((resolve, reject) => {
