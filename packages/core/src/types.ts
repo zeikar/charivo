@@ -48,6 +48,15 @@ export interface LLMAdapter {
   clearHistory(): void;
 }
 
+// LLM 제공자 (서버사이드에서 LLM 응답 생성)
+export interface LLMProvider {
+  generateResponse(
+    messages: Array<{ role: string; content: string }>,
+    character?: Character,
+  ): Promise<string>;
+  setCharacter?(character: Character): void;
+}
+
 export interface Renderer {
   render(message: Message, character?: Character): Promise<void>;
   initialize(): Promise<void>;

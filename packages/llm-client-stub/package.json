@@ -1,5 +1,5 @@
 {
-  "name": "@charivo/adapter-llm-stub",
+  "name": "@charivo/llm-client-stub",
   "version": "0.1.0",
   "main": "dist/index.mjs",
   "types": "dist/index.d.mts",

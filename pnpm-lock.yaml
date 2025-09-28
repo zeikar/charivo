@@ -38,15 +38,18 @@ importers:
 
   examples/web:
     dependencies:
-      '@charivo/adapter-llm-openai':
-        specifier: workspace:^
-        version: link:../../packages/adapter-llm-openai
-      '@charivo/adapter-llm-stub':
-        specifier: workspace:*
-        version: link:../../packages/adapter-llm-stub
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@charivo/llm-client-remote':
+        specifier: workspace:^
+        version: link:../../packages/llm-client-remote
+      '@charivo/llm-client-stub':
+        specifier: workspace:*
+        version: link:../../packages/llm-client-stub
+      '@charivo/llm-provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/llm-provider-openai
       '@charivo/render-live2d':
         specifier: workspace:*
         version: link:../../packages/render-live2d
@@ -106,7 +109,32 @@ importers:
         specifier: ^5
         version: 5.9.2
 
-  packages/adapter-llm-openai:
+  packages/core:
+    devDependencies:
+      tsup:
+        specifier: ^8.0.2
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.2
+
+  packages/llm-client-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@charivo/llm-provider-openai':
+        specifier: workspace:*
+        version: link:../llm-provider-openai
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/llm-client-remote:
     dependencies:
       '@charivo/core':
         specifier: workspace:*
@@ -122,7 +150,7 @@ importers:
         specifier: ^5.3.3
         version: 5.9.2
 
-  packages/adapter-llm-stub:
+  packages/llm-client-stub:
     dependencies:
       '@charivo/core':
         specifier: workspace:*
@@ -135,13 +163,20 @@ importers:
         specifier: ^5.0.0
         version: 5.9.2
 
-  packages/core:
+  packages/llm-provider-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      openai:
+        specifier: ^4.47.1
+        version: 4.104.0
     devDependencies:
       tsup:
-        specifier: ^8.0.2
+        specifier: ^8.0.0
         version: 8.5.0(typescript@5.9.2)
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.0.0
         version: 5.9.2
 
   packages/render-live2d:

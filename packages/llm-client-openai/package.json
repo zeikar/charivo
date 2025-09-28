@@ -1,0 +1,23 @@
+{
+  "name": "@charivo/llm-client-openai",
+  "version": "0.1.0",
+  "description": "OpenAI LLM client for Charivo (local/testing)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@charivo/core": "workspace:*",
+    "@charivo/llm-provider-openai": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

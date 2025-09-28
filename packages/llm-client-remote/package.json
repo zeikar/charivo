@@ -1,7 +1,7 @@
 {
-  "name": "@charivo/adapter-llm-openai",
+  "name": "@charivo/llm-client-remote",
   "version": "0.0.0",
-  "description": "OpenAI LLM adapter for Charivo",
+  "description": "Remote LLM client for Charivo (calls server API)",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

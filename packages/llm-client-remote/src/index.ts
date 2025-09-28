@@ -4,13 +4,17 @@ import type {
   LLMAdapter as CoreLLMAdapter,
 } from "@charivo/core";
 
-export class OpenAIAdapter implements CoreLLMAdapter {
+export interface RemoteLLMConfig {
+  apiEndpoint?: string;
+}
+
+export class RemoteLLMClient implements CoreLLMAdapter {
   private apiEndpoint: string;
   private character: Character | null = null;
   private messageHistory: Message[] = [];
 
-  constructor(apiEndpoint: string = "/api/chat") {
-    this.apiEndpoint = apiEndpoint;
+  constructor(config: RemoteLLMConfig = {}) {
+    this.apiEndpoint = config.apiEndpoint || "/api/chat";
   }
 
   setCharacter(character: Character): void {
@@ -91,6 +95,8 @@ export class OpenAIAdapter implements CoreLLMAdapter {
   }
 }
 
-export function createOpenAIAdapter(apiEndpoint?: string): OpenAIAdapter {
-  return new OpenAIAdapter(apiEndpoint);
+export function createRemoteLLMClient(
+  config?: RemoteLLMConfig,
+): RemoteLLMClient {
+  return new RemoteLLMClient(config);
 }

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
 
-// OpenAI 클라이언트 초기화
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// OpenAI LLM Provider 초기화
+const llmProvider = createOpenAILLMProvider({
+  apiKey: process.env.OPENAI_API_KEY!,
+  model: "gpt-4o-mini",
+  temperature: 0.7,
 });
 
 export async function POST(request: NextRequest) {
@@ -17,21 +19,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // OpenAI API 호출 (클라이언트에서 이미 처리된 메시지 형식 그대로 사용)
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
-      messages: messages,
-    });
-
-    const assistantMessage = response.choices[0]?.message?.content || "";
+    // LLM Provider를 사용해서 응답 생성
+    const assistantMessage = await llmProvider.generateResponse(messages);
 
     return NextResponse.json({
       success: true,
       message: assistantMessage,
-      usage: response.usage,
     });
   } catch (error) {
-    console.error("OpenAI API Error:", error);
+    console.error("LLM Provider Error:", error);
 
     return NextResponse.json(
       {

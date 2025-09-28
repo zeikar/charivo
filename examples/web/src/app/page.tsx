@@ -2,7 +2,7 @@
 
 import { useState, useEffect, type KeyboardEvent } from "react";
 import { Charivo, type Message, type Character } from "@charivo/core";
-import { createOpenAIAdapter } from "@charivo/adapter-llm-openai";
+import { createRemoteLLMClient } from "@charivo/llm-client-remote";
 
 // 메시지 렌더링에 사용할 확장 타입
 type ChatMessage = Message & { character?: Character };
@@ -78,7 +78,7 @@ export default function Home() {
 
       const { Live2DRenderer } = await import("@charivo/render-live2d");
       const live2dRenderer = new Live2DRenderer(canvas);
-      const llmAdapter = createOpenAIAdapter("/api/chat");
+      const llmAdapter = createRemoteLLMClient({ apiEndpoint: "/api/chat" });
 
       console.log("📦 Created instances:", {
         instance,
