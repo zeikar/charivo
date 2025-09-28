@@ -1,6 +1,6 @@
-import { ClientTTSAdapter, TTSOptions } from "@charivo/core";
+import { TTSPlayer, TTSOptions } from "@charivo/core";
 
-export class WebTTSAdapter implements ClientTTSAdapter {
+export class WebTTSPlayer implements TTSPlayer {
   private synthesis: SpeechSynthesis;
   private voices: SpeechSynthesisVoice[] = [];
 
@@ -73,6 +73,6 @@ export class WebTTSAdapter implements ClientTTSAdapter {
   }
 }
 
-export function createWebTTSAdapter(): WebTTSAdapter {
-  return new WebTTSAdapter();
+export function createWebTTSPlayer(): WebTTSPlayer {
+  return new WebTTSPlayer();
 }

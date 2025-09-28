@@ -1,7 +1,7 @@
 {
-  "name": "@charivo/adapter-tts-openai",
+  "name": "@charivo/tts-player-openai",
   "version": "0.1.0",
-  "description": "OpenAI TTS adapter for Charivo (server-side)",
+  "description": "OpenAI TTS player for Charivo (local/testing)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
-    "openai": "^4.47.1"
+    "@charivo/tts-provider-openai": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

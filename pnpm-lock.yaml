@@ -44,15 +44,6 @@ importers:
       '@charivo/adapter-llm-stub':
         specifier: workspace:*
         version: link:../../packages/adapter-llm-stub
-      '@charivo/adapter-tts-openai':
-        specifier: workspace:*
-        version: link:../../packages/adapter-tts-openai
-      '@charivo/adapter-tts-remote':
-        specifier: workspace:*
-        version: link:../../packages/adapter-tts-remote
-      '@charivo/adapter-tts-web':
-        specifier: workspace:*
-        version: link:../../packages/adapter-tts-web
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -62,6 +53,18 @@ importers:
       '@charivo/render-stub':
         specifier: workspace:*
         version: link:../../packages/render-stub
+      '@charivo/tts-player-openai':
+        specifier: workspace:*
+        version: link:../../packages/tts-player-openai
+      '@charivo/tts-player-remote':
+        specifier: workspace:*
+        version: link:../../packages/tts-player-remote
+      '@charivo/tts-player-web':
+        specifier: workspace:*
+        version: link:../../packages/tts-player-web
+      '@charivo/tts-provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/tts-provider-openai
       next:
         specifier: 15.5.3
         version: 15.5.3(react-dom@19.1.0)(react@19.1.0)
@@ -132,48 +135,6 @@ importers:
         specifier: ^5.0.0
         version: 5.9.2
 
-  packages/adapter-tts-openai:
-    dependencies:
-      '@charivo/core':
-        specifier: workspace:*
-        version: link:../core
-      openai:
-        specifier: ^4.47.1
-        version: 4.104.0
-    devDependencies:
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.0(typescript@5.9.2)
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.2
-
-  packages/adapter-tts-remote:
-    dependencies:
-      '@charivo/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.0(typescript@5.9.2)
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.2
-
-  packages/adapter-tts-web:
-    dependencies:
-      '@charivo/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.0(typescript@5.9.2)
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.2
-
   packages/core:
     devDependencies:
       tsup:
@@ -222,6 +183,64 @@ importers:
         version: 8.5.0(typescript@5.9.2)
       typescript:
         specifier: ^5.3.3
+        version: 5.9.2
+
+  packages/tts-player-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@charivo/tts-provider-openai':
+        specifier: workspace:*
+        version: link:../tts-provider-openai
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/tts-player-remote:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/tts-player-web:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/tts-provider-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      openai:
+        specifier: ^4.47.1
+        version: 4.104.0
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
         version: 5.9.2
 
 packages:

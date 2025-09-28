@@ -7,13 +7,61 @@ import { createOpenAIAdapter } from "@charivo/adapter-llm-openai";
 // 메시지 렌더링에 사용할 확장 타입
 type ChatMessage = Message & { character?: Character };
 
+// TTS 플레이어 타입 정의
+type TTSPlayerType = "remote" | "web" | "openai" | "none";
+
 export default function Home() {
   const [charivo, setCharivo] = useState<Charivo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isTTSEnabled, setIsTTSEnabled] = useState(true);
+  const [selectedTTSPlayer, setSelectedTTSPlayer] =
+    useState<TTSPlayerType>("remote");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+
+  // TTS 플레이어 생성 함수
+  const createTTSPlayer = async (type: TTSPlayerType) => {
+    setTtsError(null);
+
+    try {
+      switch (type) {
+        case "remote": {
+          const { createRemoteTTSPlayer } = await import(
+            "@charivo/tts-player-remote"
+          );
+          return createRemoteTTSPlayer();
+        }
+        case "web": {
+          const { createWebTTSPlayer } = await import(
+            "@charivo/tts-player-web"
+          );
+          return createWebTTSPlayer();
+        }
+        case "openai": {
+          // 브라우저에서 OpenAI 직접 호출 (테스트용)
+          const apiKey = prompt(
+            "Enter your OpenAI API key for testing (not recommended for production):",
+          );
+          if (!apiKey) {
+            throw new Error("API key is required for OpenAI TTS");
+          }
+          const { createOpenAITTSPlayer } = await import(
+            "@charivo/tts-player-openai"
+          );
+          return createOpenAITTSPlayer({ apiKey });
+        }
+        case "none":
+        default:
+          return null;
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setTtsError(`Failed to load ${type} TTS player: ${errorMsg}`);
+      console.error("TTS Player Error:", error);
+      return null;
+    }
+  };
 
   useEffect(() => {
     const initCharivo = async () => {
@@ -32,23 +80,10 @@ export default function Home() {
       const live2dRenderer = new Live2DRenderer(canvas);
       const llmAdapter = createOpenAIAdapter("/api/chat");
 
-      // TTS 어댑터 생성 (브라우저 환경에서만)
-      let ttsAdapter;
-      try {
-        const { createRemoteTTSAdapter } = await import(
-          "@charivo/adapter-tts-remote"
-        );
-        ttsAdapter = createRemoteTTSAdapter();
-      } catch (error) {
-        console.warn("TTS not supported:", error);
-        setIsTTSEnabled(false);
-      }
-
       console.log("📦 Created instances:", {
         instance,
         live2dRenderer,
         llmAdapter,
-        ttsAdapter,
       });
 
       // 메시지 콜백 설정
@@ -69,9 +104,10 @@ export default function Home() {
       instance.attachRenderer(live2dRenderer);
       instance.attachLLM(llmAdapter);
 
-      // TTS 어댑터 연결
-      if (ttsAdapter) {
-        instance.attachTTS(ttsAdapter);
+      // 초기 TTS 플레이어 설정
+      const ttsPlayer = await createTTSPlayer(selectedTTSPlayer);
+      if (ttsPlayer) {
+        instance.attachTTS(ttsPlayer);
       }
 
       // Add character (Hiyori)
@@ -123,6 +159,20 @@ export default function Home() {
 
     initCharivo().catch(console.error);
   }, []);
+
+  // TTS 플레이어 변경 시 재초기화
+  useEffect(() => {
+    const updateTTSPlayer = async () => {
+      if (!charivo) return;
+
+      const ttsPlayer = await createTTSPlayer(selectedTTSPlayer);
+      if (ttsPlayer) {
+        charivo.attachTTS(ttsPlayer);
+      }
+    };
+
+    updateTTSPlayer();
+  }, [selectedTTSPlayer, charivo]);
 
   const handleSend = async () => {
     if (!charivo || !input.trim()) return;
@@ -215,24 +265,92 @@ export default function Home() {
           {/* Right Side - Chat Interface (좀 더 좁게) */}
           <div className="lg:col-span-2 flex flex-col">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
-              {/* Chat Header - 컴팩트하게 조정 */}
-              <div className="bg-blue-500 dark:bg-blue-600 p-3">
+              {/* Chat Header - TTS 선택 옵션 포함 */}
+              <div className="bg-blue-500 dark:bg-blue-600 p-4">
                 <h2 className="text-lg font-semibold text-white mb-1">
                   💬 AI Chat Interface
                 </h2>
-                <p className="text-blue-100 text-xs mb-2">
+                <p className="text-blue-100 text-xs mb-3">
                   Modular LLM integration with OpenAI GPT
                 </p>
-                <div className="flex items-center space-x-2">
-                  <label className="flex items-center space-x-1 text-xs text-blue-100">
-                    <input
-                      type="checkbox"
-                      checked={isTTSEnabled}
-                      onChange={(e) => setIsTTSEnabled(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span>🔊 Voice Synthesis (Remote TTS API)</span>
-                  </label>
+
+                {/* TTS 플레이어 선택 */}
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-white">
+                    🔊 TTS Player Options:
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ttsPlayer"
+                        value="remote"
+                        checked={selectedTTSPlayer === "remote"}
+                        onChange={(e) =>
+                          setSelectedTTSPlayer(e.target.value as TTSPlayerType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>Remote API</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ttsPlayer"
+                        value="web"
+                        checked={selectedTTSPlayer === "web"}
+                        onChange={(e) =>
+                          setSelectedTTSPlayer(e.target.value as TTSPlayerType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>Browser TTS</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ttsPlayer"
+                        value="openai"
+                        checked={selectedTTSPlayer === "openai"}
+                        onChange={(e) =>
+                          setSelectedTTSPlayer(e.target.value as TTSPlayerType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>OpenAI Direct</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ttsPlayer"
+                        value="none"
+                        checked={selectedTTSPlayer === "none"}
+                        onChange={(e) =>
+                          setSelectedTTSPlayer(e.target.value as TTSPlayerType)
+                        }
+                        className="text-blue-500"
+                      />
+                      <span>Disabled</span>
+                    </label>
+                  </div>
+
+                  {/* 선택된 플레이어 설명 */}
+                  <div className="text-xs text-blue-200 bg-blue-600/50 p-2 rounded">
+                    {selectedTTSPlayer === "remote" &&
+                      "🌐 Calls server TTS API (secure)"}
+                    {selectedTTSPlayer === "web" &&
+                      "🔊 Uses browser's built-in TTS"}
+                    {selectedTTSPlayer === "openai" &&
+                      "⚡ Direct OpenAI API (test only)"}
+                    {selectedTTSPlayer === "none" && "🔇 No voice synthesis"}
+                  </div>
+
+                  {/* TTS 에러 표시 */}
+                  {ttsError && (
+                    <div className="text-xs text-red-200 bg-red-600/50 p-2 rounded">
+                      ⚠️ {ttsError}
+                    </div>
+                  )}
                 </div>
               </div>
 

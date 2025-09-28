@@ -61,16 +61,16 @@ export interface TTSOptions {
   voice?: string;
 }
 
-// 클라이언트사이드 TTS (브라우저에서 음성 재생)
-export interface ClientTTSAdapter {
+// TTS 플레이어 (브라우저에서 음성 재생)
+export interface TTSPlayer {
   speak(text: string, options?: TTSOptions): Promise<void>;
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
 }
 
-// 서버사이드 TTS (오디오 데이터 생성)
-export interface ServerTTSAdapter {
+// TTS 제공자 (오디오 데이터 생성)
+export interface TTSProvider {
   generateSpeech(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
   setVoice(voice: string): void;
 }

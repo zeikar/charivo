@@ -1,7 +1,7 @@
 {
-  "name": "@charivo/adapter-tts-web",
+  "name": "@charivo/tts-player-web",
   "version": "0.1.0",
-  "description": "Web Speech API TTS adapter for Charivo",
+  "description": "Web Speech API TTS player for Charivo",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

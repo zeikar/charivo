@@ -1,38 +1,34 @@
-import { ClientTTSAdapter, TTSOptions } from "@charivo/core";
+import { TTSPlayer, TTSOptions } from "@charivo/core";
+import {
+  createOpenAITTSProvider,
+  OpenAITTSConfig,
+  OpenAITTSProvider,
+} from "@charivo/tts-provider-openai";
 
-export interface RemoteTTSConfig {
-  apiEndpoint?: string;
-  defaultVoice?: string;
-}
+// OpenAITTSConfig를 직접 사용 (확장할 내용이 없으므로)
+export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 
-export class RemoteTTSAdapter implements ClientTTSAdapter {
-  private apiEndpoint: string;
-  private defaultVoice: string;
+/**
+ * OpenAI TTS Player - OpenAI provider를 래핑해서 직접 재생까지 해주는 플레이어
+ *
+ * 로컬 개발이나 테스트 환경에서 사용. 프로덕션에서는 보안상 권장하지 않음.
+ * API 키가 클라이언트에 노출되므로 서버 환경에서만 사용하거나 테스트용으로만 사용해야 함.
+ */
+export class OpenAITTSPlayer implements TTSPlayer {
+  private provider: OpenAITTSProvider;
   private currentAudio: HTMLAudioElement | null = null;
 
-  constructor(config: RemoteTTSConfig = {}) {
-    this.apiEndpoint = config.apiEndpoint || "/api/tts";
-    this.defaultVoice = config.defaultVoice || "alloy";
+  constructor(config: OpenAITTSPlayerConfig) {
+    this.provider = createOpenAITTSProvider(config);
   }
 
   async speak(text: string, options?: TTSOptions): Promise<void> {
     await this.stop();
 
-    const response = await fetch(this.apiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: options?.voice || this.defaultVoice,
-        speed: options?.rate || 1.0,
-      }),
-    });
+    // Provider로부터 오디오 데이터 생성
+    const audioBuffer = await this.provider.generateSpeech(text, options);
 
-    if (!response.ok) {
-      throw new Error(`TTS API failed: ${response.statusText}`);
-    }
-
-    const audioBuffer = await response.arrayBuffer();
+    // 브라우저에서 재생
     const blob = new Blob([audioBuffer], { type: "audio/mp3" });
     const audioUrl = URL.createObjectURL(blob);
 
@@ -69,7 +65,7 @@ export class RemoteTTSAdapter implements ClientTTSAdapter {
   }
 
   setVoice(voice: string): void {
-    this.defaultVoice = voice;
+    this.provider.setVoice(voice);
   }
 
   isSupported(): boolean {
@@ -77,8 +73,8 @@ export class RemoteTTSAdapter implements ClientTTSAdapter {
   }
 }
 
-export function createRemoteTTSAdapter(
-  config?: RemoteTTSConfig,
-): RemoteTTSAdapter {
-  return new RemoteTTSAdapter(config);
+export function createOpenAITTSPlayer(
+  config: OpenAITTSPlayerConfig,
+): OpenAITTSPlayer {
+  return new OpenAITTSPlayer(config);
 }

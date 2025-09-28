@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { ServerTTSAdapter, TTSOptions } from "@charivo/core";
+import { TTSProvider, TTSOptions } from "@charivo/core";
 
 export interface OpenAITTSConfig {
   apiKey: string;
@@ -7,13 +7,13 @@ export interface OpenAITTSConfig {
   defaultModel?: "tts-1" | "tts-1-hd";
 }
 
-export class OpenAITTSAdapter implements ServerTTSAdapter {
+export class OpenAITTSProvider implements TTSProvider {
   private openai: OpenAI;
   private defaultVoice: string;
 
   constructor(config: OpenAITTSConfig) {
     if (typeof window !== "undefined") {
-      throw new Error("OpenAI adapter is for server-side use only");
+      throw new Error("OpenAI provider is for server-side use only");
     }
 
     this.openai = new OpenAI({ apiKey: config.apiKey });
@@ -39,8 +39,8 @@ export class OpenAITTSAdapter implements ServerTTSAdapter {
   }
 }
 
-export function createOpenAITTSAdapter(
+export function createOpenAITTSProvider(
   config: OpenAITTSConfig,
-): OpenAITTSAdapter {
-  return new OpenAITTSAdapter(config);
+): OpenAITTSProvider {
+  return new OpenAITTSProvider(config);
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
-// OpenAI TTS Adapter 초기화
-const ttsAdapter = createOpenAITTSAdapter({
+// OpenAI TTS Provider 초기화
+const ttsProvider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!,
   defaultVoice: "alloy",
   defaultModel: "tts-1-hd",
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // TTS 생성
-    const audioBuffer = await ttsAdapter.generateSpeech(text, {
+    const audioBuffer = await ttsProvider.generateSpeech(text, {
       voice,
       rate: speed,
     });
