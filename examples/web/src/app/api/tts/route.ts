@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
     const audioBuffer = await ttsAdapter.generateSpeech(text, {
       voice,
       rate: speed,
-      format,
     });
 
     return new NextResponse(audioBuffer, {
