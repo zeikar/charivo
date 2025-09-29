@@ -2,8 +2,17 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@framework/*": ["CubismSdkForWeb-5-r.4/Framework/src/*"]
+    },
+    "strict": false,
+    "strictNullChecks": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "CubismSdkForWeb-5-r.4/Core/live2dcubismcore.d.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -26,6 +26,7 @@ export default [
       "public/live2d/**",
       "**/.vscode/**",
       "**/.git/**",
+      "**/CubismSdkForWeb-5-r.4/**",
     ],
   },
 

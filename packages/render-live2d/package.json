@@ -20,9 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
-    "pixi-live2d-display": "^0.4.0",
-    "pixi.js": "^6.5.10"
+    "@charivo/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.2",

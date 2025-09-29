@@ -6,3 +6,5 @@ coverage/
 pnpm-lock.yaml
 *.md
 .next/
+
+CubismSdkForWeb-5-r.4/

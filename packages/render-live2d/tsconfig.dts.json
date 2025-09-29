@@ -1,5 +1,9 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/renderer.ts", "src/utils/**/*.ts"],
+  "include": [
+    "src/renderer.ts",
+    "src/utils/**/*.ts",
+    "CubismSdkForWeb-5-r.4/Core/live2dcubismcore.d.ts"
+  ],
   "exclude": ["dist", "node_modules"]
 }

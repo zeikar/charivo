@@ -1,4 +1,5 @@
-import type { Live2DModel } from "pixi-live2d-display/cubism4";
+import type { LAppModel } from "../cubism/lappmodel";
+import * as LAppDefine from "../cubism/lappdefine";
 
 export type MotionType = "greeting" | "happy" | "thinking" | "talk";
 
@@ -11,51 +12,65 @@ export function inferMotionFromMessage(text: string): MotionType {
 }
 
 export function playSafe(
-  model: Live2DModel,
+  model: LAppModel,
   group: string,
   index = 0,
-  priority?: number,
-) {
+  priority = LAppDefine.PriorityNormal,
+): void {
+  if (!model.hasMotion(group, index)) return;
+
   try {
-    model.motion(group, index, priority);
+    model.startMotion(group, index, priority);
   } catch {
-    // swallow and log via caller if desired
+    // ignore missing motions
   }
 }
 
-export function playMotion(model: Live2DModel, motionType: MotionType) {
+export function playMotion(model: LAppModel, motionType: MotionType): void {
   switch (motionType) {
     case "greeting":
-      playSafe(model, "Tap@Body", 0, 1);
-      playSafe(model, "Tap", 0, 1);
+      playSafe(model, LAppDefine.MotionGroupBody, 0, LAppDefine.PriorityNormal);
+      playSafe(model, LAppDefine.MotionGroupTap, 0, LAppDefine.PriorityNormal);
       break;
     case "happy":
-      playSafe(model, "Flick", 0, 1);
+      playSafe(
+        model,
+        LAppDefine.MotionGroupTapBody,
+        0,
+        LAppDefine.PriorityNormal,
+      );
       break;
     case "thinking":
-      playSafe(model, "Idle", 1, 1);
+      playSafe(model, LAppDefine.MotionGroupIdle, 1, LAppDefine.PriorityNormal);
       break;
     default:
-      playSafe(model, "Idle", 0, 1);
+      playSafe(model, LAppDefine.MotionGroupIdle, 0, LAppDefine.PriorityIdle);
       break;
   }
 }
 
-export function animateExpression(model: Live2DModel, motionType: MotionType) {
-  try {
+export function animateExpression(
+  model: LAppModel,
+  motionType: MotionType,
+): void {
+  const chooseExpression = () => {
     switch (motionType) {
       case "greeting":
       case "happy":
-        model.expression("smile");
-        break;
+        return "smile";
       case "thinking":
-        model.expression("surprised");
-        break;
+        return "surprised";
       default:
-        model.expression("normal");
-        break;
+        return "normal";
     }
+  };
+
+  const expressionId = chooseExpression();
+  if (!model.hasExpression(expressionId)) return;
+
+  try {
+    model.setExpression(expressionId);
   } catch {
-    // expression may not be supported
+    // expression may not be available on all models
   }
 }
