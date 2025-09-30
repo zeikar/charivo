@@ -12,8 +12,8 @@ export function Live2DPanel({
   isSpeaking,
 }: Live2DPanelProps) {
   return (
-    <div className="lg:col-span-3 flex flex-col">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg h-full flex flex-col">
+    <div className="lg:col-span-3 flex flex-col min-h-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg flex-1 flex flex-col min-h-0">
         <div className="text-center mb-3">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
             🎮 Live2D Character

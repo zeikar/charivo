@@ -39,8 +39,8 @@ export function ChatPanel({
   ttsError,
 }: ChatPanelProps) {
   return (
-    <div className="lg:col-span-2 flex flex-col">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden h-full flex flex-col">
+    <div className="lg:col-span-2 flex flex-col min-h-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden flex-1 flex flex-col min-h-0">
         <ChatSettings
           selectedLLMClient={selectedLLMClient}
           onSelectLLMClient={onSelectLLMClient}
