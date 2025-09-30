@@ -190,8 +190,8 @@ export class LAppModel extends CubismUserModel {
       let lipSyncValue = 0;
 
       if (this.useRealtimeLipSync) {
-        // Use real-time TTS audio analysis
-        lipSyncValue = this.realtimeLipSyncRms;
+        // Use real-time TTS audio analysis with increased amplification for web TTS
+        lipSyncValue = this.realtimeLipSyncRms * 1.8; // Increase web TTS mouth movement
       } else {
         // Use traditional WAV file analysis for motion files
         this.wavHandler.update(deltaTimeSeconds);
@@ -213,7 +213,7 @@ export class LAppModel extends CubismUserModel {
 
     // Apply TTS lip sync after all other updates to ensure it takes priority
     if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-      const lipSyncValue = this.realtimeLipSyncRms;
+      const lipSyncValue = this.realtimeLipSyncRms * 1.8; // Amplify web TTS lip sync
 
       // Override lip sync parameters with TTS data
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
