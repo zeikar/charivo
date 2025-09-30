@@ -9,6 +9,7 @@ Charivo lets you create interactive AI characters with Live2D animations, voice 
 - 🧩 **Live2D Integration** - Bring characters to life with smooth 2D animations
 - 🤖 **LLM Support** - Connect to OpenAI or implement custom LLM adapters
 - 🔊 **Text-to-Speech** - Multiple TTS options: Web Speech API, OpenAI TTS
+- 💋 **Lip-Sync Animation** - Automatic mouth movement synchronized with speech audio
 - 📦 **Modular Architecture** - Plugin-based system for easy extensibility
 - ⚡ **TypeScript First** - Full type safety and IntelliSense support
 - 🎨 **Framework Agnostic** - Use with React, Vue, or vanilla JavaScript
@@ -40,29 +41,36 @@ pnpm dev
 
 ```typescript
 import { Charivo } from "@charivo/core";
-import { createOpenAIAdapter } from "@charivo/adapter-llm-openai";
-import { createRemoteTTSAdapter } from "@charivo/adapter-tts-remote"; // Client-side HTTP adapter
+import { createLLMManager } from "@charivo/llm-core";
+import { createRemoteLLMClient } from "@charivo/llm-client-remote";
+import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
 // or
-// import { createWebTTSAdapter } from "@charivo/adapter-tts-web"; // Browser Speech API
+// import { createWebTTSPlayer } from "@charivo/tts-player-web"; // Browser Speech API
 import { Live2DRenderer } from "@charivo/render-live2d";
 
 // Create Charivo instance
 const charivo = new Charivo();
 
-// Set up components
-const llmAdapter = createOpenAIAdapter("/api/chat");
-const ttsAdapter = createRemoteTTSAdapter({ apiEndpoint: "/api/tts" }); // Calls server API
+// Set up LLM (new architecture)
+const llmClient = createRemoteLLMClient({ apiEndpoint: "/api/chat" });
+const llmManager = createLLMManager(llmClient);
+
+// Set up TTS
+const ttsPlayer = createRemoteTTSPlayer({ apiEndpoint: "/api/tts" });
+
+// Set up renderer
 const renderer = new Live2DRenderer(canvasElement);
 
-// Connect adapters
-charivo.attachLLM(llmAdapter);
-charivo.attachTTS(ttsAdapter);
+// Connect components
+charivo.attachLLM(llmManager);
+charivo.attachTTS(ttsPlayer);
 charivo.attachRenderer(renderer);
 
 // Add your character
 charivo.addCharacter({
   id: "hiyori",
   name: "Hiyori",
+  description: "Friendly AI assistant",
   personality: "Cheerful and helpful AI assistant",
   voice: {
     rate: 1.0,
@@ -77,25 +85,44 @@ await charivo.userSay("Hello!", "hiyori");
 
 ## 📦 Packages
 
+### Core Packages
 | Package | Description |
 |---------|-------------|
 | [`@charivo/core`](./packages/core) | Core framework with event system and character management |
-| [`@charivo/adapter-llm-openai`](./packages/adapter-llm-openai) | OpenAI GPT integration |
-| [`@charivo/adapter-llm-stub`](./packages/adapter-llm-stub) | Stub adapter for testing |
-| [`@charivo/adapter-tts-web`](./packages/adapter-tts-web) | Web Speech API TTS integration |
-| [`@charivo/adapter-tts-remote`](./packages/adapter-tts-remote) | Remote HTTP TTS adapter (client-side) |
-| [`@charivo/adapter-tts-openai`](./packages/adapter-tts-openai) | OpenAI TTS integration (server-side) |
+| [`@charivo/shared`](./packages/shared) | Shared utilities and types |
+
+### LLM (Language Model) Packages
+| Package | Description |
+|---------|-------------|
+| [`@charivo/llm-core`](./packages/llm-core) | Core utilities and helpers for LLM functionality |
+| [`@charivo/llm-client-openai`](./packages/llm-client-openai) | OpenAI LLM client (local/testing) |
+| [`@charivo/llm-client-remote`](./packages/llm-client-remote) | Remote HTTP LLM client (client-side) |
+| [`@charivo/llm-client-stub`](./packages/llm-client-stub) | Stub LLM client for testing |
+| [`@charivo/llm-provider-openai`](./packages/llm-provider-openai) | OpenAI LLM provider (server-side) |
+
+### TTS (Text-to-Speech) Packages
+| Package | Description |
+|---------|-------------|
+| [`@charivo/tts-core`](./packages/tts-core) | Core TTS functionality with audio processing and lip-sync integration |
+| [`@charivo/tts-player-web`](./packages/tts-player-web) | Web Speech API TTS player |
+| [`@charivo/tts-player-remote`](./packages/tts-player-remote) | Remote HTTP TTS player (client-side) |
+| [`@charivo/tts-player-openai`](./packages/tts-player-openai) | OpenAI TTS player |
+| [`@charivo/tts-provider-openai`](./packages/tts-provider-openai) | OpenAI TTS provider (server-side) |
+
+### Rendering Packages
+| Package | Description |
+|---------|-------------|
 | [`@charivo/render-live2d`](./packages/render-live2d) | Live2D character rendering |
 | [`@charivo/render-stub`](./packages/render-stub) | Stub renderer for testing |
-| [`@charivo/shared`](./packages/shared) | Shared utilities and types |
 
 ## 🎯 Examples
 
 ### Web Demo
-A complete Next.js application showcasing all features:
-- Live2D character animation
-- OpenAI GPT conversation
-- Text-to-speech output
+A complete Next.js application showcasing all features using the new modular architecture:
+- Live2D character animation with `@charivo/render-live2d`
+- LLM conversation with `@charivo/llm-core` + client/provider separation
+- Text-to-speech with `@charivo/tts-core` + player/provider architecture
+- Real-time lip-sync animation synchronized with speech audio
 - Interactive chat interface
 
 ```bash
@@ -105,100 +132,116 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) to see the demo.
 
+The example demonstrates:
+- **Client-side**: Using remote LLM/TTS clients for secure API access
+- **Server-side**: API routes with OpenAI providers
+- **Modular design**: Easy switching between different implementations
+
 ## 🏗️ Architecture
 
-Charivo follows a modular, adapter-based architecture:
+Charivo follows a modular, layered architecture with clear separation of concerns:
 
 ```
-┌─────────────────┐
-│   Your App      │
-├─────────────────┤
-│ @charivo/core   │  ←─ Event bus, character management
-├─────────────────┤
-│   Adapters      │  ←─ Pluggable components
-│  ┌───────────┐  │
-│  │    LLM    │  │  ←─ OpenAI, Claude, local models...
-│  ├───────────┤  │
-│  │ Renderer  │  │  ←─ Live2D, 3D, sprite-based...
-│  ├───────────┤  │
-│  │    TTS    │  │  ←─ Web Speech, Azure, ElevenLabs...
-│  └───────────┘  │
-└─────────────────┘
+┌─────────────────────────────┐
+│        Your App             │  ←─ Next.js, React, Vue, etc.
+├─────────────────────────────┤
+│      @charivo/core          │  ←─ Event bus, character management
+├─────────────────────────────┤
+│  ┌─────────────────────────┐│
+│  │    LLM Layer            ││  
+│  │ ┌─────────┬───────────┐ ││
+│  │ │LLM-Core │ Clients   │ ││  ←─ Remote, OpenAI, Stub
+│  │ └─────────┴───────────┘ ││
+│  └─────────────────────────┘│
+│  ┌─────────────────────────┐│
+│  │    TTS Layer            ││
+│  │ ┌─────────┬───────────┐ ││
+│  │ │TTS-Core │ Players   │ ││  ←─ Web, Remote, OpenAI
+│  │ └─────────┴───────────┘ ││
+│  └─────────────────────────┘│
+│  ┌─────────────────────────┐│
+│  │   Rendering Layer       ││  ←─ Live2D, Stub, custom...
+│  └─────────────────────────┘│
+├─────────────────────────────┤
+│   Server-Side Providers     │  ←─ OpenAI API, Custom APIs
+└─────────────────────────────┘
 ```
 
-## 🔧 Creating Custom Adapters
+### New Architecture Benefits
 
-### LLM Adapter
+- **Client/Server Separation**: Clear distinction between client-side players and server-side providers
+- **Stateful Management**: Core managers handle session state, history, and character context
+- **Pluggable Components**: Easy to swap between different implementations (Web Speech → OpenAI TTS)
+- **Type Safety**: Full TypeScript support across all layers
+
+## 🔧 Creating Custom Components
+
+### LLM Client
 ```typescript
-import { LLMAdapter, Message, Character } from "@charivo/core";
+import { LLMClient, Message } from "@charivo/llm-core";
 
-class CustomLLMAdapter implements LLMAdapter {
-  async generateResponse(message: Message): Promise<string> {
-    // Your custom LLM logic here
+class CustomLLMClient implements LLMClient {
+  async generateResponse(messages: Message[]): Promise<string> {
+    // Your custom LLM API logic here
     return "Custom response";
   }
-
-  setCharacter(character: Character): void {
-    // Configure your LLM with character context
-  }
-
-  clearHistory(): void {
-    // Reset conversation history
-  }
 }
+
+// Use with LLM Manager
+import { createLLMManager } from "@charivo/llm-core";
+const llmManager = createLLMManager(new CustomLLMClient());
 ```
 
-### TTS Adapter
+### TTS Components
 
-Charivo provides multiple TTS (Text-to-Speech) options:
+Charivo provides multiple TTS (Text-to-Speech) options with clear client/server separation:
 
 #### Web Speech API (Browser-native)
 ```typescript
-import { TTSAdapter, TTSOptions } from "@charivo/core";
-import { createWebTTSAdapter } from "@charivo/adapter-tts-web";
+import { createWebTTSPlayer } from "@charivo/tts-player-web";
 
-// Uses browser's built-in speech synthesis
-const webTTSAdapter = createWebTTSAdapter();
+// Uses browser's built-in speech synthesis - no server required
+const webTTSPlayer = createWebTTSPlayer();
 ```
 
 #### Remote TTS (Server-powered, Client-safe)
 ```typescript
-import { createRemoteTTSAdapter } from "@charivo/adapter-tts-remote";
+import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
 
-// Client-side adapter that calls your server API
+// Client-side player that calls your server API
 // Requires server-side implementation (see /api/tts route)
-const remoteTTSAdapter = createRemoteTTSAdapter({
+const remoteTTSPlayer = createRemoteTTSPlayer({
   apiEndpoint: "/api/tts", // Your server endpoint
   defaultVoice: "alloy",
   defaultModel: "tts-1-hd"
 });
 ```
 
-**⚠️ Important**: The Remote TTS adapter is a **client-side HTTP adapter** that calls your server API. This design keeps API keys secure on the server side. You need to implement a server endpoint like `/api/tts` that handles the actual TTS API calls.
+**⚠️ Important**: The Remote TTS player is a **client-side HTTP player** that calls your server API. This design keeps API keys secure on the server side. You need to implement a server endpoint like `/api/tts` that handles the actual TTS API calls.
 
 #### OpenAI TTS (Server-side only)
 ```typescript
-import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
-// Server-side adapter that directly calls OpenAI API
+// Server-side provider that directly calls OpenAI API
 // ⚠️ Only use in Node.js/server environments
-const openaiTTSAdapter = createOpenAITTSAdapter({
+const openaiTTSProvider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!, // Server-side only!
   defaultVoice: "alloy",
   defaultModel: "tts-1-hd"
 });
 
 // Generate audio data (server-side)
-const audioBuffer = await openaiTTSAdapter.generateSpeech("Hello world!");
+const audioBuffer = await openaiTTSProvider.generateSpeech("Hello world!");
 ```
 
-**🔐 Security Note**: This adapter directly calls OpenAI API and should only be used in server environments. For client-side usage, use the Remote TTS adapter above.
+**🔐 Security Note**: This provider directly calls OpenAI API and should only be used in server environments. For client-side usage, use the Remote TTS player above.
 
-#### Custom TTS Adapter
+#### Custom TTS Player
 ```typescript
-import { TTSAdapter, TTSOptions } from "@charivo/core";
+import { TTSPlayer, TTSOptions } from "@charivo/tts-core";
 
-class CustomTTSAdapter implements TTSAdapter {
+class CustomTTSPlayer implements TTSPlayer {
   async speak(text: string, options?: TTSOptions): Promise<void> {
     // Your custom TTS implementation
   }
@@ -206,6 +249,35 @@ class CustomTTSAdapter implements TTSAdapter {
   // Implement other required methods...
 }
 ```
+
+## 🎯 Core Concepts
+
+### Component Types
+
+#### **Managers** (Stateful)
+- Handle conversation history and character context
+- Manage session state and user interactions
+- Examples: `LLMManager` from `@charivo/llm-core`
+
+#### **Clients & Players** (Stateless) 
+- Focus on API communication and data processing
+- No session state - pure input/output functions
+- Examples: `RemoteLLMClient`, `WebTTSPlayer`
+
+#### **Providers** (Server-side)
+- Handle direct API integration with external services
+- Manage API keys and authentication securely
+- Examples: `OpenAILLMProvider`, `OpenAITTSProvider`
+
+### Implementation Options
+
+| Component | Available Types | Use Case |
+|-----------|----------------|----------|
+| **LLM** | `remote`, `openai`, `stub` | Client-side conversation |
+| | `openai-provider` | Server-side API integration |
+| **TTS** | `web`, `remote`, `openai` | Client-side audio playback |
+| | `openai-provider` | Server-side audio generation |
+| **Rendering** | `live2d`, `stub` | Character visualization |
 
 ## 🎨 Live2D Setup
 
@@ -217,7 +289,22 @@ class CustomTTSAdapter implements TTSAdapter {
 await renderer.loadModel("/path/to/your/model.model3.json");
 ```
 
-The demo includes a free Hiyori model from Live2D samples.
+### Lip-Sync Features
+
+Charivo automatically provides lip-sync animation when TTS is active:
+
+- **Audio Analysis**: Analyzes speech audio in real-time for mouth movement timing
+- **Parameter Control**: Controls Live2D mouth parameters (`ParamMouthOpenY`) based on audio volume
+- **Smooth Animation**: Provides natural-looking mouth movements synchronized with speech
+- **Automatic Integration**: Works out-of-the-box with any TTS player (Web Speech, OpenAI TTS, etc.)
+
+```typescript
+// Lip-sync happens automatically when character speaks
+await charivo.userSay("Hello! Watch my mouth move!", "hiyori");
+// Character will speak with synchronized lip movement
+```
+
+The demo includes a free Hiyori model from Live2D samples with lip-sync support.
 
 ## 📚 API Reference
 
@@ -227,12 +314,33 @@ The demo includes a free Hiyori model from Live2D samples.
 Main orchestrator class that manages all components.
 
 **Methods:**
-- `attachLLM(adapter: LLMAdapter)` - Connect LLM provider
-- `attachTTS(adapter: TTSAdapter)` - Connect TTS provider  
+- `attachLLM(manager: LLMManager)` - Connect LLM manager
+- `attachTTS(player: TTSPlayer)` - Connect TTS player
 - `attachRenderer(renderer: Renderer)` - Connect renderer
 - `addCharacter(character: Character)` - Add character
 - `userSay(message: string, characterId?: string)` - Send user message
+- `getHistory()` - Get conversation history
+- `clearHistory()` - Clear conversation history
+- `getCurrentCharacter()` - Get current active character
 - `on(event: string, callback: Function)` - Listen to events
+
+#### `LLMManager` (from `@charivo/llm-core`)
+Manages LLM state and conversation flow.
+
+**Methods:**
+- `generateResponse(message: string)` - Generate AI response
+- `setCharacter(character: Character)` - Set character context
+- `getHistory()` - Get conversation history  
+- `clearHistory()` - Reset conversation history
+
+#### `TTSPlayer` (from `@charivo/tts-core`)
+Base interface for TTS players.
+
+**Methods:**
+- `speak(text: string, options?: TTSOptions)` - Play text as speech
+- `stop()` - Stop current speech
+- `pause()` - Pause speech
+- `resume()` - Resume paused speech
 
 #### Events
 - `message:sent` - User sent a message
