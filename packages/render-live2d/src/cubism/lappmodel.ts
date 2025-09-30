@@ -106,27 +106,6 @@ export class LAppModel extends CubismUserModel {
     this.getRenderer().startUp(this.requireGl());
     await this.loadTextures(setting);
 
-    // 🚨 DEBUG: List ALL available parameters in this model
-    console.log(
-      `🔍 LAppModel: Model has ${this._model.getParameterCount()} parameters:`,
-    );
-    for (let i = 0; i < this._model.getParameterCount(); i++) {
-      const paramId = this._model.getParameterId(i);
-      const paramValue = this._model.getParameterValueByIndex(i);
-      console.log(
-        `🔍 Parameter ${i}:`,
-        paramId,
-        `value=${paramValue.toFixed(3)}`,
-      );
-
-      // Test setting each parameter to see which ones actually work
-      if (paramId && paramValue !== undefined) {
-        this._model.setParameterValueById(paramId, 0.5);
-        const testValue = this._model.getParameterValueById(paramId);
-        console.log(`🧪 Test param ${i}: set 0.5, got ${testValue.toFixed(3)}`);
-      }
-    }
-
     this.ready = true;
     this.setUpdating(false);
     this.setInitialized(true);
@@ -171,34 +150,16 @@ export class LAppModel extends CubismUserModel {
 
     this._model.loadParameters();
 
-    // 🚨 DEBUG: Log motion state when TTS is active
-    if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-      console.log(
-        `🎬 LAppModel: Motion state during TTS - finished: ${this._motionManager.isFinished()}, TTS active: ${this.useRealtimeLipSync}`,
-      );
-    }
-
     if (this._motionManager.isFinished()) {
-      // Only start new motion if TTS is not active
-      if (!this.useRealtimeLipSync || this.realtimeLipSyncRms === 0) {
-        this.startRandomMotion(
-          LAppDefine.MotionGroupIdle,
-          LAppDefine.PriorityIdle,
-        );
-      } else {
-        console.log(`🎬 LAppModel: Skipping new motion start during TTS`);
-      }
+      this.startRandomMotion(
+        LAppDefine.MotionGroupIdle,
+        LAppDefine.PriorityIdle,
+      );
     } else {
       motionUpdated = this._motionManager.updateMotion(
         this._model,
         deltaTimeSeconds,
       );
-
-      if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-        console.log(
-          `🎬 LAppModel: Motion updated during TTS: ${motionUpdated}`,
-        );
-      }
     }
     this._model.saveParameters();
 
@@ -225,47 +186,24 @@ export class LAppModel extends CubismUserModel {
       this._physics.evaluate(this._model, deltaTimeSeconds);
     }
 
-    // 🚨 IMPORTANT: Apply lip sync REGARDLESS of motion state when TTS is active
-    if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-      const lipSyncValue = this.realtimeLipSyncRms;
-      console.log(
-        `👄 LAppModel: TTS ACTIVE - FORCE lip sync override: ${lipSyncValue.toFixed(3)} (motionUpdated: ${motionUpdated})`,
-      );
-
-      // Apply lip sync with maximum weight to override motion
-      for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
-        const paramId = this.lipSyncIds.at(i);
-        const beforeValue = this._model.getParameterValueById(paramId);
-
-        // Use setParameterValueById instead of addParameterValueById to completely override
-        this._model.setParameterValueById(paramId, lipSyncValue);
-
-        const afterValue = this._model.getParameterValueById(paramId);
-        console.log(
-          `🎯 LAppModel: TTS OVERRIDE Parameter ${i} - before: ${beforeValue.toFixed(3)}, after: ${afterValue.toFixed(3)}, set: ${lipSyncValue.toFixed(3)}`,
-        );
-      }
-
-      // Also directly set ParamMouthOpenY for maximum visibility
-      const mouthId = CubismFramework.getIdManager().getId("ParamMouthOpenY");
-      console.log(
-        `👄 LAppModel: TTS FORCE ParamMouthOpenY to ${lipSyncValue.toFixed(3)}`,
-      );
-      this._model.setParameterValueById(mouthId, lipSyncValue);
-    } else if (this._lipsync && !this.useRealtimeLipSync) {
-      // Original lip sync logic for motion files
+    if (this._lipsync) {
       let lipSyncValue = 0;
 
       if (this.useRealtimeLipSync) {
+        // Use real-time TTS audio analysis
         lipSyncValue = this.realtimeLipSyncRms;
       } else {
+        // Use traditional WAV file analysis for motion files
         this.wavHandler.update(deltaTimeSeconds);
         lipSyncValue = this.wavHandler.getRms();
       }
 
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
-        const paramId = this.lipSyncIds.at(i);
-        this._model.addParameterValueById(paramId, lipSyncValue, 0.8);
+        this._model.addParameterValueById(
+          this.lipSyncIds.at(i),
+          lipSyncValue,
+          0.8,
+        );
       }
     }
 
@@ -273,34 +211,14 @@ export class LAppModel extends CubismUserModel {
       this._pose.updateParameters(this._model, deltaTimeSeconds);
     }
 
-    // 🚨 ULTIMATE FINAL OVERRIDE: Apply TTS lip sync as the absolute last step
+    // Apply TTS lip sync after all other updates to ensure it takes priority
     if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
       const lipSyncValue = this.realtimeLipSyncRms;
-      console.log(
-        `🔥🔥 LAppModel: ULTIMATE TTS override: ${lipSyncValue.toFixed(3)} (CRUSHING all animations)`,
-      );
 
-      // Force set mouth parameter multiple times to ensure it sticks
-      const mouthId = CubismFramework.getIdManager().getId("ParamMouthOpenY");
-      this._model.setParameterValueById(mouthId, lipSyncValue);
-
-      // Also apply to lip sync IDs if they exist
+      // Override lip sync parameters with TTS data
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
-        const paramId = this.lipSyncIds.at(i);
-        const beforeFinal = this._model.getParameterValueById(paramId);
-        this._model.setParameterValueById(paramId, lipSyncValue);
-        const afterFinal = this._model.getParameterValueById(paramId);
-        console.log(
-          `🔥 LAppModel: ULTIMATE param ${i} - before: ${beforeFinal.toFixed(3)}, after: ${afterFinal.toFixed(3)}`,
-        );
+        this._model.setParameterValueById(this.lipSyncIds.at(i), lipSyncValue);
       }
-
-      // Triple-check: set ParamMouthOpenY again after lip sync IDs
-      this._model.setParameterValueById(mouthId, lipSyncValue);
-      const finalMouthValue = this._model.getParameterValueById(mouthId);
-      console.log(
-        `🔥 LAppModel: Final ParamMouthOpenY check: ${finalMouthValue.toFixed(3)} (should be ${lipSyncValue.toFixed(3)})`,
-      );
     }
 
     this._model.update();
@@ -308,43 +226,6 @@ export class LAppModel extends CubismUserModel {
 
   public draw(projection: CubismMatrix44): void {
     if (!this.ready || !this.modelSetting || !this._model) return;
-
-    // 🚨 LAST RESORT: Force lip sync RIGHT BEFORE RENDERING
-    if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-      const lipSyncValue = this.realtimeLipSyncRms;
-      console.log(
-        `🎨 LAppModel: RENDER-TIME lip sync HACK: ${lipSyncValue.toFixed(3)}`,
-      );
-
-      // Force set MULTIPLE parameters for testing what actually works
-      const mouthId = CubismFramework.getIdManager().getId("ParamMouthOpenY");
-      this._model.setParameterValueById(mouthId, lipSyncValue);
-
-      // Test other mouth-related parameters
-      const mouthFormId =
-        CubismFramework.getIdManager().getId("ParamMouthForm");
-      this._model.setParameterValueById(mouthFormId, lipSyncValue);
-
-      // Test eye parameters to see if ANY parameters work during render time
-      this._model.setParameterValueById(
-        this.idParamEyeBallX,
-        lipSyncValue * 0.5,
-      );
-      this._model.setParameterValueById(
-        this.idParamEyeBallY,
-        lipSyncValue * 0.5,
-      );
-
-      // Also set all lip sync parameters
-      for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
-        const paramId = this.lipSyncIds.at(i);
-        this._model.setParameterValueById(paramId, lipSyncValue);
-      }
-
-      console.log(
-        `🎨 LAppModel: TESTING - Mouth: ${this._model.getParameterValueById(mouthId).toFixed(3)}, Eye: ${this._model.getParameterValueById(this.idParamEyeBallX).toFixed(3)}`,
-      );
-    }
 
     projection.multiplyByMatrix(this._modelMatrix);
 
@@ -441,17 +322,12 @@ export class LAppModel extends CubismUserModel {
   }
 
   public setRealtimeLipSync(enabled: boolean, rms = 0): void {
-    console.log(`🎤 LAppModel: Setting realtime lip sync: ${enabled}`, { rms });
     this.useRealtimeLipSync = enabled;
     this.realtimeLipSyncRms = rms;
   }
 
   public updateRealtimeLipSyncRms(rms: number): void {
     this.realtimeLipSyncRms = rms;
-    // Only log significant changes to avoid spam (higher threshold)
-    if (rms > 0.3) {
-      console.log(`📊 LAppModel: Updated RMS to ${rms.toFixed(3)}`);
-    }
   }
 
   public release(): void {

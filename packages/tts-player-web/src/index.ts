@@ -141,8 +141,8 @@ export class WebTTSPlayer implements TTSPlayer {
         // Simulate mouth movement based on word characteristics
         const vowels = (word.match(/[aeiouAEIOU]/g) || []).length;
 
-        // More vowels = more mouth opening (increased base intensity for visibility)
-        const intensity = Math.min(0.8 + vowels * 0.2, 1.0); // Much higher base intensity
+        // More vowels = more mouth opening
+        const intensity = Math.min(0.3 + vowels * 0.15, 1.0);
 
         // Emit simulated RMS values through a custom event
         console.log(
