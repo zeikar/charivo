@@ -1,5 +1,5 @@
 import { EventBus } from "./bus";
-import { Character, Message, Renderer, TTSPlayer, LLMManager } from "./types";
+import { Character, Message, Renderer, TTSManager, LLMManager } from "./types";
 
 export * from "./types";
 export * from "./bus";
@@ -8,7 +8,7 @@ export class Charivo {
   private eventBus: EventBus;
   private llmManager?: LLMManager;
   private renderer?: Renderer;
-  private ttsAdapter?: TTSPlayer;
+  private ttsManager?: TTSManager;
   private characters: Map<string, Character> = new Map();
 
   constructor() {
@@ -51,31 +51,26 @@ export class Charivo {
     this.llmManager = manager;
   }
 
-  attachTTS(adapter: TTSPlayer): void {
-    console.log("🔊 Charivo: Attaching TTS adapter", adapter.constructor.name);
-    this.ttsAdapter = adapter;
+  attachTTS(manager: TTSManager): void {
+    console.log("🔊 Charivo: Attaching TTS manager", manager.constructor.name);
+    this.ttsManager = manager;
 
-    // Connect event emitter if TTS player supports it
-    if (
-      "setEventEmitter" in adapter &&
-      typeof adapter.setEventEmitter === "function"
-    ) {
+    // Connect event emitter if TTS manager supports it
+    if (manager.setEventEmitter) {
       console.log(
-        "🔗 Charivo: ✅ TTS adapter supports event emitter - connecting",
+        "🔗 Charivo: ✅ TTS manager supports event emitter - connecting",
       );
-      (adapter as any).setEventEmitter({
+      manager.setEventEmitter({
         emit: (event: string, data: any) => {
           console.log(`🎵 Charivo: ✅ TTS EMITTING EVENT: ${event}`, data);
           this.eventBus.emit(event as any, data);
           console.log(`🎵 Charivo: ✅ Event ${event} emitted to event bus`);
         },
       });
-      console.log("🔗 Charivo: TTS event emitter connection completed");
+      console.log("🔗 Charivo: TTS Manager connection completed");
     } else {
-      console.warn("⚠️ Charivo: TTS adapter doesn't support event emitter", {
-        hasSetEventEmitter: "setEventEmitter" in adapter,
-        setEventEmitterType: typeof (adapter as any).setEventEmitter,
-        adapterType: adapter.constructor.name,
+      console.warn("⚠️ Charivo: TTS manager doesn't support event emitter", {
+        managerType: manager.constructor.name,
       });
     }
   }
@@ -127,7 +122,7 @@ export class Charivo {
         }
 
         // TTS로 음성 출력
-        if (this.ttsAdapter) {
+        if (this.ttsManager) {
           try {
             this.eventBus.emit("tts:start", { text: response, characterId });
 
@@ -140,7 +135,7 @@ export class Charivo {
                 }
               : undefined;
 
-            await this.ttsAdapter.speak(response, ttsOptions);
+            await this.ttsManager.speak(response, ttsOptions);
             this.eventBus.emit("tts:end", { characterId });
           } catch (error) {
             this.eventBus.emit("tts:error", { error: error as Error });

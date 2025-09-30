@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Charivo, type Character, type Message } from "@charivo/core";
+import { createTTSManager } from "@charivo/tts-core";
 type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
@@ -184,7 +185,8 @@ export function useCharivoChat({
 
       const ttsPlayer = await createTTSPlayer(initialTTSPlayerRef.current);
       if (ttsPlayer) {
-        instance.attachTTS(ttsPlayer);
+        const ttsManager = createTTSManager(ttsPlayer);
+        instance.attachTTS(ttsManager);
       }
 
       const character: Character = {
@@ -260,7 +262,8 @@ export function useCharivoChat({
     const updateTTSPlayer = async () => {
       const player = await createTTSPlayer(selectedTTSPlayer);
       if (player) {
-        charivo.attachTTS(player);
+        const ttsManager = createTTSManager(player);
+        charivo.attachTTS(ttsManager);
       }
     };
 

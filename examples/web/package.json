@@ -15,6 +15,7 @@
     "@charivo/llm-client-openai": "workspace:*",
     "@charivo/llm-client-stub": "workspace:*",
     "@charivo/llm-provider-openai": "workspace:*",
+    "@charivo/tts-core": "workspace:*",
     "@charivo/tts-provider-openai": "workspace:*",
     "@charivo/tts-player-remote": "workspace:*",
     "@charivo/tts-player-web": "workspace:*",

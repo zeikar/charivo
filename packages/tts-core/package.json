@@ -1,0 +1,37 @@
+{
+  "name": "@charivo/tts-core",
+  "version": "0.1.0",
+  "description": "Core TTS functionality for Charivo framework",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest"
+  },
+  "keywords": [
+    "charivo",
+    "tts",
+    "text-to-speech",
+    "audio",
+    "lipsync"
+  ],
+  "dependencies": {
+    "@charivo/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@charivo/shared": "workspace:*"
+  },
+  "peerDependencies": {},
+  "files": [
+    "dist"
+  ]
+}

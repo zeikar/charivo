@@ -98,6 +98,17 @@ export interface TTSProvider {
   setVoice(voice: string): void;
 }
 
+// TTS Manager - TTS 세션의 상태 관리를 담당하는 인터페이스
+export interface TTSManager {
+  speak(text: string, options?: TTSOptions): Promise<void>;
+  stop(): Promise<void>;
+  setVoice(voice: string): void;
+  isSupported(): boolean;
+  setEventEmitter?(eventEmitter: {
+    emit: (event: string, data: any) => void;
+  }): void;
+}
+
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
