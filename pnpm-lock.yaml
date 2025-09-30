@@ -128,10 +128,6 @@ importers:
         version: 5.9.2
 
   packages/core:
-    dependencies:
-      '@charivo/tts-core':
-        specifier: workspace:*
-        version: link:../tts-core
     devDependencies:
       tsup:
         specifier: ^8.0.2
