@@ -90,6 +90,8 @@ export interface TTSPlayer {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
+  // Stateless audio generation (optional)
+  generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
 }
 
 // TTS 제공자 (오디오 데이터 생성)

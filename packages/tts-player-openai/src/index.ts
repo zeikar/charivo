@@ -9,15 +9,15 @@ import {
 export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 
 /**
- * OpenAI TTS Player - OpenAI provider를 래핑해서 직접 재생까지 해주는 플레이어
+ * OpenAI TTS Player - OpenAI provider를 래핑한 Stateless TTS Player
  *
  * 로컬 개발이나 테스트 환경에서 사용. 프로덕션에서는 보안상 권장하지 않음.
  * API 키가 클라이언트에 노출되므로 서버 환경에서만 사용하거나 테스트용으로만 사용해야 함.
+ *
+ * Stateless 설계: 오디오 재생과 립싱크는 TTS Manager에서 담당
  */
 export class OpenAITTSPlayer implements TTSPlayer {
   private provider: OpenAITTSProvider;
-  private currentAudio: HTMLAudioElement | null = null;
-  private eventEmitter?: { emit: (event: string, data: any) => void };
 
   constructor(config: OpenAITTSPlayerConfig) {
     // 브라우저에서 사용하기 위해 dangerouslyAllowBrowser를 자동으로 true로 설정
@@ -27,47 +27,39 @@ export class OpenAITTSPlayer implements TTSPlayer {
     });
   }
 
-  setEventEmitter(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void {
-    console.log("🔗 OpenAI TTS: Event emitter connected");
-    this.eventEmitter = eventEmitter;
+  /**
+   * Stateless 오디오 생성 (TTS Manager에서 사용)
+   */
+  async generateAudio(
+    text: string,
+    options?: TTSOptions,
+  ): Promise<ArrayBuffer> {
+    return this.provider.generateSpeech(text, options);
   }
 
+  /**
+   * Legacy speak 메서드 (호환성을 위해 유지)
+   */
   async speak(text: string, options?: TTSOptions): Promise<void> {
-    await this.stop();
-
-    // Provider로부터 오디오 데이터 생성
-    const audioBuffer = await this.provider.generateSpeech(text, options);
-
-    // 브라우저에서 재생
+    // 간단한 재생만 수행 (립싱크 없음)
+    const audioBuffer = await this.generateAudio(text, options);
     const blob = new Blob([audioBuffer], { type: "audio/mp3" });
     const audioUrl = URL.createObjectURL(blob);
 
     return new Promise((resolve, reject) => {
       const audio = new Audio(audioUrl);
-      this.currentAudio = audio;
 
       if (options?.volume) {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 
-      // Emit audio start event for lip sync
-      console.log("🎵 OpenAI TTS: Emitting tts:audio:start event", audio);
-      this.eventEmitter?.emit("tts:audio:start", { audioElement: audio });
-
       audio.onended = () => {
-        console.log("🔇 OpenAI TTS: Audio ended, emitting tts:audio:end event");
         URL.revokeObjectURL(audioUrl);
-        this.currentAudio = null;
-        this.eventEmitter?.emit("tts:audio:end", {});
         resolve();
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
-        this.currentAudio = null;
-        this.eventEmitter?.emit("tts:audio:end", {});
         reject(new Error("Audio playback failed"));
       };
 
@@ -76,12 +68,7 @@ export class OpenAITTSPlayer implements TTSPlayer {
   }
 
   async stop(): Promise<void> {
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
-      this.currentAudio = null;
-      this.eventEmitter?.emit("tts:audio:end", {});
-    }
+    // Stateless이므로 특별한 정리 작업 없음
   }
 
   setVoice(voice: string): void {
