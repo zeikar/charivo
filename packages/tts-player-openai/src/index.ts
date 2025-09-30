@@ -17,6 +17,7 @@ export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 export class OpenAITTSPlayer implements TTSPlayer {
   private provider: OpenAITTSProvider;
   private currentAudio: HTMLAudioElement | null = null;
+  private eventEmitter?: { emit: (event: string, data: any) => void };
 
   constructor(config: OpenAITTSPlayerConfig) {
     // 브라우저에서 사용하기 위해 dangerouslyAllowBrowser를 자동으로 true로 설정
@@ -24,6 +25,13 @@ export class OpenAITTSPlayer implements TTSPlayer {
       ...config,
       dangerouslyAllowBrowser: true,
     });
+  }
+
+  setEventEmitter(eventEmitter: {
+    emit: (event: string, data: any) => void;
+  }): void {
+    console.log("🔗 OpenAI TTS: Event emitter connected");
+    this.eventEmitter = eventEmitter;
   }
 
   async speak(text: string, options?: TTSOptions): Promise<void> {
@@ -44,15 +52,22 @@ export class OpenAITTSPlayer implements TTSPlayer {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 
+      // Emit audio start event for lip sync
+      console.log("🎵 OpenAI TTS: Emitting tts:audio:start event", audio);
+      this.eventEmitter?.emit("tts:audio:start", { audioElement: audio });
+
       audio.onended = () => {
+        console.log("🔇 OpenAI TTS: Audio ended, emitting tts:audio:end event");
         URL.revokeObjectURL(audioUrl);
         this.currentAudio = null;
+        this.eventEmitter?.emit("tts:audio:end", {});
         resolve();
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
         this.currentAudio = null;
+        this.eventEmitter?.emit("tts:audio:end", {});
         reject(new Error("Audio playback failed"));
       };
 
@@ -65,6 +80,7 @@ export class OpenAITTSPlayer implements TTSPlayer {
       this.currentAudio.pause();
       this.currentAudio.currentTime = 0;
       this.currentAudio = null;
+      this.eventEmitter?.emit("tts:audio:end", {});
     }
   }
 

@@ -14,6 +14,7 @@ import {
   playSafe,
 } from "./utils/motion";
 import { setupResponsiveResize, type ResizeTeardown } from "./utils/resize";
+import { RealTimeLipSync } from "./utils/lipsync";
 
 export class Live2DRenderer implements Renderer {
   private static cubismStarted = false;
@@ -33,6 +34,7 @@ export class Live2DRenderer implements Renderer {
   private deviceToScreen = new CubismMatrix44();
   private viewMatrix = new CubismViewMatrix();
   private draggingPointerId?: number;
+  private lipSync = new RealTimeLipSync();
 
   constructor(canvas?: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -42,6 +44,132 @@ export class Live2DRenderer implements Renderer {
     callback: (message: Message, character?: Character) => void,
   ): void {
     this.messageCallback = callback;
+  }
+
+  setEventBus(eventBus: {
+    on: (event: string, callback: (...args: any[]) => void) => void;
+    emit: (event: string, data: any) => void;
+  }): void {
+    console.log(
+      "🎯 Live2DRenderer: Event bus connected - setting up listeners",
+    );
+
+    // Listen for TTS audio events
+    eventBus.on(
+      "tts:audio:start",
+      (data: { audioElement: HTMLAudioElement; characterId?: string }) => {
+        console.log(
+          "🎵 Live2DRenderer: ✅ RECEIVED tts:audio:start event",
+          data,
+        );
+        this.startRealtimeLipSync(data.audioElement, data.characterId);
+      },
+    );
+
+    eventBus.on("tts:audio:end", (data: { characterId?: string }) => {
+      console.log("🔇 Live2DRenderer: ✅ RECEIVED tts:audio:end event", data);
+      this.stopRealtimeLipSync();
+    });
+
+    eventBus.on(
+      "tts:lipsync:update",
+      (data: { rms: number; characterId?: string }) => {
+        // 🚨 DEBUG: Force much higher RMS values for testing visibility
+        const debugRms = Math.max(data.rms * 2.0, 0.8); // Double the intensity, minimum 0.8
+        console.log(
+          `📊 Live2DRenderer: ✅ RECEIVED tts:lipsync:update - original: ${data.rms.toFixed(3)}, debug: ${debugRms.toFixed(3)}`,
+        );
+
+        if (this.model?.isReady()) {
+          this.model.setRealtimeLipSync(true);
+          this.model.updateRealtimeLipSyncRms(debugRms);
+        } else {
+          console.warn(
+            "⚠️ Live2DRenderer: Model not ready for lip sync update",
+          );
+        }
+      },
+    );
+
+    // Test all events are properly registered
+    console.log("🎯 Live2DRenderer: All event listeners registered");
+
+    // Emit lip sync updates for external listeners
+    this.lipSync.cleanup(); // Clean up any existing connections
+  }
+
+  private startRealtimeLipSync(
+    audioElement: HTMLAudioElement,
+    characterId?: string,
+  ): void {
+    console.log("🎤 Live2DRenderer: Starting realtime lip sync", {
+      modelReady: this.model?.isReady(),
+      audioElement: audioElement?.tagName,
+      characterId,
+    });
+
+    if (!this.model?.isReady()) {
+      console.warn("⚠️ Live2DRenderer: Model not ready for lip sync");
+      return;
+    }
+
+    this.model.setRealtimeLipSync(true);
+    console.log("✅ Live2DRenderer: Model set to realtime lip sync mode");
+
+    // 🚨 DEBUG: Temporarily disabled forced lip movement to test simulated lip sync only
+    // console.log("🔥 DEBUG: Starting forced lip movement test");
+    // this.startDebugLipSync();
+
+    this.lipSync.connectToAudio(audioElement, (rms: number) => {
+      // Only log significant RMS changes to avoid spam
+      if (rms > 0.1) {
+        console.log(`📊 Live2DRenderer: RMS update: ${rms.toFixed(3)}`);
+      }
+      this.model?.updateRealtimeLipSyncRms(rms);
+    });
+  }
+
+  private startDebugLipSync(): void {
+    console.log("🔥 DEBUG: Starting forced lip movement animation");
+
+    let frame = 0;
+    const debugInterval = setInterval(() => {
+      if (!this.model?.isReady()) {
+        clearInterval(debugInterval);
+        return;
+      }
+
+      // Create a sine wave pattern for mouth movement
+      const time = frame * 0.2; // Faster oscillation
+      const rms = (Math.sin(time) + 1) * 0.5; // 0 to 1
+      const intensity = rms * 1.0; // Maximum lip sync range for visibility
+
+      console.log(
+        `🔥 DEBUG: Forcing RMS ${intensity.toFixed(3)} (frame ${frame})`,
+      );
+      this.model.updateRealtimeLipSyncRms(intensity);
+
+      frame++;
+
+      // Stop after 10 seconds (100 frames at 100ms intervals)
+      if (frame > 100) {
+        clearInterval(debugInterval);
+        console.log("🔥 DEBUG: Forced lip movement test completed");
+      }
+    }, 100); // 10 FPS
+  }
+
+  private stopRealtimeLipSync(): void {
+    console.log("🛑 Live2DRenderer: Stopping realtime lip sync");
+
+    if (!this.model?.isReady()) {
+      console.warn("⚠️ Live2DRenderer: Model not ready during lip sync stop");
+      return;
+    }
+
+    this.model.setRealtimeLipSync(false);
+    this.lipSync.stop();
+    console.log("✅ Live2DRenderer: Lip sync stopped");
   }
 
   async initialize(): Promise<void> {
@@ -125,6 +253,8 @@ export class Live2DRenderer implements Renderer {
 
     this.host?.dispose();
     this.host = undefined;
+
+    this.lipSync.cleanup();
 
     this.teardownResize?.();
     this.teardownResize = undefined;

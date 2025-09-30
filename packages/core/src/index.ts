@@ -16,7 +16,35 @@ export class Charivo {
   }
 
   attachRenderer(renderer: Renderer): void {
+    console.log("🎭 Charivo: Attaching renderer", renderer.constructor.name);
     this.renderer = renderer;
+
+    // Set up event bus connection if renderer supports it
+    if (
+      "setEventBus" in renderer &&
+      typeof renderer.setEventBus === "function"
+    ) {
+      console.log("🔗 Charivo: ✅ Renderer supports event bus - connecting");
+      (renderer as any).setEventBus({
+        on: (event: string, callback: (...args: any[]) => void) => {
+          console.log(`🔗 Charivo: Renderer subscribing to event: ${event}`);
+          this.eventBus.on(event as any, callback as any);
+        },
+        emit: (event: string, data: any) => {
+          console.log(`🔗 Charivo: Renderer emitting event: ${event}`, data);
+          this.eventBus.emit(event as any, data);
+        },
+      });
+      console.log("🔗 Charivo: Event bus connection completed");
+    } else {
+      console.warn(
+        "⚠️ Charivo: Renderer doesn't support event bus connection",
+        {
+          hasSetEventBus: "setEventBus" in renderer,
+          setEventBusType: typeof (renderer as any).setEventBus,
+        },
+      );
+    }
   }
 
   attachLLM(manager: LLMManager): void {
@@ -24,7 +52,32 @@ export class Charivo {
   }
 
   attachTTS(adapter: TTSPlayer): void {
+    console.log("🔊 Charivo: Attaching TTS adapter", adapter.constructor.name);
     this.ttsAdapter = adapter;
+
+    // Connect event emitter if TTS player supports it
+    if (
+      "setEventEmitter" in adapter &&
+      typeof adapter.setEventEmitter === "function"
+    ) {
+      console.log(
+        "🔗 Charivo: ✅ TTS adapter supports event emitter - connecting",
+      );
+      (adapter as any).setEventEmitter({
+        emit: (event: string, data: any) => {
+          console.log(`🎵 Charivo: ✅ TTS EMITTING EVENT: ${event}`, data);
+          this.eventBus.emit(event as any, data);
+          console.log(`🎵 Charivo: ✅ Event ${event} emitted to event bus`);
+        },
+      });
+      console.log("🔗 Charivo: TTS event emitter connection completed");
+    } else {
+      console.warn("⚠️ Charivo: TTS adapter doesn't support event emitter", {
+        hasSetEventEmitter: "setEventEmitter" in adapter,
+        setEventEmitterType: typeof (adapter as any).setEventEmitter,
+        adapterType: adapter.constructor.name,
+      });
+    }
   }
 
   addCharacter(character: Character): void {

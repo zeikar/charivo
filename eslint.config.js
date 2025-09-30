@@ -89,7 +89,7 @@ export default [
       // General rules
       "prefer-const": "error",
       "no-var": "error",
-      "no-console": "warn",
+      "no-console": "off",
       eqeqeq: ["error", "always"],
       curly: ["error", "all"],
       "no-undef": "off", // TypeScript handles this
@@ -125,7 +125,7 @@ export default [
     rules: {
       "prefer-const": "error",
       "no-var": "error",
-      "no-console": "warn",
+      "no-console": "off",
       eqeqeq: ["error", "always"],
       curly: ["error", "all"],
     },

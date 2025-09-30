@@ -64,13 +64,11 @@ if (typeof window !== "undefined") {
   }
 
   if (typeof window.ResizeObserver === "undefined") {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     window.ResizeObserver = ResizeObserverStub;
   }
 
   if (typeof window.MutationObserver === "undefined") {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     window.MutationObserver = MutationObserverStub;
   }
