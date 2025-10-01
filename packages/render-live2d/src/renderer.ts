@@ -329,13 +329,11 @@ export class Live2DRenderer implements Renderer {
       this.draggingPointerId = event.pointerId;
       this.canvas?.setPointerCapture(event.pointerId);
       const { viewX, viewY } = this.toViewCoordinates(event);
-      this.model.setDragging(viewX, viewY);
       this.handleTap(viewX, viewY);
     };
 
     const move = (event: PointerEvent) => {
       if (!this.model?.isReady()) return;
-      if (this.draggingPointerId !== event.pointerId) return;
       const { viewX, viewY } = this.toViewCoordinates(event);
       this.model.setDragging(viewX, viewY);
     };
@@ -343,14 +341,12 @@ export class Live2DRenderer implements Renderer {
     const end = (event: PointerEvent) => {
       if (!this.model?.isReady()) return;
       if (this.draggingPointerId !== event.pointerId) return;
-      this.model.setDragging(0, 0);
       this.draggingPointerId = undefined;
       this.canvas?.releasePointerCapture(event.pointerId);
     };
 
     const cancel = (event: PointerEvent) => {
       if (this.draggingPointerId !== event.pointerId) return;
-      this.model?.setDragging(0, 0);
       this.draggingPointerId = undefined;
     };
 
