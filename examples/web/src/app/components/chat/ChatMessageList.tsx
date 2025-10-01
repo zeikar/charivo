@@ -17,9 +17,9 @@ function formatTimestamp(timestamp: Date | number | string) {
 
 export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
   return (
-    <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 max-h-full">
+    <div className="p-3 space-y-3 min-h-full">
       {messages.length === 0 && !isLoading && (
-        <div className="text-center text-gray-500 dark:text-gray-400 flex flex-col justify-center h-full">
+        <div className="text-center text-gray-500 dark:text-gray-400 flex flex-col justify-center h-full min-h-[300px]">
           <div className="text-3xl mb-3">🚀</div>
           <p className="text-base font-medium mb-2">
             Ready to explore Charivo!

@@ -40,7 +40,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   return (
     <div className="lg:col-span-2 flex flex-col min-h-0">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden flex-1 flex flex-col min-h-0">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden flex-1 flex flex-col min-h-0 max-h-full">
         <ChatSettings
           selectedLLMClient={selectedLLMClient}
           onSelectLLMClient={onSelectLLMClient}
@@ -50,7 +50,9 @@ export function ChatPanel({
           ttsError={ttsError}
         />
 
-        <ChatMessageList messages={messages} isLoading={isLoading} />
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <ChatMessageList messages={messages} isLoading={isLoading} />
+        </div>
 
         <ChatInput
           value={input}
