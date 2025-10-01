@@ -71,8 +71,8 @@ export function Live2DPanel({
         {/* Tips */}
         <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <p className="text-xs text-blue-800 dark:text-blue-300 text-center">
-            💡 <strong>Try saying:</strong> "Hello Hiyori!", "How are you?", or
-            "Tell me about yourself"
+            💡 <strong>Try saying:</strong> &quot;Hello Hiyori!&quot;, &quot;How
+            are you?&quot;, or &quot;Tell me about yourself&quot;
           </p>
         </div>
       </div>

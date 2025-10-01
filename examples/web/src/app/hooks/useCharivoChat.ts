@@ -153,9 +153,9 @@ export function useCharivoChat({
 
     let isMounted = true;
     let live2DRenderer: Live2DRendererHandle | null = null;
+    const container = canvasContainerRef.current;
 
     const initCharivo = async () => {
-      const container = canvasContainerRef.current;
       if (!container) return;
 
       container.innerHTML = "";
@@ -243,7 +243,6 @@ export function useCharivoChat({
       setMessages([]);
       setIsSpeaking(false);
 
-      const container = canvasContainerRef.current;
       if (container && container.contains(canvas)) {
         container.removeChild(canvas);
       }
