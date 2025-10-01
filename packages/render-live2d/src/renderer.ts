@@ -16,6 +16,13 @@ import {
 import { setupResponsiveResize, type ResizeTeardown } from "./utils/resize";
 import { RealTimeLipSync } from "./utils/lipsync";
 
+export type MouseTrackingMode = "canvas" | "document";
+
+export interface Live2DRendererOptions {
+  canvas?: HTMLCanvasElement;
+  mouseTracking?: MouseTrackingMode;
+}
+
 export class Live2DRenderer implements Renderer {
   private static cubismStarted = false;
 
@@ -33,11 +40,12 @@ export class Live2DRenderer implements Renderer {
   };
   private deviceToScreen = new CubismMatrix44();
   private viewMatrix = new CubismViewMatrix();
-  private draggingPointerId?: number;
   private lipSync = new RealTimeLipSync();
+  private mouseTracking: MouseTrackingMode;
 
-  constructor(canvas?: HTMLCanvasElement) {
-    this.canvas = canvas;
+  constructor(options?: Live2DRendererOptions) {
+    this.canvas = options?.canvas;
+    this.mouseTracking = options?.mouseTracking ?? "canvas";
   }
 
   setMessageCallback(
@@ -193,11 +201,19 @@ export class Live2DRenderer implements Renderer {
       this.animationFrameId = undefined;
     }
 
-    if (this.pointerHandlers && this.canvas) {
-      this.canvas.removeEventListener("pointerdown", this.pointerHandlers.down);
-      this.canvas.removeEventListener("pointermove", this.pointerHandlers.move);
-      this.canvas.removeEventListener("pointerup", this.pointerHandlers.up);
-      this.canvas.removeEventListener(
+    if (this.pointerHandlers) {
+      const eventTarget =
+        this.mouseTracking === "document" ? document : this.canvas;
+      eventTarget?.removeEventListener(
+        "pointerdown",
+        this.pointerHandlers.down,
+      );
+      eventTarget?.removeEventListener(
+        "pointermove",
+        this.pointerHandlers.move,
+      );
+      eventTarget?.removeEventListener("pointerup", this.pointerHandlers.up);
+      eventTarget?.removeEventListener(
         "pointercancel",
         this.pointerHandlers.cancel,
       );
@@ -326,10 +342,18 @@ export class Live2DRenderer implements Renderer {
 
     const down = (event: PointerEvent) => {
       if (!this.model?.isReady()) return;
-      this.draggingPointerId = event.pointerId;
-      this.canvas?.setPointerCapture(event.pointerId);
-      const { viewX, viewY } = this.toViewCoordinates(event);
-      this.handleTap(viewX, viewY);
+      const rect = this.canvas?.getBoundingClientRect();
+      if (!rect) return;
+      const isOnCanvas =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+
+      if (isOnCanvas) {
+        const { viewX, viewY } = this.toViewCoordinates(event);
+        this.handleTap(viewX, viewY);
+      }
     };
 
     const move = (event: PointerEvent) => {
@@ -338,24 +362,14 @@ export class Live2DRenderer implements Renderer {
       this.model.setDragging(viewX, viewY);
     };
 
-    const end = (event: PointerEvent) => {
-      if (!this.model?.isReady()) return;
-      if (this.draggingPointerId !== event.pointerId) return;
-      this.draggingPointerId = undefined;
-      this.canvas?.releasePointerCapture(event.pointerId);
-    };
+    // Choose event target based on tracking mode
+    const eventTarget =
+      this.mouseTracking === "document" ? document : this.canvas;
 
-    const cancel = (event: PointerEvent) => {
-      if (this.draggingPointerId !== event.pointerId) return;
-      this.draggingPointerId = undefined;
-    };
+    eventTarget.addEventListener("pointerdown", down, { passive: true });
+    eventTarget.addEventListener("pointermove", move, { passive: true });
 
-    this.canvas.addEventListener("pointerdown", down, { passive: true });
-    this.canvas.addEventListener("pointermove", move, { passive: true });
-    this.canvas.addEventListener("pointerup", end, { passive: true });
-    this.canvas.addEventListener("pointercancel", cancel, { passive: true });
-
-    this.pointerHandlers = { down, move, up: end, cancel };
+    this.pointerHandlers = { down, move, up: down, cancel: down };
   }
 
   private handleTap(viewX: number, viewY: number): void {
@@ -395,7 +409,7 @@ export class Live2DRenderer implements Renderer {
 }
 
 export function createLive2DRenderer(
-  canvas?: HTMLCanvasElement,
+  options?: Live2DRendererOptions,
 ): Live2DRenderer {
-  return new Live2DRenderer(canvas);
+  return new Live2DRenderer(options);
 }

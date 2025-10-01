@@ -164,7 +164,10 @@ export function useCharivoChat({
       const instance = new Charivo();
 
       const { Live2DRenderer } = await import("@charivo/render-live2d");
-      const renderer = new Live2DRenderer(canvas);
+      const renderer = new Live2DRenderer({
+        canvas,
+        mouseTracking: "document",
+      });
       live2DRenderer = renderer;
 
       renderer.setMessageCallback((message: Message, character?: Character) => {
