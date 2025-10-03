@@ -93,15 +93,15 @@ await renderer.loadModel("/live2d/hiyori/hiyori.model3.json");
 const renderManager = createRenderManager(renderer);
 charivo.attachRenderer(renderManager);
 
-// 5. Configure character
-charivo.setCharacter({
+// 5. Add character
+charivo.addCharacter({
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and helpful AI assistant"
 });
 
 // 6. Start chatting!
-const response = await charivo.sendMessage("Hello!");
+await charivo.userSay("Hello!", "hiyori");
 // → LLM generates response
 // → TTS speaks the response
 // → Renderer animates with lip-sync
@@ -171,17 +171,18 @@ Full setup with all features:
 // Setup (see Basic Usage above)
 const charivo = new Charivo();
 // ... attach LLM, TTS, renderer
+// ... addCharacter
 
 // Simple conversation
-await charivo.sendMessage("What's the weather?");
+await charivo.userSay("What's the weather?", "hiyori");
 // → "Let me check that for you!"
 
 // Character speaks with emotions
-await charivo.sendMessage("That's amazing!");
+await charivo.userSay("That's amazing!", "hiyori");
 // → Happy motion + big smile + "I'm glad you like it!"
 
 // Automatic lip-sync during speech
-await charivo.sendMessage("Tell me a story");
+await charivo.userSay("Tell me a story", "hiyori");
 // → Mouth moves naturally with speech audio
 ```
 

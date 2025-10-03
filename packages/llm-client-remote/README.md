@@ -34,8 +34,12 @@ llmManager.setCharacter({
   personality: "Cheerful and helpful"
 });
 
-await llmManager.initialize();
-const response = await llmManager.chat(messages);
+const response = await llmManager.generateResponse({
+  id: "1",
+  content: "Hello!",
+  timestamp: new Date(),
+  type: "user"
+});
 ```
 
 ### Server-side Implementation (Required)
@@ -54,13 +58,13 @@ const provider = createOpenAILLMProvider({
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, character } = await request.json();
-    const response = await provider.chat(messages, character);
+    const { messages } = await request.json();
+    const message = await provider.generateResponse(messages);
     
-    return NextResponse.json({ response });
+    return NextResponse.json({ success: true, message });
   } catch (error) {
     return NextResponse.json(
-      { error: "Chat failed" },
+      { success: false, error: "Chat failed" },
       { status: 500 }
     );
   }
@@ -88,34 +92,15 @@ interface RemoteLLMConfig {
 
 ### Methods
 
-#### `initialize()`
-Initialize the client.
+#### `call(messages)`
+Send messages to the server and get a response.
 
 ```typescript
-await client.initialize();
-```
-
-#### `chat(messages, character?)`
-Send messages and get a response.
-
-```typescript
-const response = await client.chat(
-  [
-    { id: "1", content: "Hello!", timestamp: new Date(), type: "user" }
-  ],
-  {
-    id: "assistant",
-    name: "Hiyori",
-    personality: "Cheerful"
-  }
-);
-```
-
-#### `destroy()`
-Clean up the client.
-
-```typescript
-await client.destroy();
+const response = await client.call([
+  { role: "user", content: "Hello!" },
+  { role: "assistant", content: "Hi there!" },
+  { role: "user", content: "How are you?" }
+]);
 ```
 
 ## Complete Example
@@ -137,7 +122,7 @@ function App() {
     const llmManager = createLLMManager(client);
     
     charivo.attachLLM(llmManager);
-    charivo.setCharacter({
+    charivo.addCharacter({
       id: "hiyori",
       name: "Hiyori",
       personality: "Cheerful AI assistant"
@@ -147,7 +132,7 @@ function App() {
   });
 
   const handleSend = async (message: string) => {
-    const response = await charivo.sendMessage(message);
+    await charivo.userSay(message, "hiyori");
     console.log(response);
   };
 
@@ -168,10 +153,10 @@ const provider = createOpenAILLMProvider({
 });
 
 export async function POST(request: NextRequest) {
-  const { messages, character } = await request.json();
-  const response = await provider.chat(messages, character);
+  const { messages } = await request.json();
+  const message = await provider.generateResponse(messages);
   
-  return NextResponse.json({ response });
+  return NextResponse.json({ success: true, message });
 }
 ```
 
@@ -198,7 +183,7 @@ export async function POST(request: NextRequest) {
 
 ```typescript
 try {
-  const response = await client.chat(messages);
+  const response = await client.call(messages);
 } catch (error) {
   if (error.response?.status === 429) {
     console.error("Rate limit exceeded");
@@ -220,9 +205,9 @@ export async function POST(request: Request) {
   const { messages } = await request.json();
   
   // Call any LLM API (Anthropic, Cohere, etc.)
-  const response = await yourLLMAPI.chat(messages);
+  const response = await yourLLMAPI.generateCompletion(messages);
   
-  return Response.json({ response });
+  return Response.json({ success: true, message: response });
 }
 ```
 

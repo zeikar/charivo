@@ -34,7 +34,6 @@ const player = createRemoteTTSPlayer({
 
 // Wrap with TTSManager
 const ttsManager = createTTSManager(player);
-await ttsManager.initialize();
 await ttsManager.speak("Hello, world!");
 ```
 
@@ -102,13 +101,6 @@ interface RemoteTTSConfig {
 
 ### Methods
 
-#### `initialize()`
-Initialize the player.
-
-```typescript
-await player.initialize();
-```
-
 #### `speak(text)`
 Convert text to speech by calling your server endpoint.
 
@@ -123,11 +115,11 @@ Stop current playback.
 await player.stop();
 ```
 
-#### `destroy()`
-Clean up the player.
+#### `stop()`
+Stop current playback.
 
 ```typescript
-await player.destroy();
+await player.stop();
 ```
 
 ## Backend-specific Usage
@@ -170,7 +162,7 @@ const ttsManager = createTTSManager(player);
 charivo.attachTTS(ttsManager);
 
 // Use it
-await charivo.sendMessage("Hello!");
+await charivo.userSay("Hello!", "assistant");
 ```
 
 ### Server-side (Next.js)

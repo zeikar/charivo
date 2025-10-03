@@ -27,15 +27,8 @@ const client = new OpenAILLMClient({
   model: "gpt-4"
 });
 
-await client.initialize();
-
-const response = await client.chat([
-  {
-    id: "1",
-    content: "Hello!",
-    timestamp: new Date(),
-    type: "user"
-  }
+const response = await client.call([
+  { role: "user", content: "Hello!" }
 ]);
 
 console.log(response); // "Hello! How can I help you today?"
@@ -60,8 +53,12 @@ llmManager.setCharacter({
   personality: "Cheerful and helpful"
 });
 
-await llmManager.initialize();
-const response = await llmManager.chat(messages);
+const response = await llmManager.generateResponse({
+  id: "1",
+  content: "Hello!",
+  timestamp: new Date(),
+  type: "user"
+});
 ```
 
 ### Custom Configuration
@@ -97,37 +94,18 @@ new OpenAILLMClient(config: OpenAILLMClientConfig)
 
 ### Methods
 
-#### `initialize()`
-Initialize the client.
-
-```typescript
-await client.initialize();
-```
-
-#### `chat(messages, character?)`
+#### `call(messages)`
 Send messages and get a response.
 
 ```typescript
-const response = await client.chat(
-  [
-    { id: "1", content: "Hi", timestamp: new Date(), type: "user" },
-    { id: "2", content: "Hello!", timestamp: new Date(), type: "character" },
-    { id: "3", content: "How are you?", timestamp: new Date(), type: "user" }
-  ],
-  {
-    id: "assistant",
-    name: "Hiyori",
-    personality: "Cheerful"
-  }
-);
+const response = await client.call([
+  { role: "user", content: "Hi" },
+  { role: "assistant", content: "Hello!" },
+  { role: "user", content: "How are you?" }
+]);
 ```
 
-#### `destroy()`
-Clean up the client.
-
-```typescript
-await client.destroy();
-```
+**Note**: This client wraps the OpenAI provider and is suitable for development/testing. For production, use `@charivo/llm-client-remote` with a server-side provider to keep API keys secure.
 
 ## Supported Models
 
@@ -195,7 +173,7 @@ const client = new OpenAILLMClient({
 
 ```typescript
 try {
-  const response = await client.chat(messages);
+  const response = await client.call(messages);
 } catch (error) {
   if (error.code === "insufficient_quota") {
     console.error("OpenAI quota exceeded");

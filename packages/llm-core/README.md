@@ -45,17 +45,20 @@ llmManager.setCharacter({
   ]
 });
 
-// Initialize
-await llmManager.initialize();
+// Generate responses (conversation history managed automatically)
+const response1 = await llmManager.generateResponse({
+  id: "1",
+  content: "Hello!",
+  timestamp: new Date(),
+  type: "user"
+});
 
-// Chat (conversation history managed automatically)
-const response1 = await llmManager.chat([
-  { id: "1", content: "Hello!", timestamp: new Date(), type: "user" }
-]);
-
-const response2 = await llmManager.chat([
-  { id: "2", content: "How are you?", timestamp: new Date(), type: "user" }
-]);
+const response2 = await llmManager.generateResponse({
+  id: "2",
+  content: "How are you?",
+  timestamp: new Date(),
+  type: "user"
+});
 // Previous messages are automatically included in context
 ```
 
@@ -69,7 +72,6 @@ const llmManager = new LLMManager(client, {
 });
 
 llmManager.setCharacter(character);
-await llmManager.initialize();
 
 // After 10 messages, oldest messages are automatically removed
 ```
@@ -81,23 +83,14 @@ import { LLMClient, Message, Character } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
 class MyCustomLLMClient implements LLMClient {
-  async initialize(): Promise<void> {
-    // Setup your LLM
-  }
-
-  async chat(messages: Message[], character?: Character): Promise<string> {
+  async call(messages: Array<{role: string, content: string}>): Promise<string> {
     // Call your LLM API
-    const prompt = messages.map(m => m.content).join("\n");
     const response = await fetch("https://my-llm-api.com/chat", {
       method: "POST",
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ messages })
     });
     const data = await response.json();
     return data.response;
-  }
-
-  async destroy(): Promise<void> {
-    // Cleanup
   }
 }
 
@@ -138,32 +131,30 @@ llmManager.setCharacter({
 });
 ```
 
-##### `initialize()`
-Initialize the underlying LLM client.
+##### `generateResponse(message)`
+Generate a response for a user message. Conversation history is managed automatically.
 
 ```typescript
-await llmManager.initialize();
+const response = await llmManager.generateResponse({
+  id: "1",
+  content: "What's the weather?",
+  timestamp: new Date(),
+  type: "user"
+});
 ```
 
-##### `chat(messages)`
-Send messages and get a response. Conversation history is managed automatically.
+##### `getHistory()`
+Get the conversation history.
 
 ```typescript
-const response = await llmManager.chat([
-  {
-    id: "1",
-    content: "What's the weather?",
-    timestamp: new Date(),
-    type: "user"
-  }
-]);
+const history = llmManager.getHistory();
 ```
 
-##### `destroy()`
-Clean up and destroy the manager.
+##### `clearHistory()`
+Clear the conversation history.
 
 ```typescript
-await llmManager.destroy();
+llmManager.clearHistory();
 ```
 
 ### `CharacterPromptBuilder`
@@ -275,14 +266,14 @@ LLMManager (stateful)
 
 ## Best Practices
 
-1. **Set character before calling chat**: Always call `setCharacter()` before starting a conversation
+1. **Set character before generating response**: Always call `setCharacter()` before starting a conversation
 2. **Use maxHistoryMessages**: Limit history to prevent token overflow
 3. **Include message types**: Use proper message types (user, character, system) for context
 4. **Handle errors**: Wrap calls in try-catch for API errors
 
 ```typescript
 try {
-  const response = await llmManager.chat(messages);
+  const response = await llmManager.generateResponse("Hello");
 } catch (error) {
   console.error("LLM error:", error);
   // Handle error (e.g., show error message to user)

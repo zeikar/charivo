@@ -48,16 +48,15 @@ await renderer.loadModel("/live2d/model.model3.json");
 const renderManager = createRenderManager(renderer);
 charivo.attachRenderer(renderManager);
 
-// Set character
-charivo.setCharacter({
+// Add character
+charivo.addCharacter({
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and helpful AI assistant"
 });
 
 // Start chatting
-const response = await charivo.sendMessage("Hello!");
-console.log(response); // Character's response
+await charivo.userSay("Hello!", "hiyori");
 ```
 
 ### Event Bus
@@ -120,9 +119,10 @@ type MotionType = "greeting" | "happy" | "thinking" | "talk";
 ```typescript
 interface LLMManager {
   setCharacter(character: Character): void;
-  initialize(): Promise<void>;
-  chat(messages: Message[]): Promise<string>;
-  destroy(): Promise<void>;
+  getCharacter(): Character | null;
+  clearHistory(): void;
+  getHistory(): Message[];
+  generateResponse(message: Message): Promise<string>;
 }
 ```
 
@@ -130,11 +130,13 @@ interface LLMManager {
 
 ```typescript
 interface TTSManager {
-  initialize(): Promise<void>;
-  speak(text: string): Promise<void>;
+  speak(text: string, options?: TTSOptions): Promise<void>;
   stop(): Promise<void>;
-  destroy(): Promise<void>;
-  setEventBus?(eventBus: SimpleEventBus): void;
+  setVoice(voice: string): void;
+  isSupported(): boolean;
+  setEventEmitter?(eventEmitter: {
+    emit: (event: string, data: any) => void;
+  }): void;
 }
 ```
 
@@ -197,20 +199,12 @@ This separation allows:
 ### Custom LLM Client
 
 ```typescript
-import { LLMClient, Message, Character } from "@charivo/core";
+import { LLMClient } from "@charivo/core";
 
 class MyLLMClient implements LLMClient {
-  async initialize(): Promise<void> {
-    // Setup your LLM
-  }
-
-  async chat(messages: Message[], character?: Character): Promise<string> {
+  async call(messages: Array<{role: string, content: string}>): Promise<string> {
     // Call your LLM API
     return "Response from my LLM";
-  }
-
-  async destroy(): Promise<void> {
-    // Cleanup
   }
 }
 ```
@@ -218,14 +212,10 @@ class MyLLMClient implements LLMClient {
 ### Custom TTS Player
 
 ```typescript
-import { TTSPlayer } from "@charivo/core";
+import { TTSPlayer, TTSOptions } from "@charivo/core";
 
 class MyTTSPlayer implements TTSPlayer {
-  async initialize(): Promise<void> {
-    // Setup your TTS
-  }
-
-  async speak(text: string): Promise<void> {
+  async speak(text: string, options?: TTSOptions): Promise<void> {
     // Play audio
   }
 
@@ -233,8 +223,12 @@ class MyTTSPlayer implements TTSPlayer {
     // Stop playback
   }
 
-  async destroy(): Promise<void> {
-    // Cleanup
+  setVoice(voice: string): void {
+    // Set voice
+  }
+
+  isSupported(): boolean {
+    return true;
   }
 }
 ```
