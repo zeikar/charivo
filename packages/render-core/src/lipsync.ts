@@ -14,20 +14,12 @@ export class RealTimeLipSync {
     audioElement: HTMLAudioElement,
     onRmsUpdate: (rms: number) => void,
   ): void {
-    console.log(
-      "🎤 RealTimeLipSync: Connecting to audio element",
-      audioElement,
-    );
     this.cleanup();
     this.onRmsUpdate = onRmsUpdate;
 
     try {
       this.audioContext = new (window.AudioContext ||
         (window as any).webkitAudioContext)();
-      console.log(
-        "🎵 RealTimeLipSync: AudioContext created",
-        this.audioContext.state,
-      );
 
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
@@ -37,31 +29,25 @@ export class RealTimeLipSync {
         this.audioContext.createMediaElementSource(audioElement);
       this.mediaElementSource.connect(this.analyser);
       this.analyser.connect(this.audioContext.destination);
-      console.log("🔗 RealTimeLipSync: Audio nodes connected");
 
       this.dataArray = new Uint8Array(
         this.analyser.frequencyBinCount,
       ) as Uint8Array;
       this.isActive = true;
       this.startAnalysis();
-      console.log("✅ RealTimeLipSync: Analysis started");
 
       // Resume audio context if suspended (required on some browsers)
       if (this.audioContext.state === "suspended") {
-        console.log(
-          "⏸️ RealTimeLipSync: AudioContext suspended, waiting for audio play",
-        );
         audioElement.addEventListener(
           "play",
           () => {
-            console.log("▶️ RealTimeLipSync: Audio started, resuming context");
             this.audioContext?.resume();
           },
           { once: true },
         );
       }
     } catch (error) {
-      console.error("❌ RealTimeLipSync: Failed to set up:", error);
+      console.error("RealTimeLipSync: Failed to set up audio analysis:", error);
     }
   }
 
@@ -95,11 +81,6 @@ export class RealTimeLipSync {
 
   private startAnalysis(): void {
     if (!this.isActive || !this.analyser || !this.dataArray) {
-      console.log("⚠️ RealTimeLipSync: Analysis stopped - missing components", {
-        isActive: this.isActive,
-        hasAnalyser: !!this.analyser,
-        hasDataArray: !!this.dataArray,
-      });
       return;
     }
 
@@ -119,11 +100,6 @@ export class RealTimeLipSync {
 
     const rms = Math.sqrt(sum / (speechBandEnd - speechBandStart));
     const smoothedRms = Math.min(rms * 2, 1.0); // Amplify and clamp
-
-    // Only log when there's significant audio activity
-    if (smoothedRms > 0.2) {
-      console.log(`📊 RealTimeLipSync: RMS = ${smoothedRms.toFixed(3)}`);
-    }
 
     this.onRmsUpdate?.(smoothedRms);
 

@@ -10,10 +10,3 @@ export function inferMotionFromMessage(text: string): MotionType {
   if (text.includes("어려") || text.includes("힘들")) return "thinking";
   return "talk";
 }
-
-/**
- * Motion inference utilities
- */
-export const MotionInference = {
-  inferFromMessage: inferMotionFromMessage,
-};

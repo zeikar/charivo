@@ -73,10 +73,9 @@ export interface LLMManager {
 
 // Renderer 인터페이스 (stateless renderer)
 export interface Renderer {
-  render(message: Message, character?: Character): Promise<void>;
   initialize(): Promise<void>;
   destroy(): Promise<void>;
-  setCharacter?(character: Character): void;
+  render(message: Message, character?: Character): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   playMotion?(motionType: MotionType): void;
   animateExpression?(motionType: MotionType): void;
@@ -86,11 +85,10 @@ export interface Renderer {
 
 // Render 매니저 (세션 관리, 립싱크, 모션 제어)
 export interface RenderManager {
-  setCharacter(character: Character): void;
-  getCharacter(): Character | null;
-  render(message: Message, character?: Character): Promise<void>;
   initialize(): Promise<void>;
   destroy(): Promise<void>;
+  setCharacter(character: Character): void;
+  render(message: Message, character?: Character): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(
     callback: (message: Message, character?: Character) => void,

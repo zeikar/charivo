@@ -79,21 +79,9 @@ export class Live2DRenderer implements Renderer {
     this.model = model;
   }
 
-  setCharacter(character: Character): void {
-    console.log("👤 Live2DRenderer: Character set:", character.name);
-  }
-
-  async render(message: Message, character?: Character): Promise<void> {
-    // Stateless renderer - just logs, no motion control
-    // Motion control is handled by RenderManager
-    const timestamp = message.timestamp.toLocaleTimeString();
-    if (message.type === "user") {
-      console.log(`👤 [${timestamp}] User: ${message.content}`);
-    } else if (message.type === "character" && character) {
-      console.log(`🎭 [${timestamp}] ${character.name}: ${message.content}`);
-    } else {
-      console.log(`ℹ️ [${timestamp}] System: ${message.content}`);
-    }
+  async render(_message: Message, _character?: Character): Promise<void> {
+    // Stateless renderer - rendering is handled by RenderManager
+    // This method is called by RenderManager after motion/expression control
   }
 
   /**
@@ -150,13 +138,20 @@ export class Live2DRenderer implements Renderer {
   animateExpression(motionType: MotionType): void {
     if (!this.model?.isReady()) return;
 
-    const expressionId = this.chooseExpression(motionType);
+    const expressionMap: Record<MotionType, string> = {
+      greeting: "smile",
+      happy: "smile",
+      thinking: "surprised",
+      talk: "normal",
+    };
+
+    const expressionId = expressionMap[motionType];
     if (!this.model.hasExpression(expressionId)) return;
 
     try {
       this.model.setExpression(expressionId);
     } catch {
-      // expression may not be available on all models
+      // Expression may not be available on all models
     }
   }
 
@@ -175,18 +170,6 @@ export class Live2DRenderer implements Renderer {
   updateRealtimeLipSyncRms(rms: number): void {
     if (this.model?.isReady()) {
       this.model.updateRealtimeLipSyncRms(rms);
-    }
-  }
-
-  private chooseExpression(motionType: MotionType): string {
-    switch (motionType) {
-      case "greeting":
-      case "happy":
-        return "smile";
-      case "thinking":
-        return "surprised";
-      default:
-        return "normal";
     }
   }
 
