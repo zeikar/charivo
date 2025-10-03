@@ -21,6 +21,7 @@
     "@charivo/tts-player-web": "workspace:*",
     "@charivo/tts-player-openai": "workspace:*",
     "@charivo/core": "workspace:*",
+    "@charivo/render-core": "workspace:*",
     "@charivo/render-live2d": "workspace:*",
     "@charivo/render-stub": "workspace:*",
     "next": "15.5.3",

@@ -163,27 +163,34 @@ export function useCharivoChat({
 
       const instance = new Charivo();
 
+      // Create Live2D renderer (stateless)
       const { Live2DRenderer } = await import("@charivo/render-live2d");
-      const renderer = new Live2DRenderer({
+      const live2dRenderer = new Live2DRenderer({
         canvas,
         mouseTracking: "document",
       });
-      live2DRenderer = renderer;
+      live2DRenderer = live2dRenderer;
 
-      renderer.setMessageCallback((message: Message, character?: Character) => {
-        setMessages((prev) => [...prev, { ...message, character }]);
-      });
-
-      await renderer.initialize();
-      await renderer.loadModel(
+      await live2dRenderer.initialize();
+      await live2dRenderer.loadModel(
         "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
+      );
+
+      // Wrap with RenderManager (stateful)
+      const { createRenderManager } = await import("@charivo/render-core");
+      const renderManager = createRenderManager(live2dRenderer);
+
+      renderManager.setMessageCallback(
+        (message: Message, character?: Character) => {
+          setMessages((prev) => [...prev, { ...message, character }]);
+        },
       );
 
       const llmClient = await createLLMClient(initialLLMClientRef.current);
       const { createLLMManager } = await import("@charivo/llm-core");
       const llmManager = createLLMManager(llmClient);
 
-      instance.attachRenderer(renderer);
+      instance.attachRenderer(renderManager);
       instance.attachLLM(llmManager);
 
       const ttsPlayer = await createTTSPlayer(initialTTSPlayerRef.current);
@@ -206,7 +213,7 @@ export function useCharivoChat({
       };
 
       instance.addCharacter(character);
-      renderer.setCharacter(character);
+      renderManager.setCharacter(character);
 
       instance.on(
         "character:speak",

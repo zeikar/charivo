@@ -1,4 +1,4 @@
-import { Renderer, Message, Character } from "@charivo/core";
+import { Renderer, Message, Character, MotionType } from "@charivo/core";
 import { Option, CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
 import { CubismViewMatrix } from "@framework/math/cubismviewmatrix";
@@ -7,14 +7,8 @@ import { LAppModel } from "./cubism/lappmodel";
 import { CubismModelHost } from "./cubism/model-host";
 import * as LAppDefine from "./cubism/lappdefine";
 import { LAppPal } from "./cubism/lapppal";
-import {
-  inferMotionFromMessage,
-  playMotion,
-  animateExpression,
-  playSafe,
-} from "./utils/motion";
+import { playSafe } from "./utils/motion";
 import { setupResponsiveResize, type ResizeTeardown } from "./utils/resize";
-import { RealTimeLipSync } from "./utils/lipsync";
 
 export type MouseTrackingMode = "canvas" | "document";
 
@@ -29,7 +23,6 @@ export class Live2DRenderer implements Renderer {
   private canvas?: HTMLCanvasElement;
   private host?: CubismModelHost;
   private model?: LAppModel;
-  private messageCallback?: (message: Message, character?: Character) => void;
   private teardownResize?: ResizeTeardown;
   private animationFrameId?: number;
   private pointerHandlers?: {
@@ -40,100 +33,11 @@ export class Live2DRenderer implements Renderer {
   };
   private deviceToScreen = new CubismMatrix44();
   private viewMatrix = new CubismViewMatrix();
-  private lipSync = new RealTimeLipSync();
   private mouseTracking: MouseTrackingMode;
 
   constructor(options?: Live2DRendererOptions) {
     this.canvas = options?.canvas;
     this.mouseTracking = options?.mouseTracking ?? "canvas";
-  }
-
-  setMessageCallback(
-    callback: (message: Message, character?: Character) => void,
-  ): void {
-    this.messageCallback = callback;
-  }
-
-  setEventBus(eventBus: {
-    on: (event: string, callback: (...args: any[]) => void) => void;
-    emit: (event: string, data: any) => void;
-  }): void {
-    console.log(
-      "🎯 Live2DRenderer: Event bus connected - setting up listeners",
-    );
-
-    // Listen for TTS audio events
-    eventBus.on(
-      "tts:audio:start",
-      (data: { audioElement: HTMLAudioElement; characterId?: string }) => {
-        console.log(
-          "🎵 Live2DRenderer: ✅ RECEIVED tts:audio:start event",
-          data,
-        );
-        this.startRealtimeLipSync(data.audioElement, data.characterId);
-      },
-    );
-
-    eventBus.on("tts:audio:end", (data: { characterId?: string }) => {
-      console.log("🔇 Live2DRenderer: ✅ RECEIVED tts:audio:end event", data);
-      this.stopRealtimeLipSync();
-    });
-
-    eventBus.on(
-      "tts:lipsync:update",
-      (data: { rms: number; characterId?: string }) => {
-        if (this.model?.isReady()) {
-          this.model.setRealtimeLipSync(true);
-          this.model.updateRealtimeLipSyncRms(data.rms);
-        }
-      },
-    );
-
-    // Test all events are properly registered
-    console.log("🎯 Live2DRenderer: All event listeners registered");
-
-    // Emit lip sync updates for external listeners
-    this.lipSync.cleanup(); // Clean up any existing connections
-  }
-
-  private startRealtimeLipSync(
-    audioElement: HTMLAudioElement,
-    characterId?: string,
-  ): void {
-    console.log("🎤 Live2DRenderer: Starting realtime lip sync", {
-      modelReady: this.model?.isReady(),
-      audioElement: audioElement?.tagName,
-      characterId,
-    });
-
-    if (!this.model?.isReady()) {
-      console.warn("⚠️ Live2DRenderer: Model not ready for lip sync");
-      return;
-    }
-
-    this.model.setRealtimeLipSync(true);
-    console.log("✅ Live2DRenderer: Model set to realtime lip sync mode");
-
-    this.lipSync.connectToAudio(audioElement, (rms: number) => {
-      // Only log significant RMS changes to avoid spam
-      if (rms > 0.1) {
-        console.log(`📊 Live2DRenderer: RMS update: ${rms.toFixed(3)}`);
-      }
-      this.model?.updateRealtimeLipSyncRms(rms);
-    });
-  }
-
-  private stopRealtimeLipSync(): void {
-    console.log("🛑 Live2DRenderer: Stopping realtime lip sync");
-
-    if (!this.model?.isReady()) {
-      console.warn("⚠️ Live2DRenderer: Model not ready during lip sync stop");
-      return;
-    }
-
-    this.model.setRealtimeLipSync(false);
-    this.lipSync.stop();
-    console.log("✅ Live2DRenderer: Lip sync stopped");
   }
 
   async initialize(): Promise<void> {
@@ -176,23 +80,114 @@ export class Live2DRenderer implements Renderer {
   }
 
   setCharacter(character: Character): void {
-    console.log("👤 Character set:", character.name);
+    console.log("👤 Live2DRenderer: Character set:", character.name);
   }
 
   async render(message: Message, character?: Character): Promise<void> {
+    // Stateless renderer - just logs, no motion control
+    // Motion control is handled by RenderManager
     const timestamp = message.timestamp.toLocaleTimeString();
     if (message.type === "user") {
       console.log(`👤 [${timestamp}] User: ${message.content}`);
     } else if (message.type === "character" && character) {
       console.log(`🎭 [${timestamp}] ${character.name}: ${message.content}`);
-      if (!this.model?.isReady()) return;
-      const motionType = inferMotionFromMessage(message.content);
-      playMotion(this.model, motionType);
-      animateExpression(this.model, motionType);
     } else {
       console.log(`ℹ️ [${timestamp}] System: ${message.content}`);
     }
-    this.messageCallback?.(message, character);
+  }
+
+  /**
+   * Play motion (controlled by RenderManager)
+   */
+  playMotion(motionType: MotionType): void {
+    if (!this.model?.isReady()) return;
+
+    switch (motionType) {
+      case "greeting":
+        playSafe(
+          this.model,
+          LAppDefine.MotionGroupBody,
+          0,
+          LAppDefine.PriorityNormal,
+        );
+        playSafe(
+          this.model,
+          LAppDefine.MotionGroupTap,
+          0,
+          LAppDefine.PriorityNormal,
+        );
+        break;
+      case "happy":
+        playSafe(
+          this.model,
+          LAppDefine.MotionGroupTapBody,
+          0,
+          LAppDefine.PriorityNormal,
+        );
+        break;
+      case "thinking":
+        playSafe(
+          this.model,
+          LAppDefine.MotionGroupIdle,
+          1,
+          LAppDefine.PriorityNormal,
+        );
+        break;
+      default:
+        playSafe(
+          this.model,
+          LAppDefine.MotionGroupIdle,
+          0,
+          LAppDefine.PriorityIdle,
+        );
+        break;
+    }
+  }
+
+  /**
+   * Animate expression (controlled by RenderManager)
+   */
+  animateExpression(motionType: MotionType): void {
+    if (!this.model?.isReady()) return;
+
+    const expressionId = this.chooseExpression(motionType);
+    if (!this.model.hasExpression(expressionId)) return;
+
+    try {
+      this.model.setExpression(expressionId);
+    } catch {
+      // expression may not be available on all models
+    }
+  }
+
+  /**
+   * Set realtime lip sync mode (controlled by RenderManager)
+   */
+  setRealtimeLipSync(enabled: boolean): void {
+    if (this.model?.isReady()) {
+      this.model.setRealtimeLipSync(enabled);
+    }
+  }
+
+  /**
+   * Update realtime lip sync RMS (controlled by RenderManager)
+   */
+  updateRealtimeLipSyncRms(rms: number): void {
+    if (this.model?.isReady()) {
+      this.model.updateRealtimeLipSyncRms(rms);
+    }
+  }
+
+  private chooseExpression(motionType: MotionType): string {
+    switch (motionType) {
+      case "greeting":
+      case "happy":
+        return "smile";
+      case "thinking":
+        return "surprised";
+      default:
+        return "normal";
+    }
   }
 
   async destroy(): Promise<void> {
@@ -225,8 +220,6 @@ export class Live2DRenderer implements Renderer {
 
     this.host?.dispose();
     this.host = undefined;
-
-    this.lipSync.cleanup();
 
     this.teardownResize?.();
     this.teardownResize = undefined;

@@ -43,9 +43,11 @@ pnpm dev
 import { Charivo } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 import { createRemoteLLMClient } from "@charivo/llm-client-remote";
+import { createTTSManager } from "@charivo/tts-core";
 import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
 // or
 // import { createWebTTSPlayer } from "@charivo/tts-player-web"; // Browser Speech API
+import { createRenderManager } from "@charivo/render-core";
 import { Live2DRenderer } from "@charivo/render-live2d";
 
 // Create Charivo instance
@@ -57,14 +59,18 @@ const llmManager = createLLMManager(llmClient);
 
 // Set up TTS
 const ttsPlayer = createRemoteTTSPlayer({ apiEndpoint: "/api/tts" });
+const ttsManager = createTTSManager(ttsPlayer);
 
-// Set up renderer
-const renderer = new Live2DRenderer(canvasElement);
+// Set up renderer (stateless renderer wrapped by stateful manager)
+const live2dRenderer = new Live2DRenderer({ canvas: canvasElement });
+await live2dRenderer.initialize();
+await live2dRenderer.loadModel("/path/to/model.model3.json");
+const renderManager = createRenderManager(live2dRenderer);
 
 // Connect components
 charivo.attachLLM(llmManager);
-charivo.attachTTS(ttsPlayer);
-charivo.attachRenderer(renderer);
+charivo.attachTTS(ttsManager);
+charivo.attachRenderer(renderManager);
 
 // Add your character
 charivo.addCharacter({
@@ -112,7 +118,8 @@ await charivo.userSay("Hello!", "hiyori");
 ### Rendering Packages
 | Package | Description |
 |---------|-------------|
-| [`@charivo/render-live2d`](./packages/render-live2d) | Live2D character rendering |
+| [`@charivo/render-core`](./packages/render-core) | Core rendering functionality with state management, lip-sync, and motion control |
+| [`@charivo/render-live2d`](./packages/render-live2d) | Live2D character rendering (stateless) |
 | [`@charivo/render-stub`](./packages/render-stub) | Stub renderer for testing |
 
 ## 🎯 Examples
@@ -160,7 +167,10 @@ Charivo follows a modular, layered architecture with clear separation of concern
 │  │ └─────────┴───────────┘ ││
 │  └─────────────────────────┘│
 │  ┌─────────────────────────┐│
-│  │   Rendering Layer       ││  ←─ Live2D, Stub, custom...
+│  │   Rendering Layer       ││
+│  │ ┌───────────┬─────────┐ ││
+│  │ │Render-Core│Renderers│ ││  ←─ Live2D, 3D, Stub, custom...
+│  │ └───────────┴─────────┘ ││
 │  └─────────────────────────┘│
 ├─────────────────────────────┤
 │   Server-Side Providers     │  ←─ OpenAI API, Custom APIs

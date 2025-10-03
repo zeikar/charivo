@@ -1,5 +1,11 @@
 import { EventBus } from "./bus";
-import { Character, Message, Renderer, TTSManager, LLMManager } from "./types";
+import {
+  Character,
+  Message,
+  RenderManager,
+  TTSManager,
+  LLMManager,
+} from "./types";
 
 export * from "./types";
 export * from "./bus";
@@ -7,7 +13,7 @@ export * from "./bus";
 export class Charivo {
   private eventBus: EventBus;
   private llmManager?: LLMManager;
-  private renderer?: Renderer;
+  private renderManager?: RenderManager;
   private ttsManager?: TTSManager;
   private characters: Map<string, Character> = new Map();
 
@@ -15,33 +21,43 @@ export class Charivo {
     this.eventBus = new EventBus();
   }
 
-  attachRenderer(renderer: Renderer): void {
-    console.log("🎭 Charivo: Attaching renderer", renderer.constructor.name);
-    this.renderer = renderer;
+  attachRenderer(renderManager: RenderManager): void {
+    console.log(
+      "🎭 Charivo: Attaching render manager",
+      renderManager.constructor.name,
+    );
+    this.renderManager = renderManager;
 
-    // Set up event bus connection if renderer supports it
+    // Set up event bus connection if render manager supports it
     if (
-      "setEventBus" in renderer &&
-      typeof renderer.setEventBus === "function"
+      "setEventBus" in renderManager &&
+      typeof renderManager.setEventBus === "function"
     ) {
-      console.log("🔗 Charivo: ✅ Renderer supports event bus - connecting");
-      (renderer as any).setEventBus({
+      console.log(
+        "🔗 Charivo: ✅ Render manager supports event bus - connecting",
+      );
+      (renderManager as any).setEventBus({
         on: (event: string, callback: (...args: any[]) => void) => {
-          console.log(`🔗 Charivo: Renderer subscribing to event: ${event}`);
+          console.log(
+            `🔗 Charivo: Render manager subscribing to event: ${event}`,
+          );
           this.eventBus.on(event as any, callback as any);
         },
         emit: (event: string, data: any) => {
-          console.log(`🔗 Charivo: Renderer emitting event: ${event}`, data);
+          console.log(
+            `🔗 Charivo: Render manager emitting event: ${event}`,
+            data,
+          );
           this.eventBus.emit(event as any, data);
         },
       });
       console.log("🔗 Charivo: Event bus connection completed");
     } else {
       console.warn(
-        "⚠️ Charivo: Renderer doesn't support event bus connection",
+        "⚠️ Charivo: Render manager doesn't support event bus connection",
         {
-          hasSetEventBus: "setEventBus" in renderer,
-          setEventBusType: typeof (renderer as any).setEventBus,
+          hasSetEventBus: "setEventBus" in renderManager,
+          setEventBusType: typeof (renderManager as any).setEventBus,
         },
       );
     }
@@ -94,8 +110,8 @@ export class Charivo {
 
     this.eventBus.emit("message:sent", { message: userMessage });
 
-    if (this.renderer) {
-      await this.renderer.render(userMessage);
+    if (this.renderManager) {
+      await this.renderManager.render(userMessage);
     }
 
     if (this.llmManager && characterId) {
@@ -117,8 +133,8 @@ export class Charivo {
         this.eventBus.emit("message:received", { message: characterMessage });
         this.eventBus.emit("character:speak", { character, message: response });
 
-        if (this.renderer) {
-          await this.renderer.render(characterMessage, character);
+        if (this.renderManager) {
+          await this.renderManager.render(characterMessage, character);
         }
 
         // TTS로 음성 출력
