@@ -1,21 +1,21 @@
-# @charivo/adapter-tts-remote
+# @charivo/tts-player-remote
 
-Remote HTTP TTS adapter for Charivo framework (client-side).
+Remote HTTP TTS player for Charivo framework (client-side).
 
 ## ⚠️ Important Security Note
 
-This is a **client-side HTTP adapter** that calls your server API endpoint, **NOT** external TTS APIs directly. This design keeps your API keys secure on the server side.
+This is a **client-side HTTP player** that calls your server API endpoint, **NOT** external TTS APIs directly. This design keeps your API keys secure on the server side.
 
 ## Architecture
 
 ```
-Browser/Client → RemoteTTSAdapter → Your Server API → External TTS API (OpenAI, ElevenLabs, etc.)
+Browser/Client → RemoteTTSPlayer → Your Server API → External TTS API (OpenAI, etc.)
 ```
 
 ## Installation
 
 ```bash
-npm install @charivo/adapter-tts-remote @charivo/core
+pnpm add @charivo/tts-player-remote @charivo/core
 ```
 
 ## Usage
@@ -23,46 +23,41 @@ npm install @charivo/adapter-tts-remote @charivo/core
 ### 1. Client-side Setup
 
 ```typescript
-import { createRemoteTTSAdapter } from "@charivo/adapter-tts-remote";
+import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
+import { createTTSManager } from "@charivo/tts-core";
 
-const ttsAdapter = createRemoteTTSAdapter({
+const player = createRemoteTTSPlayer({
   apiEndpoint: "/api/tts", // Your server endpoint
   defaultVoice: "alloy",
   defaultModel: "tts-1-hd"
 });
 
-// Use with Charivo
-charivo.attachTTS(ttsAdapter);
+// Wrap with TTSManager
+const ttsManager = createTTSManager(player);
+await ttsManager.initialize();
+await ttsManager.speak("Hello, world!");
 ```
 
 ### 2. Server-side Implementation (Required)
 
-You must implement a server endpoint that handles the actual TTS API calls:
+You must implement a server endpoint that handles the actual TTS API calls. Use `@charivo/tts-provider-openai` for easy setup:
 
 #### OpenAI TTS Backend Example
 
 ```typescript
 // app/api/tts/route.ts (Next.js)
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const provider = createOpenAITTSProvider({
+  apiKey: process.env.OPENAI_API_KEY!
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, voice = "alloy", model = "tts-1", speed = 1.0 } = await request.json();
+    const { text, voice = "alloy", model = "tts-1" } = await request.json();
 
-    const response = await openai.audio.speech.create({
-      model: model as "tts-1" | "tts-1-hd",
-      voice: voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer",
-      input: text,
-      response_format: "mp3",
-      speed: Math.max(0.25, Math.min(4.0, speed)),
-    });
-
-    const audioBuffer = await response.arrayBuffer();
+    const audioBuffer = await provider.generateSpeech(text, { voice, model });
 
     return new NextResponse(audioBuffer, {
       headers: {
@@ -71,7 +66,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("OpenAI TTS API Error:", error);
+    console.error("TTS API Error:", error);
     return NextResponse.json(
       { error: "Failed to generate speech" },
       { status: 500 }
@@ -80,43 +75,15 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-#### ElevenLabs Backend Example
 
-```typescript
-// app/api/elevenlabs-tts/route.ts
-export async function POST(request: NextRequest) {
-  const { text, voice } = await request.json();
-  
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
-    method: 'POST',
-    headers: {
-      'Accept': 'audio/mpeg',
-      'Content-Type': 'application/json',
-      'xi-api-key': process.env.ELEVENLABS_API_KEY!
-    },
-    body: JSON.stringify({ text })
-  });
-  
-  const audioBuffer = await response.arrayBuffer();
-  return new NextResponse(audioBuffer, {
-    headers: { "Content-Type": "audio/mpeg" }
-  });
-}
-```
-
-#### Azure Speech Services Backend Example
-
-```typescript
-// app/api/azure-tts/route.ts
-export async function POST(request: NextRequest) {
-  const { text, voice } = await request.json();
-  
-  // Azure Speech SDK implementation
-  // ... your Azure TTS logic here
-}
-```
 
 ## API Reference
+
+### Constructor
+
+```typescript
+new RemoteTTSPlayer(config: RemoteTTSConfig)
+```
 
 ### Configuration Options
 
@@ -130,67 +97,138 @@ interface RemoteTTSConfig {
   defaultModel?: string;
   /** Request timeout in ms (default: 30000) */
   timeout?: number;
-  /** Additional request headers */
-  headers?: Record<string, string>;
 }
 ```
 
 ### Methods
 
-- `speak(text: string, options?: TTSOptions): Promise<void>`
-- `stop(): Promise<void>`
-- `pause(): Promise<void>`
-- `resume(): Promise<void>`
-- `setVoice(voiceId: string): void`
-- `getAvailableVoices(): Promise<SpeechSynthesisVoice[]>`
-- `isSupported(): boolean`
-- `setModel(model: string): void`
-- `getModel(): string`
+#### `initialize()`
+Initialize the player.
+
+```typescript
+await player.initialize();
+```
+
+#### `speak(text)`
+Convert text to speech by calling your server endpoint.
+
+```typescript
+await player.speak("Hello, world!");
+```
+
+#### `stop()`
+Stop current playback.
+
+```typescript
+await player.stop();
+```
+
+#### `destroy()`
+Clean up the player.
+
+```typescript
+await player.destroy();
+```
 
 ## Backend-specific Usage
 
 ### For OpenAI TTS Backend
 
 ```typescript
-const adapter = createRemoteTTSAdapter({
+const player = createRemoteTTSPlayer({
   apiEndpoint: "/api/tts",
   defaultVoice: "alloy", // OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
   defaultModel: "tts-1-hd"
 });
 ```
 
-### For ElevenLabs Backend
+### For Custom Backend
 
 ```typescript
-const adapter = createRemoteTTSAdapter({
-  apiEndpoint: "/api/elevenlabs-tts",
-  defaultVoice: "21m00Tcm4TlvDq8ikWAM", // ElevenLabs voice ID
+const player = createRemoteTTSPlayer({
+  apiEndpoint: "/api/custom-tts",
+  defaultVoice: "custom-voice-id",
 });
 ```
 
-### For Azure Speech Services Backend
+## Complete Example
+
+### Client-side
 
 ```typescript
-const adapter = createRemoteTTSAdapter({
-  apiEndpoint: "/api/azure-tts",
-  defaultVoice: "en-US-AriaNeural", // Azure voice name
+import { Charivo } from "@charivo/core";
+import { createTTSManager } from "@charivo/tts-core";
+import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
+
+const charivo = new Charivo();
+
+const player = createRemoteTTSPlayer({
+  apiEndpoint: "/api/tts"
 });
+const ttsManager = createTTSManager(player);
+
+charivo.attachTTS(ttsManager);
+
+// Use it
+await charivo.sendMessage("Hello!");
+```
+
+### Server-side (Next.js)
+
+```typescript
+// app/api/tts/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
+
+const provider = createOpenAITTSProvider({
+  apiKey: process.env.OPENAI_API_KEY!
+});
+
+export async function POST(request: NextRequest) {
+  const { text, voice, model } = await request.json();
+  const audioBuffer = await provider.generateSpeech(text, { voice, model });
+  
+  return new NextResponse(audioBuffer, {
+    headers: { "Content-Type": "audio/mpeg" }
+  });
+}
 ```
 
 ## Error Handling
 
 ```typescript
 try {
-  await ttsAdapter.speak("Hello world!");
+  await player.speak("Hello world!");
 } catch (error) {
   console.error("TTS failed:", error);
+  // Handle network errors, server errors, etc.
 }
 ```
 
+## Why Use Remote Player?
+
+### Security ✅
+- API keys stay on server
+- No client-side key exposure
+- Secure token-based authentication possible
+
+### Flexibility ✅
+- Switch TTS providers without client changes
+- Server-side caching
+- Rate limiting and monitoring
+- Custom audio processing
+
+### Cost Control ✅
+- Monitor and limit usage
+- Implement quotas per user
+- Cache common phrases
+
 ## Related Packages
 
-- [`@charivo/adapter-tts-openai`](../adapter-tts-openai) - Server-side OpenAI TTS adapter
-- [`@charivo/adapter-tts-web`](../adapter-tts-web) - Browser Web Speech API adapter
+- [`@charivo/tts-provider-openai`](../tts-provider-openai) - Server-side OpenAI TTS provider
+- [`@charivo/tts-player-web`](../tts-player-web) - Browser Web Speech API player
+- [`@charivo/tts-player-openai`](../tts-player-openai) - Direct OpenAI TTS player (not recommended for client)
+- [`@charivo/tts-core`](../tts-core) - TTS core functionality
 
 ## License
 

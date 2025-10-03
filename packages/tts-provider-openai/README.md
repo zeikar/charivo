@@ -1,23 +1,23 @@
-# @charivo/adapter-tts-openai
+# @charivo/tts-provider-openai
 
-OpenAI TTS (Text-to-Speech) adapter for Charivo framework (server-side).
+OpenAI TTS (Text-to-Speech) provider for Charivo framework (server-side).
 
 ## ⚠️ Important Security Note
 
-This is a **server-side adapter** that directly calls OpenAI TTS API and should **ONLY** be used in Node.js/server environments. Using this in client-side code will expose your API key.
+This is a **server-side provider** that directly calls OpenAI TTS API and should **ONLY** be used in Node.js/server environments. Using this in client-side code will expose your API key.
 
-For client-side usage, use [`@charivo/adapter-tts-remote`](../adapter-tts-remote) instead.
+For client-side usage, use [`@charivo/tts-player-remote`](../tts-player-remote) instead.
 
 ## Architecture
 
 ```
-Node.js Server → OpenAITTSAdapter → OpenAI TTS API
+Node.js Server → OpenAITTSProvider → OpenAI TTS API
 ```
 
 ## Installation
 
 ```bash
-npm install @charivo/adapter-tts-openai @charivo/core openai
+pnpm add @charivo/tts-provider-openai @charivo/core openai
 ```
 
 ## Usage
@@ -25,19 +25,22 @@ npm install @charivo/adapter-tts-openai @charivo/core openai
 ### Server-side Only
 
 ```typescript
-import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
-const adapter = createOpenAITTSAdapter({
+const provider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!, // Server environment variable
   defaultVoice: "alloy",
   defaultModel: "tts-1-hd"
 });
 
 // Generate audio data
-const audioBuffer = await adapter.generateSpeech("Hello world!");
+const audioBuffer = await provider.generateSpeech("Hello world!");
 
-// Save to file (Node.js only)
-await adapter.generateSpeechToFile("Hello world!", "./output.mp3");
+// With custom options
+const audioBuffer2 = await provider.generateSpeech("Hello!", {
+  voice: "nova",
+  model: "tts-1-hd"
+});
 ```
 
 ### API Endpoint Usage
@@ -45,17 +48,17 @@ await adapter.generateSpeechToFile("Hello world!", "./output.mp3");
 ```typescript
 // Express.js example
 import express from 'express';
-import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
 const app = express();
-const adapter = createOpenAITTSAdapter({
+const provider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!
 });
 
 app.post('/api/tts', async (req, res) => {
   try {
-    const { text } = req.body;
-    const audioBuffer = await adapter.generateSpeech(text);
+    const { text, voice } = req.body;
+    const audioBuffer = await provider.generateSpeech(text, { voice });
     
     res.set('Content-Type', 'audio/mpeg');
     res.send(Buffer.from(audioBuffer));
@@ -70,18 +73,19 @@ app.post('/api/tts', async (req, res) => {
 ```typescript
 // app/api/tts/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createOpenAITTSAdapter } from "@charivo/adapter-tts-openai";
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
 
-const adapter = createOpenAITTSAdapter({
+const provider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!
 });
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, voice, model, speed } = await request.json();
+    const { text, voice, model } = await request.json();
     
-    const audioBuffer = await adapter.generateSpeech(text, {
-      voice, rate: speed
+    const audioBuffer = await provider.generateSpeech(text, {
+      voice,
+      model
     });
 
     return new NextResponse(audioBuffer, {
@@ -129,55 +133,42 @@ interface OpenAITTSConfig {
 - `nova` - Bright, energetic voice
 - `shimmer` - Gentle, soothing voice
 
-### Server-specific Methods
+### Available Models
+
+- `tts-1` - Standard quality, faster, cheaper
+- `tts-1-hd` - High quality, slower, more expensive
+
+### Methods
+
+#### `initialize()`
+Initialize the provider.
+
+```typescript
+await provider.initialize();
+```
 
 #### `generateSpeech(text, options?): Promise<ArrayBuffer>`
 Generate audio data from text.
 
 ```typescript
-const audioBuffer = await adapter.generateSpeech("Hello world!", {
+const audioBuffer = await provider.generateSpeech("Hello world!", {
   voice: "nova",
-  rate: 1.2,
-  format: "mp3"
+  model: "tts-1-hd"
 });
 ```
 
-#### `generateSpeechToFile(text, filePath, options?): Promise<void>`
-Generate speech and save to file (Node.js only).
+#### `destroy()`
+Clean up the provider.
 
 ```typescript
-await adapter.generateSpeechToFile(
-  "Hello world!",
-  "./output.mp3",
-  { voice: "shimmer", format: "mp3" }
-);
+await provider.destroy();
 ```
-
-### Standard TTSAdapter Methods
-
-- `setVoice(voiceId: string): void`
-- `getAvailableVoices(): Promise<SpeechSynthesisVoice[]>`
-- `isSupported(): boolean`
-- `setModel(model: "tts-1" | "tts-1-hd"): void`
-- `getModel(): "tts-1" | "tts-1-hd"`
-
-**Note**: `speak()`, `stop()`, `pause()`, `resume()` methods are not implemented as this is a server-side adapter focused on audio generation, not playback.
 
 ## Browser Usage (Not Recommended)
 
-⚠️ **Security Warning**: Using this adapter in browser exposes your API key to users.
+⚠️ **Security Warning**: This provider should NOT be used in browser as it exposes your API key to users.
 
-If absolutely necessary, set `dangerouslyAllowBrowser: true`:
-
-```typescript
-// ⚠️ NOT RECOMMENDED - exposes API key
-const adapter = createOpenAITTSAdapter({
-  apiKey: "your-api-key", // This will be visible to users!
-  dangerouslyAllowBrowser: true
-});
-```
-
-**Better alternative**: Use [`@charivo/adapter-tts-remote`](../adapter-tts-remote) for client-side usage.
+**Better alternative**: Use [`@charivo/tts-player-remote`](../tts-player-remote) for client-side usage.
 
 ## Environment Variables
 
@@ -189,24 +180,71 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ```typescript
 try {
-  const audioBuffer = await adapter.generateSpeech("Hello world!");
+  const audioBuffer = await provider.generateSpeech("Hello world!");
 } catch (error) {
   console.error("TTS generation failed:", error);
+  // Handle OpenAI API errors
 }
 ```
 
 ## Use Cases
 
 - **API Endpoints**: Serve generated audio from your server
-- **Batch Processing**: Generate multiple audio files
-- **Server-side Pre-generation**: Create audio content ahead of time
-- **File Export**: Save TTS output to files
-- **Streaming**: Generate audio data for streaming applications
+- **Secure TTS**: Keep API keys on server, expose via HTTP endpoint
+- **Caching**: Cache generated audio to reduce API calls
+- **Rate Limiting**: Control TTS usage per user
+- **Cost Monitoring**: Track TTS API usage and costs
+
+## Complete Example
+
+### Server (Next.js API Route)
+
+```typescript
+// app/api/tts/route.ts
+import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
+
+const provider = createOpenAITTSProvider({
+  apiKey: process.env.OPENAI_API_KEY!,
+  defaultVoice: "alloy",
+  defaultModel: "tts-1"
+});
+
+export async function POST(request: NextRequest) {
+  const { text, voice } = await request.json();
+  const audioBuffer = await provider.generateSpeech(text, { voice });
+  
+  return new NextResponse(audioBuffer, {
+    headers: { "Content-Type": "audio/mpeg" }
+  });
+}
+```
+
+### Client (uses Remote Player)
+
+```typescript
+import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
+import { createTTSManager } from "@charivo/tts-core";
+
+const player = createRemoteTTSPlayer({
+  apiEndpoint: "/api/tts"
+});
+const ttsManager = createTTSManager(player);
+
+await ttsManager.speak("Hello from OpenAI!");
+```
+
+## Pricing (OpenAI)
+
+- **tts-1**: $15.00 per 1M characters
+- **tts-1-hd**: $30.00 per 1M characters
+
+Example: "Hello world!" (12 characters) = $0.00018 (tts-1) or $0.00036 (tts-1-hd)
 
 ## Related Packages
 
-- [`@charivo/adapter-tts-remote`](../adapter-tts-remote) - Client-side HTTP TTS adapter
-- [`@charivo/adapter-tts-web`](../adapter-tts-web) - Browser Web Speech API adapter
+- [`@charivo/tts-player-remote`](../tts-player-remote) - Client-side HTTP TTS player
+- [`@charivo/tts-player-web`](../tts-player-web) - Browser Web Speech API player
+- [`@charivo/tts-core`](../tts-core) - TTS core functionality
 
 ## License
 
