@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { LLMProvider, Character } from "@charivo/core";
+import { LLMProvider } from "@charivo/core";
 
 export interface OpenAILLMConfig {
   apiKey: string;
@@ -38,7 +38,6 @@ export class OpenAILLMProvider implements LLMProvider {
 
   async generateResponse(
     messages: Array<{ role: string; content: string }>,
-    _character?: Character,
   ): Promise<string> {
     try {
       // Messages already include system prompt from LLMManager
@@ -61,11 +60,6 @@ export class OpenAILLMProvider implements LLMProvider {
         `OpenAI LLM Error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-  }
-
-  setCharacter(_character: Character): void {
-    // Provider에서는 필요시 character 정보를 저장할 수 있지만,
-    // 주로 generateResponse 호출 시 전달받는 방식을 사용
   }
 }
 

@@ -46,22 +46,22 @@ beforeEach(() => {
 });
 
 describe("OpenAILLMProvider", () => {
-  it("builds OpenAI requests with system prompt", async () => {
+  it("forwards messages to OpenAI API", async () => {
     const provider = new OpenAILLMProvider({ apiKey: "key", model: "gpt-4o" });
 
-    const result = await provider.generateResponse(
-      [{ role: "user", content: "hello" }],
-      { id: "char", name: "Hiyori" },
-    );
+    const result = await provider.generateResponse([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "hello" },
+    ]);
 
     expect(result).toBe("Final answer");
     expect(openaiMocks.createCompletion).toHaveBeenCalledTimes(1);
     const payload = openaiMocks.createCompletion.mock.calls[0]![0];
     expect(payload.model).toBe("gpt-4o");
-    expect(payload.messages[0]).toEqual({
-      role: "system",
-      content: expect.stringContaining("You are Hiyori"),
-    });
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "hello" },
+    ]);
   });
 
   it("wraps OpenAI errors", async () => {

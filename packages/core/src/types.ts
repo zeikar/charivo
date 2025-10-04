@@ -52,9 +52,7 @@ export interface LLMAdapter {
 export interface LLMProvider {
   generateResponse(
     messages: Array<{ role: string; content: string }>,
-    character?: Character,
   ): Promise<string>;
-  setCharacter?(character: Character): void;
 }
 
 // 단순한 LLM 호출 클라이언트 (stateless)
