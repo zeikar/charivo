@@ -100,7 +100,7 @@ describe("Charivo", () => {
     charivo.attachRenderer(renderer);
     charivo.attachTTS(tts);
     charivo.attachLLM(llmManager);
-    charivo.addCharacter(character);
+    charivo.setCharacter(character);
 
     const sentListener = vi.fn();
     const receivedListener = vi.fn();
@@ -110,7 +110,7 @@ describe("Charivo", () => {
     charivo.on("message:received", receivedListener);
     charivo.on("character:speak", speakListener);
 
-    await charivo.userSay("Hello there!", "char-1");
+    await charivo.userSay("Hello there!");
 
     expect(sentListener).toHaveBeenCalledTimes(1);
     expect(receivedListener).toHaveBeenCalledTimes(1);

@@ -48,15 +48,15 @@ await renderer.loadModel("/live2d/model.model3.json");
 const renderManager = createRenderManager(renderer);
 charivo.attachRenderer(renderManager);
 
-// Add character
-charivo.addCharacter({
+// Set character
+charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and helpful AI assistant"
 });
 
 // Start chatting
-await charivo.userSay("Hello!", "hiyori");
+await charivo.userSay("Hello!");
 ```
 
 ### Event Bus

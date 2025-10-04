@@ -15,7 +15,7 @@ export class Charivo {
   private llmManager?: LLMManager;
   private renderManager?: RenderManager;
   private ttsManager?: TTSManager;
-  private characters: Map<string, Character> = new Map();
+  private character?: Character;
 
   constructor() {
     this.eventBus = new EventBus();
@@ -91,16 +91,16 @@ export class Charivo {
     }
   }
 
-  addCharacter(character: Character): void {
-    this.characters.set(character.id, character);
+  setCharacter(character: Character): void {
+    this.character = character;
 
-    // LLM Manager에 캐릭터 설정 (만약 한 명의 캐릭터만 사용하는 경우)
+    // LLM Manager에 캐릭터 설정
     if (this.llmManager) {
       this.llmManager.setCharacter(character);
     }
   }
 
-  async userSay(content: string, characterId?: string): Promise<void> {
+  async userSay(content: string): Promise<void> {
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
@@ -114,48 +114,48 @@ export class Charivo {
       await this.renderManager.render(userMessage);
     }
 
-    if (this.llmManager && characterId) {
-      const character = this.characters.get(characterId);
-      if (character) {
-        // LLM Manager에 캐릭터 설정 (만약 여러 캐릭터를 사용하는 경우)
-        this.llmManager.setCharacter(character);
+    if (this.llmManager && this.character) {
+      const response = await this.llmManager.generateResponse(userMessage);
 
-        const response = await this.llmManager.generateResponse(userMessage);
+      const characterMessage: Message = {
+        id: Date.now().toString() + "_response",
+        content: response,
+        timestamp: new Date(),
+        characterId: this.character.id,
+        type: "character",
+      };
 
-        const characterMessage: Message = {
-          id: Date.now().toString() + "_response",
-          content: response,
-          timestamp: new Date(),
-          characterId,
-          type: "character",
-        };
+      this.eventBus.emit("message:received", { message: characterMessage });
+      this.eventBus.emit("character:speak", {
+        character: this.character,
+        message: response,
+      });
 
-        this.eventBus.emit("message:received", { message: characterMessage });
-        this.eventBus.emit("character:speak", { character, message: response });
+      if (this.renderManager) {
+        await this.renderManager.render(characterMessage, this.character);
+      }
 
-        if (this.renderManager) {
-          await this.renderManager.render(characterMessage, character);
-        }
+      // TTS로 음성 출력
+      if (this.ttsManager) {
+        try {
+          this.eventBus.emit("tts:start", {
+            text: response,
+            characterId: this.character.id,
+          });
 
-        // TTS로 음성 출력
-        if (this.ttsManager) {
-          try {
-            this.eventBus.emit("tts:start", { text: response, characterId });
+          const ttsOptions = this.character.voice
+            ? {
+                rate: this.character.voice.rate,
+                pitch: this.character.voice.pitch,
+                volume: this.character.voice.volume,
+                voice: this.character.voice.voiceId,
+              }
+            : undefined;
 
-            const ttsOptions = character.voice
-              ? {
-                  rate: character.voice.rate,
-                  pitch: character.voice.pitch,
-                  volume: character.voice.volume,
-                  voice: character.voice.voiceId,
-                }
-              : undefined;
-
-            await this.ttsManager.speak(response, ttsOptions);
-            this.eventBus.emit("tts:end", { characterId });
-          } catch (error) {
-            this.eventBus.emit("tts:error", { error: error as Error });
-          }
+          await this.ttsManager.speak(response, ttsOptions);
+          this.eventBus.emit("tts:end", { characterId: this.character.id });
+        } catch (error) {
+          this.eventBus.emit("tts:error", { error: error as Error });
         }
       }
     }

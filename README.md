@@ -93,15 +93,15 @@ await renderer.loadModel("/live2d/hiyori/hiyori.model3.json");
 const renderManager = createRenderManager(renderer);
 charivo.attachRenderer(renderManager);
 
-// 5. Add character
-charivo.addCharacter({
+// 5. Set character
+charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and helpful AI assistant"
 });
 
 // 6. Start chatting!
-await charivo.userSay("Hello!", "hiyori");
+await charivo.userSay("Hello!");
 // → LLM generates response
 // → TTS speaks the response
 // → Renderer animates with lip-sync
@@ -171,18 +171,18 @@ Full setup with all features:
 // Setup (see Basic Usage above)
 const charivo = new Charivo();
 // ... attach LLM, TTS, renderer
-// ... addCharacter
+// ... setCharacter
 
 // Simple conversation
-await charivo.userSay("What's the weather?", "hiyori");
+await charivo.userSay("What's the weather?");
 // → "Let me check that for you!"
 
 // Character speaks with emotions
-await charivo.userSay("That's amazing!", "hiyori");
+await charivo.userSay("That's amazing!");
 // → Happy motion + big smile + "I'm glad you like it!"
 
 // Automatic lip-sync during speech
-await charivo.userSay("Tell me a story", "hiyori");
+await charivo.userSay("Tell me a story");
 // → Mouth moves naturally with speech audio
 ```
 
@@ -418,7 +418,7 @@ Charivo automatically provides lip-sync animation when TTS is active:
 
 ```typescript
 // Lip-sync happens automatically when character speaks
-await charivo.userSay("Hello! Watch my mouth move!", "hiyori");
+await charivo.userSay("Hello! Watch my mouth move!");
 // Character will speak with synchronized lip movement
 ```
 
@@ -435,8 +435,8 @@ Main orchestrator class that manages all components.
 - `attachLLM(manager: LLMManager)` - Connect LLM manager
 - `attachTTS(player: TTSPlayer)` - Connect TTS player
 - `attachRenderer(renderer: Renderer)` - Connect renderer
-- `addCharacter(character: Character)` - Add character
-- `userSay(message: string, characterId?: string)` - Send user message
+- `setCharacter(character: Character)` - Set character
+- `userSay(message: string)` - Send user message
 - `getHistory()` - Get conversation history
 - `clearHistory()` - Clear conversation history
 - `getCurrentCharacter()` - Get current active character

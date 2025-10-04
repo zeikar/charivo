@@ -122,7 +122,7 @@ function App() {
     const llmManager = createLLMManager(client);
     
     charivo.attachLLM(llmManager);
-    charivo.addCharacter({
+    charivo.setCharacter({
       id: "hiyori",
       name: "Hiyori",
       personality: "Cheerful AI assistant"

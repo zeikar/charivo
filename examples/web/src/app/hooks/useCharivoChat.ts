@@ -212,7 +212,7 @@ export function useCharivoChat({
         },
       };
 
-      instance.addCharacter(character);
+      instance.setCharacter(character);
       renderManager.setCharacter(character);
 
       instance.on(
@@ -306,7 +306,7 @@ export function useCharivoChat({
 
     setIsLoading(true);
     try {
-      await charivo.userSay(input, "hiyori");
+      await charivo.userSay(input);
       setInput("");
     } finally {
       setIsLoading(false);
