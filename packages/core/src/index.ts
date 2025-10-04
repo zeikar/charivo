@@ -21,6 +21,10 @@ export class Charivo {
     this.eventBus = new EventBus();
   }
 
+  /**
+   * Attach a render manager to handle character visualization.
+   * Automatically connects the event bus and sets the current character if available.
+   */
   attachRenderer(renderManager: RenderManager): void {
     console.log(
       "🎭 Charivo: Attaching render manager",
@@ -28,7 +32,18 @@ export class Charivo {
     );
     this.renderManager = renderManager;
 
-    // Set up event bus connection if render manager supports it
+    this.connectRenderManagerEventBus(renderManager);
+
+    // Set character if it was already configured
+    if (this.character) {
+      renderManager.setCharacter(this.character);
+    }
+  }
+
+  /**
+   * Connects the render manager to the event bus for bidirectional communication.
+   */
+  private connectRenderManagerEventBus(renderManager: RenderManager): void {
     if (
       "setEventBus" in renderManager &&
       typeof renderManager.setEventBus === "function"
@@ -63,15 +78,34 @@ export class Charivo {
     }
   }
 
+  /**
+   * Attach an LLM manager to handle conversation generation.
+   * Automatically sets the current character if available.
+   */
   attachLLM(manager: LLMManager): void {
     this.llmManager = manager;
+
+    // Set character if it was already configured
+    if (this.character) {
+      manager.setCharacter(this.character);
+    }
   }
 
+  /**
+   * Attach a TTS manager to handle voice synthesis.
+   * Automatically connects the event emitter for audio events.
+   */
   attachTTS(manager: TTSManager): void {
     console.log("🔊 Charivo: Attaching TTS manager", manager.constructor.name);
     this.ttsManager = manager;
 
-    // Connect event emitter if TTS manager supports it
+    this.connectTTSManagerEventEmitter(manager);
+  }
+
+  /**
+   * Connects the TTS manager to the event bus for audio event emission.
+   */
+  private connectTTSManagerEventEmitter(manager: TTSManager): void {
     if (manager.setEventEmitter) {
       console.log(
         "🔗 Charivo: ✅ TTS manager supports event emitter - connecting",
@@ -91,15 +125,26 @@ export class Charivo {
     }
   }
 
+  /**
+   * Set the character for this Charivo instance.
+   * Automatically propagates to all attached managers (LLM, Renderer).
+   */
   setCharacter(character: Character): void {
     this.character = character;
 
-    // LLM Manager에 캐릭터 설정
     if (this.llmManager) {
       this.llmManager.setCharacter(character);
     }
+
+    if (this.renderManager) {
+      this.renderManager.setCharacter(character);
+    }
   }
 
+  /**
+   * Process a user message and generate a character response.
+   * Orchestrates the full conversation flow: rendering, LLM generation, and TTS playback.
+   */
   async userSay(content: string): Promise<void> {
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -110,10 +155,12 @@ export class Charivo {
 
     this.eventBus.emit("message:sent", { message: userMessage });
 
+    // Render user message
     if (this.renderManager) {
       await this.renderManager.render(userMessage);
     }
 
+    // Generate and render character response
     if (this.llmManager && this.character) {
       const response = await this.llmManager.generateResponse(userMessage);
 
@@ -135,7 +182,7 @@ export class Charivo {
         await this.renderManager.render(characterMessage, this.character);
       }
 
-      // TTS로 음성 출력
+      // Play character voice with TTS
       if (this.ttsManager) {
         try {
           this.eventBus.emit("tts:start", {
@@ -162,7 +209,7 @@ export class Charivo {
   }
 
   /**
-   * LLM Manager 관련 편의 메소드들
+   * Clear the conversation history from the LLM manager.
    */
   clearHistory(): void {
     if (this.llmManager) {
@@ -170,14 +217,23 @@ export class Charivo {
     }
   }
 
+  /**
+   * Get the conversation history from the LLM manager.
+   */
   getHistory(): Message[] {
     return this.llmManager ? this.llmManager.getHistory() : [];
   }
 
+  /**
+   * Get the currently configured character.
+   */
   getCurrentCharacter(): Character | null {
-    return this.llmManager ? this.llmManager.getCharacter() : null;
+    return this.character ?? null;
   }
 
+  /**
+   * Subscribe to events from the event bus.
+   */
   on<K extends keyof import("./types").EventMap>(
     event: K,
     listener: (data: import("./types").EventMap[K]) => void,
@@ -185,6 +241,9 @@ export class Charivo {
     this.eventBus.on(event, listener);
   }
 
+  /**
+   * Emit events to the event bus.
+   */
   emit<K extends keyof import("./types").EventMap>(
     event: K,
     data: import("./types").EventMap[K],

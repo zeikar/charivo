@@ -213,7 +213,6 @@ export function useCharivoChat({
       };
 
       instance.setCharacter(character);
-      renderManager.setCharacter(character);
 
       instance.on(
         "character:speak",
