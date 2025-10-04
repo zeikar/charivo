@@ -38,21 +38,15 @@ export class OpenAILLMProvider implements LLMProvider {
 
   async generateResponse(
     messages: Array<{ role: string; content: string }>,
-    character?: Character,
+    _character?: Character,
   ): Promise<string> {
     try {
-      // 캐릭터 정보가 있으면 시스템 메시지로 추가
-      const systemMessage = character
-        ? `You are ${character.name}. ${character.description || ""} ${character.personality || ""}`
-        : "You are a helpful assistant.";
-
-      const openAIMessages = [
-        { role: "system" as const, content: systemMessage },
-        ...messages.map((msg) => ({
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-        })),
-      ];
+      // Messages already include system prompt from LLMManager
+      // Just convert to OpenAI format
+      const openAIMessages = messages.map((msg) => ({
+        role: msg.role as "system" | "user" | "assistant",
+        content: msg.content,
+      }));
 
       const completion = await this.openai.chat.completions.create({
         model: this.model,

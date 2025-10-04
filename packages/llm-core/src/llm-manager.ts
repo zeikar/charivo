@@ -23,10 +23,14 @@ export class LLMManager {
 
   /**
    * 캐릭터 설정
+   * 캐릭터가 변경되는 경우에만 히스토리를 초기화합니다.
    */
   setCharacter(character: Character): void {
+    // 캐릭터가 변경되는 경우에만 히스토리 초기화
+    if (this.character?.id !== character.id) {
+      this.historyManager.clear();
+    }
     this.character = character;
-    this.historyManager.clear();
   }
 
   /**
