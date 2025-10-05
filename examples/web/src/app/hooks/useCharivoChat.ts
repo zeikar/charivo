@@ -164,7 +164,7 @@ export function useCharivoChat({
 
       // Initialize RenderManager (this will also setup mouse tracking)
       await renderManager.initialize();
-      await renderManager.loadModel?.(getLive2DModelPath(character.id));
+      await renderManager.loadModel?.(getLive2DModelPath(character.name));
 
       renderManager.setMessageCallback(
         (message: Message, character?: Character) => {
@@ -265,10 +265,14 @@ export function useCharivoChat({
   const handleSend = useCallback(async () => {
     if (!charivo || !input.trim()) return;
 
+    const userMessage = input;
+    setInput("");
     setIsLoading(true);
+
     try {
-      await charivo.userSay(input);
-      setInput("");
+      await charivo.userSay(userMessage);
+    } catch (error) {
+      console.error("Failed to send message:", error);
     } finally {
       setIsLoading(false);
     }

@@ -2,7 +2,6 @@ import type { RefObject } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
-import { SpeakingStatus } from "./chat/SpeakingStatus";
 import {
   useCharacterStore,
   CHARACTERS,
@@ -11,13 +10,9 @@ import {
 
 type Live2DPanelProps = {
   canvasContainerRef: RefObject<HTMLDivElement | null>;
-  isSpeaking: boolean;
 };
 
-export function Live2DPanel({
-  canvasContainerRef,
-  isSpeaking,
-}: Live2DPanelProps) {
+export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
   const { selectedCharacter, setSelectedCharacter } = useCharacterStore();
 
   const handleCharacterSelect = (name: string) => {
@@ -82,15 +77,6 @@ export function Live2DPanel({
             </div>
           </div>
         </div>
-
-        {/* Status - Floating at bottom */}
-        {isSpeaking && (
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
-            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700">
-              <SpeakingStatus />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

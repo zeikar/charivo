@@ -1,23 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import {
-  Dialog,
-  DialogPanel,
-  DialogTitle,
-  Transition,
-  TransitionChild,
-} from "@headlessui/react";
-import {
-  XMarkIcon,
-  BookOpenIcon,
-  PaperAirplaneIcon,
-  ChatBubbleLeftRightIcon,
-} from "@heroicons/react/24/outline";
+import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 import type { ChatMessage } from "../../types/chat";
 import { BubbleMessage } from "./BubbleMessage";
-import { useCharacterStore } from "../../stores/useCharacterStore";
 
 type BubbleChatPanelProps = {
   messages: ChatMessage[];
@@ -36,158 +22,58 @@ export function BubbleChatPanel({
   onSend,
   onKeyPress,
 }: BubbleChatPanelProps) {
-  const { selectedCharacter } = useCharacterStore();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // Get only character messages
+  const characterMessages = messages.filter((msg) => msg.type === "character");
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Show last 5 character messages with fading effect
+  const maxVisibleMessages = 5;
+  const visibleMessages = characterMessages.slice(-maxVisibleMessages);
 
   return (
     <>
-      {/* Chat History Dialog */}
-      <Transition show={isHistoryOpen}>
-        <Dialog
-          onClose={() => setIsHistoryOpen(false)}
-          className="relative z-50"
-        >
-          {/* Backdrop */}
-          <TransitionChild
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" />
-          </TransitionChild>
+      {/* Stacked Message Bubbles - Top Left */}
+      {visibleMessages.length > 0 && !isLoading && (
+        <div className="absolute top-20 left-6 md:left-8 z-10 space-y-3">
+          {visibleMessages.map((message, index) => {
+            // Calculate opacity: older messages (lower index) are more transparent
+            const opacity = 0.3 + (index / visibleMessages.length) * 0.7;
+            return (
+              <div key={message.id} style={{ opacity }}>
+                <BubbleMessage
+                  message={message}
+                  isLatest={index === visibleMessages.length - 1}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-          {/* Dialog Panel */}
-          <div className="fixed inset-0 flex items-center justify-center p-4">
-            <TransitionChild
-              enter="ease-out duration-300"
-              enterFrom="opacity-0 scale-95"
-              enterTo="opacity-100 scale-100"
-              leave="ease-in duration-200"
-              leaveFrom="opacity-100 scale-100"
-              leaveTo="opacity-0 scale-95"
-            >
-              <DialogPanel className="w-full max-w-2xl max-h-[80vh] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col">
-                {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                      <ChatBubbleLeftRightIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white">
-                      Conversation History
-                    </DialogTitle>
-                  </div>
-                  <button
-                    onClick={() => setIsHistoryOpen(false)}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                  >
-                    <XMarkIcon className="w-6 h-6 text-gray-500 dark:text-gray-400" />
-                  </button>
-                </div>
-
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto p-6">
-                  {messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-                        <ChatBubbleLeftRightIcon className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-                      </div>
-                      <p className="text-gray-500 dark:text-gray-400 font-medium">
-                        No messages yet
-                      </p>
-                      <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                        Start a conversation to see your chat history
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {messages.map((message) => (
-                        <BubbleMessage key={message.id} message={message} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">
-                      {messages.length}{" "}
-                      {messages.length === 1 ? "message" : "messages"}
-                    </span>
-                    <button
-                      onClick={() => setIsHistoryOpen(false)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </DialogPanel>
-            </TransitionChild>
+      {/* Loading Bubble - Top Left */}
+      {isLoading && (
+        <div className="absolute top-20 left-6 md:left-8 z-10">
+          <div className="relative inline-block px-5 py-5 rounded-2xl shadow-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-white border border-gray-200 dark:border-gray-600">
+            {/* Speech bubble tail pointing right */}
+            <div className="absolute right-0 top-4 w-0 h-0 -mr-2 border-t-[8px] border-t-transparent border-l-[12px] border-l-white dark:border-l-gray-700 border-b-[8px] border-b-transparent" />
+            <div className="flex items-center space-x-1.5">
+              <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" />
+              <div
+                className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.15s" }}
+              />
+              <div
+                className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.3s" }}
+              />
+            </div>
           </div>
-        </Dialog>
-      </Transition>
+        </div>
+      )}
 
       {/* Main Chat Interface */}
       <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 space-y-3">
-        {/* Latest Message Bubble (floating above input) */}
-        {messages.length > 0 && (
-          <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-2xl p-4 shadow-xl border border-gray-200 dark:border-gray-700 max-w-2xl">
-            <BubbleMessage
-              message={messages[messages.length - 1]}
-              isLatest={true}
-            />
-          </div>
-        )}
-
-        {/* Loading Indicator */}
-        {isLoading && (
-          <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-2xl p-4 shadow-xl border border-gray-200 dark:border-gray-700 max-w-2xl">
-            <div className="flex items-center space-x-3">
-              <div className="w-7 h-7 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-xs text-white font-bold">
-                  {selectedCharacter.charAt(0)}
-                </span>
-              </div>
-              <div className="flex space-x-1.5">
-                <div className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce" />
-                <div
-                  className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                />
-                <div
-                  className="w-2.5 h-2.5 bg-purple-500 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Input Area */}
         <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full shadow-xl border border-gray-200 dark:border-gray-700 px-4 py-3">
-          {/* History Button */}
-          <button
-            onClick={() => setIsHistoryOpen(true)}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors flex-shrink-0"
-            title="View conversation history"
-          >
-            <BookOpenIcon className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          </button>
-
           {/* Input */}
           <input
             type="text"
@@ -209,9 +95,6 @@ export function BubbleChatPanel({
           </button>
         </div>
       </div>
-
-      {/* Scroll anchor */}
-      <div ref={messagesEndRef} />
     </>
   );
 }

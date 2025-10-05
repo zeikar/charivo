@@ -51,10 +51,7 @@ export default function Home() {
 
         {/* Main Content - Character with Bubble Chat Overlay */}
         <div className="flex-1 min-h-0 overflow-hidden relative">
-          <Live2DPanel
-            canvasContainerRef={canvasContainerRef}
-            isSpeaking={isSpeaking}
-          />
+          <Live2DPanel canvasContainerRef={canvasContainerRef} />
 
           {/* Settings Overlay */}
           <ChatSettings
@@ -69,7 +66,7 @@ export default function Home() {
           {/* Bubble Chat Overlay */}
           <BubbleChatPanel
             messages={messages}
-            isLoading={isLoading}
+            isLoading={isLoading && !isSpeaking}
             input={input}
             onInputChange={handleInputChange}
             onSend={handleSendClick}
