@@ -1,30 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  Character,
-  LLMClient,
-  Message,
-  Renderer,
-  TTSOptions,
-  TTSPlayer,
-} from "@charivo/core";
+import type { Character, LLMClient, Message, TTSOptions } from "@charivo/core";
 import { Charivo, EventBus } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
-class StubRenderer implements Renderer {
+class StubRenderManager {
   initialize = vi.fn(async () => undefined);
   destroy = vi.fn(async () => undefined);
   render = vi.fn(
     async (_message: Message, _character?: Character) => undefined,
   );
+  setCharacter = vi.fn((_character: Character) => undefined);
+  setEventBus = vi.fn((_eventBus: any) => undefined);
 }
 
-class StubTTSPlayer implements TTSPlayer {
+class StubTTSManager {
   speak = vi.fn(async (_text: string, _options?: TTSOptions) => undefined);
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((voice: string) => {
     this.voice = voice;
   });
   isSupported = vi.fn(() => true);
+  setEventEmitter = vi.fn((_eventEmitter: any) => undefined);
   voice: string | undefined;
 }
 
@@ -91,14 +87,14 @@ describe("Charivo", () => {
   }
 
   it("routes messages through renderer, llm, and tts", async () => {
-    const renderer = new StubRenderer();
-    const tts = new StubTTSPlayer();
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
     const client = new ResolvingClient("Nice to meet you!");
     const llmManager = createLLMManager(client);
 
     const charivo = new Charivo();
-    charivo.attachRenderer(renderer);
-    charivo.attachTTS(tts);
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
     charivo.attachLLM(llmManager);
     charivo.setCharacter(character);
 
@@ -119,15 +115,15 @@ describe("Charivo", () => {
       message: "Nice to meet you!",
     });
 
-    expect(renderer.render).toHaveBeenCalledTimes(2);
-    const firstRenderArgs = renderer.render.mock.calls[0]!;
+    expect(renderManager.render).toHaveBeenCalledTimes(2);
+    const firstRenderArgs = renderManager.render.mock.calls[0]!;
     expect(firstRenderArgs[0]!.type).toBe("user");
-    const secondRenderArgs = renderer.render.mock.calls[1]!;
+    const secondRenderArgs = renderManager.render.mock.calls[1]!;
     expect(secondRenderArgs[0]!.type).toBe("character");
     expect(secondRenderArgs[1]).toEqual(character);
 
-    expect(tts.speak).toHaveBeenCalledTimes(1);
-    const [spokenText, options] = tts.speak.mock.calls[0]! as [
+    expect(ttsManager.speak).toHaveBeenCalledTimes(1);
+    const [spokenText, options] = ttsManager.speak.mock.calls[0]! as [
       string,
       TTSOptions,
     ];

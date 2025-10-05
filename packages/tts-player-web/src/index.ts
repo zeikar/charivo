@@ -69,9 +69,16 @@ export class WebTTSPlayer implements TTSPlayer {
   }
 
   setVoice(voiceId: string): void {
-    this.defaultVoice =
-      this.voices.find((v) => v.name === voiceId || v.voiceURI === voiceId) ||
-      this.voices[0];
+    const voice = this.voices.find(
+      (v) => v.name === voiceId || v.voiceURI === voiceId,
+    );
+
+    if (voice) {
+      this.defaultVoice = voice;
+    } else {
+      console.warn(`Voice "${voiceId}" not found`);
+      this.defaultVoice = this.voices[0];
+    }
   }
 
   isSupported(): boolean {

@@ -28,6 +28,7 @@ describe("WebTTSPlayer", () => {
     speech.getVoices.mockReturnValue([voice]);
 
     const player = new WebTTSPlayer();
+    player.setVoice("Alice"); // Set voice before speaking
 
     const playPromise = player.speak("hello", {
       rate: 20,

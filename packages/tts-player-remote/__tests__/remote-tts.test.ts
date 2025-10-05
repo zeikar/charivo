@@ -60,39 +60,11 @@ describe("RemoteTTSPlayer", () => {
     expect(revokeSpy).toHaveBeenCalled();
   });
 
-  it("stops and clears current audio", async () => {
-    const buffer = new ArrayBuffer(2);
-    globalThis.fetch = vi.fn(async () => new Response(buffer)) as typeof fetch;
-
-    const play = vi.fn(() => Promise.resolve());
-    const pause = vi.fn();
-    const audioInstance = {
-      volume: 0,
-      currentTime: 1,
-      play,
-      pause,
-      onended: null as ((event?: Event) => void) | null,
-      onerror: null as ((event?: Event) => void) | null,
-    } as unknown as HTMLAudioElement;
-
-    const audioMock = vi.fn(() => audioInstance);
-    globalThis.Audio = audioMock as unknown as typeof Audio;
-
+  it("stop does nothing (stateless player)", async () => {
     const player = new RemoteTTSPlayer();
-    const speakPromise = player.speak("hi");
 
-    await flushAsync();
-    await flushAsync();
-    expect(audioMock).toHaveBeenCalledTimes(1);
-    expect(audioInstance.onended).toBeTypeOf("function");
-
-    await player.stop();
-
-    expect(pause).toHaveBeenCalled();
-    expect(audioInstance.currentTime).toBe(0);
-
-    audioInstance.onended?.(new Event("ended"));
-    await speakPromise;
+    // stop() should not throw and should complete immediately
+    await expect(player.stop()).resolves.toBeUndefined();
   });
 
   it("throws when API fails", async () => {
