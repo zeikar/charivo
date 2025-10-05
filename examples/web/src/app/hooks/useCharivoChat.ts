@@ -15,6 +15,7 @@ type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
 import type { ChatMessage, LLMClientType, TTSPlayerType } from "../types/chat";
+import { useLive2D } from "./useLive2D";
 
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
@@ -144,41 +145,13 @@ export function useCharivoChat({
     }
   }, []);
 
-  useEffect(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 300;
-    canvas.style.border = "2px solid #ccc";
-    canvas.style.borderRadius = "8px";
-
-    let isMounted = true;
-    let live2DRenderer: Live2DRendererHandle | null = null;
-    const container = canvasContainerRef.current;
-
-    const initCharivo = async () => {
-      if (!container) return;
-
-      container.innerHTML = "";
-      container.appendChild(canvas);
-
+  const handleRendererReady = useCallback(
+    async (renderer: Live2DRendererHandle, character: Character) => {
       const instance = new Charivo();
-
-      // Create Live2D renderer (stateless)
-      const { Live2DRenderer } = await import("@charivo/render-live2d");
-      const live2dRenderer = new Live2DRenderer({
-        canvas,
-        mouseTracking: "document",
-      });
-      live2DRenderer = live2dRenderer;
-
-      await live2dRenderer.initialize();
-      await live2dRenderer.loadModel(
-        "/live2d/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
-      );
 
       // Wrap with RenderManager (stateful)
       const { createRenderManager } = await import("@charivo/render-core");
-      const renderManager = createRenderManager(live2dRenderer);
+      const renderManager = createRenderManager(renderer);
 
       renderManager.setMessageCallback(
         (message: Message, character?: Character) => {
@@ -198,19 +171,6 @@ export function useCharivoChat({
         const ttsManager = createTTSManager(ttsPlayer);
         instance.attachTTS(ttsManager);
       }
-
-      const character: Character = {
-        id: "hiyori",
-        name: "Hiyori",
-        description: "A cute Live2D character who loves to chat and help users",
-        personality:
-          "Bright, cheerful, and helpful personality. Always responds in English and loves engaging conversations.",
-        voice: {
-          rate: 1.0,
-          pitch: 1.2,
-          volume: 0.8,
-        },
-      };
 
       instance.setCharacter(character);
 
@@ -236,33 +196,19 @@ export function useCharivoChat({
         setIsSpeaking(false);
       });
 
-      if (!isMounted) return;
-
       setMessages([]);
       setCharivo(instance);
-    };
 
-    initCharivo().catch((error: unknown) => {
-      console.error("Failed to initialize Charivo:", error);
-    });
+      return () => {
+        setCharivo(null);
+        setMessages([]);
+        setIsSpeaking(false);
+      };
+    },
+    [createLLMClient, createTTSPlayer],
+  );
 
-    return () => {
-      isMounted = false;
-      setCharivo(null);
-      setMessages([]);
-      setIsSpeaking(false);
-
-      if (container && container.contains(canvas)) {
-        container.removeChild(canvas);
-      }
-
-      if (live2DRenderer) {
-        void live2DRenderer.destroy().catch((error: unknown) => {
-          console.error("Failed to destroy Live2D renderer:", error);
-        });
-      }
-    };
-  }, [canvasContainerRef, createLLMClient, createTTSPlayer]);
+  useLive2D({ canvasContainerRef, onRendererReady: handleRendererReady });
 
   useEffect(() => {
     if (!charivo) return;
