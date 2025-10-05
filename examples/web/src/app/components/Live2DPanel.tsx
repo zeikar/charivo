@@ -23,7 +23,7 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
     <div className="absolute inset-0 flex flex-col">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header with Character Selector */}
-        <div className="absolute top-4 left-4 z-10">
+        <div className="absolute top-4 left-4 z-20">
           <Menu>
             {({ open }) => (
               <>
@@ -36,7 +36,7 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
 
                 <MenuItems
                   anchor="bottom"
-                  className="mt-2 ml-4 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl w-32 focus:outline-none"
+                  className="mt-2 ml-4 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl w-32 focus:outline-none z-50"
                 >
                   {CHARACTERS.map((character) => (
                     <MenuItem key={character.id}>
