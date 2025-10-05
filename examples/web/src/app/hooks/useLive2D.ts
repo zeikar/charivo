@@ -20,7 +20,7 @@ export function useLive2D({
   canvasContainerRef,
   onRendererReady,
 }: UseLive2DOptions) {
-  const { selectedModel, getModelPath } = useLive2DStore();
+  const { selectedModel, getModelPath, getCharacter } = useLive2DStore();
   const live2DRendererRef = useRef<Live2DRendererHandle | null>(null);
 
   useEffect(() => {
@@ -51,18 +51,7 @@ export function useLive2D({
       await renderer.initialize();
       await renderer.loadModel(getModelPath(selectedModel));
 
-      const character: Character = {
-        id: selectedModel.toLowerCase(),
-        name: selectedModel,
-        description: "A cute Live2D character who loves to chat and help users",
-        personality:
-          "Bright, cheerful, and helpful personality. Always responds in English and loves engaging conversations.",
-        voice: {
-          rate: 1.0,
-          pitch: 1.2,
-          volume: 0.8,
-        },
-      };
+      const character = getCharacter(selectedModel);
 
       if (!isMounted) return;
 
@@ -86,7 +75,13 @@ export function useLive2D({
         });
       }
     };
-  }, [canvasContainerRef, selectedModel, getModelPath, onRendererReady]);
+  }, [
+    canvasContainerRef,
+    selectedModel,
+    getModelPath,
+    getCharacter,
+    onRendererReady,
+  ]);
 
   return { live2DRendererRef };
 }
