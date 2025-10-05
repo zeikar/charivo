@@ -7,6 +7,12 @@ import {
 } from "@charivo/core";
 import { RealTimeLipSync } from "./lipsync";
 import { inferMotionFromMessage } from "./motion-inference";
+import {
+  setupMouseTracking,
+  type MouseTrackable,
+  type MouseTrackingCleanup,
+  type MouseTrackingMode,
+} from "./mouse-tracking";
 
 /**
  * Render Manager - 렌더링 세션의 상태 관리를 담당하는 클래스
@@ -14,22 +20,31 @@ import { inferMotionFromMessage } from "./motion-inference";
  * 역할:
  * - 렌더러 관리 및 래핑
  * - 이벤트 버스 연결 및 이벤트 처리
- * - 립싱크 처리 및 좌표
+ * - 립싱크 처리 및 조율
  * - 모션 및 표현 제어
+ * - 마우스 추적 관리
  * - 캐릭터 설정 관리
  * - 메시지 렌더링 조율
  *
  * RenderManager는 어떤 Renderer든 받을 수 있으며,
- * 렌더러가 지원하는 기능(motion, lipsync 등)을 선택적으로 사용합니다.
+ * 렌더러가 지원하는 기능(motion, lipsync, mouse tracking 등)을 선택적으로 사용합니다.
  */
+export interface RenderManagerOptions {
+  canvas?: HTMLCanvasElement;
+  mouseTracking?: MouseTrackingMode;
+}
+
 export class RenderManager implements IRenderManager {
   private renderer: Renderer;
   private character: Character | null = null;
   private lipSync = new RealTimeLipSync();
   private messageCallback?: (message: Message, character?: Character) => void;
+  private cleanupMouseTracking?: MouseTrackingCleanup;
+  private options?: RenderManagerOptions;
 
-  constructor(renderer: Renderer) {
+  constructor(renderer: Renderer, options?: RenderManagerOptions) {
     this.renderer = renderer;
+    this.options = options;
   }
 
   /**
@@ -80,6 +95,27 @@ export class RenderManager implements IRenderManager {
    */
   async initialize(): Promise<void> {
     await this.renderer.initialize();
+
+    // MouseTrackable 렌더러인 경우 마우스 추적 설정
+    if (this.isMouseTrackable(this.renderer) && this.options?.canvas) {
+      this.cleanupMouseTracking = setupMouseTracking({
+        canvas: this.options.canvas,
+        mode: this.options.mouseTracking ?? "canvas",
+        target: this.renderer,
+      });
+    }
+  }
+
+  /**
+   * 렌더러가 MouseTrackable인지 확인
+   */
+  private isMouseTrackable(
+    renderer: Renderer,
+  ): renderer is Renderer & MouseTrackable {
+    return (
+      typeof (renderer as any).updateViewWithMouse === "function" &&
+      typeof (renderer as any).handleMouseTap === "function"
+    );
   }
 
   /**
@@ -114,6 +150,9 @@ export class RenderManager implements IRenderManager {
    * 정리
    */
   async destroy(): Promise<void> {
+    this.cleanupMouseTracking?.();
+    this.cleanupMouseTracking = undefined;
+
     this.lipSync.cleanup();
     await this.renderer.destroy();
   }
@@ -175,6 +214,9 @@ export class RenderManager implements IRenderManager {
 /**
  * Render Manager 생성 헬퍼 함수
  */
-export function createRenderManager(renderer: Renderer): RenderManager {
-  return new RenderManager(renderer);
+export function createRenderManager(
+  renderer: Renderer,
+  options?: RenderManagerOptions,
+): RenderManager {
+  return new RenderManager(renderer, options);
 }

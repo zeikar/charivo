@@ -1,4 +1,8 @@
 import { Renderer, Message, Character, MotionType } from "@charivo/core";
+import {
+  type MouseCoordinates,
+  type MouseTrackable,
+} from "@charivo/render-core";
 import { Option, CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
 import { CubismViewMatrix } from "@framework/math/cubismviewmatrix";
@@ -10,14 +14,11 @@ import { LAppPal } from "./cubism/lapppal";
 import { playSafe } from "./utils/motion";
 import { setupResponsiveResize, type ResizeTeardown } from "./utils/resize";
 
-export type MouseTrackingMode = "canvas" | "document";
-
 export interface Live2DRendererOptions {
   canvas?: HTMLCanvasElement;
-  mouseTracking?: MouseTrackingMode;
 }
 
-export class Live2DRenderer implements Renderer {
+export class Live2DRenderer implements Renderer, MouseTrackable {
   private static cubismStarted = false;
 
   private canvas?: HTMLCanvasElement;
@@ -25,19 +26,11 @@ export class Live2DRenderer implements Renderer {
   private model?: LAppModel;
   private teardownResize?: ResizeTeardown;
   private animationFrameId?: number;
-  private pointerHandlers?: {
-    down: (event: PointerEvent) => void;
-    move: (event: PointerEvent) => void;
-    up: (event: PointerEvent) => void;
-    cancel: (event: PointerEvent) => void;
-  };
   private deviceToScreen = new CubismMatrix44();
   private viewMatrix = new CubismViewMatrix();
-  private mouseTracking: MouseTrackingMode;
 
   constructor(options?: Live2DRendererOptions) {
     this.canvas = options?.canvas;
-    this.mouseTracking = options?.mouseTracking ?? "canvas";
   }
 
   async initialize(): Promise<void> {
@@ -54,7 +47,6 @@ export class Live2DRenderer implements Renderer {
       this.resizeCanvas(),
     );
 
-    this.attachPointerEvents();
     this.startRenderLoop();
   }
 
@@ -179,25 +171,6 @@ export class Live2DRenderer implements Renderer {
       this.animationFrameId = undefined;
     }
 
-    if (this.pointerHandlers) {
-      const eventTarget =
-        this.mouseTracking === "document" ? document : this.canvas;
-      eventTarget?.removeEventListener(
-        "pointerdown",
-        this.pointerHandlers.down,
-      );
-      eventTarget?.removeEventListener(
-        "pointermove",
-        this.pointerHandlers.move,
-      );
-      eventTarget?.removeEventListener("pointerup", this.pointerHandlers.up);
-      eventTarget?.removeEventListener(
-        "pointercancel",
-        this.pointerHandlers.cancel,
-      );
-      this.pointerHandlers = undefined;
-    }
-
     this.model?.release();
     this.model = undefined;
 
@@ -313,44 +286,15 @@ export class Live2DRenderer implements Renderer {
     this.deviceToScreen.translateRelative(-width * 0.5, -height * 0.5);
   }
 
-  private attachPointerEvents(): void {
-    if (!this.canvas) return;
-
-    const down = (event: PointerEvent) => {
-      if (!this.model?.isReady()) return;
-      const rect = this.canvas?.getBoundingClientRect();
-      if (!rect) return;
-      const isOnCanvas =
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom;
-
-      if (isOnCanvas) {
-        const { viewX, viewY } = this.toViewCoordinates(event);
-        this.handleTap(viewX, viewY);
-      }
-    };
-
-    const move = (event: PointerEvent) => {
-      if (!this.model?.isReady()) return;
-      const { viewX, viewY } = this.toViewCoordinates(event);
-      this.model.setDragging(viewX, viewY);
-    };
-
-    // Choose event target based on tracking mode
-    const eventTarget =
-      this.mouseTracking === "document" ? document : this.canvas;
-
-    eventTarget.addEventListener("pointerdown", down, { passive: true });
-    eventTarget.addEventListener("pointermove", move, { passive: true });
-
-    this.pointerHandlers = { down, move, up: down, cancel: down };
+  updateViewWithMouse(coords: MouseCoordinates): void {
+    if (!this.model?.isReady()) return;
+    const { viewX, viewY } = this.toViewCoordinates(coords);
+    this.model.setDragging(viewX, viewY);
   }
 
-  private handleTap(viewX: number, viewY: number): void {
+  handleMouseTap(coords: MouseCoordinates): void {
     if (!this.model?.isReady()) return;
-
+    const { viewX, viewY } = this.toViewCoordinates(coords);
     const hitBody = this.model.hitTest(
       LAppDefine.HitAreaNameBody,
       viewX,
@@ -363,7 +307,7 @@ export class Live2DRenderer implements Renderer {
     }
   }
 
-  private toViewCoordinates(event: PointerEvent): {
+  private toViewCoordinates(coords: MouseCoordinates): {
     viewX: number;
     viewY: number;
   } {
@@ -371,8 +315,8 @@ export class Live2DRenderer implements Renderer {
 
     const rect = this.canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    const deviceX = (event.clientX - rect.left) * dpr;
-    const deviceY = (event.clientY - rect.top) * dpr;
+    const deviceX = (coords.clientX - rect.left) * dpr;
+    const deviceY = (coords.clientY - rect.top) * dpr;
 
     const screenX = this.deviceToScreen.transformX(deviceX);
     const screenY = this.deviceToScreen.transformY(deviceY);
