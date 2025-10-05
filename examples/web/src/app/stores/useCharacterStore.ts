@@ -82,6 +82,5 @@ export const useCharacterStore = create<CharacterStore>((set) => ({
     }
     return character;
   },
-  getLive2DModelPath: (name) =>
-    `/live2d/${name}/${name.toLowerCase()}.model3.json`,
+  getLive2DModelPath: (name) => `/live2d/${name}/${name}.model3.json`,
 }));
