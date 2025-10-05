@@ -2,7 +2,11 @@ import type { RefObject } from "react";
 import { useState } from "react";
 
 import { SpeakingStatus } from "./chat/SpeakingStatus";
-import { useLive2DStore, LIVE2D_MODELS } from "../stores/useLive2DStore";
+import {
+  useCharacterStore,
+  CHARACTERS,
+  type CharacterName,
+} from "../stores/useCharacterStore";
 
 type Live2DPanelProps = {
   canvasContainerRef: RefObject<HTMLDivElement | null>;
@@ -13,11 +17,11 @@ export function Live2DPanel({
   canvasContainerRef,
   isSpeaking,
 }: Live2DPanelProps) {
-  const { selectedModel, setSelectedModel } = useLive2DStore();
+  const { selectedCharacter, setSelectedCharacter } = useCharacterStore();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const handleModelSelect = (modelName: string) => {
-    setSelectedModel(modelName as (typeof LIVE2D_MODELS)[number]);
+  const handleCharacterSelect = (name: string) => {
+    setSelectedCharacter(name as CharacterName);
     setIsDropdownOpen(false);
   };
 
@@ -30,7 +34,7 @@ export function Live2DPanel({
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="text-lg font-bold text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer inline-flex items-center gap-2"
           >
-            {selectedModel}
+            {selectedCharacter}
             <svg
               className={`w-4 h-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
               fill="none"
@@ -48,17 +52,17 @@ export function Live2DPanel({
 
           {isDropdownOpen && (
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-10 min-w-[150px]">
-              {LIVE2D_MODELS.map((model) => (
+              {CHARACTERS.map((character) => (
                 <button
-                  key={model}
-                  onClick={() => handleModelSelect(model)}
+                  key={character.id}
+                  onClick={() => handleCharacterSelect(character.name)}
                   className={`w-full px-4 py-2 text-left hover:bg-blue-50 dark:hover:bg-gray-600 transition-colors ${
-                    model === selectedModel
+                    character.name === selectedCharacter
                       ? "bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-blue-400"
                       : "text-gray-800 dark:text-white"
                   } first:rounded-t-lg last:rounded-b-lg`}
                 >
-                  {model}
+                  {character.name}
                 </button>
               ))}
             </div>

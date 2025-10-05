@@ -6,7 +6,7 @@ type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
-import { useLive2DStore } from "../stores/useLive2DStore";
+import { useCharacterStore } from "../stores/useCharacterStore";
 
 type UseLive2DOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
@@ -20,7 +20,8 @@ export function useLive2D({
   canvasContainerRef,
   onRendererReady,
 }: UseLive2DOptions) {
-  const { selectedModel, getModelPath, getCharacter } = useLive2DStore();
+  const { selectedCharacter, getLive2DModelPath, getCharacter } =
+    useCharacterStore();
   const live2DRendererRef = useRef<Live2DRendererHandle | null>(null);
 
   useEffect(() => {
@@ -49,9 +50,9 @@ export function useLive2D({
       live2DRendererRef.current = renderer;
 
       await renderer.initialize();
-      await renderer.loadModel(getModelPath(selectedModel));
+      await renderer.loadModel(getLive2DModelPath(selectedCharacter));
 
-      const character = getCharacter(selectedModel);
+      const character = getCharacter(selectedCharacter);
 
       if (!isMounted) return;
 
@@ -77,8 +78,8 @@ export function useLive2D({
     };
   }, [
     canvasContainerRef,
-    selectedModel,
-    getModelPath,
+    selectedCharacter,
+    getLive2DModelPath,
     getCharacter,
     onRendererReady,
   ]);

@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../types/chat";
+import { useCharacterStore } from "../../stores/useCharacterStore";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
@@ -16,6 +17,7 @@ function formatTimestamp(timestamp: Date | number | string) {
 }
 
 export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
+  const { selectedCharacter } = useCharacterStore();
   return (
     <div className="p-3 space-y-3 min-h-full">
       {messages.length === 0 && !isLoading && (
@@ -25,8 +27,8 @@ export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
             Ready to explore Charivo!
           </p>
           <p className="text-xs max-w-sm mx-auto">
-            Start a conversation with Hiyori to see Live2D animations, AI
-            responses, and voice synthesis in action
+            Start a conversation with {selectedCharacter} to see Live2D
+            animations, AI responses, and voice synthesis in action
           </p>
         </div>
       )}
@@ -37,13 +39,15 @@ export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
           className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
         >
           <div className="max-w-[75%]">
-            {message.type !== "user" && message.character && (
+            {message.type !== "user" && (
               <div className="flex items-center space-x-2 mb-1">
                 <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs text-white font-bold">H</span>
+                  <span className="text-xs text-white font-bold">
+                    {selectedCharacter.charAt(0)}
+                  </span>
                 </div>
                 <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
-                  {message.character.name}
+                  {selectedCharacter}
                 </span>
               </div>
             )}
@@ -68,10 +72,12 @@ export function ChatMessageList({ messages, isLoading }: ChatMessageListProps) {
           <div className="max-w-[75%]">
             <div className="flex items-center space-x-2 mb-1">
               <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
-                <span className="text-xs text-white font-bold">H</span>
+                <span className="text-xs text-white font-bold">
+                  {selectedCharacter.charAt(0)}
+                </span>
               </div>
               <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">
-                Hiyori
+                {selectedCharacter}
               </span>
             </div>
             <div className="bg-gray-100 dark:bg-gray-700 rounded-lg rounded-bl-none px-4 py-3">

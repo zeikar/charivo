@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { Character } from "@charivo/core";
 
-export const LIVE2D_CHARACTERS: Character[] = [
+export const CHARACTERS: Character[] = [
   {
     id: "haru",
     name: "Haru",
@@ -63,27 +63,25 @@ export const LIVE2D_CHARACTERS: Character[] = [
   },
 ] as const;
 
-export const LIVE2D_MODELS = LIVE2D_CHARACTERS.map((c) => c.name);
+export type CharacterName = (typeof CHARACTERS)[number]["name"];
 
-export type Live2DModel = (typeof LIVE2D_CHARACTERS)[number]["name"];
-
-type Live2DStore = {
-  selectedModel: Live2DModel;
-  setSelectedModel: (model: Live2DModel) => void;
-  getModelPath: (model: Live2DModel) => string;
-  getCharacter: (model: Live2DModel) => Character;
+type CharacterStore = {
+  selectedCharacter: CharacterName;
+  setSelectedCharacter: (name: CharacterName) => void;
+  getCharacter: (name: CharacterName) => Character;
+  getLive2DModelPath: (name: CharacterName) => string;
 };
 
-export const useLive2DStore = create<Live2DStore>((set) => ({
-  selectedModel: "Hiyori",
-  setSelectedModel: (model) => set({ selectedModel: model }),
-  getModelPath: (model) =>
-    `/live2d/${model}/${model.toLowerCase()}.model3.json`,
-  getCharacter: (model) => {
-    const character = LIVE2D_CHARACTERS.find((c) => c.name === model);
+export const useCharacterStore = create<CharacterStore>((set) => ({
+  selectedCharacter: "Hiyori",
+  setSelectedCharacter: (name) => set({ selectedCharacter: name }),
+  getCharacter: (name) => {
+    const character = CHARACTERS.find((c) => c.name === name);
     if (!character) {
-      throw new Error(`Character not found: ${model}`);
+      throw new Error(`Character not found: ${name}`);
     }
     return character;
   },
+  getLive2DModelPath: (name) =>
+    `/live2d/${name}/${name.toLowerCase()}.model3.json`,
 }));
