@@ -231,6 +231,9 @@ export function useCharivoChat({
       if (player) {
         const ttsManager = createTTSManager(player);
         charivo.attachTTS(ttsManager);
+      } else {
+        // TTS player is null (disabled), detach TTS
+        charivo.detachTTS();
       }
     };
 

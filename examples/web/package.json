@@ -24,6 +24,8 @@
     "@charivo/tts-player-remote": "workspace:*",
     "@charivo/tts-player-web": "workspace:*",
     "@charivo/tts-provider-openai": "workspace:*",
+    "@headlessui/react": "^2.2.9",
+    "@heroicons/react": "^2.2.0",
     "next": "15.5.3",
     "openai": "^4.28.4",
     "react": "19.1.0",

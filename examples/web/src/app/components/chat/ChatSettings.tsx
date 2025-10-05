@@ -1,5 +1,14 @@
-import type { ChangeEvent } from "react";
+"use client";
 
+import { Menu, MenuButton, MenuItems } from "@headlessui/react";
+import { Cog6ToothIcon } from "@heroicons/react/24/outline";
+import {
+  GlobeAltIcon,
+  BoltIcon,
+  FaceSmileIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+} from "@heroicons/react/24/solid";
 import type { LLMClientType, TTSPlayerType } from "../../types/chat";
 
 type ChatSettingsProps = {
@@ -15,23 +24,27 @@ type Option<T> = {
   label: string;
   value: T;
   description: string;
+  Icon: React.ComponentType<{ className?: string }>;
 };
 
 const LLM_OPTIONS: Option<LLMClientType>[] = [
   {
     label: "Remote API",
     value: "remote",
-    description: "🌐 Calls server LLM API (secure, recommended)",
+    description: "Calls server LLM API (secure, recommended)",
+    Icon: GlobeAltIcon,
   },
   {
     label: "OpenAI Direct",
     value: "openai",
-    description: "⚡ Direct OpenAI API (test only, requires API key)",
+    description: "Direct OpenAI API (test only, requires API key)",
+    Icon: BoltIcon,
   },
   {
     label: "Test Stub",
     value: "stub",
-    description: "🎭 Mock responses for testing (no API calls)",
+    description: "Mock responses for testing (no API calls)",
+    Icon: FaceSmileIcon,
   },
 ];
 
@@ -39,22 +52,26 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
   {
     label: "Remote API",
     value: "remote",
-    description: "🌐 Calls server TTS API (secure)",
+    description: "Calls server TTS API (secure)",
+    Icon: GlobeAltIcon,
   },
   {
     label: "Browser TTS",
     value: "web",
-    description: "🔊 Uses browser's built-in TTS",
+    description: "Uses browser's built-in TTS",
+    Icon: SpeakerWaveIcon,
   },
   {
     label: "OpenAI Direct",
     value: "openai",
-    description: "⚡ Direct OpenAI API (test only)",
+    description: "Direct OpenAI API (test only)",
+    Icon: BoltIcon,
   },
   {
     label: "Disabled",
     value: "none",
-    description: "🔇 No voice synthesis",
+    description: "No voice synthesis",
+    Icon: SpeakerXMarkIcon,
   },
 ];
 
@@ -66,92 +83,103 @@ export function ChatSettings({
   llmError,
   ttsError,
 }: ChatSettingsProps) {
-  const handleLLMChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onSelectLLMClient(event.target.value as LLMClientType);
-  };
-
-  const handleTTSChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onSelectTTSPlayer(event.target.value as TTSPlayerType);
-  };
+  const selectedLLM = LLM_OPTIONS.find(
+    (opt) => opt.value === selectedLLMClient,
+  );
+  const selectedTTS = TTS_OPTIONS.find(
+    (opt) => opt.value === selectedTTSPlayer,
+  );
 
   return (
-    <div className="bg-blue-500 dark:bg-blue-600 p-4">
-      <h2 className="text-lg font-semibold text-white mb-1">
-        💬 AI Chat Interface
-      </h2>
-      <p className="text-blue-100 text-xs mb-3">
-        Modular LLM + TTS integration with multiple providers
-      </p>
+    <div className="absolute top-4 right-4 z-20">
+      <Menu>
+        <MenuButton className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-800 dark:text-white hover:bg-white dark:hover:bg-gray-800 transition-colors inline-flex items-center gap-2">
+          <Cog6ToothIcon className="w-4 h-4" />
+          Settings
+        </MenuButton>
 
-      <div className="space-y-3 mb-4">
-        <div className="text-sm font-medium text-white">
-          🧠 LLM Client Options:
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {LLM_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer"
-            >
-              <input
-                type="radio"
-                name="llmClient"
-                value={option.value}
-                checked={selectedLLMClient === option.value}
-                onChange={handleLLMChange}
-                className="text-blue-500"
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="text-xs text-blue-200 bg-blue-600/50 p-2 rounded">
-          {
-            LLM_OPTIONS.find((option) => option.value === selectedLLMClient)
-              ?.description
-          }
-        </div>
-        {llmError && (
-          <div className="text-xs text-red-200 bg-red-600/50 p-2 rounded">
-            ⚠️ {llmError}
+        <MenuItems
+          anchor="bottom end"
+          transition
+          className="mt-2 mr-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-72 overflow-hidden focus:outline-none"
+        >
+          {/* LLM Settings */}
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">🧠</span>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+                LLM Client
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {LLM_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onSelectLLMClient(option.value)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                    selectedLLMClient === option.value
+                      ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium"
+                      : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <option.Icon className="w-4 h-4" />
+                    <span>{option.label}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {selectedLLM && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                {selectedLLM.description}
+              </p>
+            )}
+            {llmError && (
+              <div className="text-xs text-red-600 dark:text-red-400 mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                ⚠️ {llmError}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="space-y-3">
-        <div className="text-sm font-medium text-white">
-          🔊 TTS Player Options:
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          {TTS_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className="flex items-center space-x-2 text-xs text-blue-100 cursor-pointer"
-            >
-              <input
-                type="radio"
-                name="ttsPlayer"
-                value={option.value}
-                checked={selectedTTSPlayer === option.value}
-                onChange={handleTTSChange}
-                className="text-blue-500"
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
-        </div>
-        <div className="text-xs text-blue-200 bg-blue-600/50 p-2 rounded">
-          {
-            TTS_OPTIONS.find((option) => option.value === selectedTTSPlayer)
-              ?.description
-          }
-        </div>
-        {ttsError && (
-          <div className="text-xs text-red-200 bg-red-600/50 p-2 rounded">
-            ⚠️ {ttsError}
+          {/* TTS Settings */}
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <SpeakerWaveIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+                TTS Player
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {TTS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onSelectTTSPlayer(option.value)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+                    selectedTTSPlayer === option.value
+                      ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium"
+                      : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <option.Icon className="w-4 h-4" />
+                    <span>{option.label}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {selectedTTS && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                {selectedTTS.description}
+              </p>
+            )}
+            {ttsError && (
+              <div className="text-xs text-red-600 dark:text-red-400 mt-2 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+                ⚠️ {ttsError}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </MenuItems>
+      </Menu>
     </div>
   );
 }

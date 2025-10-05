@@ -41,6 +41,9 @@ const ttsPlayer = new OpenAITTSPlayer({ apiKey: "your-api-key" });
 const ttsManager = createTTSManager(ttsPlayer);
 charivo.attachTTS(ttsManager);
 
+// Disable TTS (optional)
+// charivo.detachTTS();
+
 // Setup Renderer
 const renderer = new Live2DRenderer({ canvas });
 await renderer.initialize();
@@ -58,6 +61,17 @@ charivo.setCharacter({
 // Start chatting
 await charivo.userSay("Hello!");
 ```
+
+### API Reference
+
+#### Charivo Methods
+
+- `attachLLM(manager: LLMManager): void` - Attach an LLM manager for conversation
+- `attachTTS(manager: TTSManager): void` - Attach a TTS manager for voice synthesis
+- `detachTTS(): void` - Detach the TTS manager to disable voice synthesis
+- `attachRenderer(manager: RenderManager): void` - Attach a renderer for visual output
+- `setCharacter(character: Character): void` - Set the character configuration
+- `userSay(message: string): Promise<void>` - Send a user message and get a response
 
 ### Event Bus
 

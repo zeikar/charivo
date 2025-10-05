@@ -103,6 +103,14 @@ export class Charivo {
   }
 
   /**
+   * Detach the TTS manager to disable voice synthesis.
+   */
+  detachTTS(): void {
+    console.log("🔇 Charivo: Detaching TTS manager");
+    this.ttsManager = undefined;
+  }
+
+  /**
    * Connects the TTS manager to the event bus for audio event emission.
    */
   private connectTTSManagerEventEmitter(manager: TTSManager): void {

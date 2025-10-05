@@ -4,7 +4,8 @@ import { useRef } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
-import { ChatPanel } from "./components/chat/ChatPanel";
+import { BubbleChatPanel } from "./components/chat/BubbleChatPanel";
+import { ChatSettings } from "./components/chat/ChatSettings";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import type { LLMClientType, TTSPlayerType } from "./types/chat";
 
@@ -48,26 +49,31 @@ export default function Home() {
       <div className="container mx-auto px-4 py-6 flex flex-col max-w-7xl h-full overflow-hidden">
         <PageHeader />
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 flex-1 min-h-0 overflow-hidden">
+        {/* Main Content - Character with Bubble Chat Overlay */}
+        <div className="flex-1 min-h-0 overflow-hidden relative">
           <Live2DPanel
             canvasContainerRef={canvasContainerRef}
             isSpeaking={isSpeaking}
           />
 
-          <ChatPanel
-            messages={messages}
-            isLoading={isLoading}
-            input={input}
-            onInputChange={handleInputChange}
-            onSend={handleSendClick}
-            onKeyPress={handleKeyPress}
+          {/* Settings Overlay */}
+          <ChatSettings
             selectedLLMClient={selectedLLMClient}
             onSelectLLMClient={handleLLMClientChange}
             selectedTTSPlayer={selectedTTSPlayer}
             onSelectTTSPlayer={handleTTSPlayerChange}
             llmError={llmError}
             ttsError={ttsError}
+          />
+
+          {/* Bubble Chat Overlay */}
+          <BubbleChatPanel
+            messages={messages}
+            isLoading={isLoading}
+            input={input}
+            onInputChange={handleInputChange}
+            onSend={handleSendClick}
+            onKeyPress={handleKeyPress}
           />
         </div>
       </div>
