@@ -13,6 +13,7 @@ type UseLive2DOptions = {
   onRendererReady?: (
     renderer: Live2DRendererHandle,
     character: Character,
+    canvas: HTMLCanvasElement,
   ) => void;
 };
 
@@ -42,21 +43,15 @@ export function useLive2D({
       container.appendChild(canvas);
 
       const { Live2DRenderer } = await import("@charivo/render-live2d");
-      const renderer = new Live2DRenderer({
-        canvas,
-        mouseTracking: "document",
-      });
+      const renderer = new Live2DRenderer({ canvas });
       live2DRenderer = renderer;
       live2DRendererRef.current = renderer;
-
-      await renderer.initialize();
-      await renderer.loadModel(getLive2DModelPath(selectedCharacter));
 
       const character = getCharacter(selectedCharacter);
 
       if (!isMounted) return;
 
-      onRendererReady?.(renderer, character);
+      onRendererReady?.(renderer, character, canvas);
     };
 
     initLive2D().catch((error: unknown) => {

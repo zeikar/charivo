@@ -51,10 +51,7 @@ await renderer.loadModel("/live2d/hiyori/hiyori.model3.json");
 ```typescript
 import { Live2DRenderer } from "@charivo/render-live2d";
 
-const renderer = new Live2DRenderer({
-  canvas,
-  mouseTracking: "document" // Track mouse across entire document
-});
+const renderer = new Live2DRenderer({ canvas });
 
 await renderer.initialize();
 await renderer.loadModel("/live2d/model.model3.json");
@@ -88,18 +85,21 @@ renderer.updateRealtimeLipSyncRms(0.8); // 0.0 = closed, 1.0 = fully open
 
 ### With RenderManager (Recommended)
 
-For state management and automatic lip-sync:
+For state management, mouse tracking, and automatic lip-sync:
 
 ```typescript
 import { createLive2DRenderer } from "@charivo/render-live2d";
 import { createRenderManager } from "@charivo/render-core";
 
-const renderer = createLive2DRenderer({ canvas });
-await renderer.initialize();
-await renderer.loadModel("/live2d/model.model3.json");
+const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 
-// Wrap with RenderManager for automatic motion/lip-sync
-const renderManager = createRenderManager(renderer);
+const renderer = createLive2DRenderer({ canvas });
+
+// Wrap with RenderManager for automatic motion/lip-sync/mouse-tracking
+const renderManager = createRenderManager(renderer, {
+  canvas,
+  mouseTracking: "document" // Track mouse across entire page
+});
 
 // Set character
 renderManager.setCharacter({
@@ -107,6 +107,10 @@ renderManager.setCharacter({
   name: "Hiyori",
   personality: "Cheerful AI assistant"
 });
+
+// Initialize (sets up mouse tracking automatically)
+await renderManager.initialize();
+await renderManager.loadModel("/live2d/model.model3.json");
 
 // Render messages (automatic motion inference!)
 await renderManager.render({
@@ -131,7 +135,6 @@ new Live2DRenderer(options?: Live2DRendererOptions)
 
 **Options:**
 - `canvas?: HTMLCanvasElement` - Canvas element for rendering
-- `mouseTracking?: "canvas" | "document"` - Mouse tracking scope (default: "canvas")
 
 #### Methods
 
@@ -201,11 +204,8 @@ await renderer.destroy();
 ### Types
 
 ```typescript
-type MouseTrackingMode = "canvas" | "document";
-
 interface Live2DRendererOptions {
   canvas?: HTMLCanvasElement;
-  mouseTracking?: MouseTrackingMode;
 }
 
 type MotionType = "greeting" | "happy" | "thinking" | "talk";
@@ -213,23 +213,24 @@ type MotionType = "greeting" | "happy" | "thinking" | "talk";
 
 ## Mouse Tracking
 
-The renderer supports mouse tracking for model interaction:
+Mouse tracking is now managed by `RenderManager` from `@charivo/render-core`. The Live2D renderer implements the `MouseTrackable` interface, which allows RenderManager to automatically set up mouse tracking:
 
 ```typescript
-// Track mouse only on canvas (default)
-const renderer = new Live2DRenderer({ 
+import { createLive2DRenderer } from "@charivo/render-live2d";
+import { createRenderManager } from "@charivo/render-core";
+
+const renderer = createLive2DRenderer({ canvas });
+
+// RenderManager handles mouse tracking setup
+const renderManager = createRenderManager(renderer, {
   canvas,
-  mouseTracking: "canvas" 
+  mouseTracking: "document" // Track across entire page, or "canvas" for canvas only
 });
 
-// Track mouse across entire document
-const renderer = new Live2DRenderer({ 
-  canvas,
-  mouseTracking: "document" 
-});
+await renderManager.initialize(); // Mouse tracking is set up here
 ```
 
-Model eyes will follow the cursor, and you can tap/click to trigger animations.
+The model's eyes will follow the cursor, and you can tap/click to trigger animations.
 
 ## Model Requirements
 
@@ -389,9 +390,17 @@ await renderer.loadModel("/live2d/model.model3.json");
 
 ### Mouse tracking not working
 
-Make sure you're using the correct `mouseTracking` mode:
-- Use `"canvas"` if you want interaction only on the canvas
-- Use `"document"` if you want the model to follow mouse across the page
+Make sure you're using `RenderManager` with the correct options:
+
+```typescript
+const renderManager = createRenderManager(renderer, {
+  canvas: yourCanvas,
+  mouseTracking: "document" // or "canvas"
+});
+await renderManager.initialize(); // This sets up mouse tracking
+```
+
+Note: Mouse tracking requires using `RenderManager` from `@charivo/render-core`.
 
 ### Performance issues
 

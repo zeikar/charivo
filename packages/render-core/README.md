@@ -5,6 +5,7 @@ Core rendering functionality with state management, lip-sync coordination, and m
 ## Features
 
 - 🎯 **Stateful Rendering Management** - Manages rendering state, character context, and session
+- 🖱️ **Mouse Tracking** - Automatic mouse/touch tracking setup for interactive renderers
 - 💋 **Real-time Lip Sync** - Audio analysis and lip-sync coordination with any renderer
 - 🎭 **Motion Inference** - Automatic motion type inference from message content
 - 🔌 **Renderer Agnostic** - Works with any renderer implementing the `Renderer` interface
@@ -24,13 +25,16 @@ pnpm add @charivo/render-core @charivo/core
 import { createRenderManager } from "@charivo/render-core";
 import { Live2DRenderer } from "@charivo/render-live2d";
 
+const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+
 // Create a renderer (Live2D, 3D, or custom)
 const renderer = new Live2DRenderer({ canvas });
-await renderer.initialize();
-await renderer.loadModel("/path/to/model.model3.json");
 
-// Wrap with RenderManager for state management
-const renderManager = createRenderManager(renderer);
+// Wrap with RenderManager for state management and mouse tracking
+const renderManager = createRenderManager(renderer, {
+  canvas,
+  mouseTracking: "document" // or "canvas"
+});
 
 // Set character
 renderManager.setCharacter({
@@ -39,8 +43,11 @@ renderManager.setCharacter({
   personality: "Cheerful and helpful"
 });
 
-// Initialize and use
+// Initialize (this also sets up mouse tracking)
 await renderManager.initialize();
+await renderManager.loadModel("/path/to/model.model3.json");
+
+// Render messages
 await renderManager.render(message, character);
 ```
 
@@ -115,8 +122,12 @@ Main class for managing rendering state and coordinating with renderers.
 #### Constructor
 
 ```typescript
-new RenderManager(renderer: Renderer)
+new RenderManager(renderer: Renderer, options?: RenderManagerOptions)
 ```
+
+**Options:**
+- `canvas?: HTMLCanvasElement` - Canvas element for mouse tracking (required if renderer implements `MouseTrackable`)
+- `mouseTracking?: "canvas" | "document"` - Mouse tracking scope (default: "canvas")
 
 #### Methods
 
@@ -151,7 +162,7 @@ renderManager.setCharacter({
 ```
 
 ##### `initialize()`
-Initialize the underlying renderer.
+Initialize the underlying renderer and set up mouse tracking (if renderer implements `MouseTrackable`).
 
 ```typescript
 await renderManager.initialize();
@@ -232,11 +243,41 @@ The system supports four motion types:
 ```
 RenderManager (stateful)
   ├─ Character Management
+  ├─ Mouse Tracking Setup (for MouseTrackable renderers)
   ├─ Event Bus Connection
   ├─ Lip Sync Coordination (RealTimeLipSync)
   ├─ Motion Inference
   └─ Renderer (stateless)
       └─ Your Custom Renderer
+```
+
+## Mouse Tracking
+
+RenderManager automatically sets up mouse tracking for renderers that implement the `MouseTrackable` interface:
+
+```typescript
+import { MouseTrackable, MouseCoordinates } from "@charivo/render-core";
+
+class MyRenderer implements Renderer, MouseTrackable {
+  // ... other Renderer methods
+
+  updateViewWithMouse(coords: MouseCoordinates): void {
+    // Update view based on mouse position
+    // coords.clientX, coords.clientY
+  }
+
+  handleMouseTap(coords: MouseCoordinates): void {
+    // Handle mouse/touch tap
+  }
+}
+
+// RenderManager will automatically set up mouse tracking
+const renderManager = createRenderManager(new MyRenderer(), {
+  canvas: myCanvas,
+  mouseTracking: "document" // Track across entire page
+});
+
+await renderManager.initialize(); // Mouse tracking is set up here
 ```
 
 ## License

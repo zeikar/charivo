@@ -16,6 +16,7 @@ type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
 import type { ChatMessage, LLMClientType, TTSPlayerType } from "../types/chat";
 import { useLive2D } from "./useLive2D";
+import { useCharacterStore } from "../stores/useCharacterStore";
 
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
@@ -40,6 +41,7 @@ type UseCharivoChatReturn = {
 export function useCharivoChat({
   canvasContainerRef,
 }: UseCharivoChatOptions): UseCharivoChatReturn {
+  const { getLive2DModelPath } = useCharacterStore();
   const [charivo, setCharivo] = useState<Charivo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -146,12 +148,23 @@ export function useCharivoChat({
   }, []);
 
   const handleRendererReady = useCallback(
-    async (renderer: Live2DRendererHandle, character: Character) => {
+    async (
+      renderer: Live2DRendererHandle,
+      character: Character,
+      canvas: HTMLCanvasElement,
+    ) => {
       const instance = new Charivo();
 
       // Wrap with RenderManager (stateful)
       const { createRenderManager } = await import("@charivo/render-core");
-      const renderManager = createRenderManager(renderer);
+      const renderManager = createRenderManager(renderer, {
+        canvas,
+        mouseTracking: "document",
+      });
+
+      // Initialize RenderManager (this will also setup mouse tracking)
+      await renderManager.initialize();
+      await renderManager.loadModel?.(getLive2DModelPath(character.id));
 
       renderManager.setMessageCallback(
         (message: Message, character?: Character) => {
@@ -205,7 +218,7 @@ export function useCharivoChat({
         setIsSpeaking(false);
       };
     },
-    [createLLMClient, createTTSPlayer],
+    [createLLMClient, createTTSPlayer, getLive2DModelPath],
   );
 
   useLive2D({ canvasContainerRef, onRendererReady: handleRendererReady });
