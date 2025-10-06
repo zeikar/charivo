@@ -165,6 +165,42 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
     }
   }
 
+  /**
+   * Get available expressions from the loaded model
+   */
+  getAvailableExpressions(): string[] {
+    if (!this.model?.isReady()) return [];
+    return this.model.getAvailableExpressions();
+  }
+
+  /**
+   * Get available motion groups from the loaded model
+   */
+  getAvailableMotionGroups(): Record<string, number> {
+    if (!this.model?.isReady()) return {};
+    return this.model.getAvailableMotionGroups();
+  }
+
+  /**
+   * Play a specific expression by ID
+   */
+  playExpression(expressionId: string): void {
+    if (!this.model?.isReady()) return;
+    if (this.model.hasExpression(expressionId)) {
+      this.model.setExpression(expressionId);
+    }
+  }
+
+  /**
+   * Play a specific motion by group and index
+   */
+  playMotionByGroup(group: string, index: number): void {
+    if (!this.model?.isReady()) return;
+    if (this.model.hasMotion(group, index)) {
+      this.model.startMotion(group, index, LAppDefine.PriorityNormal);
+    }
+  }
+
   async destroy(): Promise<void> {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);

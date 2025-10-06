@@ -305,6 +305,33 @@ export class LAppModel extends CubismUserModel {
     return this.expressions.getValue(expressionId) !== null;
   }
 
+  public getAvailableExpressions(): string[] {
+    const expressionNames: string[] = [];
+    const size = this.expressions.getSize();
+    for (let i = 0; i < size; i++) {
+      const keyValue = this.expressions._keyValues[i];
+      if (keyValue) {
+        expressionNames.push(keyValue.first);
+      }
+    }
+    return expressionNames;
+  }
+
+  public getAvailableMotionGroups(): Record<string, number> {
+    if (!this.modelSetting) return {};
+
+    const motionGroups: Record<string, number> = {};
+    const groupCount = this.modelSetting.getMotionGroupCount();
+
+    for (let i = 0; i < groupCount; i++) {
+      const group = this.modelSetting.getMotionGroupName(i);
+      const motionCount = this.modelSetting.getMotionCount(group);
+      motionGroups[group] = motionCount;
+    }
+
+    return motionGroups;
+  }
+
   public hitTest(hitAreaName: string, x: number, y: number): boolean {
     if (!this.ready || this._opacity < 1 || !this.modelSetting) {
       return false;
