@@ -164,7 +164,7 @@ export function useCharivoChat({
 
       // Initialize RenderManager (this will also setup mouse tracking)
       await renderManager.initialize();
-      await renderManager.loadModel?.(getLive2DModelPath(character.name));
+      await renderManager.loadModel?.(getLive2DModelPath(character.id));
 
       renderManager.setMessageCallback(
         (message: Message, character?: Character) => {

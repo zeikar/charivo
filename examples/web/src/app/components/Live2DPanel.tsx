@@ -5,7 +5,7 @@ import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import {
   useCharacterStore,
   CHARACTERS,
-  type CharacterName,
+  type CharacterId,
 } from "../stores/useCharacterStore";
 
 type Live2DPanelProps = {
@@ -15,8 +15,8 @@ type Live2DPanelProps = {
 export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
   const { selectedCharacter, setSelectedCharacter } = useCharacterStore();
 
-  const handleCharacterSelect = (name: string) => {
-    setSelectedCharacter(name as CharacterName);
+  const handleCharacterSelect = (id: string) => {
+    setSelectedCharacter(id as CharacterId);
   };
 
   return (
@@ -42,16 +42,16 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
                     <MenuItem key={character.id}>
                       {({ focus }) => (
                         <button
-                          onClick={() => handleCharacterSelect(character.name)}
+                          onClick={() => handleCharacterSelect(character.id)}
                           className={`w-full px-4 py-2 text-left transition-colors text-sm ${
-                            character.name === selectedCharacter
+                            character.id === selectedCharacter
                               ? "bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-blue-400 font-medium"
                               : focus
                                 ? "bg-blue-50 dark:bg-gray-600 text-gray-800 dark:text-white"
                                 : "text-gray-800 dark:text-white"
                           } first:rounded-t-lg last:rounded-b-lg`}
                         >
-                          {character.name}
+                          {character.id}
                         </button>
                       )}
                     </MenuItem>

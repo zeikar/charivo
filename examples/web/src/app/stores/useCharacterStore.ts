@@ -3,7 +3,7 @@ import type { Character } from "@charivo/core";
 
 export const CHARACTERS: Character[] = [
   {
-    id: "haru",
+    id: "Haru",
     name: "Haru",
     description:
       "A bright and energetic character who brings warmth to every conversation",
@@ -12,7 +12,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 1.1, pitch: 1.3, volume: 0.8 },
   },
   {
-    id: "hiyori",
+    id: "Hiyori",
     name: "Hiyori",
     description: "A thoughtful and gentle character with a calm demeanor",
     personality:
@@ -20,7 +20,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 1.0, pitch: 1.2, volume: 0.8 },
   },
   {
-    id: "mao",
+    id: "Mao",
     name: "Mao",
     description: "A playful and mischievous character with a sense of humor",
     personality:
@@ -28,7 +28,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 1.2, pitch: 1.1, volume: 0.9 },
   },
   {
-    id: "mark",
+    id: "Mark",
     name: "Mark",
     description:
       "A confident and knowledgeable character who enjoys deep conversations",
@@ -37,7 +37,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 0.9, pitch: 0.9, volume: 0.8 },
   },
   {
-    id: "natori",
+    id: "Natori",
     name: "Natori",
     description: "A mysterious and elegant character with a sophisticated air",
     personality:
@@ -45,7 +45,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 0.95, pitch: 1.0, volume: 0.75 },
   },
   {
-    id: "rice",
+    id: "Rice",
     name: "Rice",
     description:
       "An adorable and innocent character who sees the world with wonder",
@@ -54,7 +54,7 @@ export const CHARACTERS: Character[] = [
     voice: { rate: 1.15, pitch: 1.4, volume: 0.85 },
   },
   {
-    id: "wanko",
+    id: "Wanko",
     name: "Wanko",
     description: "A loyal and energetic character with puppy-like enthusiasm",
     personality:
@@ -63,24 +63,24 @@ export const CHARACTERS: Character[] = [
   },
 ] as const;
 
-export type CharacterName = (typeof CHARACTERS)[number]["name"];
+export type CharacterId = (typeof CHARACTERS)[number]["id"];
 
 type CharacterStore = {
-  selectedCharacter: CharacterName;
-  setSelectedCharacter: (name: CharacterName) => void;
-  getCharacter: (name: CharacterName) => Character;
-  getLive2DModelPath: (name: CharacterName) => string;
+  selectedCharacter: CharacterId;
+  setSelectedCharacter: (id: CharacterId) => void;
+  getCharacter: (id: CharacterId) => Character;
+  getLive2DModelPath: (id: CharacterId) => string;
 };
 
 export const useCharacterStore = create<CharacterStore>((set) => ({
   selectedCharacter: "Hiyori",
-  setSelectedCharacter: (name) => set({ selectedCharacter: name }),
-  getCharacter: (name) => {
-    const character = CHARACTERS.find((c) => c.name === name);
+  setSelectedCharacter: (id) => set({ selectedCharacter: id }),
+  getCharacter: (id) => {
+    const character = CHARACTERS.find((c) => c.id === id);
     if (!character) {
-      throw new Error(`Character not found: ${name}`);
+      throw new Error(`Character not found: ${id}`);
     }
     return character;
   },
-  getLive2DModelPath: (name) => `/live2d/${name}/${name}.model3.json`,
+  getLive2DModelPath: (id) => `/live2d/${id}/${id}.model3.json`,
 }));
