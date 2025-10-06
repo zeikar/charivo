@@ -4,8 +4,10 @@ import { useRef } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
-import { BubbleChatPanel } from "./components/chat/BubbleChatPanel";
 import { ChatSettings } from "./components/chat/ChatSettings";
+import { MessageBubbles } from "./components/chat/MessageBubbles";
+import { ControlPanel } from "./components/chat/ControlPanel";
+import { ChatInput } from "./components/chat/ChatInput";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import type { LLMClientType, TTSPlayerType } from "./types/chat";
 
@@ -26,6 +28,10 @@ export default function Home() {
     ttsError,
     handleSend,
     handleKeyPress,
+    playExpression,
+    playMotion,
+    getAvailableExpressions,
+    getAvailableMotionGroups,
   } = useCharivoChat({ canvasContainerRef });
 
   const handleSendClick = () => {
@@ -45,32 +51,50 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex flex-col overflow-hidden">
-      <div className="container mx-auto px-4 py-6 flex flex-col max-w-7xl h-full overflow-hidden">
-        <PageHeader />
+    <div className="h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex flex-col">
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-6">
+        <div className="container mx-auto max-w-7xl">
+          <PageHeader />
+        </div>
+      </div>
 
-        {/* Main Content - Character with Bubble Chat Overlay */}
-        <div className="flex-1 min-h-0 overflow-hidden relative">
-          <Live2DPanel canvasContainerRef={canvasContainerRef} />
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-h-0 px-4 pb-6 gap-4">
+        <div className="container mx-auto max-w-7xl flex-1 flex flex-col gap-4 min-h-0">
+          {/* Character Area */}
+          <div className="flex-1 min-h-0 relative">
+            <Live2DPanel canvasContainerRef={canvasContainerRef} />
 
-          {/* Settings Overlay */}
-          <ChatSettings
-            selectedLLMClient={selectedLLMClient}
-            onSelectLLMClient={handleLLMClientChange}
-            selectedTTSPlayer={selectedTTSPlayer}
-            onSelectTTSPlayer={handleTTSPlayerChange}
-            llmError={llmError}
-            ttsError={ttsError}
-          />
+            <ChatSettings
+              selectedLLMClient={selectedLLMClient}
+              onSelectLLMClient={handleLLMClientChange}
+              selectedTTSPlayer={selectedTTSPlayer}
+              onSelectTTSPlayer={handleTTSPlayerChange}
+              llmError={llmError}
+              ttsError={ttsError}
+            />
 
-          {/* Bubble Chat Overlay */}
-          <BubbleChatPanel
-            messages={messages}
-            isLoading={isLoading && !isSpeaking}
-            input={input}
-            onInputChange={handleInputChange}
+            <MessageBubbles
+              messages={messages}
+              isLoading={isLoading && !isSpeaking}
+            />
+
+            <ControlPanel
+              onPlayExpression={playExpression}
+              onPlayMotion={playMotion}
+              getAvailableExpressions={getAvailableExpressions}
+              getAvailableMotionGroups={getAvailableMotionGroups}
+            />
+          </div>
+
+          {/* Chat Input Area */}
+          <ChatInput
+            value={input}
+            onChange={handleInputChange}
             onSend={handleSendClick}
             onKeyPress={handleKeyPress}
+            disabled={isLoading}
           />
         </div>
       </div>

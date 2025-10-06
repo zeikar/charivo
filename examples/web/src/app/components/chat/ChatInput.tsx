@@ -1,11 +1,12 @@
-import type { ChangeEvent, KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
+import { PaperAirplaneIcon } from "@heroicons/react/24/outline";
 
 type ChatInputProps = {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
   onKeyPress: (event: KeyboardEvent<HTMLInputElement>) => void;
-  disabled: boolean;
+  disabled?: boolean;
 };
 
 export function ChatInput({
@@ -13,32 +14,29 @@ export function ChatInput({
   onChange,
   onSend,
   onKeyPress,
-  disabled,
+  disabled = false,
 }: ChatInputProps) {
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onChange(event.target.value);
-  };
-
   return (
-    <div className="border-t dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-700">
-      <div className="flex space-x-2">
-        <input
-          type="text"
-          value={value}
-          onChange={handleChange}
-          onKeyPress={onKeyPress}
-          placeholder="Experience Charivo framework - type your message..."
-          className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 text-sm"
-          disabled={disabled}
-        />
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 font-medium text-sm"
-        >
-          {disabled ? "..." : "Send"}
-        </button>
+    <div className="flex-shrink-0 h-16 flex items-center justify-center">
+      <div className="w-full max-w-3xl">
+        <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full shadow-xl border border-gray-200 dark:border-gray-700 px-4 py-3">
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={onKeyPress}
+            placeholder="Type your message..."
+            className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+            disabled={disabled}
+          />
+          <button
+            onClick={onSend}
+            disabled={disabled || !value.trim()}
+            className="p-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex-shrink-0"
+          >
+            <PaperAirplaneIcon className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   );

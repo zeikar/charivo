@@ -36,6 +36,10 @@ type UseCharivoChatReturn = {
   ttsError: string | null;
   handleSend: () => Promise<void>;
   handleKeyPress: (event: KeyboardEvent<HTMLInputElement>) => void;
+  playExpression: (expressionId: string) => void;
+  playMotion: (group: string, index: number) => void;
+  getAvailableExpressions: () => string[];
+  getAvailableMotionGroups: () => Record<string, number>;
 };
 
 export function useCharivoChat({
@@ -56,6 +60,7 @@ export function useCharivoChat({
 
   const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
   const initialTTSPlayerRef = useRef<TTSPlayerType>(selectedTTSPlayer);
+  const rendererRef = useRef<Live2DRendererHandle | null>(null);
 
   useEffect(() => {
     initialLLMClientRef.current = selectedLLMClient;
@@ -153,6 +158,7 @@ export function useCharivoChat({
       character: Character,
       canvas: HTMLCanvasElement,
     ) => {
+      rendererRef.current = renderer;
       const instance = new Charivo();
 
       // Wrap with RenderManager (stateful)
@@ -288,6 +294,28 @@ export function useCharivoChat({
     [handleSend],
   );
 
+  const playExpression = useCallback((expressionId: string) => {
+    if (rendererRef.current) {
+      rendererRef.current.playExpression(expressionId);
+    }
+  }, []);
+
+  const playMotion = useCallback((group: string, index: number) => {
+    if (rendererRef.current) {
+      rendererRef.current.playMotionByGroup(group, index);
+    }
+  }, []);
+
+  const getAvailableExpressions = useCallback((): string[] => {
+    if (!rendererRef.current) return [];
+    return rendererRef.current.getAvailableExpressions();
+  }, []);
+
+  const getAvailableMotionGroups = useCallback((): Record<string, number> => {
+    if (!rendererRef.current) return {};
+    return rendererRef.current.getAvailableMotionGroups();
+  }, []);
+
   return {
     messages,
     input,
@@ -302,5 +330,9 @@ export function useCharivoChat({
     ttsError,
     handleSend,
     handleKeyPress,
+    playExpression,
+    playMotion,
+    getAvailableExpressions,
+    getAvailableMotionGroups,
   };
 }
