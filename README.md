@@ -4,6 +4,12 @@
 
 Charivo lets you create interactive AI characters with Live2D animations, voice synthesis, and natural language conversations. Mix and match components like LEGO blocks - swap LLM providers, renderers, TTS engines, and more with ease! ✨
 
+## 🎮 [Live Demo](https://charivo.vercel.app/)
+
+Try out Charivo in action at **[charivo.vercel.app](https://charivo.vercel.app/)**
+
+![Charivo Demo](./docs/images/screenshot.png)
+
 ## 🎯 Why Charivo?
 
 ### Before (Raw Live2D SDK)
