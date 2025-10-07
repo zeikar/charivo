@@ -1,47 +1,49 @@
 export function PageHeader() {
   return (
-    <div className="text-center mb-6">
+    <div className="text-center">
       {/* Main Title */}
-      <div className="mb-3">
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-          Charivo Demo
+      <div className="mb-2">
+        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-1">
+          Charivo
         </h1>
-        <p className="text-base text-gray-700 dark:text-gray-300 font-medium mb-2">
+        <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
           Interactive AI Character Framework
         </p>
       </div>
 
       {/* Description */}
-      <div className="mb-4">
-        <p className="text-gray-600 dark:text-gray-400 text-sm max-w-3xl mx-auto">
-          Chat with Hiyori and experience{" "}
-          <span className="font-semibold text-blue-600">Live2D animations</span>
-          ,{" "}
-          <span className="font-semibold text-purple-600">
-            AI conversations
+      <div className="mb-3">
+        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-xl mx-auto">
+          Experience interactive conversations with{" "}
+          <span className="font-semibold text-blue-600 dark:text-blue-400">
+            Live2D characters
           </span>
-          , and{" "}
-          <span className="font-semibold text-pink-600">voice synthesis</span>{" "}
-          with lip-sync
+          , powered by{" "}
+          <span className="font-semibold text-purple-600 dark:text-purple-400">
+            AI
+          </span>{" "}
+          and{" "}
+          <span className="font-semibold text-pink-600 dark:text-pink-400">
+            voice synthesis
+          </span>
         </p>
       </div>
 
       {/* Quick Links */}
-      <div className="flex justify-center items-center gap-3 text-xs">
+      <div className="flex justify-center items-center gap-2">
         <a
           href="https://github.com/zeikar/charivo"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg transition-all font-medium text-xs"
         >
           ⭐ GitHub
         </a>
-        <span className="text-gray-400">•</span>
         <a
           href="https://github.com/zeikar/charivo#readme"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all font-medium text-xs"
         >
           📖 Documentation
         </a>

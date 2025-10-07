@@ -17,7 +17,7 @@ export function ChatInput({
   disabled = false,
 }: ChatInputProps) {
   return (
-    <div className="flex-shrink-0 h-16 flex items-center justify-center">
+    <div className="flex-shrink-0 h-16 flex items-center justify-center relative z-20">
       <div className="w-full max-w-3xl">
         <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full shadow-xl border border-gray-200 dark:border-gray-700 px-4 py-3">
           <input

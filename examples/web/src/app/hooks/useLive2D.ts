@@ -29,8 +29,6 @@ export function useLive2D({
     const canvas = document.createElement("canvas");
     canvas.width = 300;
     canvas.height = 300;
-    canvas.style.border = "2px solid #ccc";
-    canvas.style.borderRadius = "8px";
 
     let isMounted = true;
     let live2DRenderer: Live2DRendererHandle | null = null;

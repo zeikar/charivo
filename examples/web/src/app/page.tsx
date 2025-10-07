@@ -51,9 +51,9 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex flex-col">
+    <div className="h-screen bg-white dark:bg-gray-900 flex flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-6">
+      <div className="flex-shrink-0 px-4 py-4">
         <div className="container mx-auto max-w-7xl">
           <PageHeader />
         </div>
