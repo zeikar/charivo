@@ -2,11 +2,10 @@ import {
   Renderer,
   Message,
   Character,
-  MotionType,
   RenderManager as IRenderManager,
+  Emotion,
 } from "@charivo/core";
 import { RealTimeLipSync } from "./lipsync";
-import { inferMotionFromMessage } from "./motion-inference";
 import {
   setupMouseTracking,
   type MouseTrackable,
@@ -131,11 +130,14 @@ export class RenderManager implements IRenderManager {
    * 메시지 렌더링
    */
   async render(message: Message, character?: Character): Promise<void> {
-    // Character message일 때 모션 및 표정 제어
-    if (message.type === "character" && (character || this.character)) {
-      const motionType = inferMotionFromMessage(message.content);
-      this.playMotion(motionType);
-      this.animateExpression(motionType);
+    // Character message일 때 감정 기반 애니메이션 재생
+    if (
+      message.type === "character" &&
+      message.emotion &&
+      (character || this.character)
+    ) {
+      const targetCharacter = character || this.character!;
+      this.playEmotionAnimation(message.emotion, targetCharacter);
     }
 
     // 렌더러에 전달
@@ -193,21 +195,34 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 모션 재생
+   * 감정 기반 애니메이션 재생
+   * Character에 커스텀 매핑이 있는 경우에만 재생
    */
-  private playMotion(motionType: MotionType): void {
-    if (this.renderer.playMotion) {
-      this.renderer.playMotion(motionType);
-    }
-  }
+  private playEmotionAnimation(emotion: Emotion, character: Character): void {
+    // Find mapping for this emotion
+    const mapping = character.emotionMappings?.find(
+      (m) => m.emotion === emotion,
+    );
 
-  /**
-   * 표정 애니메이션
-   */
-  private animateExpression(motionType: MotionType): void {
-    if (this.renderer.animateExpression) {
-      this.renderer.animateExpression(motionType);
+    if (!mapping) {
+      // 매핑이 없으면 아무것도 안 함
+      return;
     }
+
+    // Play expression if available
+    if (mapping.expression && "playExpression" in this.renderer) {
+      (this.renderer as any).playExpression(mapping.expression);
+    }
+
+    // Play motion if available
+    if (mapping.motion && "playMotionByGroup" in this.renderer) {
+      const { group, index = 0 } = mapping.motion;
+      (this.renderer as any).playMotionByGroup(group, index);
+    }
+
+    console.log(
+      `🎨 [Animation] ${emotion} → ${mapping.expression || "none"} + ${mapping.motion?.group || "none"}`,
+    );
   }
 }
 

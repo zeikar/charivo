@@ -1,3 +1,29 @@
+/**
+ * Standard emotion types for character expressions
+ */
+export enum Emotion {
+  NEUTRAL = "neutral",
+  HAPPY = "happy",
+  SAD = "sad",
+  ANGRY = "angry",
+  SURPRISED = "surprised",
+  THINKING = "thinking",
+  EXCITED = "excited",
+  SHY = "shy",
+}
+
+/**
+ * Mapping between emotion and Live2D model animations
+ */
+export interface EmotionMapping {
+  emotion: Emotion;
+  expression?: string; // Live2D expression ID (e.g., "smile", "angry")
+  motion?: {
+    group: string; // Live2D motion group (e.g., "Idle", "TapBody")
+    index?: number; // Motion index within group
+  };
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -10,6 +36,11 @@ export interface Character {
     pitch?: number;
     volume?: number;
   };
+  /**
+   * Custom emotion mappings for this character's Live2D model
+   * If not specified, default mappings will be used
+   */
+  emotionMappings?: EmotionMapping[];
 }
 
 export interface Message {
@@ -18,6 +49,10 @@ export interface Message {
   timestamp: Date;
   characterId?: string;
   type: "user" | "character" | "system";
+  /**
+   * Parsed emotion from message content (if any)
+   */
+  emotion?: Emotion;
 }
 
 export interface Conversation {
@@ -75,8 +110,6 @@ export interface Renderer {
   destroy(): Promise<void>;
   render(message: Message, character?: Character): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
-  playMotion?(motionType: MotionType): void;
-  animateExpression?(motionType: MotionType): void;
   setRealtimeLipSync?(enabled: boolean): void;
   updateRealtimeLipSyncRms?(rms: number): void;
 }
@@ -92,8 +125,6 @@ export interface RenderManager {
     callback: (message: Message, character?: Character) => void,
   ): void;
 }
-
-export type MotionType = "greeting" | "happy" | "thinking" | "talk";
 
 export interface TTSOptions {
   rate?: number;

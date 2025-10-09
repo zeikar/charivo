@@ -1,4 +1,4 @@
-import { Renderer, Message, Character, MotionType } from "@charivo/core";
+import { Renderer, Message, Character } from "@charivo/core";
 import {
   type MouseCoordinates,
   type MouseTrackable,
@@ -74,77 +74,6 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   async render(_message: Message, _character?: Character): Promise<void> {
     // Stateless renderer - rendering is handled by RenderManager
     // This method is called by RenderManager after motion/expression control
-  }
-
-  /**
-   * Play motion (controlled by RenderManager)
-   */
-  playMotion(motionType: MotionType): void {
-    if (!this.model?.isReady()) return;
-
-    switch (motionType) {
-      case "greeting":
-        playSafe(
-          this.model,
-          LAppDefine.MotionGroupBody,
-          0,
-          LAppDefine.PriorityNormal,
-        );
-        playSafe(
-          this.model,
-          LAppDefine.MotionGroupTap,
-          0,
-          LAppDefine.PriorityNormal,
-        );
-        break;
-      case "happy":
-        playSafe(
-          this.model,
-          LAppDefine.MotionGroupTapBody,
-          0,
-          LAppDefine.PriorityNormal,
-        );
-        break;
-      case "thinking":
-        playSafe(
-          this.model,
-          LAppDefine.MotionGroupIdle,
-          1,
-          LAppDefine.PriorityNormal,
-        );
-        break;
-      default:
-        playSafe(
-          this.model,
-          LAppDefine.MotionGroupIdle,
-          0,
-          LAppDefine.PriorityIdle,
-        );
-        break;
-    }
-  }
-
-  /**
-   * Animate expression (controlled by RenderManager)
-   */
-  animateExpression(motionType: MotionType): void {
-    if (!this.model?.isReady()) return;
-
-    const expressionMap: Record<MotionType, string> = {
-      greeting: "smile",
-      happy: "smile",
-      thinking: "surprised",
-      talk: "normal",
-    };
-
-    const expressionId = expressionMap[motionType];
-    if (!this.model.hasExpression(expressionId)) return;
-
-    try {
-      this.model.setExpression(expressionId);
-    } catch {
-      // Expression may not be available on all models
-    }
   }
 
   /**

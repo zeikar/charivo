@@ -8,14 +8,18 @@ import { LLMClient } from "@charivo/core";
  */
 export class StubLLMClient implements LLMClient {
   private responses: string[] = [
-    "Hello! I'm a test character.",
-    "The weather is really nice today!",
-    "How can I help you?",
-    "That's an interesting question. Could you tell me more?",
-    "Yes, understood!",
-    "I see. That's an interesting story.",
-    "I think so too.",
-    "Hmm... that's a difficult question.",
+    "Hello! [happy] I'm a test character.",
+    "The weather is really nice today! [excited]",
+    "How can I help you? [neutral]",
+    "[thinking] That's an interesting question. Could you tell me more?",
+    "Yes, understood! [happy]",
+    "I see. [neutral] That's an interesting story.",
+    "I think so too. [happy]",
+    "Hmm... [thinking] that's a difficult question.",
+    "Oh no... [sad] I'm sorry to hear that.",
+    "What?! [surprised] Really?",
+    "That makes me upset. [angry]",
+    "I'm a bit embarrassed... [shy]",
   ];
 
   private responseIndex = 0;

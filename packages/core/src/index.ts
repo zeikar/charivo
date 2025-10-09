@@ -6,9 +6,11 @@ import {
   TTSManager,
   LLMManager,
 } from "./types";
+import { parseEmotion } from "./emotion-parser";
 
 export * from "./types";
 export * from "./bus";
+export * from "./emotion-parser";
 
 export class Charivo {
   private eventBus: EventBus;
@@ -172,29 +174,33 @@ export class Charivo {
     if (this.llmManager && this.character) {
       const response = await this.llmManager.generateResponse(userMessage);
 
+      // Parse emotion tags from response
+      const parsed = parseEmotion(response);
+
       const characterMessage: Message = {
         id: Date.now().toString() + "_response",
-        content: response,
+        content: parsed.text, // Use cleaned text without emotion tags
         timestamp: new Date(),
         characterId: this.character.id,
         type: "character",
+        emotion: parsed.emotion, // Add parsed emotion
       };
 
       this.eventBus.emit("message:received", { message: characterMessage });
       this.eventBus.emit("character:speak", {
         character: this.character,
-        message: response,
+        message: parsed.text,
       });
 
       if (this.renderManager) {
         await this.renderManager.render(characterMessage, this.character);
       }
 
-      // Play character voice with TTS
+      // Play character voice with TTS (using cleaned text)
       if (this.ttsManager) {
         try {
           this.eventBus.emit("tts:start", {
-            text: response,
+            text: parsed.text,
             characterId: this.character.id,
           });
 
@@ -207,7 +213,7 @@ export class Charivo {
               }
             : undefined;
 
-          await this.ttsManager.speak(response, ttsOptions);
+          await this.ttsManager.speak(parsed.text, ttsOptions);
           this.eventBus.emit("tts:end", { characterId: this.character.id });
         } catch (error) {
           this.eventBus.emit("tts:error", { error: error as Error });

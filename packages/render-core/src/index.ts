@@ -1,9 +1,6 @@
 // Lip sync utilities
 export { RealTimeLipSync } from "./lipsync";
 
-// Motion inference utilities
-export { inferMotionFromMessage } from "./motion-inference";
-
 // Mouse tracking utilities
 export {
   setupMouseTracking,
