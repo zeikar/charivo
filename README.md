@@ -39,7 +39,7 @@ await renderer.loadModel("/live2d/model.model3.json");
 - 🤖 **Smart Conversations** - Powered by OpenAI GPT or custom LLM clients
 - 🔊 **Voice Synthesis** - Multiple TTS options: Web Speech API, OpenAI TTS, Remote API
 - 💋 **Auto Lip-Sync** - Mouth moves naturally synchronized with speech audio
-- 🎭 **Emotion System** - Automatic expressions and motions from context
+- 🎭 **Emotion System** - LLM-driven expressions and motions with emotion tags
 - 📦 **Plug & Play** - Modular architecture, swap any component easily
 - ⚡ **TypeScript First** - Full type safety and IntelliSense support
 - 🎨 **Framework Agnostic** - Works with React, Vue, or vanilla JavaScript
@@ -99,25 +99,40 @@ await renderer.loadModel("/live2d/hiyori/hiyori.model3.json");
 const renderManager = createRenderManager(renderer);
 charivo.attachRenderer(renderManager);
 
-// 5. Set character
+// 5. Set character with emotion mappings
 charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",
-  personality: "Cheerful and helpful AI assistant"
+  personality: "Cheerful and helpful AI assistant",
+  emotionMappings: [
+    {
+      emotion: Emotion.HAPPY,
+      expression: "smile",
+      motion: { group: "TapBody", index: 0 }
+    },
+    {
+      emotion: Emotion.SAD,
+      expression: "sad",
+      motion: { group: "Idle", index: 1 }
+    },
+    // ... more emotions
+  ]
 });
 
 // 6. Start chatting!
 await charivo.userSay("Hello!");
-// → LLM generates response
-// → TTS speaks the response
-// → Renderer animates with lip-sync
+// → LLM generates response with emotion tags: "Hello! [happy] Nice to meet you!"
+// → Emotion tag parsed and removed: "Hello! Nice to meet you!"
+// → TTS speaks the cleaned response
+// → Renderer animates with emotion-based expression and motion
+// → Mouth moves with lip-sync
 ```
 
 **That's it!** Your AI character is now alive with:
 - ✨ Natural language conversation (LLM)
 - 🔊 Voice synthesis (TTS)
 - 💋 Synchronized lip movement
-- 🎭 Automatic expressions and motions
+- 🎭 Emotion-driven expressions and motions
 
 ## 📦 Packages
 
@@ -429,6 +444,130 @@ await charivo.userSay("Hello! Watch my mouth move!");
 ```
 
 The demo includes a free Hiyori model from Live2D samples with lip-sync support.
+
+## 🎭 Emotion System
+
+Charivo features an intelligent emotion system that allows LLMs to control character expressions and motions through emotion tags.
+
+### How It Works
+
+1. **LLM generates response with emotion tags**:
+   ```
+   "Hello! [happy] Nice to meet you!"
+   ```
+
+2. **Charivo parses and cleans the text**:
+   - Detected emotion: `happy`
+   - Cleaned text: `"Hello! Nice to meet you!"`
+
+3. **Character animations are triggered**:
+   - Based on `emotionMappings` in character config
+   - Plays corresponding expression and motion
+
+### Supported Emotions
+
+| Emotion | Use Case | Example |
+|---------|----------|---------|
+| `happy` | Joy, excitement, positive responses | "That's wonderful! [happy]" |
+| `sad` | Sadness, disappointment | "I'm sorry to hear that... [sad]" |
+| `angry` | Frustration, annoyance | "That's not right! [angry]" |
+| `surprised` | Shock, amazement | "What?! [surprised] Really?" |
+| `thinking` | Pondering, considering | "Hmm... [thinking] Let me think." |
+| `excited` | High energy, enthusiasm | "Wow! [excited] Amazing!" |
+| `shy` | Embarrassment, shyness | "Oh... [shy] thank you..." |
+| `neutral` | Normal, calm state | "I see. [neutral]" |
+
+### Setting Up Emotion Mappings
+
+Define custom emotion mappings for each character based on their Live2D model:
+
+```typescript
+import { Emotion } from "@charivo/core";
+
+const character: Character = {
+  id: "natori",
+  name: "Natori",
+  personality: "Graceful and mysterious",
+  emotionMappings: [
+    {
+      emotion: Emotion.HAPPY,
+      expression: "Smile",        // Live2D expression name
+      motion: {
+        group: "TapBody",         // Live2D motion group
+        index: 0                  // Motion index in group
+      }
+    },
+    {
+      emotion: Emotion.SAD,
+      expression: "Sad",
+      motion: { group: "Idle", index: 1 }
+    },
+    {
+      emotion: Emotion.SURPRISED,
+      expression: "Surprised",
+      motion: { group: "TapBody", index: 1 }
+    },
+    {
+      emotion: Emotion.SHY,
+      expression: "Blushing",
+      motion: { group: "Idle", index: 0 }
+    },
+    // ... more mappings
+  ]
+};
+```
+
+### LLM Prompting
+
+The emotion system automatically instructs LLMs to use emotion tags:
+
+```
+IMPORTANT: You can express emotions by adding emotion tags in your responses.
+Available emotion tags: happy, sad, angry, surprised, thinking, excited, shy, neutral
+Use format: [emotion] anywhere in your response.
+Examples:
+- "Hello! [happy] Nice to meet you!"
+- "I'm sorry... [sad]"
+- "Wow! [surprised] That's amazing!"
+```
+
+This instruction is automatically added to the system prompt via `@charivo/llm-core`.
+
+### Model-Specific Setup
+
+Each Live2D model has different expression and motion names. Check your model's `.model3.json` file:
+
+```json
+{
+  "Expressions": [
+    { "Name": "Smile" },
+    { "Name": "Sad" },
+    { "Name": "Angry" }
+  ],
+  "Motions": {
+    "Idle": [...],
+    "TapBody": [...]
+  }
+}
+```
+
+Map Charivo's standard emotions to your model's specific names.
+
+### Testing with Stub Client
+
+The stub LLM client includes emotion tags for easy testing:
+
+```typescript
+import { createStubLLMClient } from "@charivo/llm-client-stub";
+
+const client = createStubLLMClient();
+// Responses include: "[happy]", "[sad]", "[surprised]", etc.
+```
+
+Enable stub mode in your app:
+```env
+NEXT_PUBLIC_LLM_PROVIDER=stub
+```
 
 ## 📚 API Reference
 

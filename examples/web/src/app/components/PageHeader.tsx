@@ -12,7 +12,7 @@ export function PageHeader() {
       </div>
 
       {/* Description */}
-      <div className="mb-3">
+      <div className="mb-3 space-y-1">
         <p className="text-gray-500 dark:text-gray-500 text-xs max-w-xl mx-auto">
           Experience interactive conversations with{" "}
           <span className="font-semibold text-blue-600 dark:text-blue-400">
@@ -26,6 +26,12 @@ export function PageHeader() {
           <span className="font-semibold text-pink-600 dark:text-pink-400">
             voice synthesis
           </span>
+        </p>
+        <p className="text-gray-400 dark:text-gray-600 text-xs max-w-xl mx-auto">
+          🎭 <span className="font-semibold">Emotion System:</span> Characters
+          with emotion mappings show AI-driven expressions (
+          <span className="text-purple-500">Natori</span> has full emotions,
+          others coming soon)
         </p>
       </div>
 
