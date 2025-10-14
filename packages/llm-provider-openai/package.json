@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-provider-openai",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "OpenAI LLM provider for Charivo (server-side)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,5 +19,22 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/llm-provider-openai"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  }
 }

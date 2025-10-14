@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-live2d",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Live2D rendering engine for Charivo",
   "type": "module",
   "main": "dist/renderer.js",
@@ -26,5 +26,22 @@
   "devDependencies": {
     "tsup": "^8.0.2",
     "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/render-live2d"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
   }
 }
