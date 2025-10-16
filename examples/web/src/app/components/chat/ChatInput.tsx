@@ -10,6 +10,7 @@ type ChatInputProps = {
   disabled?: boolean;
   isRecording?: boolean;
   isTranscribing?: boolean;
+  sttDisabled?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
 };
@@ -22,6 +23,7 @@ export function ChatInput({
   disabled = false,
   isRecording = false,
   isTranscribing = false,
+  sttDisabled = false,
   onStartRecording,
   onStopRecording,
 }: ChatInputProps) {
@@ -62,7 +64,7 @@ export function ChatInput({
             className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
             disabled={disabled || isRecording || isTranscribing}
           />
-          {onStartRecording && onStopRecording && (
+          {onStartRecording && onStopRecording && !sttDisabled && (
             <button
               onClick={handleMicClick}
               disabled={disabled || isTranscribing}

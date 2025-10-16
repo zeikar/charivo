@@ -15,7 +15,12 @@ type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
-import type { ChatMessage, LLMClientType, TTSPlayerType } from "../types/chat";
+import type {
+  ChatMessage,
+  LLMClientType,
+  TTSPlayerType,
+  STTTranscriberType,
+} from "../types/chat";
 import { useLive2D } from "./useLive2D";
 import { useCharacterStore } from "../stores/useCharacterStore";
 
@@ -35,6 +40,8 @@ type UseCharivoChatReturn = {
   setSelectedLLMClient: (type: LLMClientType) => void;
   selectedTTSPlayer: TTSPlayerType;
   setSelectedTTSPlayer: (type: TTSPlayerType) => void;
+  selectedSTTTranscriber: STTTranscriberType;
+  setSelectedSTTTranscriber: (type: STTTranscriberType) => void;
   llmError: string | null;
   ttsError: string | null;
   sttError: string | null;
@@ -60,6 +67,8 @@ export function useCharivoChat({
     useState<TTSPlayerType>("remote");
   const [selectedLLMClient, setSelectedLLMClient] =
     useState<LLMClientType>("remote");
+  const [selectedSTTTranscriber, setSelectedSTTTranscriber] =
+    useState<STTTranscriberType>("remote");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -69,6 +78,9 @@ export function useCharivoChat({
 
   const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
   const initialTTSPlayerRef = useRef<TTSPlayerType>(selectedTTSPlayer);
+  const initialSTTTranscriberRef = useRef<STTTranscriberType>(
+    selectedSTTTranscriber,
+  );
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
   const sttManagerRef = useRef<ReturnType<typeof createSTTManager> | null>(
     null,
@@ -81,6 +93,10 @@ export function useCharivoChat({
   useEffect(() => {
     initialTTSPlayerRef.current = selectedTTSPlayer;
   }, [selectedTTSPlayer]);
+
+  useEffect(() => {
+    initialSTTTranscriberRef.current = selectedSTTTranscriber;
+  }, [selectedSTTTranscriber]);
 
   const createLLMClient = useCallback(async (type: LLMClientType) => {
     setLlmError(null);
@@ -164,6 +180,42 @@ export function useCharivoChat({
     }
   }, []);
 
+  const createSTTTranscriber = useCallback(async (type: STTTranscriberType) => {
+    setSttError(null);
+
+    try {
+      switch (type) {
+        case "remote": {
+          const { createRemoteSTTTranscriber } = await import(
+            "@charivo/stt-transcriber-remote"
+          );
+          return createRemoteSTTTranscriber();
+        }
+        case "openai": {
+          const apiKey = prompt(
+            "Enter your OpenAI API key for testing (not recommended for production):",
+          );
+          if (!apiKey) {
+            throw new Error("API key is required for OpenAI STT");
+          }
+          const { createOpenAISTTTranscriber } = await import(
+            "@charivo/stt-transcriber-openai"
+          );
+          return createOpenAISTTTranscriber({ apiKey });
+        }
+        case "none":
+        default:
+          return null;
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setSttError(`Failed to load ${type} STT transcriber: ${errorMessage}`);
+      console.error("STT Transcriber Error:", error);
+      return null;
+    }
+  }, []);
+
   const handleRendererReady = useCallback(
     async (
       renderer: Live2DRendererHandle,
@@ -230,25 +282,12 @@ export function useCharivoChat({
       // Initialize STT Manager
       const initializeSTT = async () => {
         try {
-          const apiKey =
-            process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
-            prompt("Enter your OpenAI API key for STT (optional):");
-          if (apiKey) {
-            const { createOpenAISTTTranscriber } = await import(
-              "@charivo/stt-transcriber-openai"
-            );
-            const transcriber = createOpenAISTTTranscriber({ apiKey });
+          const transcriber = await createSTTTranscriber(
+            initialSTTTranscriberRef.current,
+          );
+          if (transcriber) {
             const sttManager = createSTTManager(transcriber);
-
-            sttManager.setEventEmitter?.({
-              emit: (event: string, data: unknown) => {
-                instance.emit(
-                  event as keyof import("@charivo/core").EventMap,
-                  data,
-                );
-              },
-            });
-
+            instance.attachSTT(sttManager);
             sttManagerRef.current = sttManager;
           }
         } catch (error) {
@@ -287,7 +326,12 @@ export function useCharivoChat({
         setIsSpeaking(false);
       };
     },
-    [createLLMClient, createTTSPlayer, getLive2DModelPath],
+    [
+      createLLMClient,
+      createTTSPlayer,
+      createSTTTranscriber,
+      getLive2DModelPath,
+    ],
   );
 
   useLive2D({ canvasContainerRef, onRendererReady: handleRendererReady });
@@ -330,6 +374,31 @@ export function useCharivoChat({
       console.error("Failed to update LLM client:", error);
     });
   }, [charivo, selectedLLMClient, createLLMClient]);
+
+  useEffect(() => {
+    if (!charivo) return;
+
+    const updateSTTTranscriber = async () => {
+      try {
+        const transcriber = await createSTTTranscriber(selectedSTTTranscriber);
+        if (transcriber) {
+          const sttManager = createSTTManager(transcriber);
+          charivo.attachSTT(sttManager);
+          sttManagerRef.current = sttManager;
+        } else {
+          // STT transcriber is null (disabled), detach STT
+          charivo.detachSTT();
+          sttManagerRef.current = null;
+        }
+      } catch (error) {
+        console.error("Failed to update STT transcriber:", error);
+      }
+    };
+
+    updateSTTTranscriber().catch((error: unknown) => {
+      console.error("Failed to update STT transcriber:", error);
+    });
+  }, [charivo, selectedSTTTranscriber, createSTTTranscriber]);
 
   const handleSend = useCallback(async () => {
     if (!charivo || !input.trim()) return;
@@ -423,6 +492,8 @@ export function useCharivoChat({
     setSelectedLLMClient,
     selectedTTSPlayer,
     setSelectedTTSPlayer,
+    selectedSTTTranscriber,
+    setSelectedSTTTranscriber,
     llmError,
     ttsError,
     sttError,

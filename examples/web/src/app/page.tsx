@@ -9,7 +9,11 @@ import { MessageBubbles } from "./components/chat/MessageBubbles";
 import { ControlPanel } from "./components/chat/ControlPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { useCharivoChat } from "./hooks/useCharivoChat";
-import type { LLMClientType, TTSPlayerType } from "./types/chat";
+import type {
+  LLMClientType,
+  TTSPlayerType,
+  STTTranscriberType,
+} from "./types/chat";
 
 export default function Home() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -26,6 +30,8 @@ export default function Home() {
     setSelectedLLMClient,
     selectedTTSPlayer,
     setSelectedTTSPlayer,
+    selectedSTTTranscriber,
+    setSelectedSTTTranscriber,
     llmError,
     ttsError,
     sttError,
@@ -53,6 +59,10 @@ export default function Home() {
 
   const handleTTSPlayerChange = (type: TTSPlayerType) => {
     setSelectedTTSPlayer(type);
+  };
+
+  const handleSTTTranscriberChange = (type: STTTranscriberType) => {
+    setSelectedSTTTranscriber(type);
   };
 
   // Log STT errors
@@ -83,8 +93,11 @@ export default function Home() {
               onSelectLLMClient={handleLLMClientChange}
               selectedTTSPlayer={selectedTTSPlayer}
               onSelectTTSPlayer={handleTTSPlayerChange}
+              selectedSTTTranscriber={selectedSTTTranscriber}
+              onSelectSTTTranscriber={handleSTTTranscriberChange}
               llmError={llmError}
               ttsError={ttsError}
+              sttError={sttError}
             />
 
             <MessageBubbles
@@ -109,6 +122,7 @@ export default function Home() {
             disabled={isLoading}
             isRecording={isRecording}
             isTranscribing={isTranscribing}
+            sttDisabled={selectedSTTTranscriber === "none"}
             onStartRecording={handleStartRecording}
             onStopRecording={handleStopRecording}
           />

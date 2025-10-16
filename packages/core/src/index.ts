@@ -4,6 +4,7 @@ import {
   Message,
   RenderManager,
   TTSManager,
+  STTManager,
   LLMManager,
 } from "./types";
 import { parseEmotion } from "./emotion-parser";
@@ -17,6 +18,7 @@ export class Charivo {
   private llmManager?: LLMManager;
   private renderManager?: RenderManager;
   private ttsManager?: TTSManager;
+  private sttManager?: STTManager;
   private character?: Character;
 
   constructor() {
@@ -113,6 +115,25 @@ export class Charivo {
   }
 
   /**
+   * Attach an STT manager to handle speech recognition.
+   * Automatically connects the event emitter for STT events.
+   */
+  attachSTT(manager: STTManager): void {
+    console.log("🎤 Charivo: Attaching STT manager", manager.constructor.name);
+    this.sttManager = manager;
+
+    this.connectSTTManagerEventEmitter(manager);
+  }
+
+  /**
+   * Detach the STT manager to disable speech recognition.
+   */
+  detachSTT(): void {
+    console.log("🔇 Charivo: Detaching STT manager");
+    this.sttManager = undefined;
+  }
+
+  /**
    * Connects the TTS manager to the event bus for audio event emission.
    */
   private connectTTSManagerEventEmitter(manager: TTSManager): void {
@@ -130,6 +151,29 @@ export class Charivo {
       console.log("🔗 Charivo: TTS Manager connection completed");
     } else {
       console.warn("⚠️ Charivo: TTS manager doesn't support event emitter", {
+        managerType: manager.constructor.name,
+      });
+    }
+  }
+
+  /**
+   * Connects the STT manager to the event bus for speech recognition event emission.
+   */
+  private connectSTTManagerEventEmitter(manager: STTManager): void {
+    if (manager.setEventEmitter) {
+      console.log(
+        "🔗 Charivo: ✅ STT manager supports event emitter - connecting",
+      );
+      manager.setEventEmitter({
+        emit: (event: string, data: any) => {
+          console.log(`🎤 Charivo: ✅ STT EMITTING EVENT: ${event}`, data);
+          this.eventBus.emit(event as any, data);
+          console.log(`🎤 Charivo: ✅ Event ${event} emitted to event bus`);
+        },
+      });
+      console.log("🔗 Charivo: STT Manager connection completed");
+    } else {
+      console.warn("⚠️ Charivo: STT manager doesn't support event emitter", {
         managerType: manager.constructor.name,
       });
     }
@@ -243,6 +287,13 @@ export class Charivo {
    */
   getCurrentCharacter(): Character | null {
     return this.character ?? null;
+  }
+
+  /**
+   * Get the current STT manager instance.
+   */
+  getSTTManager(): STTManager | undefined {
+    return this.sttManager;
   }
 
   /**
