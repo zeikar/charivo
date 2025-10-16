@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Charivo, type Character, type Message } from "@charivo/core";
 import { createTTSManager } from "@charivo/tts-core";
+import { createSTTManager } from "@charivo/stt-core";
 type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
@@ -28,14 +29,19 @@ type UseCharivoChatReturn = {
   setInput: (value: string) => void;
   isLoading: boolean;
   isSpeaking: boolean;
+  isRecording: boolean;
+  isTranscribing: boolean;
   selectedLLMClient: LLMClientType;
   setSelectedLLMClient: (type: LLMClientType) => void;
   selectedTTSPlayer: TTSPlayerType;
   setSelectedTTSPlayer: (type: TTSPlayerType) => void;
   llmError: string | null;
   ttsError: string | null;
+  sttError: string | null;
   handleSend: () => Promise<void>;
   handleKeyPress: (event: KeyboardEvent<HTMLInputElement>) => void;
+  handleStartRecording: () => Promise<void>;
+  handleStopRecording: () => Promise<void>;
   playExpression: (expressionId: string) => void;
   playMotion: (group: string, index: number) => void;
   getAvailableExpressions: () => string[];
@@ -55,12 +61,18 @@ export function useCharivoChat({
   const [selectedLLMClient, setSelectedLLMClient] =
     useState<LLMClientType>("remote");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [ttsError, setTtsError] = useState<string | null>(null);
   const [llmError, setLlmError] = useState<string | null>(null);
+  const [sttError, setSttError] = useState<string | null>(null);
 
   const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
   const initialTTSPlayerRef = useRef<TTSPlayerType>(selectedTTSPlayer);
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
+  const sttManagerRef = useRef<ReturnType<typeof createSTTManager> | null>(
+    null,
+  );
 
   useEffect(() => {
     initialLLMClientRef.current = selectedLLMClient;
@@ -215,6 +227,54 @@ export function useCharivoChat({
         setIsSpeaking(false);
       });
 
+      // Initialize STT Manager
+      const initializeSTT = async () => {
+        try {
+          const apiKey =
+            process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
+            prompt("Enter your OpenAI API key for STT (optional):");
+          if (apiKey) {
+            const { createOpenAISTTTranscriber } = await import(
+              "@charivo/stt-transcriber-openai"
+            );
+            const transcriber = createOpenAISTTTranscriber({ apiKey });
+            const sttManager = createSTTManager(transcriber);
+
+            sttManager.setEventEmitter?.({
+              emit: (event: string, data: any) => {
+                instance.emit(event as any, data);
+              },
+            });
+
+            sttManagerRef.current = sttManager;
+          }
+        } catch (error) {
+          console.error("Failed to initialize STT:", error);
+          setSttError("STT initialization failed");
+        }
+      };
+
+      instance.on("stt:start", ({ options }) => {
+        console.log("🎤 STT recording started", options);
+        setIsRecording(true);
+      });
+
+      instance.on("stt:stop", ({ transcription }) => {
+        console.log("✅ STT transcription:", transcription);
+        setIsRecording(false);
+        setIsTranscribing(false);
+        setInput(transcription);
+      });
+
+      instance.on("stt:error", ({ error }) => {
+        console.error("❌ STT Error:", error);
+        setIsRecording(false);
+        setIsTranscribing(false);
+        setSttError(error.message);
+      });
+
+      initializeSTT().catch(console.error);
+
       setMessages([]);
       setCharivo(instance);
 
@@ -316,20 +376,57 @@ export function useCharivoChat({
     return rendererRef.current.getAvailableMotionGroups();
   }, []);
 
+  const handleStartRecording = useCallback(async () => {
+    if (!sttManagerRef.current) {
+      setSttError("STT is not initialized. Please provide an OpenAI API key.");
+      return;
+    }
+
+    try {
+      setSttError(null);
+      await sttManagerRef.current.start();
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      setSttError(error instanceof Error ? error.message : "Recording failed");
+      setIsRecording(false);
+    }
+  }, []);
+
+  const handleStopRecording = useCallback(async () => {
+    if (!sttManagerRef.current || !isRecording) return;
+
+    try {
+      setIsTranscribing(true);
+      await sttManagerRef.current.stop();
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      setSttError(
+        error instanceof Error ? error.message : "Transcription failed",
+      );
+      setIsRecording(false);
+      setIsTranscribing(false);
+    }
+  }, [isRecording]);
+
   return {
     messages,
     input,
     setInput,
     isLoading,
     isSpeaking,
+    isRecording,
+    isTranscribing,
     selectedLLMClient,
     setSelectedLLMClient,
     selectedTTSPlayer,
     setSelectedTTSPlayer,
     llmError,
     ttsError,
+    sttError,
     handleSend,
     handleKeyPress,
+    handleStartRecording,
+    handleStopRecording,
     playExpression,
     playMotion,
     getAvailableExpressions,

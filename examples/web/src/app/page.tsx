@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
@@ -20,14 +20,19 @@ export default function Home() {
     setInput,
     isLoading,
     isSpeaking,
+    isRecording,
+    isTranscribing,
     selectedLLMClient,
     setSelectedLLMClient,
     selectedTTSPlayer,
     setSelectedTTSPlayer,
     llmError,
     ttsError,
+    sttError,
     handleSend,
     handleKeyPress,
+    handleStartRecording,
+    handleStopRecording,
     playExpression,
     playMotion,
     getAvailableExpressions,
@@ -49,6 +54,13 @@ export default function Home() {
   const handleTTSPlayerChange = (type: TTSPlayerType) => {
     setSelectedTTSPlayer(type);
   };
+
+  // Log STT errors
+  useEffect(() => {
+    if (sttError) {
+      console.error("STT Error:", sttError);
+    }
+  }, [sttError]);
 
   return (
     <div className="h-screen bg-white dark:bg-gray-900 flex flex-col">
@@ -95,6 +107,10 @@ export default function Home() {
             onSend={handleSendClick}
             onKeyPress={handleKeyPress}
             disabled={isLoading}
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            onStartRecording={handleStartRecording}
+            onStopRecording={handleStopRecording}
           />
         </div>
       </div>

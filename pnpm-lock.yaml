@@ -77,6 +77,15 @@ importers:
       '@charivo/render-stub':
         specifier: workspace:*
         version: link:../../packages/render-stub
+      '@charivo/stt-core':
+        specifier: workspace:*
+        version: link:../../packages/stt-core
+      '@charivo/stt-provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/stt-provider-openai
+      '@charivo/stt-transcriber-openai':
+        specifier: workspace:*
+        version: link:../../packages/stt-transcriber-openai
       '@charivo/tts-core':
         specifier: workspace:*
         version: link:../../packages/tts-core
