@@ -86,9 +86,6 @@ importers:
       '@charivo/stt-transcriber-openai':
         specifier: workspace:*
         version: link:../../packages/stt-transcriber-openai
-      '@charivo/stt-transcriber-remote':
-        specifier: workspace:*
-        version: link:../../packages/stt-transcriber-remote
       '@charivo/tts-core':
         specifier: workspace:*
         version: link:../../packages/tts-core
