@@ -241,8 +241,11 @@ export function useCharivoChat({
             const sttManager = createSTTManager(transcriber);
 
             sttManager.setEventEmitter?.({
-              emit: (event: string, data: any) => {
-                instance.emit(event as any, data);
+              emit: (event: string, data: unknown) => {
+                instance.emit(
+                  event as keyof import("@charivo/core").EventMap,
+                  data,
+                );
               },
             });
 
