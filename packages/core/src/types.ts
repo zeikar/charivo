@@ -160,6 +160,30 @@ export interface TTSManager {
   }): void;
 }
 
+export interface STTOptions {
+  language?: string;
+}
+
+// STT provider (converts audio data to text)
+export interface STTProvider {
+  transcribe(audio: Blob | ArrayBuffer, options?: STTOptions): Promise<string>;
+}
+
+// STT transcriber (browser-side audio transcription)
+export interface STTTranscriber {
+  transcribe(audio: Blob | ArrayBuffer, options?: STTOptions): Promise<string>;
+}
+
+// STT Manager - Manages STT session state
+export interface STTManager {
+  start(options?: STTOptions): Promise<void>;
+  stop(): Promise<string>;
+  isRecording(): boolean;
+  setEventEmitter?(eventEmitter: {
+    emit: (event: string, data: any) => void;
+  }): void;
+}
+
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
@@ -170,5 +194,8 @@ export type EventMap = {
   "tts:audio:start": { audioElement: HTMLAudioElement; characterId?: string };
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };
+  "stt:start": { options?: STTOptions };
+  "stt:stop": { transcription: string };
+  "stt:error": { error: Error };
   error: { error: Error };
 };
