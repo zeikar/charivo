@@ -49,6 +49,30 @@ await renderer.loadModel("/live2d/model.model3.json");
 
 ### Installation
 
+#### Using npm (Recommended)
+
+Install the packages you need:
+
+```bash
+# Core framework
+npm install @charivo/core
+
+# LLM packages
+npm install @charivo/llm-core @charivo/llm-client-openai
+# or for client-side apps
+npm install @charivo/llm-client-remote
+
+# TTS packages
+npm install @charivo/tts-core @charivo/tts-player-web
+# or OpenAI TTS
+npm install @charivo/tts-player-openai
+
+# Rendering packages
+npm install @charivo/render-core @charivo/render-live2d
+```
+
+#### From Source (For Contributors)
+
 ```bash
 # Clone the repository
 git clone https://github.com/zeikar/charivo.git
