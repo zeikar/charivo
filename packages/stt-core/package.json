@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest"
+    "test": "vitest",
+    "clean": "rm -rf dist"
   },
   "keywords": [
     "charivo",
