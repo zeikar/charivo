@@ -269,6 +269,29 @@ STTManager (stateful)
 
 ## Available Transcribers
 
+### Web STT Transcriber (Free, Browser-native)
+
+```bash
+pnpm add @charivo/stt-transcriber-web
+```
+
+```typescript
+import { createWebSTTTranscriber } from "@charivo/stt-transcriber-web";
+
+const transcriber = createWebSTTTranscriber();
+
+// ⚠️ Note: Web Speech API doesn't support blob-based transcription
+// Use for real-time recognition only
+const text = await transcriber.startContinuous({
+  language: "en-US",
+  continuous: false
+});
+```
+
+Uses browser's built-in Web Speech API (no API key needed). 
+
+**Note**: Not compatible with STT Manager's recording feature. Use `startContinuous()` directly for real-time recognition.
+
 ### Remote STT Transcriber (Recommended for Production)
 
 ```bash

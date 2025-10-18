@@ -148,6 +148,7 @@ Charivo is organized into modular packages. Click on each package to see detaile
 | Package | Description | Use Case |
 |---------|-------------|----------|
 | **[@charivo/stt-core](./packages/stt-core)** | STT manager with recording | Required for STT functionality |
+| [@charivo/stt-transcriber-web](./packages/stt-transcriber-web) | Web Speech API transcriber | Free, browser-native (real-time only) |
 | [@charivo/stt-transcriber-remote](./packages/stt-transcriber-remote) | Remote HTTP transcriber | **Recommended for production** |
 | [@charivo/stt-transcriber-openai](./packages/stt-transcriber-openai) | OpenAI Whisper transcriber | Testing/development only |
 | [@charivo/stt-provider-openai](./packages/stt-provider-openai) | OpenAI Whisper provider | Server-side API routes |
@@ -380,10 +381,10 @@ const sttManager = createSTTManager(new MySTTTranscriber());
 |---------|----------------------|--------------------------|
 | **LLM** | `@charivo/llm-client-remote` | `@charivo/llm-provider-openai` |
 | **TTS** | `@charivo/tts-player-remote` or `tts-player-web` | `@charivo/tts-provider-openai` |
-| **STT** | `@charivo/stt-transcriber-remote` | `@charivo/stt-provider-openai` |
+| **STT** | `@charivo/stt-transcriber-remote` or `stt-transcriber-web` | `@charivo/stt-provider-openai` |
 | **Render** | `@charivo/render-live2d` | N/A |
 
-> **💡 Tip**: Use `remote` packages on client + `provider` packages on server for production apps.
+> **💡 Tip**: Use `remote` packages on client + `provider` packages on server for production apps. Use `web` packages for free, browser-native alternatives.
 
 ## 🎨 Live2D Setup
 
