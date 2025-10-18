@@ -23,6 +23,7 @@
     "@charivo/stt-provider-openai": "workspace:*",
     "@charivo/stt-transcriber-openai": "workspace:*",
     "@charivo/stt-transcriber-remote": "workspace:*",
+    "@charivo/stt-transcriber-web": "workspace:*",
     "@charivo/tts-core": "workspace:*",
     "@charivo/tts-player-openai": "workspace:*",
     "@charivo/tts-player-remote": "workspace:*",

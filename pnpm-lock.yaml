@@ -89,6 +89,9 @@ importers:
       '@charivo/stt-transcriber-remote':
         specifier: workspace:*
         version: link:../../packages/stt-transcriber-remote
+      '@charivo/stt-transcriber-web':
+        specifier: workspace:*
+        version: link:../../packages/stt-transcriber-web
       '@charivo/tts-core':
         specifier: workspace:*
         version: link:../../packages/tts-core

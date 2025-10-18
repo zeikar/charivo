@@ -71,6 +71,7 @@ export class WebSTTTranscriber implements STTTranscriber {
   private isSupported: boolean;
   private resolveTranscription?: (text: string) => void;
   private rejectTranscription?: (error: Error) => void;
+  private finalTranscript = "";
 
   constructor() {
     // Check browser support
@@ -106,38 +107,74 @@ export class WebSTTTranscriber implements STTTranscriber {
       (window as any).webkitSpeechRecognition;
 
     this.recognition = new SpeechRecognitionAPI();
-    this.recognition!.continuous = false;
+    this.recognition!.continuous = true; // Keep listening until stop() is called
     this.recognition!.interimResults = true;
     this.recognition!.maxAlternatives = 1;
-    this.recognition!.lang = options?.language ?? "ko-KR";
+    this.recognition!.lang = options?.language ?? "en-US";
 
-    let finalTranscript = "";
+    this.finalTranscript = "";
 
-    this.recognition!.onresult = (event: SpeechRecognitionEvent) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript + " ";
+    return new Promise((resolve, reject) => {
+      this.recognition!.onstart = () => {
+        console.log("🎤 Web Speech API started (continuous mode)");
+        this.recording = true;
+        resolve();
+      };
+
+      this.recognition!.onresult = (event: SpeechRecognitionEvent) => {
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            this.finalTranscript += transcript + " ";
+            console.log("🎤 Final segment added:", transcript);
+          } else {
+            interimTranscript += transcript;
+          }
         }
+        if (interimTranscript) {
+          console.log(
+            "🎤 Interim:",
+            interimTranscript,
+            "| Total final:",
+            this.finalTranscript.trim(),
+          );
+        }
+      };
+
+      this.recognition!.onend = () => {
+        console.log(
+          "🎤 Web Speech API ended. Final transcript:",
+          this.finalTranscript.trim(),
+        );
+        this.recording = false;
+        if (this.resolveTranscription) {
+          this.resolveTranscription(this.finalTranscript.trim());
+          this.resolveTranscription = undefined;
+          this.rejectTranscription = undefined;
+        }
+      };
+
+      this.recognition!.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error("🎤 Web Speech API error:", event.error, event.message);
+        this.recording = false;
+        const error = new Error(
+          `Speech recognition error: ${event.error}${event.message ? " - " + event.message : ""}`,
+        );
+        if (this.rejectTranscription) {
+          this.rejectTranscription(error);
+          this.resolveTranscription = undefined;
+          this.rejectTranscription = undefined;
+        }
+        reject(error);
+      };
+
+      try {
+        this.recognition!.start();
+      } catch (error) {
+        reject(error);
       }
-    };
-
-    this.recognition!.onend = () => {
-      this.recording = false;
-      this.resolveTranscription?.(finalTranscript.trim());
-    };
-
-    this.recognition!.onerror = (event: SpeechRecognitionErrorEvent) => {
-      this.recording = false;
-      this.rejectTranscription?.(
-        new Error(
-          `Speech recognition error: ${event.error} - ${event.message}`,
-        ),
-      );
-    };
-
-    this.recognition!.start();
-    this.recording = true;
+    });
   }
 
   /**

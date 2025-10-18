@@ -91,6 +91,12 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     Icon: GlobeAltIcon,
   },
   {
+    label: "Browser STT",
+    value: "web",
+    description: "Uses browser's built-in speech recognition",
+    Icon: MicrophoneIcon,
+  },
+  {
     label: "OpenAI Direct",
     value: "openai",
     description: "Direct OpenAI API (test only)",

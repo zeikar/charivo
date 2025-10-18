@@ -191,6 +191,12 @@ export function useCharivoChat({
           );
           return createRemoteSTTTranscriber();
         }
+        case "web": {
+          const { createWebSTTTranscriber } = await import(
+            "@charivo/stt-transcriber-web"
+          );
+          return createWebSTTTranscriber();
+        }
         case "openai": {
           const apiKey = prompt(
             "Enter your OpenAI API key for testing (not recommended for production):",
