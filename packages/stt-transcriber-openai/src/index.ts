@@ -1,4 +1,5 @@
 import { STTTranscriber, STTOptions } from "@charivo/core";
+import { MediaRecorderHelper } from "@charivo/stt-core";
 import {
   createOpenAISTTProvider,
   OpenAISTTConfig,
@@ -9,15 +10,17 @@ import {
 export type OpenAISTTTranscriberConfig = OpenAISTTConfig;
 
 /**
- * OpenAI STT Transcriber - STT Transcriber wrapping OpenAI provider
+ * OpenAI STT Transcriber - STT Transcriber using OpenAI Whisper
  *
  * For local development and testing environments. Not recommended for production due to security concerns.
  * API key is exposed on the client side, so should only be used in server environments or for testing purposes.
  *
- * Stateless design: Only handles audio transcription (recording is handled by STT Manager)
+ * Handles recording internally using MediaRecorderHelper
  */
 export class OpenAISTTTranscriber implements STTTranscriber {
   private provider: OpenAISTTProvider;
+  private recorder: MediaRecorderHelper;
+  private recordingOptions?: STTOptions;
 
   constructor(config: OpenAISTTTranscriberConfig) {
     // Automatically set dangerouslyAllowBrowser to true for browser usage
@@ -25,16 +28,35 @@ export class OpenAISTTTranscriber implements STTTranscriber {
       ...config,
       dangerouslyAllowBrowser: true,
     });
+    this.recorder = new MediaRecorderHelper();
   }
 
   /**
-   * Transcribe audio data to text
+   * Start recording audio from microphone
    */
-  async transcribe(
-    audio: Blob | ArrayBuffer,
-    options?: STTOptions,
-  ): Promise<string> {
-    return this.provider.transcribe(audio, options);
+  async startRecording(options?: STTOptions): Promise<void> {
+    this.recordingOptions = options;
+    await this.recorder.start();
+  }
+
+  /**
+   * Stop recording and transcribe audio to text
+   */
+  async stopRecording(): Promise<string> {
+    const audioBlob = await this.recorder.stop();
+    const transcription = await this.provider.transcribe(
+      audioBlob,
+      this.recordingOptions,
+    );
+    this.recordingOptions = undefined;
+    return transcription;
+  }
+
+  /**
+   * Check if currently recording
+   */
+  isRecording(): boolean {
+    return this.recorder.isRecording();
   }
 }
 

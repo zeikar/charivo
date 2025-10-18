@@ -170,8 +170,11 @@ export interface STTProvider {
 }
 
 // STT transcriber (browser-side audio transcription)
+// Each transcriber handles recording internally
 export interface STTTranscriber {
-  transcribe(audio: Blob | ArrayBuffer, options?: STTOptions): Promise<string>;
+  startRecording(options?: STTOptions): Promise<void>;
+  stopRecording(): Promise<string>;
+  isRecording(): boolean;
 }
 
 // STT Manager - Manages STT session state

@@ -10,7 +10,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*"
+    "@charivo/core": "workspace:*",
+    "@charivo/stt-core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.0",

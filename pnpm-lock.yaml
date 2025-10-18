@@ -325,6 +325,9 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
+      '@charivo/stt-core':
+        specifier: workspace:*
+        version: link:../stt-core
       '@charivo/stt-provider-openai':
         specifier: workspace:*
         version: link:../stt-provider-openai
@@ -341,6 +344,9 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
+      '@charivo/stt-core':
+        specifier: workspace:*
+        version: link:../stt-core
     devDependencies:
       tsup:
         specifier: ^8.0.0

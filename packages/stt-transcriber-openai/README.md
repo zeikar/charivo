@@ -61,20 +61,31 @@ new OpenAISTTTranscriber(config: OpenAISTTTranscriberConfig)
 
 ### Methods
 
-#### `transcribe(audio, options?)`
-Transcribe audio data to text.
+#### `startRecording(options?)`
+Start recording audio from microphone.
 
 ```typescript
-// With Blob
-const text = await transcriber.transcribe(audioBlob);
-
-// With ArrayBuffer
-const text = await transcriber.transcribe(audioBuffer);
+await transcriber.startRecording();
 
 // With language option
-const text = await transcriber.transcribe(audioBlob, {
-  language: "es"
-});
+await transcriber.startRecording({ language: "es" });
+```
+
+#### `stopRecording()`
+Stop recording and transcribe audio to text.
+
+```typescript
+const transcription = await transcriber.stopRecording();
+console.log("User said:", transcription);
+```
+
+#### `isRecording()`
+Check if currently recording.
+
+```typescript
+if (transcriber.isRecording()) {
+  console.log("Recording in progress...");
+}
 ```
 
 ## Supported Languages
@@ -178,12 +189,15 @@ Maximum file size: 25 MB
 
 ```typescript
 try {
-  const transcription = await transcriber.transcribe(audioBlob);
+  await sttManager.start();
+  const transcription = await sttManager.stop();
 } catch (error) {
   if (error.code === "insufficient_quota") {
     console.error("OpenAI quota exceeded");
   } else if (error.code === "invalid_api_key") {
     console.error("Invalid API key");
+  } else if (error.name === "NotAllowedError") {
+    console.error("Microphone permission denied");
   } else {
     console.error("Transcription error:", error);
   }
@@ -216,10 +230,10 @@ sttManager.setEventEmitter({
   }
 });
 
-// Start recording
+// Start recording (handled internally by transcriber)
 await sttManager.start({ language: "en" });
 
-// Stop and get transcription
+// Stop and get transcription (transcriber handles recording stop + API call)
 const text = await sttManager.stop();
 console.log("User said:", text);
 ```

@@ -74,21 +74,31 @@ interface RemoteSTTConfig {
 
 ### Methods
 
-#### `transcribe(audio, options?): Promise<string>`
-Send audio to server for transcription.
+#### `startRecording(options?): Promise<void>`
+Start recording audio from microphone.
 
 ```typescript
-const text = await transcriber.transcribe(audioBlob, {
-  language: "en" // Optional language hint
-});
+await transcriber.startRecording({ language: "en" });
 ```
 
-**Parameters:**
-- `audio: Blob | ArrayBuffer` - Audio data to transcribe
-- `options?: STTOptions` - Optional transcription options
-  - `language?: string` - Language code (e.g., "en", "es")
+#### `stopRecording(): Promise<string>`
+Stop recording and send audio to server for transcription.
 
-**Returns:** `Promise<string>` - Transcribed text
+```typescript
+const transcription = await transcriber.stopRecording();
+console.log("User said:", transcription);
+```
+
+Returns the transcribed text from your server.
+
+#### `isRecording(): boolean`
+Check if currently recording.
+
+```typescript
+if (transcriber.isRecording()) {
+  console.log("Recording in progress...");
+}
+```
 
 ## Server Implementation
 

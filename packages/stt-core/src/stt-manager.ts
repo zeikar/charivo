@@ -3,18 +3,14 @@ import { STTTranscriber, STTOptions, STTManager } from "@charivo/core";
 /**
  * STT Manager - Manages STT session state
  *
- * Responsibilities:
- * - Browser recording control using Web Audio API
- * - Audio transcription using STT Transcriber
- * - Event emission (stt:start, stt:stop, stt:error)
- * - Session state management
+ * Simplified design: Delegates to STTTranscriber
+ * - STTTranscriber handles recording internally
+ * - Manager only handles event emission
+ * - Thin wrapper for consistent API
  */
 export class STTManagerImpl implements STTManager {
   private sttTranscriber: STTTranscriber;
   private eventEmitter?: { emit: (event: string, data: any) => void };
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private recording = false;
 
   constructor(sttTranscriber: STTTranscriber) {
     this.sttTranscriber = sttTranscriber;
@@ -31,29 +27,14 @@ export class STTManagerImpl implements STTManager {
   }
 
   /**
-   * Start audio recording
+   * Start audio recording (delegates to transcriber)
    */
   async start(options?: STTOptions): Promise<void> {
-    if (this.recording) {
-      throw new Error("Already recording");
-    }
-
     console.log("🎤 STT Manager: Starting recording", options);
     this.eventEmitter?.emit("stt:start", { options });
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.mediaRecorder = new MediaRecorder(stream);
-      this.audioChunks = [];
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.start();
-      this.recording = true;
+      await this.sttTranscriber.startRecording(options);
       console.log("✅ STT Manager: Recording started");
     } catch (error) {
       console.error("❌ STT Manager: Recording failed", error);
@@ -63,64 +44,28 @@ export class STTManagerImpl implements STTManager {
   }
 
   /**
-   * Stop audio recording and transcribe to text
+   * Stop audio recording and get transcription (delegates to transcriber)
    */
   async stop(): Promise<string> {
-    if (!this.recording || !this.mediaRecorder) {
-      throw new Error("Not recording");
-    }
-
     console.log("🛑 STT Manager: Stopping recording");
 
-    return new Promise((resolve, reject) => {
-      if (!this.mediaRecorder) {
-        reject(new Error("MediaRecorder not initialized"));
-        return;
-      }
-
-      this.mediaRecorder.onstop = async () => {
-        try {
-          // Combine audio chunks into a single Blob
-          const audioBlob = new Blob(this.audioChunks, {
-            type: "audio/webm",
-          });
-
-          console.log("🔄 STT Manager: Transcribing audio...");
-
-          // Transcribe using transcriber
-          const transcription = await this.sttTranscriber.transcribe(audioBlob);
-
-          console.log("✅ STT Manager: Transcription completed", transcription);
-          this.eventEmitter?.emit("stt:stop", { transcription });
-
-          // Cleanup
-          this.recording = false;
-          this.audioChunks = [];
-          if (this.mediaRecorder?.stream) {
-            this.mediaRecorder.stream
-              .getTracks()
-              .forEach((track) => track.stop());
-          }
-          this.mediaRecorder = null;
-
-          resolve(transcription);
-        } catch (error) {
-          console.error("❌ STT Manager: Transcription failed", error);
-          this.eventEmitter?.emit("stt:error", { error: error as Error });
-          this.recording = false;
-          reject(error);
-        }
-      };
-
-      this.mediaRecorder.stop();
-    });
+    try {
+      const transcription = await this.sttTranscriber.stopRecording();
+      console.log("✅ STT Manager: Transcription completed", transcription);
+      this.eventEmitter?.emit("stt:stop", { transcription });
+      return transcription;
+    } catch (error) {
+      console.error("❌ STT Manager: Transcription failed", error);
+      this.eventEmitter?.emit("stt:error", { error: error as Error });
+      throw error;
+    }
   }
 
   /**
-   * Check if currently recording
+   * Check if currently recording (delegates to transcriber)
    */
   isRecording(): boolean {
-    return this.recording;
+    return this.sttTranscriber.isRecording();
   }
 }
 

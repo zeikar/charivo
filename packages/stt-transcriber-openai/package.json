@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
+    "@charivo/stt-core": "workspace:*",
     "@charivo/stt-provider-openai": "workspace:*"
   },
   "devDependencies": {

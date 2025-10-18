@@ -50,24 +50,27 @@ interface SpeechRecognition extends EventTarget {
 }
 
 /**
- * Web STT Transcriber - STT Transcriber using Web Speech API
+ * Web STT Transcriber - Web Speech API를 사용하는 STT Transcriber
  *
- * Uses browser's built-in speech recognition
- * Stateless design: Real-time speech recognition processing
+ * 브라우저 내장 음성 인식 기능을 사용
+ * 녹음 없이 실시간으로 음성을 텍스트로 변환
  *
- * Advantages:
- * - No API key required
- * - Free
- * - Real-time recognition
+ * 장점:
+ * - API 키 불필요
+ * - 무료
+ * - 실시간 인식
+ * - MediaRecorder 불필요 (마이크 직접 청취)
  *
- * Limitations:
- * - Browser support required (Chrome, Edge, etc.)
- * - Internet connection required (in most browsers)
- * - Language and accuracy depend on browser
+ * 제약사항:
+ * - 브라우저 지원 필요 (Chrome, Edge 등)
+ * - 인터넷 연결 필요 (대부분의 브라우저에서)
  */
 export class WebSTTTranscriber implements STTTranscriber {
   private recognition: SpeechRecognition | null = null;
+  private recording = false;
   private isSupported: boolean;
+  private resolveTranscription?: (text: string) => void;
+  private rejectTranscription?: (error: Error) => void;
 
   constructor() {
     // Check browser support
@@ -85,124 +88,82 @@ export class WebSTTTranscriber implements STTTranscriber {
   }
 
   /**
-   * Transcribe audio to text using Web Speech API
-   *
-   * Note: Web Speech API doesn't support direct audio blob transcription.
-   * Instead, we'll use continuous recognition that listens to the microphone.
-   * For blob-based transcription, consider using OpenAI or Remote transcriber.
+   * Start real-time speech recognition
    */
-  async transcribe(
-    _audio: Blob | ArrayBuffer,
-    _options?: STTOptions,
-  ): Promise<string> {
+  async startRecording(options?: STTOptions): Promise<void> {
     if (!this.isSupported) {
       throw new Error(
         "Web Speech API is not supported in this browser. Please use a supported browser (Chrome, Edge, etc.) or switch to OpenAI/Remote transcriber.",
       );
     }
 
-    // Web Speech API doesn't support blob transcription directly
-    // This is a limitation of the browser API
-    throw new Error(
-      "WebSTTTranscriber doesn't support blob-based transcription. " +
-        "Use startContinuous() for real-time recognition or switch to OpenAI/Remote transcriber for blob-based transcription.",
-    );
-  }
-
-  /**
-   * Start continuous speech recognition
-   * Returns a promise that resolves with the final transcript
-   *
-   * @param options - STT options including language, continuous mode, etc.
-   * @param onInterim - Callback for interim results (partial transcriptions)
-   * @param onEnd - Callback when recognition ends
-   */
-  async startContinuous(
-    options?: STTOptions & {
-      continuous?: boolean;
-      interimResults?: boolean;
-      maxAlternatives?: number;
-    },
-    onInterim?: (transcript: string) => void,
-    onEnd?: () => void,
-  ): Promise<string> {
-    if (!this.isSupported) {
-      throw new Error("Web Speech API is not supported in this browser");
+    if (this.recording) {
+      throw new Error("Already recording");
     }
 
     const SpeechRecognitionAPI =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
 
+    this.recognition = new SpeechRecognitionAPI();
+    this.recognition!.continuous = false;
+    this.recognition!.interimResults = true;
+    this.recognition!.maxAlternatives = 1;
+    this.recognition!.lang = options?.language ?? "ko-KR";
+
+    let finalTranscript = "";
+
+    this.recognition!.onresult = (event: SpeechRecognitionEvent) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + " ";
+        }
+      }
+    };
+
+    this.recognition!.onend = () => {
+      this.recording = false;
+      this.resolveTranscription?.(finalTranscript.trim());
+    };
+
+    this.recognition!.onerror = (event: SpeechRecognitionErrorEvent) => {
+      this.recording = false;
+      this.rejectTranscription?.(
+        new Error(
+          `Speech recognition error: ${event.error} - ${event.message}`,
+        ),
+      );
+    };
+
+    this.recognition!.start();
+    this.recording = true;
+  }
+
+  /**
+   * Stop speech recognition and return transcription
+   */
+  async stopRecording(): Promise<string> {
+    if (!this.recording || !this.recognition) {
+      throw new Error("Not recording");
+    }
+
     return new Promise((resolve, reject) => {
-      this.recognition = new SpeechRecognitionAPI();
-
-      // Configure recognition
-      this.recognition!.continuous = options?.continuous ?? false;
-      this.recognition!.interimResults = options?.interimResults ?? true;
-      this.recognition!.maxAlternatives = options?.maxAlternatives ?? 1;
-      this.recognition!.lang = options?.language ?? "ko-KR";
-
-      let finalTranscript = "";
-
-      this.recognition!.onresult = (event: SpeechRecognitionEvent) => {
-        let interimTranscript = "";
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + " ";
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        // Call interim callback if provided
-        if (onInterim && interimTranscript) {
-          onInterim(interimTranscript);
-        }
-      };
-
-      this.recognition!.onend = () => {
-        onEnd?.();
-        resolve(finalTranscript.trim());
-      };
-
-      this.recognition!.onerror = (event: SpeechRecognitionErrorEvent) => {
-        reject(
-          new Error(
-            `Speech recognition error: ${event.error} - ${event.message}`,
-          ),
-        );
-      };
-
-      this.recognition!.start();
+      this.resolveTranscription = resolve;
+      this.rejectTranscription = reject;
+      this.recognition!.stop();
     });
   }
 
   /**
-   * Stop continuous recognition
+   * Check if currently recording
    */
-  stopContinuous(): void {
-    if (this.recognition) {
-      this.recognition.stop();
-      this.recognition = null;
-    }
+  isRecording(): boolean {
+    return this.recording;
   }
 
   /**
-   * Abort continuous recognition immediately
-   */
-  abortContinuous(): void {
-    if (this.recognition) {
-      this.recognition.abort();
-      this.recognition = null;
-    }
-  }
-
-  /**
-   * Check if Web Speech API is supported
+   * Check if Web Speech API is supported in this browser
    */
   isSupportedBrowser(): boolean {
     return this.isSupported;

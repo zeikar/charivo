@@ -1,13 +1,13 @@
 # @charivo/stt-core
 
-Core STT (Speech-to-Text) functionality with audio recording management, transcription coordination, and event emission for Charivo.
+Core STT (Speech-to-Text) functionality with transcription coordination, event emission, and shared utilities for Charivo.
 
 ## Features
 
-- 🎤 **Audio Recording Management** - Browser audio recording using Web Audio API
+- 🎤 **Transcription Coordination** - Manages STT transcribers with unified API
 - 📡 **Event Bus Integration** - Emit audio events for recording lifecycle
-- 🔄 **Transcription Coordination** - Seamless integration with STT transcribers
-- 🔌 **Transcriber Agnostic** - Works with any STT transcriber (OpenAI Whisper, Google, custom, etc.)
+- 🛠️ **MediaRecorder Helper** - Shared audio recording utility for transcribers
+- 🔌 **Transcriber Agnostic** - Works with any STT transcriber (Web, OpenAI, Remote, etc.)
 
 ## Installation
 
@@ -28,10 +28,10 @@ const transcriber = createRemoteSTTTranscriber({
   apiEndpoint: "/api/stt"
 });
 
-// Wrap with STTManager for recording management
+// Wrap with STTManager for event emission and coordination
 const sttManager = createSTTManager(transcriber);
 
-// Start recording
+// Start recording (handled internally by transcriber)
 await sttManager.start();
 
 // Stop recording and get transcription
@@ -71,32 +71,36 @@ await sttManager.start();
 
 // Stop and transcribe
 const text = await sttManager.stop();
-// → Recording stops
+// → Recording stops (handled by transcriber)
 // → Audio is transcribed
 // → "stt:stop" emitted with transcription
 ```
 
 ### Custom STT Transcriber
 
+Each transcriber handles recording internally:
+
 ```typescript
 import { STTTranscriber, STTOptions } from "@charivo/core";
-import { createSTTManager } from "@charivo/stt-core";
+import { MediaRecorderHelper, createSTTManager } from "@charivo/stt-core";
 
 class MyCustomSTTTranscriber implements STTTranscriber {
-  async transcribe(
-    audio: Blob | ArrayBuffer, 
-    options?: STTOptions
-  ): Promise<string> {
-    // Convert audio to format your API expects
-    const audioBlob = audio instanceof Blob 
-      ? audio 
-      : new Blob([audio], { type: "audio/webm" });
+  private recorder = new MediaRecorderHelper();
+  private recordingOptions?: STTOptions;
+
+  async startRecording(options?: STTOptions): Promise<void> {
+    this.recordingOptions = options;
+    await this.recorder.start();
+  }
+
+  async stopRecording(): Promise<string> {
+    const audioBlob = await this.recorder.stop();
 
     // Call your STT API
     const formData = new FormData();
     formData.append("audio", audioBlob);
-    if (options?.language) {
-      formData.append("language", options.language);
+    if (this.recordingOptions?.language) {
+      formData.append("language", this.recordingOptions.language);
     }
 
     const response = await fetch("https://my-stt-api.com/transcribe", {
@@ -105,7 +109,12 @@ class MyCustomSTTTranscriber implements STTTranscriber {
     });
 
     const data = await response.json();
+    this.recordingOptions = undefined;
     return data.transcription;
+  }
+
+  isRecording(): boolean {
+    return this.recorder.isRecording();
   }
 }
 
@@ -127,7 +136,7 @@ if (sttManager.isRecording()) {
 
 ### `STTManager`
 
-Main class for managing audio recording and transcription.
+Main class for coordinating STT transcription and emitting events.
 
 #### Constructor
 
@@ -152,7 +161,7 @@ When set, the manager emits:
 - `stt:error` with `{ error: Error }` when an error occurs
 
 ##### `start(options?)`
-Start audio recording from the user's microphone.
+Start audio recording (delegates to transcriber).
 
 ```typescript
 await sttManager.start();
@@ -161,10 +170,10 @@ await sttManager.start();
 await sttManager.start({ language: "en-US" });
 ```
 
-Requests microphone permission if not already granted.
+The transcriber handles microphone access and recording internally.
 
 ##### `stop()`
-Stop recording and transcribe audio to text.
+Stop recording and get transcribed text (delegates to transcriber).
 
 ```typescript
 const transcription = await sttManager.stop();
@@ -174,12 +183,49 @@ console.log("User said:", transcription);
 Returns the transcribed text as a string.
 
 ##### `isRecording()`
-Check if currently recording.
+Check if currently recording (delegates to transcriber).
 
 ```typescript
 if (sttManager.isRecording()) {
   console.log("Recording...");
 }
+```
+
+### `MediaRecorderHelper`
+
+Shared utility for audio recording (used by blob-based transcribers).
+
+#### Methods
+
+##### `start()`
+Start audio recording from microphone.
+
+```typescript
+const recorder = new MediaRecorderHelper();
+await recorder.start();
+```
+
+##### `stop()`
+Stop recording and return audio blob.
+
+```typescript
+const audioBlob = await recorder.stop();
+```
+
+##### `isRecording()`
+Check if currently recording.
+
+```typescript
+if (recorder.isRecording()) {
+  console.log("Recording...");
+}
+```
+
+##### `abort()`
+Abort recording immediately without returning data.
+
+```typescript
+recorder.abort();
 ```
 
 ## Events
@@ -236,14 +282,12 @@ The STT system integrates seamlessly with the Charivo framework:
 ```typescript
 import { Charivo } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt-core";
-import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
+import { createWebSTTTranscriber } from "@charivo/stt-transcriber-web";
 
 const charivo = new Charivo();
 
 // Setup STT
-const transcriber = createRemoteSTTTranscriber({
-  apiEndpoint: "/api/stt"
-});
+const transcriber = createWebSTTTranscriber();
 const sttManager = createSTTManager(transcriber);
 charivo.attachSTT(sttManager);
 
@@ -259,17 +303,22 @@ await charivo.userSay(transcription);
 ## Architecture
 
 ```
-STTManager (stateful)
-  ├─ MediaRecorder (Web Audio API)
-  ├─ Recording State Management
-  ├─ Event Bus Integration
-  └─ STTTranscriber (stateless)
-      └─ Your STT API
+STTManager (coordination layer)
+  ├─ Event Emission
+  └─ STTTranscriber (handles recording internally)
+      ├─ WebSTTTranscriber
+      │   └─ Web Speech API (real-time)
+      ├─ OpenAISTTTranscriber
+      │   ├─ MediaRecorderHelper
+      │   └─ OpenAI Whisper API
+      └─ RemoteSTTTranscriber
+          ├─ MediaRecorderHelper
+          └─ Your Server API
 ```
 
 ## Available Transcribers
 
-### Web STT Transcriber (Free, Browser-native)
+### Web STT Transcriber (Free, Browser-native) ⭐ Recommended
 
 ```bash
 pnpm add @charivo/stt-transcriber-web
@@ -279,20 +328,22 @@ pnpm add @charivo/stt-transcriber-web
 import { createWebSTTTranscriber } from "@charivo/stt-transcriber-web";
 
 const transcriber = createWebSTTTranscriber();
+const sttManager = createSTTManager(transcriber);
 
-// ⚠️ Note: Web Speech API doesn't support blob-based transcription
-// Use for real-time recognition only
-const text = await transcriber.startContinuous({
-  language: "en-US",
-  continuous: false
-});
+// Works with STTManager!
+await sttManager.start({ language: "en-US" });
+const text = await sttManager.stop();
 ```
 
-Uses browser's built-in Web Speech API (no API key needed). 
+Uses browser's built-in Web Speech API (no API key needed).
 
-**Note**: Not compatible with STT Manager's recording feature. Use `startContinuous()` directly for real-time recognition.
+**Advantages:**
+- 🆓 Completely free
+- ⚡ Real-time recognition
+- 🔒 No server required
+- 🎯 Perfect for development and production
 
-### Remote STT Transcriber (Recommended for Production)
+### Remote STT Transcriber (Production-ready)
 
 ```bash
 pnpm add @charivo/stt-transcriber-remote
@@ -302,7 +353,7 @@ pnpm add @charivo/stt-transcriber-remote
 import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
 
 const transcriber = createRemoteSTTTranscriber({
-  apiEndpoint: "/api/stt" // Your server endpoint (default)
+  apiEndpoint: "/api/stt" // Your server endpoint
 });
 ```
 
@@ -327,15 +378,17 @@ const transcriber = createOpenAISTTTranscriber({
 
 ## Browser Compatibility
 
-STT Manager uses the following browser APIs:
-- **MediaRecorder API** - For audio recording
-- **getUserMedia API** - For microphone access
+STT transcribers use different browser APIs:
 
-Supported browsers:
+**MediaRecorderHelper** (OpenAI/Remote):
 - Chrome/Edge 49+
 - Firefox 29+
 - Safari 14.1+
-- Opera 36+
+
+**Web Speech API** (Web):
+- Chrome/Edge (fully supported)
+- Safari (limited support)
+- Firefox (not supported)
 
 ## Error Handling
 
@@ -362,10 +415,10 @@ Common errors:
 
 ## Best Practices
 
-1. **Request permission early**: Test microphone access before starting recording
-2. **Show recording indicator**: Always show visual feedback when recording
-3. **Handle errors gracefully**: Provide clear error messages to users
-4. **Use remote transcriber**: Keep API keys secure on the server
+1. **Use Web STT for most cases**: Free, fast, and browser-native
+2. **Request permission early**: Test microphone access before starting recording
+3. **Show recording indicator**: Always show visual feedback when recording
+4. **Handle errors gracefully**: Provide clear error messages to users
 
 ```typescript
 // React example

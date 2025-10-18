@@ -147,9 +147,9 @@ Charivo is organized into modular packages. Click on each package to see detaile
 ### STT (Speech-to-Text) Packages
 | Package | Description | Use Case |
 |---------|-------------|----------|
-| **[@charivo/stt-core](./packages/stt-core)** | STT manager with recording | Required for STT functionality |
-| [@charivo/stt-transcriber-web](./packages/stt-transcriber-web) | Web Speech API transcriber | Free, browser-native (real-time only) |
-| [@charivo/stt-transcriber-remote](./packages/stt-transcriber-remote) | Remote HTTP transcriber | **Recommended for production** |
+| **[@charivo/stt-core](./packages/stt-core)** | STT manager with coordination | Required for STT functionality |
+| [@charivo/stt-transcriber-web](./packages/stt-transcriber-web) | Web Speech API transcriber | **Free, browser-native** |
+| [@charivo/stt-transcriber-remote](./packages/stt-transcriber-remote) | Remote HTTP transcriber | Production with server API |
 | [@charivo/stt-transcriber-openai](./packages/stt-transcriber-openai) | OpenAI Whisper transcriber | Testing/development only |
 | [@charivo/stt-provider-openai](./packages/stt-provider-openai) | OpenAI Whisper provider | Server-side API routes |
 
@@ -228,13 +228,13 @@ Charivo uses a **Manager Pattern** with clear separation between stateful manage
 │  ┌─────────────────────────────┐   │
 │  │      STT Layer              │   │
 │  │  ┌──────────────────────┐   │   │
-│  │  │  STTManager          │   │   │  ←─ Stateful (recording, events)
+│  │  │  STTManager          │   │   │  ←─ Coordination (events)
 │  │  │  (@charivo/stt-core) │   │   │
 │  │  └──────────┬───────────┘   │   │
 │  │             ▼               │   │
 │  │  ┌──────────────────────┐   │   │
-│  │  │  STT Transcribers    │   │   │  ←─ Stateless (transcription)
-│  │  │  Remote, OpenAI      │   │   │
+│  │  │  STT Transcribers    │   │   │  ←─ Recording + Transcription
+│  │  │  Web, Remote, OpenAI │   │   │     (handles recording internally)
 │  │  └──────────────────────┘   │   │
 │  └─────────────────────────────┘   │
 │  ┌─────────────────────────────┐   │
@@ -333,25 +333,38 @@ const ttsManager = createTTSManager(new MyTTSPlayer());
 
 ```typescript
 import { STTTranscriber, STTOptions } from "@charivo/core";
-import { createSTTManager } from "@charivo/stt-core";
+import { MediaRecorderHelper, createSTTManager } from "@charivo/stt-core";
 
 class MySTTTranscriber implements STTTranscriber {
-  async transcribe(audio: Blob | ArrayBuffer, options?: STTOptions): Promise<string> {
-    // Convert to Blob if needed
-    const audioBlob = audio instanceof Blob 
-      ? audio 
-      : new Blob([audio], { type: "audio/webm" });
+  private recorder = new MediaRecorderHelper();
+  private recordingOptions?: STTOptions;
+
+  async startRecording(options?: STTOptions): Promise<void> {
+    this.recordingOptions = options;
+    await this.recorder.start();
+  }
+
+  async stopRecording(): Promise<string> {
+    const audioBlob = await this.recorder.stop();
 
     // Send to your STT service
     const formData = new FormData();
     formData.append("audio", audioBlob);
-    
+    if (this.recordingOptions?.language) {
+      formData.append("language", this.recordingOptions.language);
+    }
+
     const response = await fetch("https://my-stt-api.com/transcribe", {
       method: "POST",
       body: formData
     });
     const data = await response.json();
+    this.recordingOptions = undefined;
     return data.transcription;
+  }
+
+  isRecording(): boolean {
+    return this.recorder.isRecording();
   }
 }
 
@@ -370,10 +383,11 @@ const sttManager = createSTTManager(new MySTTTranscriber());
 
 | Type | Responsibility | Examples |
 |------|----------------|----------|
-| **Managers** | Session state, history, events | `LLMManager`, `TTSManager`, `STTManager` |
-| **Clients/Players/Transcribers** | API calls, data processing | `RemoteLLMClient`, `WebTTSPlayer` |
+| **Managers** | Coordination, events, state | `LLMManager`, `TTSManager`, `STTManager` |
+| **Clients/Players/Transcribers** | API calls, recording, processing | `RemoteLLMClient`, `WebTTSPlayer`, `WebSTTTranscriber` |
 | **Providers** | Server-side API integration | `OpenAILLMProvider`, `OpenAITTSProvider` |
 | **Renderers** | Character visualization | `Live2DRenderer` |
+| **Utilities** | Shared helpers | `MediaRecorderHelper` |
 
 ### Recommended Setup
 

@@ -1,4 +1,5 @@
 import { STTTranscriber, STTOptions } from "@charivo/core";
+import { MediaRecorderHelper } from "@charivo/stt-core";
 
 export interface RemoteSTTConfig {
   apiEndpoint?: string;
@@ -8,32 +9,37 @@ export interface RemoteSTTConfig {
  * Remote STT Transcriber - Uses remote server's STT API for transcription
  *
  * Processes STT on the server and receives transcribed text
- * Stateless design: Only handles audio transcription (recording is handled by STT Manager)
+ * Handles recording internally using MediaRecorderHelper
  */
 export class RemoteSTTTranscriber implements STTTranscriber {
   private apiEndpoint: string;
+  private recorder: MediaRecorderHelper;
+  private recordingOptions?: STTOptions;
 
   constructor(config: RemoteSTTConfig = {}) {
     this.apiEndpoint = config.apiEndpoint || "/api/stt";
+    this.recorder = new MediaRecorderHelper();
   }
 
   /**
-   * Transcribe audio data to text using remote API
+   * Start recording audio from microphone
    */
-  async transcribe(
-    audio: Blob | ArrayBuffer,
-    options?: STTOptions,
-  ): Promise<string> {
+  async startRecording(options?: STTOptions): Promise<void> {
+    this.recordingOptions = options;
+    await this.recorder.start();
+  }
+
+  /**
+   * Stop recording and transcribe audio to text using remote API
+   */
+  async stopRecording(): Promise<string> {
+    const audioBlob = await this.recorder.stop();
+
     const formData = new FormData();
-
-    // Convert ArrayBuffer to Blob if needed
-    const audioBlob =
-      audio instanceof Blob ? audio : new Blob([audio], { type: "audio/webm" });
-
     formData.append("audio", audioBlob, "recording.webm");
 
-    if (options?.language) {
-      formData.append("language", options.language);
+    if (this.recordingOptions?.language) {
+      formData.append("language", this.recordingOptions.language);
     }
 
     const response = await fetch(this.apiEndpoint, {
@@ -46,7 +52,15 @@ export class RemoteSTTTranscriber implements STTTranscriber {
     }
 
     const data = await response.json();
+    this.recordingOptions = undefined;
     return data.transcription;
+  }
+
+  /**
+   * Check if currently recording
+   */
+  isRecording(): boolean {
+    return this.recorder.isRecording();
   }
 }
 
