@@ -38,6 +38,7 @@ await renderer.loadModel("/live2d/model.model3.json");
 - 🧩 **Simple Live2D** - 90% less code than raw SDK, just 3 lines to render!
 - 🤖 **Smart Conversations** - Powered by OpenAI GPT or custom LLM clients
 - 🔊 **Voice Synthesis** - Multiple TTS options: Web Speech API, OpenAI TTS, Remote API
+- 🎤 **Voice Input** - STT (Speech-to-Text) support with OpenAI Whisper or custom providers
 - 💋 **Auto Lip-Sync** - Mouth moves naturally synchronized with speech audio
 - 🎭 **Emotion System** - LLM-driven expressions and motions with emotion tags
 - 📦 **Plug & Play** - Modular architecture, swap any component easily
@@ -66,6 +67,11 @@ npm install @charivo/llm-client-remote
 npm install @charivo/tts-core @charivo/tts-player-web
 # or OpenAI TTS
 npm install @charivo/tts-player-openai
+
+# STT packages
+npm install @charivo/stt-core @charivo/stt-transcriber-remote
+# or OpenAI STT (for testing)
+npm install @charivo/stt-transcriber-openai
 
 # Rendering packages
 npm install @charivo/render-core @charivo/render-live2d
@@ -184,6 +190,14 @@ await charivo.userSay("Hello!");
 | [`@charivo/tts-player-openai`](./packages/tts-player-openai) | OpenAI TTS player |
 | [`@charivo/tts-provider-openai`](./packages/tts-provider-openai) | OpenAI TTS provider (server-side) |
 
+### STT (Speech-to-Text) Packages
+| Package | Description |
+|---------|-------------|
+| [`@charivo/stt-core`](./packages/stt-core) | Core STT functionality with audio recording and transcription coordination |
+| [`@charivo/stt-transcriber-remote`](./packages/stt-transcriber-remote) | Remote HTTP STT transcriber (client-side, production-ready) |
+| [`@charivo/stt-transcriber-openai`](./packages/stt-transcriber-openai) | OpenAI Whisper STT transcriber (direct API access) |
+| [`@charivo/stt-provider-openai`](./packages/stt-provider-openai) | OpenAI Whisper STT provider (server-side) |
+
 ### Rendering Packages
 | Package | Description |
 |---------|-------------|
@@ -229,6 +243,43 @@ await charivo.userSay("That's amazing!");
 // Automatic lip-sync during speech
 await charivo.userSay("Tell me a story");
 // → Mouth moves naturally with speech audio
+```
+
+### Voice Conversation Example
+
+Full voice-enabled conversation with STT (Speech-to-Text):
+
+```typescript
+import { Charivo } from "@charivo/core";
+import { createSTTManager } from "@charivo/stt-core";
+import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
+
+// Setup Charivo with all components
+const charivo = new Charivo();
+// ... attach LLM, TTS, renderer, setCharacter
+
+// Setup STT
+const transcriber = createRemoteSTTTranscriber({
+  apiEndpoint: "/api/stt"
+});
+const sttManager = createSTTManager(transcriber);
+charivo.attachSTT(sttManager);
+
+// Voice conversation flow
+async function handleVoiceInput() {
+  // Start recording user's voice
+  await sttManager.start();
+  console.log("🎤 Recording...");
+  
+  // Stop recording and get transcription
+  const userMessage = await sttManager.stop();
+  console.log("User said:", userMessage);
+  
+  // Send to character
+  await charivo.userSay(userMessage);
+  // → Character responds with voice and animation
+  // → Automatic lip-sync during speech
+}
 ```
 
 ### Web Demo
@@ -287,6 +338,18 @@ Charivo follows a modular, layered architecture with clear separation between st
 │  │  └──────────────────────┘   │   │
 │  └─────────────────────────────┘   │
 │  ┌─────────────────────────────┐   │
+│  │      STT Layer              │   │
+│  │  ┌──────────────────────┐   │   │
+│  │  │  STTManager          │   │   │  ←─ Stateful (recording, events)
+│  │  │  (@charivo/stt-core) │   │   │
+│  │  └──────────┬───────────┘   │   │
+│  │             ▼               │   │
+│  │  ┌──────────────────────┐   │   │
+│  │  │  STT Transcribers    │   │   │  ←─ Stateless (transcription)
+│  │  │  Remote, OpenAI      │   │   │
+│  │  └──────────────────────┘   │   │
+│  └─────────────────────────────┘   │
+│  ┌─────────────────────────────┐   │
 │  │    Rendering Layer          │   │
 │  │  ┌──────────────────────┐   │   │
 │  │  │  RenderManager       │   │   │  ←─ Stateful (lip-sync, motion)
@@ -335,6 +398,71 @@ class CustomLLMClient implements LLMClient {
 
 // Use with LLM Manager
 const llmManager = createLLMManager(new CustomLLMClient());
+```
+
+### Custom STT Components
+
+Charivo provides multiple STT (Speech-to-Text) options with clear client/server separation:
+
+#### Remote STT (Server-powered, Client-safe)
+```typescript
+import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
+import { createSTTManager } from "@charivo/stt-core";
+
+// Client-side transcriber that calls your server API
+const transcriber = createRemoteSTTTranscriber({
+  apiEndpoint: "/api/stt" // Your server endpoint
+});
+const sttManager = createSTTManager(transcriber);
+
+// Start recording
+await sttManager.start();
+
+// Stop and get transcription
+const transcription = await sttManager.stop();
+console.log("User said:", transcription);
+```
+
+**⚠️ Important**: The Remote STT transcriber calls your server API. This keeps API keys secure on the server side. You need to implement a server endpoint like `/api/stt` using `@charivo/stt-provider-openai`.
+
+#### OpenAI STT Provider (Server-side only)
+```typescript
+import { createOpenAISTTProvider } from "@charivo/stt-provider-openai";
+
+// Server-side provider for API routes
+// ⚠️ Only use in Node.js/server environments
+const provider = createOpenAISTTProvider({
+  apiKey: process.env.OPENAI_API_KEY!,
+  defaultModel: "whisper-1",
+  defaultLanguage: "en"
+});
+
+// In your API route (Next.js example)
+export async function POST(request: NextRequest) {
+  const formData = await request.formData();
+  const audioFile = formData.get('audio') as File;
+  const audioBlob = new Blob([await audioFile.arrayBuffer()]);
+  const transcription = await provider.transcribe(audioBlob);
+  return NextResponse.json({ transcription });
+}
+```
+
+#### OpenAI STT Transcriber (Testing only)
+```typescript
+import { createOpenAISTTTranscriber } from "@charivo/stt-transcriber-openai";
+import { createSTTManager } from "@charivo/stt-core";
+
+// ⚠️ Only for development/testing - exposes API key on client
+const transcriber = createOpenAISTTTranscriber({
+  apiKey: "your-api-key" // NOT SECURE
+});
+const sttManager = createSTTManager(transcriber);
+
+// Start recording
+await sttManager.start();
+
+// Stop and transcribe
+const text = await sttManager.stop();
 ```
 
 ### Custom TTS Components
@@ -440,6 +568,8 @@ const ttsManager = createTTSManager(new CustomTTSPlayer());
 | | `openai-provider` | Server-side API integration |
 | **TTS** | `web-player`, `remote-player`, `openai-player` | Client-side audio playback |
 | | `openai-provider` | Server-side audio generation |
+| **STT** | `remote-transcriber`, `openai-transcriber` | Client-side audio transcription |
+| | `openai-provider` | Server-side audio transcription |
 | **Rendering** | `live2d-renderer`, `stub-renderer` | Character visualization |
 
 ## 🎨 Live2D Setup
