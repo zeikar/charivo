@@ -21,11 +21,11 @@ pnpm add @charivo/stt-core @charivo/core
 
 ```typescript
 import { createSTTManager } from "@charivo/stt-core";
-import { createOpenAISTTTranscriber } from "@charivo/stt-transcriber-openai";
+import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
 
 // Create a STT transcriber
-const transcriber = createOpenAISTTTranscriber({
-  apiKey: "your-api-key"
+const transcriber = createRemoteSTTTranscriber({
+  apiEndpoint: "/api/stt"
 });
 
 // Wrap with STTManager for recording management
@@ -79,19 +79,25 @@ const text = await sttManager.stop();
 ### Custom STT Transcriber
 
 ```typescript
-import { STTTranscriber } from "@charivo/core";
+import { STTTranscriber, STTOptions } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt-core";
 
 class MyCustomSTTTranscriber implements STTTranscriber {
-  async transcribe(audio: Blob | ArrayBuffer): Promise<string> {
+  async transcribe(
+    audio: Blob | ArrayBuffer, 
+    options?: STTOptions
+  ): Promise<string> {
     // Convert audio to format your API expects
     const audioBlob = audio instanceof Blob 
       ? audio 
-      : new Blob([audio], { type: "audio/wav" });
+      : new Blob([audio], { type: "audio/webm" });
 
     // Call your STT API
     const formData = new FormData();
     formData.append("audio", audioBlob);
+    if (options?.language) {
+      formData.append("language", options.language);
+    }
 
     const response = await fetch("https://my-stt-api.com/transcribe", {
       method: "POST",
@@ -273,13 +279,13 @@ pnpm add @charivo/stt-transcriber-remote
 import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
 
 const transcriber = createRemoteSTTTranscriber({
-  apiEndpoint: "/api/stt" // Your server endpoint
+  apiEndpoint: "/api/stt" // Your server endpoint (default)
 });
 ```
 
 Calls your server API to keep credentials secure.
 
-### OpenAI STT Transcriber (Development/Testing)
+### OpenAI STT Transcriber (Development/Testing Only)
 
 ```bash
 pnpm add @charivo/stt-transcriber-openai
@@ -289,7 +295,8 @@ pnpm add @charivo/stt-transcriber-openai
 import { createOpenAISTTTranscriber } from "@charivo/stt-transcriber-openai";
 
 const transcriber = createOpenAISTTTranscriber({
-  apiKey: "your-api-key" // ⚠️ Exposed on client
+  apiKey: "your-api-key", // ⚠️ Exposed on client
+  defaultLanguage: "en"
 });
 ```
 

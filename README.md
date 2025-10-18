@@ -35,95 +35,61 @@ await renderer.loadModel("/live2d/model.model3.json");
 
 ## ✨ Features
 
-- 🧩 **Simple Live2D** - 90% less code than raw SDK, just 3 lines to render!
-- 🤖 **Smart Conversations** - Powered by OpenAI GPT or custom LLM clients
-- 🔊 **Voice Synthesis** - Multiple TTS options: Web Speech API, OpenAI TTS, Remote API
-- 🎤 **Voice Input** - STT (Speech-to-Text) support with OpenAI Whisper or custom providers
-- 💋 **Auto Lip-Sync** - Mouth moves naturally synchronized with speech audio
-- 🎭 **Emotion System** - LLM-driven expressions and motions with emotion tags
-- 📦 **Plug & Play** - Modular architecture, swap any component easily
-- ⚡ **TypeScript First** - Full type safety and IntelliSense support
-- 🎨 **Framework Agnostic** - Works with React, Vue, or vanilla JavaScript
-- 🔐 **Secure by Design** - Client/server separation keeps API keys safe
+- 🧩 **Simple Live2D** - 90% less code than raw SDK, just 3 lines to render
+- 🤖 **Smart Conversations** - LLM-powered dialogue with emotion understanding
+- 🔊 **Voice Synthesis** - Text-to-speech with multiple providers
+- 🎤 **Voice Input** - Speech-to-text transcription support
+- 💋 **Auto Lip-Sync** - Mouth animation synchronized with speech
+- 🎭 **Emotion System** - LLM-driven expressions and motions
+- 📦 **Plug & Play** - Modular architecture, swap any component
+- ⚡ **TypeScript First** - Full type safety and IntelliSense
+- 🎨 **Framework Agnostic** - Works with React, Vue, or vanilla JS
+- 🔐 **Secure by Design** - Client/server separation for API keys
 
 ## 🚀 Quick Start
 
 ### Installation
 
-#### Using npm (Recommended)
-
-Install the packages you need:
-
 ```bash
-# Core framework
-npm install @charivo/core
+# Core packages
+npm install @charivo/core @charivo/shared
 
-# LLM packages
-npm install @charivo/llm-core @charivo/llm-client-openai
-# or for client-side apps
-npm install @charivo/llm-client-remote
-
-# TTS packages
+# Choose your components (see package docs for details)
+npm install @charivo/llm-core @charivo/llm-client-remote
 npm install @charivo/tts-core @charivo/tts-player-web
-# or OpenAI TTS
-npm install @charivo/tts-player-openai
-
-# STT packages
 npm install @charivo/stt-core @charivo/stt-transcriber-remote
-# or OpenAI STT (for testing)
-npm install @charivo/stt-transcriber-openai
-
-# Rendering packages
 npm install @charivo/render-core @charivo/render-live2d
 ```
 
-#### From Source (For Contributors)
-
-```bash
-# Clone the repository
-git clone https://github.com/zeikar/charivo.git
-cd charivo
-
-# Install dependencies
-pnpm install
-
-# Build packages
-pnpm build
-
-# Set up pre-commit hooks (recommended for contributors)
-pnpm setup:hooks
-
-# Run the demo
-cd examples/web
-pnpm dev
-```
+See [📦 Packages](#-packages) section for detailed installation guides.
 
 ### Basic Usage
 
 ```typescript
-import { Charivo } from "@charivo/core";
+import { Charivo, Emotion } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
-import { OpenAILLMClient } from "@charivo/llm-client-openai";
+import { createRemoteLLMClient } from "@charivo/llm-client-remote";
 import { createTTSManager } from "@charivo/tts-core";
 import { createWebTTSPlayer } from "@charivo/tts-player-web";
 import { createRenderManager } from "@charivo/render-core";
-import { createLive2DRenderer } from "@charivo/render-live2d";
+import { Live2DRenderer } from "@charivo/render-live2d";
 
 // 1. Create Charivo instance
 const charivo = new Charivo();
 
-// 2. Setup LLM (stateless client wrapped by stateful manager)
-const llmClient = new OpenAILLMClient({ apiKey: "your-api-key" });
+// 2. Setup LLM
+const llmClient = createRemoteLLMClient({ apiEndpoint: "/api/chat" });
 const llmManager = createLLMManager(llmClient);
 charivo.attachLLM(llmManager);
 
-// 3. Setup TTS (stateless player wrapped by stateful manager)
-const ttsPlayer = createWebTTSPlayer(); // Browser's built-in speech
+// 3. Setup TTS
+const ttsPlayer = createWebTTSPlayer();
 const ttsManager = createTTSManager(ttsPlayer);
 charivo.attachTTS(ttsManager);
 
-// 4. Setup Renderer (stateless renderer wrapped by stateful manager)
-const renderer = createLive2DRenderer({ canvas: canvasElement });
+// 4. Setup Renderer
+const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+const renderer = new Live2DRenderer({ canvas });
 await renderer.initialize();
 await renderer.loadModel("/live2d/hiyori/hiyori.model3.json");
 const renderManager = createRenderManager(renderer);
@@ -133,83 +99,71 @@ charivo.attachRenderer(renderManager);
 charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",
-  personality: "Cheerful and helpful AI assistant",
+  personality: "Cheerful and helpful assistant",
   emotionMappings: [
     {
       emotion: Emotion.HAPPY,
-      expression: "smile",
+      expression: "f02",
       motion: { group: "TapBody", index: 0 }
     },
-    {
-      emotion: Emotion.SAD,
-      expression: "sad",
-      motion: { group: "Idle", index: 1 }
-    },
-    // ... more emotions
+    // Add more emotions...
   ]
 });
 
-// 6. Start chatting!
+// 6. Start conversation!
 await charivo.userSay("Hello!");
-// → LLM generates response with emotion tags: "Hello! [happy] Nice to meet you!"
-// → Emotion tag parsed and removed: "Hello! Nice to meet you!"
-// → TTS speaks the cleaned response
-// → Renderer animates with emotion-based expression and motion
-// → Mouth moves with lip-sync
 ```
 
-**That's it!** Your AI character is now alive with:
-- ✨ Natural language conversation (LLM)
-- 🔊 Voice synthesis (TTS)
-- 💋 Synchronized lip movement
-- 🎭 Emotion-driven expressions and motions
+**See the [examples/web](./examples/web) folder for complete implementations.**
 
 ## 📦 Packages
+
+Charivo is organized into modular packages. Click on each package to see detailed documentation.
 
 ### Core Packages
 | Package | Description |
 |---------|-------------|
-| [`@charivo/core`](./packages/core) | Core framework with event system and character management |
-| [`@charivo/shared`](./packages/shared) | Shared utilities and types |
+| **[@charivo/core](./packages/core)** | Core framework with event system and character management |
+| **[@charivo/shared](./packages/shared)** | Shared utilities and types |
 
 ### LLM (Language Model) Packages
-| Package | Description |
-|---------|-------------|
-| [`@charivo/llm-core`](./packages/llm-core) | Core utilities and helpers for LLM functionality |
-| [`@charivo/llm-client-openai`](./packages/llm-client-openai) | OpenAI LLM client (local/testing) |
-| [`@charivo/llm-client-remote`](./packages/llm-client-remote) | Remote HTTP LLM client (client-side) |
-| [`@charivo/llm-client-stub`](./packages/llm-client-stub) | Stub LLM client for testing |
-| [`@charivo/llm-provider-openai`](./packages/llm-provider-openai) | OpenAI LLM provider (server-side) |
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| **[@charivo/llm-core](./packages/llm-core)** | LLM manager with conversation state | Required for LLM functionality |
+| [@charivo/llm-client-openai](./packages/llm-client-openai) | OpenAI client | Testing/development only |
+| [@charivo/llm-client-remote](./packages/llm-client-remote) | Remote HTTP client | **Recommended for production** |
+| [@charivo/llm-client-stub](./packages/llm-client-stub) | Stub client | Testing only |
+| [@charivo/llm-provider-openai](./packages/llm-provider-openai) | OpenAI provider | Server-side API routes |
 
 ### TTS (Text-to-Speech) Packages
-| Package | Description |
-|---------|-------------|
-| [`@charivo/tts-core`](./packages/tts-core) | Core TTS functionality with audio processing and lip-sync integration |
-| [`@charivo/tts-player-web`](./packages/tts-player-web) | Web Speech API TTS player |
-| [`@charivo/tts-player-remote`](./packages/tts-player-remote) | Remote HTTP TTS player (client-side) |
-| [`@charivo/tts-player-openai`](./packages/tts-player-openai) | OpenAI TTS player |
-| [`@charivo/tts-provider-openai`](./packages/tts-provider-openai) | OpenAI TTS provider (server-side) |
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| **[@charivo/tts-core](./packages/tts-core)** | TTS manager with audio playback | Required for TTS functionality |
+| [@charivo/tts-player-web](./packages/tts-player-web) | Web Speech API player | Free, browser-native |
+| [@charivo/tts-player-remote](./packages/tts-player-remote) | Remote HTTP player | **Recommended for production** |
+| [@charivo/tts-player-openai](./packages/tts-player-openai) | OpenAI TTS player | Testing/development only |
+| [@charivo/tts-provider-openai](./packages/tts-provider-openai) | OpenAI TTS provider | Server-side API routes |
 
 ### STT (Speech-to-Text) Packages
-| Package | Description |
-|---------|-------------|
-| [`@charivo/stt-core`](./packages/stt-core) | Core STT functionality with audio recording and transcription coordination |
-| [`@charivo/stt-transcriber-remote`](./packages/stt-transcriber-remote) | Remote HTTP STT transcriber (client-side, production-ready) |
-| [`@charivo/stt-transcriber-openai`](./packages/stt-transcriber-openai) | OpenAI Whisper STT transcriber (direct API access) |
-| [`@charivo/stt-provider-openai`](./packages/stt-provider-openai) | OpenAI Whisper STT provider (server-side) |
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| **[@charivo/stt-core](./packages/stt-core)** | STT manager with recording | Required for STT functionality |
+| [@charivo/stt-transcriber-remote](./packages/stt-transcriber-remote) | Remote HTTP transcriber | **Recommended for production** |
+| [@charivo/stt-transcriber-openai](./packages/stt-transcriber-openai) | OpenAI Whisper transcriber | Testing/development only |
+| [@charivo/stt-provider-openai](./packages/stt-provider-openai) | OpenAI Whisper provider | Server-side API routes |
 
 ### Rendering Packages
-| Package | Description |
-|---------|-------------|
-| [`@charivo/render-core`](./packages/render-core) | Core rendering functionality with state management, lip-sync coordination, and motion control |
-| [`@charivo/render-live2d`](./packages/render-live2d) | Simple Live2D renderer - 90% less code than raw SDK! |
-| [`@charivo/render-stub`](./packages/render-stub) | Stub renderer for testing |
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| **[@charivo/render-core](./packages/render-core)** | Render manager with lip-sync | Required for rendering |
+| [@charivo/render-live2d](./packages/render-live2d) | Live2D renderer | **Recommended for 2D characters** |
+| [@charivo/render-stub](./packages/render-stub) | Stub renderer | Testing only |
+
+> **📘 Click on any package name** to view detailed documentation, API reference, and examples.
 
 ## 🎯 Examples
 
 ### Minimal Example (3 lines!)
-
-The simplest way to render a Live2D character:
 
 ```typescript
 import { createLive2DRenderer } from "@charivo/render-live2d";
@@ -217,95 +171,28 @@ import { createLive2DRenderer } from "@charivo/render-live2d";
 const renderer = createLive2DRenderer({ canvas });
 await renderer.initialize();
 await renderer.loadModel("/live2d/model.model3.json");
-// Done! Your character is now rendering.
 ```
 
 **90% less code than raw Live2D SDK!** 🎉
 
-### Production Example
+### Complete Example
 
-Full setup with all features:
-
-```typescript
-// Setup (see Basic Usage above)
-const charivo = new Charivo();
-// ... attach LLM, TTS, renderer
-// ... setCharacter
-
-// Simple conversation
-await charivo.userSay("What's the weather?");
-// → "Let me check that for you!"
-
-// Character speaks with emotions
-await charivo.userSay("That's amazing!");
-// → Happy motion + big smile + "I'm glad you like it!"
-
-// Automatic lip-sync during speech
-await charivo.userSay("Tell me a story");
-// → Mouth moves naturally with speech audio
-```
-
-### Voice Conversation Example
-
-Full voice-enabled conversation with STT (Speech-to-Text):
-
-```typescript
-import { Charivo } from "@charivo/core";
-import { createSTTManager } from "@charivo/stt-core";
-import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
-
-// Setup Charivo with all components
-const charivo = new Charivo();
-// ... attach LLM, TTS, renderer, setCharacter
-
-// Setup STT
-const transcriber = createRemoteSTTTranscriber({
-  apiEndpoint: "/api/stt"
-});
-const sttManager = createSTTManager(transcriber);
-charivo.attachSTT(sttManager);
-
-// Voice conversation flow
-async function handleVoiceInput() {
-  // Start recording user's voice
-  await sttManager.start();
-  console.log("🎤 Recording...");
-  
-  // Stop recording and get transcription
-  const userMessage = await sttManager.stop();
-  console.log("User said:", userMessage);
-  
-  // Send to character
-  await charivo.userSay(userMessage);
-  // → Character responds with voice and animation
-  // → Automatic lip-sync during speech
-}
-```
-
-### Web Demo
-
-A complete Next.js application showcasing all features using the new modular architecture:
-- Live2D character animation with `@charivo/render-live2d`
-- LLM conversation with `@charivo/llm-core` + client/provider separation
-- Text-to-speech with `@charivo/tts-core` + player/provider architecture
-- Real-time lip-sync animation synchronized with speech audio
-- Interactive chat interface
+See the [**web demo**](./examples/web) for a full Next.js implementation with:
+- ✅ Live2D character rendering
+- ✅ LLM conversations with emotion system
+- ✅ Text-to-speech with lip-sync
+- ✅ Speech-to-text for voice input
+- ✅ Client/server separation for security
 
 ```bash
 cd examples/web
 pnpm dev
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the demo.
+## 🏗️ Architecture Overview
 
-The example demonstrates:
-- **Client-side**: Using remote LLM/TTS clients for secure API access
-- **Server-side**: API routes with OpenAI providers
-- **Modular design**: Easy switching between different implementations
-
-## 🏗️ Architecture
-
-Charivo follows a modular, layered architecture with clear separation between stateful managers and stateless implementations:
+Charivo uses a **Manager Pattern** with clear separation between stateful managers and stateless implementations:
 
 ```
 ┌─────────────────────────────────────┐
@@ -366,461 +253,258 @@ Charivo follows a modular, layered architecture with clear separation between st
 └─────────────────────────────────────┘
 ```
 
-### Architecture Benefits
+### Key Principles
 
-- **Manager Pattern**: Stateful managers wrap stateless implementations for clean separation
-- **Easy Testing**: Mock stateless components without touching business logic
-- **Flexibility**: Swap implementations (Live2D → 3D, Web Speech → OpenAI TTS) without changing managers
-- **Reusability**: Use renderers/clients independently or with managers
-- **Type Safety**: Full TypeScript support across all layers
+- **Stateful Managers** handle session state, history, and events
+- **Stateless Implementations** focus on single responsibilities (API calls, rendering, audio)
+- **Event-Driven** architecture enables loose coupling between components
+- **Security-First** design with client/server separation for API keys
+- **Type-Safe** with full TypeScript support
+
+For detailed architecture, see individual package documentation.
 
 ## 🔧 Creating Custom Components
 
+Charivo's modular design allows you to create custom implementations for any component.
+
 ### Custom LLM Client
+
 ```typescript
-import { LLMClient, Message, Character } from "@charivo/core";
+import { LLMClient } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
-class CustomLLMClient implements LLMClient {
-  async initialize(): Promise<void> {
-    // Setup your LLM
-  }
-
-  async chat(messages: Message[], character?: Character): Promise<string> {
-    // Your custom LLM API logic here
-    return "Custom response";
-  }
-
-  async destroy(): Promise<void> {
-    // Cleanup
+class MyLLMClient implements LLMClient {
+  async call(messages: Array<{ role: string; content: string }>): Promise<string> {
+    // Call your custom LLM API
+    const response = await fetch("https://my-llm-api.com/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages })
+    });
+    const data = await response.json();
+    return data.message;
   }
 }
 
-// Use with LLM Manager
-const llmManager = createLLMManager(new CustomLLMClient());
+const llmManager = createLLMManager(new MyLLMClient());
 ```
 
-### Custom STT Components
+### Custom TTS Player
 
-Charivo provides multiple STT (Speech-to-Text) options with clear client/server separation:
-
-#### Remote STT (Server-powered, Client-safe)
 ```typescript
-import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
-import { createSTTManager } from "@charivo/stt-core";
-
-// Client-side transcriber that calls your server API
-const transcriber = createRemoteSTTTranscriber({
-  apiEndpoint: "/api/stt" // Your server endpoint
-});
-const sttManager = createSTTManager(transcriber);
-
-// Start recording
-await sttManager.start();
-
-// Stop and get transcription
-const transcription = await sttManager.stop();
-console.log("User said:", transcription);
-```
-
-**⚠️ Important**: The Remote STT transcriber calls your server API. This keeps API keys secure on the server side. You need to implement a server endpoint like `/api/stt` using `@charivo/stt-provider-openai`.
-
-#### OpenAI STT Provider (Server-side only)
-```typescript
-import { createOpenAISTTProvider } from "@charivo/stt-provider-openai";
-
-// Server-side provider for API routes
-// ⚠️ Only use in Node.js/server environments
-const provider = createOpenAISTTProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  defaultModel: "whisper-1",
-  defaultLanguage: "en"
-});
-
-// In your API route (Next.js example)
-export async function POST(request: NextRequest) {
-  const formData = await request.formData();
-  const audioFile = formData.get('audio') as File;
-  const audioBlob = new Blob([await audioFile.arrayBuffer()]);
-  const transcription = await provider.transcribe(audioBlob);
-  return NextResponse.json({ transcription });
-}
-```
-
-#### OpenAI STT Transcriber (Testing only)
-```typescript
-import { createOpenAISTTTranscriber } from "@charivo/stt-transcriber-openai";
-import { createSTTManager } from "@charivo/stt-core";
-
-// ⚠️ Only for development/testing - exposes API key on client
-const transcriber = createOpenAISTTTranscriber({
-  apiKey: "your-api-key" // NOT SECURE
-});
-const sttManager = createSTTManager(transcriber);
-
-// Start recording
-await sttManager.start();
-
-// Stop and transcribe
-const text = await sttManager.stop();
-```
-
-### Custom TTS Components
-
-Charivo provides multiple TTS (Text-to-Speech) options with clear client/server separation:
-
-#### Web Speech API (Browser-native)
-```typescript
-import { createWebTTSPlayer } from "@charivo/tts-player-web";
+import { TTSPlayer, TTSOptions } from "@charivo/core";
 import { createTTSManager } from "@charivo/tts-core";
 
-// Uses browser's built-in speech synthesis - no server required
-const player = createWebTTSPlayer();
-const ttsManager = createTTSManager(player);
-```
-
-#### Remote TTS (Server-powered, Client-safe)
-```typescript
-import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
-import { createTTSManager } from "@charivo/tts-core";
-
-// Client-side player that calls your server API
-const player = createRemoteTTSPlayer({
-  apiEndpoint: "/api/tts" // Your server endpoint
-});
-const ttsManager = createTTSManager(player);
-```
-
-**⚠️ Important**: The Remote TTS player calls your server API. This keeps API keys secure on the server side. You need to implement a server endpoint like `/api/tts` using `@charivo/tts-provider-openai`.
-
-#### OpenAI TTS Provider (Server-side only)
-```typescript
-import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
-
-// Server-side provider for API routes
-// ⚠️ Only use in Node.js/server environments
-const provider = createOpenAITTSProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  defaultVoice: "alloy",
-  defaultModel: "tts-1-hd"
-});
-
-// In your API route (Next.js example)
-export async function POST(request: NextRequest) {
-  const { text } = await request.json();
-  const audioBuffer = await provider.generateSpeech(text);
-  return new NextResponse(audioBuffer, {
-    headers: { "Content-Type": "audio/mpeg" }
-  });
-}
-```
-
-#### Custom TTS Player
-```typescript
-import { TTSPlayer } from "@charivo/core";
-import { createTTSManager } from "@charivo/tts-core";
-
-class CustomTTSPlayer implements TTSPlayer {
-  async initialize(): Promise<void> {
-    // Setup your TTS
-  }
-
-  async speak(text: string): Promise<void> {
-    // Your custom TTS implementation
+class MyTTSPlayer implements TTSPlayer {
+  async speak(text: string, options?: TTSOptions): Promise<void> {
+    // Generate and play audio from your TTS service
+    const audio = new Audio(await this.generateAudioUrl(text));
+    await audio.play();
   }
 
   async stop(): Promise<void> {
     // Stop playback
   }
 
-  async destroy(): Promise<void> {
-    // Cleanup
+  setVoice(voice: string): void {
+    // Set voice
+  }
+
+  isSupported(): boolean {
+    return true;
+  }
+
+  private async generateAudioUrl(text: string): Promise<string> {
+    // Your TTS API call
+    const response = await fetch("https://my-tts-api.com/synthesize", {
+      method: "POST",
+      body: JSON.stringify({ text })
+    });
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
   }
 }
 
-const ttsManager = createTTSManager(new CustomTTSPlayer());
+const ttsManager = createTTSManager(new MyTTSPlayer());
 ```
+
+### Custom STT Transcriber
+
+```typescript
+import { STTTranscriber, STTOptions } from "@charivo/core";
+import { createSTTManager } from "@charivo/stt-core";
+
+class MySTTTranscriber implements STTTranscriber {
+  async transcribe(audio: Blob | ArrayBuffer, options?: STTOptions): Promise<string> {
+    // Convert to Blob if needed
+    const audioBlob = audio instanceof Blob 
+      ? audio 
+      : new Blob([audio], { type: "audio/webm" });
+
+    // Send to your STT service
+    const formData = new FormData();
+    formData.append("audio", audioBlob);
+    
+    const response = await fetch("https://my-stt-api.com/transcribe", {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    return data.transcription;
+  }
+}
+
+const sttManager = createSTTManager(new MySTTTranscriber());
+```
+
+**For detailed implementation guides, see:**
+- [LLM packages](./packages/llm-core) - Custom LLM clients and providers
+- [TTS packages](./packages/tts-core) - Custom TTS players and providers
+- [STT packages](./packages/stt-core) - Custom STT transcribers and providers
+- [Rendering packages](./packages/render-core) - Custom renderers
 
 ## 🎯 Core Concepts
 
 ### Component Types
 
-#### **Managers** (Stateful)
-- Handle conversation history and character context
-- Manage session state and user interactions
-- Examples: `LLMManager` from `@charivo/llm-core`
+| Type | Responsibility | Examples |
+|------|----------------|----------|
+| **Managers** | Session state, history, events | `LLMManager`, `TTSManager`, `STTManager` |
+| **Clients/Players/Transcribers** | API calls, data processing | `RemoteLLMClient`, `WebTTSPlayer` |
+| **Providers** | Server-side API integration | `OpenAILLMProvider`, `OpenAITTSProvider` |
+| **Renderers** | Character visualization | `Live2DRenderer` |
 
-#### **Clients & Players** (Stateless) 
-- Focus on API communication and data processing
-- No session state - pure input/output functions
-- Examples: `RemoteLLMClient`, `WebTTSPlayer`
+### Recommended Setup
 
-#### **Providers** (Server-side)
-- Handle direct API integration with external services
-- Manage API keys and authentication securely
-- Examples: `OpenAILLMProvider`, `OpenAITTSProvider`
+| Feature | Client-side (Browser) | Server-side (API Routes) |
+|---------|----------------------|--------------------------|
+| **LLM** | `@charivo/llm-client-remote` | `@charivo/llm-provider-openai` |
+| **TTS** | `@charivo/tts-player-remote` or `tts-player-web` | `@charivo/tts-provider-openai` |
+| **STT** | `@charivo/stt-transcriber-remote` | `@charivo/stt-provider-openai` |
+| **Render** | `@charivo/render-live2d` | N/A |
 
-### Implementation Options
-
-| Component | Available Types | Use Case |
-|-----------|----------------|----------|
-| **LLM** | `openai-client`, `remote-client`, `stub-client` | Client-side conversation |
-| | `openai-provider` | Server-side API integration |
-| **TTS** | `web-player`, `remote-player`, `openai-player` | Client-side audio playback |
-| | `openai-provider` | Server-side audio generation |
-| **STT** | `remote-transcriber`, `openai-transcriber` | Client-side audio transcription |
-| | `openai-provider` | Server-side audio transcription |
-| **Rendering** | `live2d-renderer`, `stub-renderer` | Character visualization |
+> **💡 Tip**: Use `remote` packages on client + `provider` packages on server for production apps.
 
 ## 🎨 Live2D Setup
 
-1. **Get a Live2D model** (`.model3.json` and assets)
-2. **Place in your public directory**
-3. **Load the model**:
-
 ```typescript
-await renderer.loadModel("/path/to/your/model.model3.json");
+import { createLive2DRenderer } from "@charivo/render-live2d";
+
+const renderer = createLive2DRenderer({ canvas });
+await renderer.initialize();
+await renderer.loadModel("/live2d/model.model3.json");
 ```
 
-### Lip-Sync Features
+**Features:**
+- ✅ Automatic lip-sync with TTS
+- ✅ Emotion-based expressions and motions
+- ✅ Idle animations
+- ✅ Physics simulation
 
-Charivo automatically provides lip-sync animation when TTS is active:
-
-- **Audio Analysis**: Analyzes speech audio in real-time for mouth movement timing
-- **Parameter Control**: Controls Live2D mouth parameters (`ParamMouthOpenY`) based on audio volume
-- **Smooth Animation**: Provides natural-looking mouth movements synchronized with speech
-- **Automatic Integration**: Works out-of-the-box with any TTS player (Web Speech, OpenAI TTS, etc.)
-
-```typescript
-// Lip-sync happens automatically when character speaks
-await charivo.userSay("Hello! Watch my mouth move!");
-// Character will speak with synchronized lip movement
-```
-
-The demo includes a free Hiyori model from Live2D samples with lip-sync support.
+**See [@charivo/render-live2d](./packages/render-live2d)** for detailed setup guide and model requirements.
 
 ## 🎭 Emotion System
 
-Charivo features an intelligent emotion system that allows LLMs to control character expressions and motions through emotion tags.
-
-### How It Works
-
-1. **LLM generates response with emotion tags**:
-   ```
-   "Hello! [happy] Nice to meet you!"
-   ```
-
-2. **Charivo parses and cleans the text**:
-   - Detected emotion: `happy`
-   - Cleaned text: `"Hello! Nice to meet you!"`
-
-3. **Character animations are triggered**:
-   - Based on `emotionMappings` in character config
-   - Plays corresponding expression and motion
-
-### Supported Emotions
-
-| Emotion | Use Case | Example |
-|---------|----------|---------|
-| `happy` | Joy, excitement, positive responses | "That's wonderful! [happy]" |
-| `sad` | Sadness, disappointment | "I'm sorry to hear that... [sad]" |
-| `angry` | Frustration, annoyance | "That's not right! [angry]" |
-| `surprised` | Shock, amazement | "What?! [surprised] Really?" |
-| `thinking` | Pondering, considering | "Hmm... [thinking] Let me think." |
-| `excited` | High energy, enthusiasm | "Wow! [excited] Amazing!" |
-| `shy` | Embarrassment, shyness | "Oh... [shy] thank you..." |
-| `neutral` | Normal, calm state | "I see. [neutral]" |
-
-### Setting Up Emotion Mappings
-
-Define custom emotion mappings for each character based on their Live2D model:
+Charivo's LLM can control character expressions and motions using emotion tags:
 
 ```typescript
-import { Emotion } from "@charivo/core";
+// LLM generates: "Hello! [happy] Nice to meet you!"
+// Result:
+// - Text: "Hello! Nice to meet you!"
+// - Expression: "smile"
+// - Motion: "TapBody" animation
+```
 
-const character: Character = {
-  id: "natori",
-  name: "Natori",
-  personality: "Graceful and mysterious",
+**Supported emotions:**
+`happy`, `sad`, `angry`, `surprised`, `thinking`, `excited`, `shy`, `neutral`
+
+**Setup:**
+```typescript
+charivo.setCharacter({
+  id: "character",
+  name: "Character",
+  personality: "Friendly",
   emotionMappings: [
     {
       emotion: Emotion.HAPPY,
-      expression: "Smile",        // Live2D expression name
-      motion: {
-        group: "TapBody",         // Live2D motion group
-        index: 0                  // Motion index in group
-      }
+      expression: "smile",
+      motion: { group: "TapBody", index: 0 }
     },
-    {
-      emotion: Emotion.SAD,
-      expression: "Sad",
-      motion: { group: "Idle", index: 1 }
-    },
-    {
-      emotion: Emotion.SURPRISED,
-      expression: "Surprised",
-      motion: { group: "TapBody", index: 1 }
-    },
-    {
-      emotion: Emotion.SHY,
-      expression: "Blushing",
-      motion: { group: "Idle", index: 0 }
-    },
-    // ... more mappings
+    // ... more emotions
   ]
-};
+});
 ```
 
-### LLM Prompting
-
-The emotion system automatically instructs LLMs to use emotion tags:
-
-```
-IMPORTANT: You can express emotions by adding emotion tags in your responses.
-Available emotion tags: happy, sad, angry, surprised, thinking, excited, shy, neutral
-Use format: [emotion] anywhere in your response.
-Examples:
-- "Hello! [happy] Nice to meet you!"
-- "I'm sorry... [sad]"
-- "Wow! [surprised] That's amazing!"
-```
-
-This instruction is automatically added to the system prompt via `@charivo/llm-core`.
-
-### Model-Specific Setup
-
-Each Live2D model has different expression and motion names. Check your model's `.model3.json` file:
-
-```json
-{
-  "Expressions": [
-    { "Name": "Smile" },
-    { "Name": "Sad" },
-    { "Name": "Angry" }
-  ],
-  "Motions": {
-    "Idle": [...],
-    "TapBody": [...]
-  }
-}
-```
-
-Map Charivo's standard emotions to your model's specific names.
-
-### Testing with Stub Client
-
-The stub LLM client includes emotion tags for easy testing:
-
-```typescript
-import { createStubLLMClient } from "@charivo/llm-client-stub";
-
-const client = createStubLLMClient();
-// Responses include: "[happy]", "[sad]", "[surprised]", etc.
-```
-
-Enable stub mode in your app:
-```env
-NEXT_PUBLIC_LLM_PROVIDER=stub
-```
+**See [@charivo/llm-core](./packages/llm-core)** for complete emotion system documentation.
 
 ## 📚 API Reference
 
-### Core Classes
+### Core API
 
-#### `Charivo`
-Main orchestrator class that manages all components.
+```typescript
+// Main orchestrator
+const charivo = new Charivo();
 
-**Methods:**
-- `attachLLM(manager: LLMManager)` - Connect LLM manager
-- `attachTTS(player: TTSPlayer)` - Connect TTS player
-- `attachRenderer(renderer: Renderer)` - Connect renderer
-- `setCharacter(character: Character)` - Set character
-- `userSay(message: string)` - Send user message
-- `getHistory()` - Get conversation history
-- `clearHistory()` - Clear conversation history
-- `getCurrentCharacter()` - Get current active character
-- `on(event: string, callback: Function)` - Listen to events
+// Attach components
+charivo.attachLLM(llmManager);
+charivo.attachTTS(ttsManager);
+charivo.attachSTT(sttManager);
+charivo.attachRenderer(renderManager);
 
-#### `LLMManager` (from `@charivo/llm-core`)
-Manages LLM state and conversation flow.
+// Set character
+charivo.setCharacter(character);
 
-**Methods:**
-- `generateResponse(message: string)` - Generate AI response
-- `setCharacter(character: Character)` - Set character context
-- `getHistory()` - Get conversation history  
-- `clearHistory()` - Reset conversation history
+// User interaction
+await charivo.userSay("Hello!");
 
-#### `TTSPlayer` (from `@charivo/tts-core`)
-Base interface for TTS players.
+// Events
+charivo.on("message:sent", (data) => {});
+charivo.on("message:received", (data) => {});
+charivo.on("character:speak", (data) => {});
+```
 
-**Methods:**
-- `speak(text: string, options?: TTSOptions)` - Play text as speech
-- `stop()` - Stop current speech
-- `pause()` - Pause speech
-- `resume()` - Resume paused speech
-
-#### Events
-- `message:sent` - User sent a message
-- `message:received` - Character responded
-- `character:speak` - Character is speaking
-- `tts:start` - TTS started
-- `tts:end` - TTS finished
-- `tts:error` - TTS error occurred
+**For detailed API documentation, see:**
+- [@charivo/core](./packages/core) - Core API and types
+- [@charivo/llm-core](./packages/llm-core) - LLM Manager API
+- [@charivo/tts-core](./packages/tts-core) - TTS Manager API
+- [@charivo/stt-core](./packages/stt-core) - STT Manager API
+- [@charivo/render-core](./packages/render-core) - Render Manager API
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions!
 
-### Development Setup
-
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/charivo.git
-   cd charivo
-   ```
-3. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-4. Set up pre-commit hooks:
-   ```bash
-   pnpm setup:hooks
-   ```
-   This installs Git hooks that automatically run linting and formatting checks before each commit.
-
-5. Create your feature branch (`git checkout -b feature/amazing-feature`)
-6. Make your changes and commit (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
-
-### Code Quality
-
-This project uses pre-commit hooks to maintain code quality:
-- **ESLint** for code linting
-- **Prettier** for code formatting  
-- **TypeScript** for type checking
-
-The hooks run automatically before each commit. If you need to bypass them (not recommended):
-```bash
-git commit --no-verify -m "your message"
-```
-
-### Testing
-
-Run the unit test suite (powered by [Vitest](https://vitest.dev/)) across every package:
+### Quick Start
 
 ```bash
+# Fork and clone
+git clone https://github.com/zeikar/charivo.git
+cd charivo
+
+# Install dependencies
+pnpm install
+
+# Set up pre-commit hooks
+pnpm setup:hooks
+
+# Build packages
+pnpm build
+
+# Run tests
 pnpm test
+
+# Run demo
+cd examples/web && pnpm dev
 ```
 
-For an interactive watch mode during development:
+### Guidelines
 
-```bash
-pnpm test:watch
-```
+- **Code Quality**: ESLint, Prettier, TypeScript checks run automatically
+- **Tests**: Add tests for new features
+- **Documentation**: Update README for public APIs
+- **Commits**: Use clear, descriptive commit messages
 
-The configuration lives in `vitest.config.ts` with shared setup in `vitest.setup.ts`, and tests reside beside each package under `packages/*/__tests__`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## 📄 License
 

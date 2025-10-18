@@ -21,25 +21,22 @@ pnpm add @charivo/tts-core @charivo/core
 
 ```typescript
 import { createTTSManager } from "@charivo/tts-core";
-import { OpenAITTSPlayer } from "@charivo/tts-player-openai";
+import { createWebTTSPlayer } from "@charivo/tts-player-web";
 
 // Create a TTS player
-const player = new OpenAITTSPlayer({
-  apiKey: "your-api-key",
-  voice: "nova"
-});
+const player = createWebTTSPlayer();
 
 // Wrap with TTSManager for state management
 const ttsManager = createTTSManager(player);
 
-// Initialize
-await ttsManager.initialize();
-
 // Speak
 await ttsManager.speak("Hello, how can I help you today?");
+
+// Stop
+await ttsManager.stop();
 ```
 
-### With Event Bus (for Lip-Sync)
+### With Event Emitter (for Lip-Sync)
 
 ```typescript
 import { EventBus } from "@charivo/core";
@@ -47,9 +44,8 @@ import { EventBus } from "@charivo/core";
 const eventBus = new EventBus();
 const ttsManager = createTTSManager(player);
 
-// Connect event bus
-ttsManager.setEventBus({
-  on: (event, callback) => eventBus.on(event, callback),
+// Connect event emitter
+ttsManager.setEventEmitter({
   emit: (event, data) => eventBus.emit(event, data)
 });
 
@@ -63,15 +59,11 @@ await ttsManager.speak("Hello!");
 ### Custom TTS Player
 
 ```typescript
-import { TTSPlayer } from "@charivo/core";
+import { TTSPlayer, TTSOptions } from "@charivo/core";
 import { createTTSManager } from "@charivo/tts-core";
 
 class MyCustomTTSPlayer implements TTSPlayer {
-  async initialize(): Promise<void> {
-    // Setup your TTS
-  }
-
-  async speak(text: string): Promise<void> {
+  async speak(text: string, options?: TTSOptions): Promise<void> {
     // Generate and play audio
     const audioUrl = await this.generateAudio(text);
     const audio = new Audio(audioUrl);
@@ -82,8 +74,12 @@ class MyCustomTTSPlayer implements TTSPlayer {
     // Stop playback
   }
 
-  async destroy(): Promise<void> {
-    // Cleanup
+  setVoice(voice: string): void {
+    // Set voice
+  }
+
+  isSupported(): boolean {
+    return true;
   }
 
   private async generateAudio(text: string): Promise<string> {
@@ -140,18 +136,19 @@ When set, the manager emits:
 - `tts:audio:start` with `{ audioElement: HTMLAudioElement }` when audio starts
 - `tts:audio:end` when audio completes or stops
 
-##### `initialize()`
-Initialize the underlying TTS player.
-
-```typescript
-await ttsManager.initialize();
-```
-
-##### `speak(text)`
+###### `speak(text, options?)`
 Convert text to speech and play.
 
 ```typescript
 await ttsManager.speak("Hello, world!");
+
+// With options
+await ttsManager.speak("Hello!", {
+  rate: 1.0,
+  pitch: 1.0,
+  volume: 1.0,
+  voice: "en-US"
+});
 ```
 
 ##### `stop()`
@@ -161,11 +158,20 @@ Stop current playback.
 await ttsManager.stop();
 ```
 
-##### `destroy()`
-Clean up and destroy the manager.
+##### `setVoice(voice)`
+Set the voice for TTS.
 
 ```typescript
-await ttsManager.destroy();
+ttsManager.setVoice("en-US");
+```
+
+##### `isSupported()`
+Check if TTS is supported.
+
+```typescript
+if (ttsManager.isSupported()) {
+  console.log("TTS is supported");
+}
 ```
 
 ## Events
@@ -234,39 +240,37 @@ TTSManager (stateful)
 
 ## Available Players
 
-### OpenAI TTS Player
-
-```bash
-pnpm add @charivo/tts-player-openai
-```
-
-```typescript
-import { OpenAITTSPlayer } from "@charivo/tts-player-openai";
-
-const player = new OpenAITTSPlayer({
-  apiKey: "your-api-key",
-  voice: "nova", // alloy, echo, fable, onyx, nova, shimmer
-  model: "tts-1" // or "tts-1-hd"
-});
-```
-
-### Web TTS Player
+### Web TTS Player (Free, Browser-native)
 
 ```bash
 pnpm add @charivo/tts-player-web
 ```
 
 ```typescript
-import { WebTTSPlayer } from "@charivo/tts-player-web";
+import { createWebTTSPlayer } from "@charivo/tts-player-web";
 
-const player = new WebTTSPlayer({
-  lang: "en-US",
-  rate: 1.0,
-  pitch: 1.0
-});
+const player = createWebTTSPlayer();
 ```
 
 Uses browser's built-in Web Speech API (no API key needed).
+
+### OpenAI TTS Player (Testing Only)
+
+```bash
+pnpm add @charivo/tts-player-openai
+```
+
+```typescript
+import { createOpenAITTSPlayer } from "@charivo/tts-player-openai";
+
+const player = createOpenAITTSPlayer({
+  apiKey: "your-api-key", // ⚠️ Exposed on client
+  voice: "nova", // alloy, echo, fable, onyx, nova, shimmer
+  model: "tts-1" // or "tts-1-hd"
+});
+```
+
+⚠️ **Warning**: API key is exposed on the client. Only use for development/testing.
 
 ### Remote TTS Player
 
