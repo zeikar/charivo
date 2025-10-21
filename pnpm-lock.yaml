@@ -68,6 +68,12 @@ importers:
       '@charivo/llm-provider-openai':
         specifier: workspace:*
         version: link:../../packages/llm-provider-openai
+      '@charivo/realtime-client-openai':
+        specifier: workspace:*
+        version: link:../../packages/realtime-client-openai
+      '@charivo/realtime-core':
+        specifier: workspace:*
+        version: link:../../packages/realtime-core
       '@charivo/render-core':
         specifier: workspace:*
         version: link:../../packages/render-core
@@ -238,6 +244,35 @@ importers:
       openai:
         specifier: ^4.47.1
         version: 4.104.0(ws@8.18.3)
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/realtime-client-openai:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@charivo/realtime-core':
+        specifier: workspace:*
+        version: link:../realtime-core
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.2
+
+  packages/realtime-core:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       tsup:
         specifier: ^8.0.0

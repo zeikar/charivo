@@ -19,7 +19,9 @@ export class Charivo {
   private renderManager?: RenderManager;
   private ttsManager?: TTSManager;
   private sttManager?: STTManager;
+  private realtimeManager?: import("./types").RealtimeManager;
   private character?: Character;
+  private isRealtimeMode = false;
 
   constructor() {
     this.eventBus = new EventBus();
@@ -294,6 +296,72 @@ export class Charivo {
    */
   getSTTManager(): STTManager | undefined {
     return this.sttManager;
+  }
+
+  /**
+   * Attach a Realtime manager to handle real-time conversation.
+   * Automatically connects the event emitter and enables Realtime mode.
+   */
+  attachRealtime(manager: import("./types").RealtimeManager): void {
+    console.log(
+      "🌐 Charivo: Attaching Realtime manager",
+      manager.constructor.name,
+    );
+    this.realtimeManager = manager;
+    this.isRealtimeMode = true;
+
+    this.connectRealtimeManagerEventEmitter(manager);
+  }
+
+  /**
+   * Detach the Realtime manager and disable Realtime mode.
+   */
+  detachRealtime(): void {
+    console.log("🔌 Charivo: Detaching Realtime manager");
+    this.realtimeManager = undefined;
+    this.isRealtimeMode = false;
+  }
+
+  /**
+   * Check if Realtime mode is enabled.
+   */
+  isRealtimeModeEnabled(): boolean {
+    return this.isRealtimeMode;
+  }
+
+  /**
+   * Connects the Realtime manager to the event bus.
+   */
+  private connectRealtimeManagerEventEmitter(
+    manager: import("./types").RealtimeManager,
+  ): void {
+    if (manager.setEventEmitter) {
+      console.log(
+        "🔗 Charivo: ✅ Realtime manager supports event emitter - connecting",
+      );
+      manager.setEventEmitter({
+        emit: (event: string, data: any) => {
+          console.log(`🌐 Charivo: ✅ Realtime EMITTING EVENT: ${event}`, data);
+          this.eventBus.emit(event as any, data);
+          console.log(`🌐 Charivo: ✅ Event ${event} emitted to event bus`);
+        },
+      });
+      console.log("🔗 Charivo: Realtime Manager connection completed");
+    } else {
+      console.warn(
+        "⚠️ Charivo: Realtime manager doesn't support event emitter",
+        {
+          managerType: manager.constructor.name,
+        },
+      );
+    }
+  }
+
+  /**
+   * Get the current Realtime manager instance.
+   */
+  getRealtimeManager(): import("./types").RealtimeManager | undefined {
+    return this.realtimeManager;
   }
 
   /**

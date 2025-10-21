@@ -187,6 +187,17 @@ export interface STTManager {
   }): void;
 }
 
+// Realtime Manager - Manages Realtime API session state
+export interface RealtimeManager {
+  startSession(config: any): Promise<void>;
+  stopSession(): Promise<void>;
+  sendMessage(text: string): Promise<void>;
+  sendAudioChunk(audio: ArrayBuffer): Promise<void>;
+  setEventEmitter?(eventEmitter: {
+    emit: (event: string, data: any) => void;
+  }): void;
+}
+
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
@@ -200,5 +211,7 @@ export type EventMap = {
   "stt:start": { options?: STTOptions };
   "stt:stop": { transcription: string };
   "stt:error": { error: Error };
+  "realtime:text:delta": { text: string };
+  "realtime:error": { error: Error };
   error: { error: Error };
 };
