@@ -16,6 +16,8 @@
     "@charivo/llm-client-stub": "workspace:*",
     "@charivo/llm-core": "workspace:*",
     "@charivo/llm-provider-openai": "workspace:*",
+    "@charivo/realtime-client-openai": "workspace:*",
+    "@charivo/realtime-core": "workspace:*",
     "@charivo/render-core": "workspace:*",
     "@charivo/render-live2d": "workspace:*",
     "@charivo/render-stub": "workspace:*",

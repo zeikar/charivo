@@ -29,6 +29,7 @@ type UseCharivoChatOptions = {
 };
 
 type UseCharivoChatReturn = {
+  charivo: Charivo | null;
   messages: ChatMessage[];
   input: string;
   setInput: (value: string) => void;
@@ -487,6 +488,7 @@ export function useCharivoChat({
   }, [isRecording]);
 
   return {
+    charivo,
     messages,
     input,
     setInput,

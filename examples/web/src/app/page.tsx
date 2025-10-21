@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
@@ -9,6 +9,7 @@ import { MessageBubbles } from "./components/chat/MessageBubbles";
 import { ControlPanel } from "./components/chat/ControlPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { useCharivoChat } from "./hooks/useCharivoChat";
+import { useRealtimeMode } from "./hooks/useRealtimeMode";
 import type {
   LLMClientType,
   TTSPlayerType,
@@ -17,8 +18,10 @@ import type {
 
 export default function Home() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
   const {
+    charivo,
     messages,
     input,
     setInput,
@@ -45,8 +48,26 @@ export default function Home() {
     getAvailableMotionGroups,
   } = useCharivoChat({ canvasContainerRef });
 
+  const {
+    isRealtimeMode,
+    isConnecting,
+    isConnected,
+    toggleRealtimeMode,
+    sendRealtimeMessage,
+  } = useRealtimeMode({
+    charivo,
+    onError: (error) => {
+      setRealtimeError(error.message);
+    },
+  });
+
   const handleSendClick = () => {
-    void handleSend();
+    if (isRealtimeMode) {
+      void sendRealtimeMessage(input);
+      setInput("");
+    } else {
+      void handleSend();
+    }
   };
 
   const handleInputChange = (value: string) => {
@@ -71,6 +92,13 @@ export default function Home() {
       console.error("STT Error:", sttError);
     }
   }, [sttError]);
+
+  // Log Realtime errors
+  useEffect(() => {
+    if (realtimeError) {
+      console.error("Realtime Error:", realtimeError);
+    }
+  }, [realtimeError]);
 
   return (
     <div className="h-screen bg-white dark:bg-gray-900 flex flex-col">
@@ -119,12 +147,17 @@ export default function Home() {
             onChange={handleInputChange}
             onSend={handleSendClick}
             onKeyPress={handleKeyPress}
-            disabled={isLoading}
+            disabled={isLoading || isConnecting}
             isRecording={isRecording}
             isTranscribing={isTranscribing}
-            sttDisabled={selectedSTTTranscriber === "none"}
+            sttDisabled={selectedSTTTranscriber === "none" || isRealtimeMode}
             onStartRecording={handleStartRecording}
             onStopRecording={handleStopRecording}
+            isRealtimeMode={isRealtimeMode}
+            isConnecting={isConnecting}
+            isConnected={isConnected}
+            onToggleRealtimeMode={toggleRealtimeMode}
+            realtimeError={realtimeError}
           />
         </div>
       </div>
