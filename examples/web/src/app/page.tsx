@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
@@ -10,25 +10,18 @@ import { ControlPanel } from "./components/chat/ControlPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import { useRealtimeMode } from "./hooks/useRealtimeMode";
-import type {
-  LLMClientType,
-  TTSPlayerType,
-  STTTranscriberType,
-} from "./types/chat";
+import { useChatStore } from "./stores/useChatStore";
 
 export default function Home() {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const [realtimeError, setRealtimeError] = useState<string | null>(null);
 
+  // Get states and actions from store
   const {
-    charivo,
     messages,
     input,
     setInput,
     isLoading,
     isSpeaking,
-    isRecording,
-    isTranscribing,
     selectedLLMClient,
     setSelectedLLMClient,
     selectedTTSPlayer,
@@ -38,6 +31,12 @@ export default function Home() {
     llmError,
     ttsError,
     sttError,
+    isRealtimeMode,
+    realtimeError,
+  } = useChatStore();
+
+  // Initialize hooks
+  const {
     handleSend,
     handleKeyPress,
     handleStartRecording,
@@ -48,18 +47,7 @@ export default function Home() {
     getAvailableMotionGroups,
   } = useCharivoChat({ canvasContainerRef });
 
-  const {
-    isRealtimeMode,
-    isConnecting,
-    isConnected,
-    toggleRealtimeMode,
-    sendRealtimeMessage,
-  } = useRealtimeMode({
-    charivo,
-    onError: (error) => {
-      setRealtimeError(error.message);
-    },
-  });
+  const { toggleRealtimeMode, sendRealtimeMessage } = useRealtimeMode();
 
   const handleSendClick = () => {
     if (isRealtimeMode) {
@@ -70,30 +58,13 @@ export default function Home() {
     }
   };
 
-  const handleInputChange = (value: string) => {
-    setInput(value);
-  };
-
-  const handleLLMClientChange = (type: LLMClientType) => {
-    setSelectedLLMClient(type);
-  };
-
-  const handleTTSPlayerChange = (type: TTSPlayerType) => {
-    setSelectedTTSPlayer(type);
-  };
-
-  const handleSTTTranscriberChange = (type: STTTranscriberType) => {
-    setSelectedSTTTranscriber(type);
-  };
-
-  // Log STT errors
+  // Log errors
   useEffect(() => {
     if (sttError) {
       console.error("STT Error:", sttError);
     }
   }, [sttError]);
 
-  // Log Realtime errors
   useEffect(() => {
     if (realtimeError) {
       console.error("Realtime Error:", realtimeError);
@@ -118,11 +89,11 @@ export default function Home() {
 
             <ChatSettings
               selectedLLMClient={selectedLLMClient}
-              onSelectLLMClient={handleLLMClientChange}
+              onSelectLLMClient={setSelectedLLMClient}
               selectedTTSPlayer={selectedTTSPlayer}
-              onSelectTTSPlayer={handleTTSPlayerChange}
+              onSelectTTSPlayer={setSelectedTTSPlayer}
               selectedSTTTranscriber={selectedSTTTranscriber}
-              onSelectSTTTranscriber={handleSTTTranscriberChange}
+              onSelectSTTTranscriber={setSelectedSTTTranscriber}
               llmError={llmError}
               ttsError={ttsError}
               sttError={sttError}
@@ -143,21 +114,11 @@ export default function Home() {
 
           {/* Chat Input Area */}
           <ChatInput
-            value={input}
-            onChange={handleInputChange}
             onSend={handleSendClick}
             onKeyPress={handleKeyPress}
-            disabled={isLoading || isConnecting}
-            isRecording={isRecording}
-            isTranscribing={isTranscribing}
-            sttDisabled={selectedSTTTranscriber === "none" || isRealtimeMode}
             onStartRecording={handleStartRecording}
             onStopRecording={handleStopRecording}
-            isRealtimeMode={isRealtimeMode}
-            isConnecting={isConnecting}
-            isConnected={isConnected}
             onToggleRealtimeMode={toggleRealtimeMode}
-            realtimeError={realtimeError}
           />
         </div>
       </div>

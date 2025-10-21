@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useState,
   useEffect,
   useCallback,
   useRef,
@@ -16,66 +15,41 @@ type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
 import type {
-  ChatMessage,
   LLMClientType,
   TTSPlayerType,
   STTTranscriberType,
 } from "../types/chat";
 import { useLive2D } from "./useLive2D";
 import { useCharacterStore } from "../stores/useCharacterStore";
+import { useChatStore } from "../stores/useChatStore";
 
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
 };
 
-type UseCharivoChatReturn = {
-  charivo: Charivo | null;
-  messages: ChatMessage[];
-  input: string;
-  setInput: (value: string) => void;
-  isLoading: boolean;
-  isSpeaking: boolean;
-  isRecording: boolean;
-  isTranscribing: boolean;
-  selectedLLMClient: LLMClientType;
-  setSelectedLLMClient: (type: LLMClientType) => void;
-  selectedTTSPlayer: TTSPlayerType;
-  setSelectedTTSPlayer: (type: TTSPlayerType) => void;
-  selectedSTTTranscriber: STTTranscriberType;
-  setSelectedSTTTranscriber: (type: STTTranscriberType) => void;
-  llmError: string | null;
-  ttsError: string | null;
-  sttError: string | null;
-  handleSend: () => Promise<void>;
-  handleKeyPress: (event: KeyboardEvent<HTMLInputElement>) => void;
-  handleStartRecording: () => Promise<void>;
-  handleStopRecording: () => Promise<void>;
-  playExpression: (expressionId: string) => void;
-  playMotion: (group: string, index: number) => void;
-  getAvailableExpressions: () => string[];
-  getAvailableMotionGroups: () => Record<string, number>;
-};
-
-export function useCharivoChat({
-  canvasContainerRef,
-}: UseCharivoChatOptions): UseCharivoChatReturn {
+export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const { getLive2DModelPath } = useCharacterStore();
-  const [charivo, setCharivo] = useState<Charivo | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedTTSPlayer, setSelectedTTSPlayer] =
-    useState<TTSPlayerType>("remote");
-  const [selectedLLMClient, setSelectedLLMClient] =
-    useState<LLMClientType>("remote");
-  const [selectedSTTTranscriber, setSelectedSTTTranscriber] =
-    useState<STTTranscriberType>("remote");
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [ttsError, setTtsError] = useState<string | null>(null);
-  const [llmError, setLlmError] = useState<string | null>(null);
-  const [sttError, setSttError] = useState<string | null>(null);
+
+  // Get all states and actions from store
+  const {
+    charivo,
+    setCharivo,
+    addMessage,
+    clearMessages,
+    input,
+    setInput,
+    setIsLoading,
+    setIsSpeaking,
+    isRecording,
+    setIsRecording,
+    setIsTranscribing,
+    selectedLLMClient,
+    selectedTTSPlayer,
+    selectedSTTTranscriber,
+    setLlmError,
+    setTtsError,
+    setSttError,
+  } = useChatStore();
 
   const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
   const initialTTSPlayerRef = useRef<TTSPlayerType>(selectedTTSPlayer);
@@ -99,129 +73,138 @@ export function useCharivoChat({
     initialSTTTranscriberRef.current = selectedSTTTranscriber;
   }, [selectedSTTTranscriber]);
 
-  const createLLMClient = useCallback(async (type: LLMClientType) => {
-    setLlmError(null);
+  const createLLMClient = useCallback(
+    async (type: LLMClientType) => {
+      setLlmError(null);
 
-    try {
-      switch (type) {
-        case "remote": {
-          const { createRemoteLLMClient } = await import(
-            "@charivo/llm-client-remote"
-          );
-          return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
-        }
-        case "openai": {
-          const apiKey = prompt(
-            "Enter your OpenAI API key for testing (not recommended for production):",
-          );
-          if (!apiKey) {
-            throw new Error("API key is required for OpenAI LLM");
+      try {
+        switch (type) {
+          case "remote": {
+            const { createRemoteLLMClient } = await import(
+              "@charivo/llm-client-remote"
+            );
+            return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
           }
-          const { createOpenAILLMClient } = await import(
-            "@charivo/llm-client-openai"
-          );
-          return createOpenAILLMClient({ apiKey });
-        }
-        case "stub":
-        default: {
-          const { createStubLLMClient } = await import(
-            "@charivo/llm-client-stub"
-          );
-          return createStubLLMClient();
-        }
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      setLlmError(`Failed to load ${type} LLM client: ${errorMessage}`);
-      console.error("LLM Client Error:", error);
-      throw error;
-    }
-  }, []);
-
-  const createTTSPlayer = useCallback(async (type: TTSPlayerType) => {
-    setTtsError(null);
-
-    try {
-      switch (type) {
-        case "remote": {
-          const { createRemoteTTSPlayer } = await import(
-            "@charivo/tts-player-remote"
-          );
-          return createRemoteTTSPlayer();
-        }
-        case "web": {
-          const { createWebTTSPlayer } = await import(
-            "@charivo/tts-player-web"
-          );
-          return createWebTTSPlayer();
-        }
-        case "openai": {
-          const apiKey = prompt(
-            "Enter your OpenAI API key for testing (not recommended for production):",
-          );
-          if (!apiKey) {
-            throw new Error("API key is required for OpenAI TTS");
+          case "openai": {
+            const apiKey = prompt(
+              "Enter your OpenAI API key for testing (not recommended for production):",
+            );
+            if (!apiKey) {
+              throw new Error("API key is required for OpenAI LLM");
+            }
+            const { createOpenAILLMClient } = await import(
+              "@charivo/llm-client-openai"
+            );
+            return createOpenAILLMClient({ apiKey });
           }
-          const { createOpenAITTSPlayer } = await import(
-            "@charivo/tts-player-openai"
-          );
-          return createOpenAITTSPlayer({ apiKey });
-        }
-        case "none":
-        default:
-          return null;
-      }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      setTtsError(`Failed to load ${type} TTS player: ${errorMessage}`);
-      console.error("TTS Player Error:", error);
-      return null;
-    }
-  }, []);
-
-  const createSTTTranscriber = useCallback(async (type: STTTranscriberType) => {
-    setSttError(null);
-
-    try {
-      switch (type) {
-        case "remote": {
-          const { createRemoteSTTTranscriber } = await import(
-            "@charivo/stt-transcriber-remote"
-          );
-          return createRemoteSTTTranscriber();
-        }
-        case "web": {
-          const { createWebSTTTranscriber } = await import(
-            "@charivo/stt-transcriber-web"
-          );
-          return createWebSTTTranscriber();
-        }
-        case "openai": {
-          const apiKey = prompt(
-            "Enter your OpenAI API key for testing (not recommended for production):",
-          );
-          if (!apiKey) {
-            throw new Error("API key is required for OpenAI STT");
+          case "stub":
+          default: {
+            const { createStubLLMClient } = await import(
+              "@charivo/llm-client-stub"
+            );
+            return createStubLLMClient();
           }
-          const { createOpenAISTTTranscriber } = await import(
-            "@charivo/stt-transcriber-openai"
-          );
-          return createOpenAISTTTranscriber({ apiKey });
         }
-        case "none":
-        default:
-          return null;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setLlmError(`Failed to load ${type} LLM client: ${errorMessage}`);
+        console.error("LLM Client Error:", error);
+        throw error;
       }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      setSttError(`Failed to load ${type} STT transcriber: ${errorMessage}`);
-      console.error("STT Transcriber Error:", error);
-      return null;
-    }
-  }, []);
+    },
+    [setLlmError],
+  );
+
+  const createTTSPlayer = useCallback(
+    async (type: TTSPlayerType) => {
+      setTtsError(null);
+
+      try {
+        switch (type) {
+          case "remote": {
+            const { createRemoteTTSPlayer } = await import(
+              "@charivo/tts-player-remote"
+            );
+            return createRemoteTTSPlayer();
+          }
+          case "web": {
+            const { createWebTTSPlayer } = await import(
+              "@charivo/tts-player-web"
+            );
+            return createWebTTSPlayer();
+          }
+          case "openai": {
+            const apiKey = prompt(
+              "Enter your OpenAI API key for testing (not recommended for production):",
+            );
+            if (!apiKey) {
+              throw new Error("API key is required for OpenAI TTS");
+            }
+            const { createOpenAITTSPlayer } = await import(
+              "@charivo/tts-player-openai"
+            );
+            return createOpenAITTSPlayer({ apiKey });
+          }
+          case "none":
+          default:
+            return null;
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setTtsError(`Failed to load ${type} TTS player: ${errorMessage}`);
+        console.error("TTS Player Error:", error);
+        return null;
+      }
+    },
+    [setTtsError],
+  );
+
+  const createSTTTranscriber = useCallback(
+    async (type: STTTranscriberType) => {
+      setSttError(null);
+
+      try {
+        switch (type) {
+          case "remote": {
+            const { createRemoteSTTTranscriber } = await import(
+              "@charivo/stt-transcriber-remote"
+            );
+            return createRemoteSTTTranscriber();
+          }
+          case "web": {
+            const { createWebSTTTranscriber } = await import(
+              "@charivo/stt-transcriber-web"
+            );
+            return createWebSTTTranscriber();
+          }
+          case "openai": {
+            const apiKey = prompt(
+              "Enter your OpenAI API key for testing (not recommended for production):",
+            );
+            if (!apiKey) {
+              throw new Error("API key is required for OpenAI STT");
+            }
+            const { createOpenAISTTTranscriber } = await import(
+              "@charivo/stt-transcriber-openai"
+            );
+            return createOpenAISTTTranscriber({ apiKey });
+          }
+          case "none":
+          default:
+            return null;
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setSttError(`Failed to load ${type} STT transcriber: ${errorMessage}`);
+        console.error("STT Transcriber Error:", error);
+        return null;
+      }
+    },
+    [setSttError],
+  );
 
   const handleRendererReady = useCallback(
     async (
@@ -239,13 +222,12 @@ export function useCharivoChat({
         mouseTracking: "document",
       });
 
-      // Initialize RenderManager (this will also setup mouse tracking)
       await renderManager.initialize();
       await renderManager.loadModel?.(getLive2DModelPath(character.id));
 
       renderManager.setMessageCallback(
         (message: Message, character?: Character) => {
-          setMessages((prev) => [...prev, { ...message, character }]);
+          addMessage({ ...message, character });
         },
       );
 
@@ -324,12 +306,12 @@ export function useCharivoChat({
 
       initializeSTT().catch(console.error);
 
-      setMessages([]);
+      clearMessages();
       setCharivo(instance);
 
       return () => {
         setCharivo(null);
-        setMessages([]);
+        clearMessages();
         setIsSpeaking(false);
       };
     },
@@ -338,6 +320,14 @@ export function useCharivoChat({
       createTTSPlayer,
       createSTTTranscriber,
       getLive2DModelPath,
+      addMessage,
+      clearMessages,
+      setCharivo,
+      setIsSpeaking,
+      setIsRecording,
+      setIsTranscribing,
+      setInput,
+      setSttError,
     ],
   );
 
@@ -352,7 +342,6 @@ export function useCharivoChat({
         const ttsManager = createTTSManager(player);
         charivo.attachTTS(ttsManager);
       } else {
-        // TTS player is null (disabled), detach TTS
         charivo.detachTTS();
       }
     };
@@ -393,7 +382,6 @@ export function useCharivoChat({
           charivo.attachSTT(sttManager);
           sttManagerRef.current = sttManager;
         } else {
-          // STT transcriber is null (disabled), detach STT
           charivo.detachSTT();
           sttManagerRef.current = null;
         }
@@ -421,7 +409,7 @@ export function useCharivoChat({
     } finally {
       setIsLoading(false);
     }
-  }, [charivo, input]);
+  }, [charivo, input, setInput, setIsLoading]);
 
   const handleKeyPress = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
@@ -469,7 +457,7 @@ export function useCharivoChat({
       setSttError(error instanceof Error ? error.message : "Recording failed");
       setIsRecording(false);
     }
-  }, []);
+  }, [setSttError, setIsRecording]);
 
   const handleStopRecording = useCallback(async () => {
     if (!sttManagerRef.current || !isRecording) return;
@@ -485,26 +473,9 @@ export function useCharivoChat({
       setIsRecording(false);
       setIsTranscribing(false);
     }
-  }, [isRecording]);
+  }, [isRecording, setIsTranscribing, setSttError, setIsRecording]);
 
   return {
-    charivo,
-    messages,
-    input,
-    setInput,
-    isLoading,
-    isSpeaking,
-    isRecording,
-    isTranscribing,
-    selectedLLMClient,
-    setSelectedLLMClient,
-    selectedTTSPlayer,
-    setSelectedTTSPlayer,
-    selectedSTTTranscriber,
-    setSelectedSTTTranscriber,
-    llmError,
-    ttsError,
-    sttError,
     handleSend,
     handleKeyPress,
     handleStartRecording,

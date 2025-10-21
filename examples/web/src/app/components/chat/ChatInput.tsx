@@ -1,42 +1,36 @@
 import type { KeyboardEvent } from "react";
 import { PaperAirplaneIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
 import { ArrowPathIcon } from "@heroicons/react/24/solid";
+import { useChatStore } from "../../stores/useChatStore";
 
 type ChatInputProps = {
-  value: string;
-  onChange: (value: string) => void;
   onSend: () => void;
   onKeyPress: (event: KeyboardEvent<HTMLInputElement>) => void;
-  disabled?: boolean;
-  isRecording?: boolean;
-  isTranscribing?: boolean;
-  sttDisabled?: boolean;
   onStartRecording?: () => void;
   onStopRecording?: () => void;
-  isRealtimeMode?: boolean;
-  isConnecting?: boolean;
-  isConnected?: boolean;
   onToggleRealtimeMode?: () => void;
-  realtimeError?: string | null;
 };
 
 export function ChatInput({
-  value,
-  onChange,
   onSend,
   onKeyPress,
-  disabled = false,
-  isRecording = false,
-  isTranscribing = false,
-  sttDisabled = false,
   onStartRecording,
   onStopRecording,
-  isRealtimeMode = false,
-  isConnecting = false,
-  isConnected = false,
   onToggleRealtimeMode,
-  realtimeError,
 }: ChatInputProps) {
+  const {
+    input,
+    setInput,
+    isLoading,
+    isRecording,
+    isTranscribing,
+    selectedSTTTranscriber,
+    isRealtimeMode,
+    isConnecting,
+    isConnected,
+    realtimeError,
+  } = useChatStore();
+
   const handleMicClick = () => {
     if (isRecording) {
       onStopRecording?.();
@@ -60,6 +54,9 @@ export function ChatInput({
     }
     return "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600";
   };
+
+  const sttDisabled = selectedSTTTranscriber === "none" || isRealtimeMode;
+  const disabled = isLoading || isConnecting;
 
   return (
     <div className="flex-shrink-0 h-16 flex items-center justify-center relative z-20">
@@ -110,8 +107,8 @@ export function ChatInput({
           <div className="flex items-center space-x-2 bg-white dark:bg-gray-800 rounded-full shadow-xl border border-gray-200 dark:border-gray-700 px-4 py-3">
             <input
               type="text"
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyPress}
               placeholder={getPlaceholder()}
               className="flex-1 bg-transparent border-none focus:outline-none text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
@@ -140,7 +137,7 @@ export function ChatInput({
             <button
               onClick={onSend}
               disabled={
-                disabled || !value.trim() || isRecording || isTranscribing
+                disabled || !input.trim() || isRecording || isTranscribing
               }
               className="p-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-full hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex-shrink-0"
             >
