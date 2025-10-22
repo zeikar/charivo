@@ -13,25 +13,32 @@ export function PageHeader() {
 
       {/* Description */}
       <div className="mb-3 space-y-1">
-        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-xl mx-auto">
-          Experience interactive conversations with{" "}
+        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-2xl mx-auto leading-relaxed">
+          Experience interactive{" "}
           <span className="font-semibold text-blue-600 dark:text-blue-400">
-            Live2D characters
-          </span>
-          , powered by{" "}
-          <span className="font-semibold text-purple-600 dark:text-purple-400">
-            AI
+            Live2D character conversations
           </span>{" "}
-          and{" "}
+          with{" "}
+          <span className="font-semibold text-purple-600 dark:text-purple-400">
+            AI-powered dialogue
+          </span>
+          ,{" "}
           <span className="font-semibold text-pink-600 dark:text-pink-400">
-            voice synthesis
+            automatic lip-sync animation
+          </span>
+          , and{" "}
+          <span className="font-semibold text-green-600 dark:text-green-400">
+            real-time voice chat
           </span>
         </p>
-        <p className="text-gray-400 dark:text-gray-600 text-xs max-w-xl mx-auto">
-          🎭 <span className="font-semibold">Emotion System:</span> Characters
-          with emotion mappings show AI-driven expressions (
-          <span className="text-purple-500">Natori</span> has full emotions,
-          others coming soon)
+        <p className="text-gray-400 dark:text-gray-600 text-xs max-w-2xl mx-auto leading-relaxed">
+          🎭 <span className="font-semibold">AI Emotions:</span> Dynamic facial
+          expressions (<span className="text-purple-500">Natori</span> has full
+          emotion system) • 💋{" "}
+          <span className="font-semibold">Auto Lip-Sync:</span> Natural mouth
+          movements synced to voice • 🌐{" "}
+          <span className="font-semibold">WebRTC Voice:</span> Low-latency
+          conversations powered by OpenAI Realtime API
         </p>
       </div>
 

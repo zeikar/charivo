@@ -39,7 +39,8 @@ await renderer.loadModel("/live2d/model.model3.json");
 - 🤖 **Smart Conversations** - LLM-powered dialogue with emotion understanding
 - 🔊 **Voice Synthesis** - Text-to-speech with multiple providers
 - 🎤 **Voice Input** - Speech-to-text transcription support
-- 💋 **Auto Lip-Sync** - Mouth animation synchronized with speech
+- 🌐 **Realtime Voice** - OpenAI Realtime API with WebRTC for low-latency conversations
+- 💋 **Auto Lip-Sync** - Mouth animation synchronized with speech (works with Realtime API)
 - 🎭 **Emotion System** - LLM-driven expressions and motions
 - 📦 **Plug & Play** - Modular architecture, swap any component
 - ⚡ **TypeScript First** - Full type safety and IntelliSense
@@ -153,6 +154,12 @@ Charivo is organized into modular packages. Click on each package to see detaile
 | [@charivo/stt-transcriber-openai](./packages/stt-transcriber-openai) | OpenAI Whisper transcriber | Testing/development only |
 | [@charivo/stt-provider-openai](./packages/stt-provider-openai) | OpenAI Whisper provider | Server-side API routes |
 
+### Realtime API Packages
+| Package | Description | Use Case |
+|---------|-------------|----------|
+| **[@charivo/realtime-core](./packages/realtime-core)** | Realtime session manager | Required for Realtime API |
+| [@charivo/realtime-client-openai](./packages/realtime-client-openai) | OpenAI Realtime WebRTC client | **Real-time voice conversations** |
+
 ### Rendering Packages
 | Package | Description | Use Case |
 |---------|-------------|----------|
@@ -183,6 +190,7 @@ See the [**web demo**](./examples/web) for a full Next.js implementation with:
 - ✅ LLM conversations with emotion system
 - ✅ Text-to-speech with lip-sync
 - ✅ Speech-to-text for voice input
+- ✅ **OpenAI Realtime API for low-latency voice conversations**
 - ✅ Client/server separation for security
 
 ```bash
@@ -235,6 +243,19 @@ Charivo uses a **Manager Pattern** with clear separation between stateful manage
 │  │  ┌──────────────────────┐   │   │
 │  │  │  STT Transcribers    │   │   │  ←─ Recording + Transcription
 │  │  │  Web, Remote, OpenAI │   │   │     (handles recording internally)
+│  │  └──────────────────────┘   │   │
+│  └─────────────────────────────┘   │
+│  ┌─────────────────────────────┐   │
+│  │    Realtime Layer           │   │
+│  │  ┌──────────────────────┐   │   │
+│  │  │  RealtimeManager     │   │   │  ←─ Event relay (lip-sync, text)
+│  │  │  (@charivo/realtime- │   │   │
+│  │  │   core)              │   │   │
+│  │  └──────────┬───────────┘   │   │
+│  │             ▼               │   │
+│  │  ┌──────────────────────┐   │   │
+│  │  │  Realtime Clients    │   │   │  ←─ WebRTC voice (OpenAI)
+│  │  │  OpenAI Realtime API │   │   │     (auto audio + lip-sync)
 │  │  └──────────────────────┘   │   │
 │  └─────────────────────────────┘   │
 │  ┌─────────────────────────────┐   │
@@ -396,9 +417,12 @@ const sttManager = createSTTManager(new MySTTTranscriber());
 | **LLM** | `@charivo/llm-client-remote` | `@charivo/llm-provider-openai` |
 | **TTS** | `@charivo/tts-player-remote` or `tts-player-web` | `@charivo/tts-provider-openai` |
 | **STT** | `@charivo/stt-transcriber-remote` or `stt-transcriber-web` | `@charivo/stt-provider-openai` |
+| **Realtime** | `@charivo/realtime-client-openai` | Proxy endpoint (WebRTC handshake) |
 | **Render** | `@charivo/render-live2d` | N/A |
 
 > **💡 Tip**: Use `remote` packages on client + `provider` packages on server for production apps. Use `web` packages for free, browser-native alternatives.
+>
+> **🌐 Realtime API**: For low-latency voice conversations, use Realtime API instead of LLM+TTS+STT. It combines all three with WebRTC for natural conversation flow.
 
 ## 🎨 Live2D Setup
 
