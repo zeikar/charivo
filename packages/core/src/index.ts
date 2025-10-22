@@ -341,9 +341,17 @@ export class Charivo {
       );
       manager.setEventEmitter({
         emit: (event: string, data: any) => {
-          console.log(`🌐 Charivo: ✅ Realtime EMITTING EVENT: ${event}`, data);
+          // Skip logging for high-frequency lipsync events
+          if (event !== "tts:lipsync:update") {
+            console.log(
+              `🌐 Charivo: ✅ Realtime EMITTING EVENT: ${event}`,
+              data,
+            );
+          }
           this.eventBus.emit(event as any, data);
-          console.log(`🌐 Charivo: ✅ Event ${event} emitted to event bus`);
+          if (event !== "tts:lipsync:update") {
+            console.log(`🌐 Charivo: ✅ Event ${event} emitted to event bus`);
+          }
         },
       });
       console.log("🔗 Charivo: Realtime Manager connection completed");
