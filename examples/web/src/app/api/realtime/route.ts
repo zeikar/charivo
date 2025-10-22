@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
     // Session configuration (following OpenAI docs format)
     const sessionConfig = {
       type: "realtime",
-      model: "gpt-realtime",
+      model: "gpt-realtime-mini",
       audio: {
         output: {
-          voice: "verse",
+          voice: "marin",
         },
       },
     };

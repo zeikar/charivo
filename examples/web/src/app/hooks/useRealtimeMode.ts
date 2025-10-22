@@ -41,8 +41,8 @@ export function useRealtimeMode() {
       charivo.attachRealtime(realtimeManager);
 
       await realtimeManager.startSession({
-        model: "gpt-realtime",
-        voice: "verse",
+        model: "gpt-realtime-mini",
+        voice: "marin",
       });
 
       charivo.emit("tts:audio:start", { audioElement: new Audio() });
