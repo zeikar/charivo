@@ -32,6 +32,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private lipSyncInterval: number | null = null;
+  private isResponseInProgress = false;
 
   // 콜백 함수들
   private textDeltaCallback?: (text: string) => void;
@@ -150,6 +151,11 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       throw new Error("DataChannel not ready");
     }
 
+    if (this.isResponseInProgress) {
+      console.warn("⚠️ Response already in progress, skipping request");
+      return;
+    }
+
     // conversation.item.create
     const createEvent = {
       type: "conversation.item.create",
@@ -173,6 +179,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
     };
 
     this.dc.send(JSON.stringify(responseEvent));
+    this.isResponseInProgress = true;
 
     console.log("📤 Sent text message:", text);
   }
@@ -236,6 +243,12 @@ export class OpenAIRealtimeClient implements RealtimeClient {
         this.audioDoneCallback?.();
         break;
 
+      case "response.done":
+        // 응답 완료 - 새로운 요청 가능
+        this.isResponseInProgress = false;
+        console.log("✅ Response completed, ready for next request");
+        break;
+
       case "response.audio_transcript.delta":
         // 텍스트 스트리밍 (AI 응답)
         if (event.delta) {
@@ -253,6 +266,8 @@ export class OpenAIRealtimeClient implements RealtimeClient {
         this.errorCallback?.(
           new Error(event.error?.message || "Unknown error"),
         );
+        // 에러 발생 시에도 다음 요청을 허용
+        this.isResponseInProgress = false;
         break;
 
       default:
@@ -377,6 +392,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
     }
 
     this.analyser = null;
+    this.isResponseInProgress = false;
   }
 }
 

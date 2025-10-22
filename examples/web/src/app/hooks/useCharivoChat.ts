@@ -49,6 +49,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setLlmError,
     setTtsError,
     setSttError,
+    isRealtimeMode,
   } = useChatStore();
 
   const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
@@ -415,10 +416,18 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
-        void handleSend();
+        if (isRealtimeMode && charivo) {
+          const realtimeManager = charivo.getRealtimeManager();
+          if (realtimeManager && input.trim()) {
+            void realtimeManager.sendMessage(input);
+            setInput("");
+          }
+        } else {
+          void handleSend();
+        }
       }
     },
-    [handleSend],
+    [handleSend, isRealtimeMode, charivo, input, setInput],
   );
 
   const playExpression = useCallback((expressionId: string) => {
