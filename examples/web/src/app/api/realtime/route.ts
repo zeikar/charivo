@@ -14,6 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getEmotionSessionConfig } from "@charivo/realtime-core";
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -36,16 +37,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Session configuration (following OpenAI docs format)
-    const sessionConfig = {
-      type: "realtime",
+    // Session configuration with emotion support
+    const sessionConfig = getEmotionSessionConfig({
       model: "gpt-realtime-mini",
-      audio: {
-        output: {
-          voice: "marin",
-        },
-      },
-    };
+      voice: "marin",
+    });
 
     // Create multipart form data
     const formData = new FormData();

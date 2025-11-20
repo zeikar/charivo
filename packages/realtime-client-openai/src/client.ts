@@ -10,6 +10,7 @@ interface ServerEvent {
 
 interface ClientEventOptions {
   apiEndpoint: string; // e.g., "/api/realtime"
+  debug?: boolean; // Enable debug logging
 }
 
 /**
@@ -33,16 +34,28 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   private analyser: AnalyserNode | null = null;
   private lipSyncInterval: number | null = null;
   private isResponseInProgress = false;
+  private debug: boolean;
 
   // 콜백 함수들
   private textDeltaCallback?: (text: string) => void;
   private audioDeltaCallback?: (base64Audio: string) => void;
   private lipSyncCallback?: (rms: number) => void; // Direct RMS callback
   private audioDoneCallback?: () => void;
+  private toolCallCallback?: (name: string, args: any) => void;
   private errorCallback?: (error: Error) => void;
 
   constructor(options: ClientEventOptions) {
     this.apiEndpoint = options.apiEndpoint;
+    this.debug = options.debug ?? false;
+  }
+
+  /**
+   * Debug logging helper
+   */
+  private log(...args: any[]): void {
+    if (this.debug) {
+      console.log(...args);
+    }
   }
 
   /**
@@ -216,6 +229,10 @@ export class OpenAIRealtimeClient implements RealtimeClient {
     this.audioDoneCallback = callback;
   }
 
+  onToolCall(callback: (name: string, args: any) => void): void {
+    this.toolCallCallback = callback;
+  }
+
   onError(callback: (error: Error) => void): void {
     this.errorCallback = callback;
   }
@@ -224,10 +241,15 @@ export class OpenAIRealtimeClient implements RealtimeClient {
    * 서버 이벤트 처리
    */
   private handleServerEvent(event: ServerEvent): void {
+    // Debug logging
+    if (this.debug && !event.type.includes("audio.delta")) {
+      this.log("📡 [Realtime Event]:", event.type, event);
+    }
+
     switch (event.type) {
       case "session.created":
       case "session.updated":
-        console.log("📡 Session:", event.type);
+        this.log("📡 Session:", event.type);
         break;
 
       case "response.audio.delta":
@@ -246,7 +268,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       case "response.done":
         // 응답 완료 - 새로운 요청 가능
         this.isResponseInProgress = false;
-        console.log("✅ Response completed, ready for next request");
+        this.log("✅ Response completed, ready for next request");
         break;
 
       case "response.audio_transcript.delta":
@@ -258,7 +280,12 @@ export class OpenAIRealtimeClient implements RealtimeClient {
 
       case "conversation.item.input_audio_transcription.completed":
         // 사용자 음성 인식 완료
-        console.log("🎤 User transcript:", event.transcript);
+        this.log("🎤 User transcript:", event.transcript);
+        break;
+
+      case "response.function_call_arguments.done":
+        // Tool call completed
+        this.handleToolCallDone(event);
         break;
 
       case "error":
@@ -273,13 +300,93 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       default:
         // 기타 이벤트는 로그만 출력
         if (
-          event.type.startsWith("response.") ||
-          event.type.startsWith("conversation.")
+          this.debug &&
+          (event.type.startsWith("response.") ||
+            event.type.startsWith("conversation."))
         ) {
-          console.debug("📡 Event:", event.type);
+          this.log("📡 Event:", event.type);
         }
         break;
     }
+  }
+
+  /**
+   * Tool call 완료 처리
+   */
+  private handleToolCallDone(event: ServerEvent): void {
+    const callId =
+      (event.call_id as string | undefined) ||
+      (event.item?.call_id as string | undefined) ||
+      (event.item_id as string | undefined);
+
+    const name =
+      (event.name as string | undefined) ||
+      (event.item?.name as string | undefined);
+
+    // arguments field contains the complete JSON string
+    const argsJson =
+      (event.arguments as string | undefined) ||
+      (event.item?.arguments as string | undefined);
+
+    this.log(
+      "🔧 [Tool Done] callId:",
+      callId,
+      "name:",
+      name,
+      "argsJson:",
+      argsJson,
+    );
+
+    if (!name || !argsJson) {
+      console.warn("⚠️ Tool call done but missing name or arguments");
+      return;
+    }
+
+    let args: any = {};
+    try {
+      args = JSON.parse(argsJson);
+    } catch (e) {
+      console.error("Failed to parse tool call args", e, argsJson);
+      return;
+    }
+
+    this.log(`🔧 Tool call: ${name}`, args);
+    this.toolCallCallback?.(name, args);
+
+    // Send tool output back to OpenAI to continue the conversation
+    if (callId && this.dc && this.dc.readyState === "open") {
+      this.sendToolOutput(callId, { success: true });
+    }
+  }
+
+  /**
+   * Send tool output back to OpenAI
+   */
+  private sendToolOutput(callId: string, output: any): void {
+    if (!this.dc || this.dc.readyState !== "open") {
+      console.warn("⚠️ Cannot send tool output: DataChannel not ready");
+      return;
+    }
+
+    const outputEvent = {
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: callId,
+        output: JSON.stringify(output),
+      },
+    };
+
+    this.dc.send(JSON.stringify(outputEvent));
+    this.log("📤 Sent tool output for call:", callId);
+
+    // Request a new response to continue the conversation
+    const responseEvent = {
+      type: "response.create",
+    };
+
+    this.dc.send(JSON.stringify(responseEvent));
+    this.log("📤 Requested new response after tool call");
   }
 
   /**

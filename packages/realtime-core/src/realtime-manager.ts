@@ -114,11 +114,33 @@ export class RealtimeManagerImpl implements IRealtimeManager {
       this.eventEmitter?.emit("tts:audio:end", {});
     });
 
+    // Tool call 처리
+    if (this.client.onToolCall) {
+      this.client.onToolCall((name: string, args: any) => {
+        this.handleToolCall(name, args);
+      });
+    }
+
     // 에러 처리
     this.client.onError((error: Error) => {
       console.error("Realtime client error:", error);
       this.eventEmitter?.emit("realtime:error", { error });
     });
+  }
+
+  /**
+   * Tool call 처리
+   */
+  private handleToolCall(name: string, args: any): void {
+    if (name === "setEmotion") {
+      console.log(`🎭 [Realtime] Emotion update:`, args.emotion);
+      // Emit emotion event for RenderManager
+      this.eventEmitter?.emit("realtime:emotion", {
+        emotion: args.emotion,
+        intensity: args.intensity,
+        motion: args.motion,
+      });
+    }
   }
 }
 

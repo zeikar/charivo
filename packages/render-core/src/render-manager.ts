@@ -71,6 +71,14 @@ export class RenderManager implements IRenderManager {
         this.updateLipSync(data.rms);
       },
     );
+
+    // Realtime emotion events
+    eventBus.on(
+      "realtime:emotion",
+      (data: { emotion: string; intensity?: number; motion?: string }) => {
+        this.handleRealtimeEmotion(data.emotion as Emotion);
+      },
+    );
   }
 
   /**
@@ -192,6 +200,17 @@ export class RenderManager implements IRenderManager {
     if (this.renderer.updateRealtimeLipSyncRms) {
       this.renderer.updateRealtimeLipSyncRms(rms);
     }
+  }
+
+  /**
+   * Realtime emotion 처리 (tool call로부터)
+   */
+  private handleRealtimeEmotion(emotion: Emotion): void {
+    if (!this.character) {
+      return;
+    }
+
+    this.playEmotionAnimation(emotion, this.character);
   }
 
   /**
