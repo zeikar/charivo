@@ -1,35 +1,26 @@
 /**
  * OpenAI Realtime API - WebRTC Session Endpoint
  *
- * This endpoint implements the "unified interface" approach for WebRTC connections.
- * The client sends its SDP offer, and this server combines it with session config
- * and forwards it to OpenAI's Realtime API.
- *
- * Flow:
- * 1. Client creates WebRTC peer connection and generates SDP offer
- * 2. Client POSTs SDP to this endpoint
- * 3. Server combines SDP + session config and sends to OpenAI
- * 4. OpenAI returns SDP answer
- * 5. Client completes WebRTC connection with the answer
+ * Creates a Realtime API session using the unified interface.
+ * Client sends SDP offer → Server forwards to OpenAI → Returns SDP answer
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getEmotionSessionConfig } from "@charivo/realtime-core";
 
+const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
+
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY not configured" },
-      { status: 500 },
-    );
-  }
-
   try {
-    // Get SDP offer from client
-    const sdpOffer = await request.text();
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY not configured" },
+        { status: 500 },
+      );
+    }
 
+    const sdpOffer = await request.text();
     if (!sdpOffer) {
       return NextResponse.json(
         { error: "SDP offer is required" },
@@ -37,47 +28,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Session configuration with emotion support
-    const sessionConfig = getEmotionSessionConfig({
-      model: "gpt-realtime-mini",
-      voice: "marin",
-    });
-
-    // Create multipart form data
+    // Create multipart form with SDP + session config
     const formData = new FormData();
     formData.set("sdp", sdpOffer);
-    formData.set("session", JSON.stringify(sessionConfig));
+    formData.set(
+      "session",
+      JSON.stringify(
+        getEmotionSessionConfig({
+          model: "gpt-realtime-mini",
+          voice: "marin",
+        }),
+      ),
+    );
 
-    // Forward to OpenAI Realtime API
-    const response = await fetch("https://api.openai.com/v1/realtime/calls", {
+    // Forward to OpenAI
+    const response = await fetch(OPENAI_REALTIME_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: formData,
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("OpenAI Realtime API error:", errorText);
+      const error = await response.text();
+      console.error("OpenAI Realtime API error:", error);
       return NextResponse.json(
-        { error: "Failed to create Realtime session", details: errorText },
+        { error: "Failed to create Realtime session", details: error },
         { status: response.status },
       );
     }
 
-    // Return SDP answer to client
     const sdpAnswer = await response.text();
-
     return new NextResponse(sdpAnswer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/sdp",
-      },
+      headers: { "Content-Type": "application/sdp" },
     });
   } catch (error) {
-    console.error("Realtime session creation error:", error);
-
+    console.error("Realtime session error:", error);
     return NextResponse.json(
       {
         error: "Failed to create Realtime session",

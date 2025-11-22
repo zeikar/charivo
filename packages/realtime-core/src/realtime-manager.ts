@@ -137,8 +137,6 @@ export class RealtimeManagerImpl implements IRealtimeManager {
       // Emit emotion event for RenderManager
       this.eventEmitter?.emit("realtime:emotion", {
         emotion: args.emotion,
-        intensity: args.intensity,
-        motion: args.motion,
       });
     }
   }

@@ -73,12 +73,9 @@ export class RenderManager implements IRenderManager {
     );
 
     // Realtime emotion events
-    eventBus.on(
-      "realtime:emotion",
-      (data: { emotion: string; intensity?: number; motion?: string }) => {
-        this.handleRealtimeEmotion(data.emotion as Emotion);
-      },
-    );
+    eventBus.on("realtime:emotion", (data: { emotion: string }) => {
+      this.handleRealtimeEmotion(data.emotion as Emotion);
+    });
   }
 
   /**
