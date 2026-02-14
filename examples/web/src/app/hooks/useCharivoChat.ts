@@ -14,6 +14,7 @@ type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
+import type { AppCharacter } from "../config/characters";
 import type {
   LLMClientType,
   TTSPlayerType,
@@ -210,7 +211,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const handleRendererReady = useCallback(
     async (
       renderer: Live2DRendererHandle,
-      character: Character,
+      character: AppCharacter,
       canvas: HTMLCanvasElement,
     ) => {
       rendererRef.current = renderer;

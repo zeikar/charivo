@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useRef, type MutableRefObject } from "react";
-import type { Character } from "@charivo/core";
 type Live2DRendererModule = typeof import("@charivo/render-live2d");
 type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
 type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
 
+import type { AppCharacter } from "../config/characters";
 import { useCharacterStore } from "../stores/useCharacterStore";
 
 type UseLive2DOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
   onRendererReady?: (
     renderer: Live2DRendererHandle,
-    character: Character,
+    character: AppCharacter,
     canvas: HTMLCanvasElement,
   ) => void;
 };
