@@ -33,6 +33,7 @@
     "@charivo/tts-provider-openai": "workspace:*",
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
+    "@vercel/analytics": "^1.6.1",
     "next": "15.5.9",
     "openai": "^4.28.4",
     "react": "19.1.0",
