@@ -31,6 +31,12 @@ export class WebTTSPlayer implements TTSPlayer {
     }
   }
 
+  private findVoice(voiceId: string): SpeechSynthesisVoice | undefined {
+    return this.voices.find(
+      (voice) => voice.name === voiceId || voice.voiceURI === voiceId,
+    );
+  }
+
   /**
    * Simple speak 메서드 (TTS Manager에서 립싱크 처리)
    */
@@ -49,7 +55,14 @@ export class WebTTSPlayer implements TTSPlayer {
           utterance.pitch = Math.max(0, Math.min(2, options.pitch));
         if (options.volume)
           utterance.volume = Math.max(0, Math.min(1, options.volume));
-        if (options.voice && this.defaultVoice) {
+        if (options.voice) {
+          const selectedVoice = this.findVoice(options.voice);
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
+          } else {
+            console.warn(`Voice "${options.voice}" not found`);
+          }
+        } else if (this.defaultVoice) {
           utterance.voice = this.defaultVoice;
         }
       }

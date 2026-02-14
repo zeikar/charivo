@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getEmotionSessionConfig } from "@charivo/realtime-core";
+import type { RealtimeSessionConfig } from "@charivo/realtime-core";
 
 const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
 
@@ -20,7 +21,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sdpOffer = await request.text();
+    const contentType = request.headers.get("content-type") || "";
+    let sdpOffer = "";
+    let sessionConfig: RealtimeSessionConfig | undefined;
+
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as {
+        sdpOffer?: string;
+        sessionConfig?: RealtimeSessionConfig;
+      };
+      sdpOffer = body.sdpOffer || "";
+      sessionConfig = body.sessionConfig;
+    } else {
+      // Backward compatibility for legacy clients
+      sdpOffer = await request.text();
+    }
+
     if (!sdpOffer) {
       return NextResponse.json(
         { error: "SDP offer is required" },
@@ -33,12 +49,7 @@ export async function POST(request: NextRequest) {
     formData.set("sdp", sdpOffer);
     formData.set(
       "session",
-      JSON.stringify(
-        getEmotionSessionConfig({
-          model: "gpt-realtime-mini",
-          voice: "marin",
-        }),
-      ),
+      JSON.stringify(getEmotionSessionConfig(sessionConfig)),
     );
 
     // Forward to OpenAI

@@ -15,6 +15,7 @@ export interface ParsedEmotion {
  * Examples: [happy], [HAPPY], [sad]
  */
 const EMOTION_TAG_REGEX = /\[([a-zA-Z]+)\]/g;
+const EMOTION_TAG_TEST_REGEX = /\[([a-zA-Z]+)\]/;
 
 /**
  * Map of emotion keywords to standard Emotion enum
@@ -132,7 +133,7 @@ export function parseEmotion(text: string): ParsedEmotion {
  * @returns true if text contains emotion tags
  */
 export function hasEmotionTag(text: string): boolean {
-  return EMOTION_TAG_REGEX.test(text);
+  return EMOTION_TAG_TEST_REGEX.test(text);
 }
 
 /**

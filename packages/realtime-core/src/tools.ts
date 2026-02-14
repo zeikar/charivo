@@ -1,4 +1,4 @@
-import type { RealtimeTool } from "./types";
+import type { RealtimeSessionConfig, RealtimeTool } from "./types";
 import { Emotion } from "@charivo/core";
 
 /**
@@ -49,18 +49,22 @@ Do NOT mention the tool call in your response - just respond naturally and let t
 /**
  * Get default Realtime session config with emotion support
  */
-export function getEmotionSessionConfig(overrides?: {
-  model?: string;
-  voice?: string;
-  instructions?: string;
-}): {
+export function getEmotionSessionConfig(overrides?: RealtimeSessionConfig): {
   type: string;
   model: string;
   audio: { output: { voice: string } };
   instructions: string;
   tools: RealtimeTool[];
-  tool_choice: "auto";
+  tool_choice: "auto" | "none" | "required";
 } {
+  const toolsFromConfig = overrides?.tools ?? [];
+  const hasEmotionTool = toolsFromConfig.some(
+    (tool) => tool.type === "function" && tool.name === setEmotionTool.name,
+  );
+  const tools = hasEmotionTool
+    ? toolsFromConfig
+    : [setEmotionTool, ...toolsFromConfig];
+
   return {
     type: "realtime",
     model: overrides?.model || "gpt-realtime-mini",
@@ -70,7 +74,7 @@ export function getEmotionSessionConfig(overrides?: {
       },
     },
     instructions: overrides?.instructions || DEFAULT_EMOTION_INSTRUCTIONS,
-    tools: [setEmotionTool],
-    tool_choice: "auto",
+    tools,
+    tool_choice: overrides?.tool_choice ?? "auto",
   };
 }

@@ -21,7 +21,9 @@ export class TTSManagerImpl implements TTSManager {
   private ttsPlayer: TTSPlayer;
   private eventEmitter?: { emit: (event: string, data: any) => void };
   private currentAudio: HTMLAudioElement | null = null;
+  private currentAudioUrl: string | null = null;
   private playerType: TTSPlayerType;
+  private isAudioSessionActive = false;
 
   // Web Speech 립싱크 시뮬레이션만 필요
   private webSimulator: WebSpeechLipSyncSimulator;
@@ -64,10 +66,27 @@ export class TTSManagerImpl implements TTSManager {
    * 현재 재생 중인 음성 중지
    */
   async stop(): Promise<void> {
+    this.webSimulator.stopSimulation();
+
+    try {
+      await this.ttsPlayer.stop();
+    } catch (error) {
+      console.warn("⚠️ TTS Manager: Failed to stop player cleanly", error);
+    }
+
     if (this.currentAudio) {
+      this.currentAudio.onended = null;
+      this.currentAudio.onerror = null;
       this.currentAudio.pause();
       this.currentAudio = null;
     }
+
+    if (this.currentAudioUrl) {
+      URL.revokeObjectURL(this.currentAudioUrl);
+      this.currentAudioUrl = null;
+    }
+
+    this.endAudioSession();
   }
 
   /**
@@ -96,13 +115,18 @@ export class TTSManagerImpl implements TTSManager {
     dummyAudio.preload = "none";
 
     // Emit audio start event
-    this.eventEmitter?.emit("tts:audio:start", { audioElement: dummyAudio });
+    this.startAudioSession(dummyAudio);
 
     // Start simulated lip sync using dedicated component
     this.webSimulator.startSimulation(text, options?.rate || 1);
 
     // Delegate to player and wait for completion
-    return this.ttsPlayer.speak(text, options);
+    try {
+      await this.ttsPlayer.speak(text, options);
+    } finally {
+      this.webSimulator.stopSimulation();
+      this.endAudioSession();
+    }
   }
 
   /**
@@ -118,7 +142,12 @@ export class TTSManagerImpl implements TTSManager {
     }
 
     // Fallback: use legacy speak method
-    return this.ttsPlayer.speak(text, options);
+    this.startAudioSession();
+    try {
+      await this.ttsPlayer.speak(text, options);
+    } finally {
+      this.endAudioSession();
+    }
   }
 
   /**
@@ -139,32 +168,64 @@ export class TTSManagerImpl implements TTSManager {
     return new Promise((resolve, reject) => {
       const audio = new Audio(audioUrl);
       this.currentAudio = audio;
+      this.currentAudioUrl = audioUrl;
 
       if (options?.volume) {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 
       // Emit audio start event
-      this.eventEmitter?.emit("tts:audio:start", { audioElement: audio });
+      this.startAudioSession(audio);
 
       // Live2D SDK handles lip sync automatically from audio element
 
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
+      let isFinalized = false;
+      const finalize = (next: () => void) => {
+        if (isFinalized) return;
+        isFinalized = true;
+
+        if (this.currentAudioUrl) {
+          URL.revokeObjectURL(this.currentAudioUrl);
+          this.currentAudioUrl = null;
+        }
+
         this.currentAudio = null;
-        this.eventEmitter?.emit("tts:audio:end", {});
-        resolve();
+        this.endAudioSession();
+        next();
+      };
+
+      audio.onended = () => {
+        finalize(resolve);
       };
 
       audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        this.currentAudio = null;
-        this.eventEmitter?.emit("tts:audio:end", {});
-        reject(new Error("Audio playback failed"));
+        finalize(() => reject(new Error("Audio playback failed")));
       };
 
-      audio.play().catch(reject);
+      audio.play().catch((error) => {
+        finalize(() =>
+          reject(
+            error instanceof Error ? error : new Error("Audio playback failed"),
+          ),
+        );
+      });
     });
+  }
+
+  private startAudioSession(audioElement?: HTMLAudioElement): void {
+    if (this.isAudioSessionActive) {
+      return;
+    }
+    this.isAudioSessionActive = true;
+    this.eventEmitter?.emit("tts:audio:start", { audioElement });
+  }
+
+  private endAudioSession(): void {
+    if (!this.isAudioSessionActive) {
+      return;
+    }
+    this.isAudioSessionActive = false;
+    this.eventEmitter?.emit("tts:audio:end", {});
   }
 }
 

@@ -23,7 +23,7 @@ export function detectTTSPlayerType(player: any): TTSPlayerType {
 export function getMimeTypeForPlayer(playerType: TTSPlayerType): string {
   switch (playerType) {
     case "openai":
-      return "audio/mp3";
+      return "audio/wav";
     case "remote":
     case "web":
     default:

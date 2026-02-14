@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
 
-// OpenAI LLM Provider 초기화
-const llmProvider = createOpenAILLMProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-4.1-nano",
-});
+function getOpenAIKey(): string {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY not configured");
+  }
+  return apiKey;
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const llmProvider = createOpenAILLMProvider({
+      apiKey: getOpenAIKey(),
+      model: "gpt-4.1-nano",
+    });
+
     const { messages } = await request.json();
 
     if (!messages || !Array.isArray(messages)) {

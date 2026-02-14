@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Character, LLMClient, Message, TTSOptions } from "@charivo/core";
-import { Charivo, EventBus } from "@charivo/core";
+import { Charivo, EventBus, hasEmotionTag } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
 class StubRenderManager {
@@ -61,6 +61,16 @@ describe("EventBus", () => {
       },
     });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Emotion Parser", () => {
+  it("detects emotion tags consistently across repeated calls", () => {
+    const text = "Hello! [happy]";
+
+    expect(hasEmotionTag(text)).toBe(true);
+    expect(hasEmotionTag(text)).toBe(true);
+    expect(hasEmotionTag(text)).toBe(true);
   });
 });
 

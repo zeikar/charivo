@@ -1,4 +1,7 @@
-import { RealtimeClient } from "@charivo/realtime-core";
+import type {
+  RealtimeClient,
+  RealtimeSessionConfig,
+} from "@charivo/realtime-core";
 
 /**
  * OpenAI Realtime API 이벤트 타입
@@ -61,7 +64,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   /**
    * WebRTC 연결 시작
    */
-  async connect(): Promise<void> {
+  async connect(config?: RealtimeSessionConfig): Promise<void> {
     try {
       console.log("🔌 Starting WebRTC connection to Realtime API");
 
@@ -122,9 +125,12 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       const sdpResponse = await fetch(this.apiEndpoint, {
         method: "POST",
         headers: {
-          "Content-Type": "application/sdp",
+          "Content-Type": "application/json",
         },
-        body: offer.sdp,
+        body: JSON.stringify({
+          sdpOffer: offer.sdp,
+          sessionConfig: config,
+        }),
       });
 
       if (!sdpResponse.ok) {

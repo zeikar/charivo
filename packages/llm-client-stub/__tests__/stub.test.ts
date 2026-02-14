@@ -8,11 +8,11 @@ describe("StubLLMClient", () => {
 
     const firstCall = client.call([]);
     await vi.advanceTimersByTimeAsync(500);
-    expect(await firstCall).toBe("Hello! I'm a test character.");
+    expect(await firstCall).toBe("Hello! [happy] I'm a test character.");
 
     const secondCall = client.call([]);
     await vi.advanceTimersByTimeAsync(500);
-    expect(await secondCall).not.toBe("Hello! I'm a test character.");
+    expect(await secondCall).not.toBe("Hello! [happy] I'm a test character.");
 
     vi.useRealTimers();
   });

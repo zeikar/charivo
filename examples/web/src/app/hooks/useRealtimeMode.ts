@@ -45,8 +45,6 @@ export function useRealtimeMode() {
         voice: "marin",
       });
 
-      charivo.emit("tts:audio:start", { audioElement: new Audio() });
-
       setIsRealtimeMode(true);
       setIsConnected(true);
 
@@ -85,7 +83,6 @@ export function useRealtimeMode() {
       }
 
       charivo.detachRealtime();
-      charivo.emit("tts:audio:end", {});
 
       setIsRealtimeMode(false);
       setIsConnected(false);

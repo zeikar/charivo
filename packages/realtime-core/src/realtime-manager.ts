@@ -19,6 +19,7 @@ export class RealtimeManagerImpl implements IRealtimeManager {
   private client: RealtimeClient;
   private eventEmitter?: { emit: (event: string, data: any) => void };
   private isSessionActive = false;
+  private isAudioPlaybackActive = false;
 
   constructor(client: RealtimeClient) {
     this.client = client;
@@ -46,7 +47,7 @@ export class RealtimeManagerImpl implements IRealtimeManager {
     console.log("🚀 Starting Realtime session with config:", config);
 
     // 클라이언트 연결
-    await this.client.connect();
+    await this.client.connect(config);
 
     this.isSessionActive = true;
 
@@ -63,6 +64,7 @@ export class RealtimeManagerImpl implements IRealtimeManager {
 
     // 클라이언트 연결 해제
     await this.client.disconnect();
+    this.emitAudioEnd();
 
     this.isSessionActive = false;
 
@@ -77,7 +79,13 @@ export class RealtimeManagerImpl implements IRealtimeManager {
       throw new Error("Realtime session not active");
     }
 
-    await this.client.sendText(text);
+    this.emitAudioStart();
+    try {
+      await this.client.sendText(text);
+    } catch (error) {
+      this.emitAudioEnd();
+      throw error;
+    }
   }
 
   /**
@@ -103,15 +111,16 @@ export class RealtimeManagerImpl implements IRealtimeManager {
     // Direct RMS callback (for WebRTC clients)
     if (this.client.onLipSyncUpdate) {
       this.client.onLipSyncUpdate((rms: number) => {
+        if (rms > 0.001 && !this.isAudioPlaybackActive) {
+          this.emitAudioStart();
+        }
         this.eventEmitter?.emit("tts:lipsync:update", { rms });
       });
     }
 
     // 오디오 스트리밍 종료
     this.client.onAudioDone(() => {
-      // 립싱크 종료 (입 닫기)
-      this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
-      this.eventEmitter?.emit("tts:audio:end", {});
+      this.emitAudioEnd();
     });
 
     // Tool call 처리
@@ -124,6 +133,7 @@ export class RealtimeManagerImpl implements IRealtimeManager {
     // 에러 처리
     this.client.onError((error: Error) => {
       console.error("Realtime client error:", error);
+      this.emitAudioEnd();
       this.eventEmitter?.emit("realtime:error", { error });
     });
   }
@@ -139,6 +149,23 @@ export class RealtimeManagerImpl implements IRealtimeManager {
         emotion: args.emotion,
       });
     }
+  }
+
+  private emitAudioStart(): void {
+    if (this.isAudioPlaybackActive) {
+      return;
+    }
+    this.isAudioPlaybackActive = true;
+    this.eventEmitter?.emit("tts:audio:start", {});
+  }
+
+  private emitAudioEnd(): void {
+    if (!this.isAudioPlaybackActive) {
+      return;
+    }
+    this.isAudioPlaybackActive = false;
+    this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
+    this.eventEmitter?.emit("tts:audio:end", {});
   }
 }
 

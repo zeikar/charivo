@@ -205,7 +205,7 @@ export type EventMap = {
   "tts:start": { text: string; characterId?: string };
   "tts:end": { characterId?: string };
   "tts:error": { error: Error };
-  "tts:audio:start": { audioElement: HTMLAudioElement; characterId?: string };
+  "tts:audio:start": { audioElement?: HTMLAudioElement; characterId?: string };
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };
   "stt:start": { options?: STTOptions };

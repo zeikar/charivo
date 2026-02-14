@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenAISTTProvider } from "@charivo/stt-provider-openai";
 
-// OpenAI STT Provider 초기화
-const sttProvider = createOpenAISTTProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  defaultModel: "whisper-1",
-});
+function getOpenAIKey(): string {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY not configured");
+  }
+  return apiKey;
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const sttProvider = createOpenAISTTProvider({
+      apiKey: getOpenAIKey(),
+      defaultModel: "whisper-1",
+    });
+
     // FormData에서 audio 파일 읽기
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;

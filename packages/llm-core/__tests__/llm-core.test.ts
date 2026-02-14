@@ -24,9 +24,9 @@ describe("CharacterPromptBuilder", () => {
   });
 
   it("falls back to default when character missing", () => {
-    expect(CharacterPromptBuilder.buildSystemPromptOrDefault()).toBe(
-      "You are a helpful assistant.",
-    );
+    const prompt = CharacterPromptBuilder.buildSystemPromptOrDefault();
+    expect(prompt).toContain("You are a helpful assistant.");
+    expect(prompt).toContain("IMPORTANT: Express emotions using ONLY");
   });
 });
 

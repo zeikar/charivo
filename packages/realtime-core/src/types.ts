@@ -24,7 +24,7 @@ export interface RealtimeSessionConfig {
 }
 
 export interface RealtimeClient {
-  connect(): Promise<void>;
+  connect(config?: RealtimeSessionConfig): Promise<void>;
   disconnect(): Promise<void>;
   sendText(text: string): Promise<void>;
   sendAudio(audio: ArrayBuffer): Promise<void>;

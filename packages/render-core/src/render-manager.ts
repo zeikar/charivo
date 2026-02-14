@@ -56,7 +56,7 @@ export class RenderManager implements IRenderManager {
     // TTS audio events
     eventBus.on(
       "tts:audio:start",
-      (data: { audioElement: HTMLAudioElement; characterId?: string }) => {
+      (data: { audioElement?: HTMLAudioElement; characterId?: string }) => {
         this.startRealtimeLipSync(data.audioElement);
       },
     );
@@ -167,9 +167,13 @@ export class RenderManager implements IRenderManager {
   /**
    * 실시간 립싱크 시작
    */
-  private startRealtimeLipSync(audioElement: HTMLAudioElement): void {
+  private startRealtimeLipSync(audioElement?: HTMLAudioElement): void {
     if (this.renderer.setRealtimeLipSync) {
       this.renderer.setRealtimeLipSync(true);
+    }
+
+    if (!audioElement) {
+      return;
     }
 
     this.lipSync.connectToAudio(audioElement, (rms: number) => {
