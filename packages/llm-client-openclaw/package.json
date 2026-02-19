@@ -1,0 +1,41 @@
+{
+  "name": "@charivo/llm-client-openclaw",
+  "version": "0.0.1",
+  "description": "OpenClaw LLM client for Charivo (local/testing)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@charivo/core": "workspace:*",
+    "@charivo/llm-core": "workspace:*",
+    "@charivo/llm-provider-openclaw": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/llm-client-openclaw"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  }
+}
