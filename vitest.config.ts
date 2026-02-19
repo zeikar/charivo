@@ -32,6 +32,12 @@ export default defineConfig({
       "@charivo/llm-provider-openai": resolvePackage(
         "packages/llm-provider-openai/src/index.ts",
       ),
+      "@charivo/llm-provider-openclaw": resolvePackage(
+        "packages/llm-provider-openclaw/src/index.ts",
+      ),
+      "@charivo/llm-client-openclaw": resolvePackage(
+        "packages/llm-client-openclaw/src/index.ts",
+      ),
       "@charivo/render-live2d": resolvePackage(
         "packages/render-live2d/src/index.ts",
       ),
