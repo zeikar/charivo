@@ -99,6 +99,21 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             );
             return createOpenAILLMClient({ apiKey });
           }
+          case "openclaw-remote": {
+            const { createRemoteLLMClient } = await import(
+              "@charivo/llm-client-remote"
+            );
+            return createRemoteLLMClient({ apiEndpoint: "/api/chat-openclaw" });
+          }
+          case "openclaw": {
+            const token = prompt(
+              "Enter your OpenClaw token (leave empty if not required):",
+            );
+            const { createOpenClawLLMClient } = await import(
+              "@charivo/llm-client-openclaw"
+            );
+            return createOpenClawLLMClient({ token: token ?? "" });
+          }
           case "stub":
           default: {
             const { createStubLLMClient } = await import(

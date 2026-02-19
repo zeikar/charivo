@@ -56,6 +56,9 @@ importers:
       '@charivo/llm-client-openai':
         specifier: workspace:*
         version: link:../../packages/llm-client-openai
+      '@charivo/llm-client-openclaw':
+        specifier: workspace:*
+        version: link:../../packages/llm-client-openclaw
       '@charivo/llm-client-remote':
         specifier: workspace:^
         version: link:../../packages/llm-client-remote
@@ -68,6 +71,9 @@ importers:
       '@charivo/llm-provider-openai':
         specifier: workspace:*
         version: link:../../packages/llm-provider-openai
+      '@charivo/llm-provider-openclaw':
+        specifier: workspace:*
+        version: link:../../packages/llm-provider-openclaw
       '@charivo/realtime-client-openai':
         specifier: workspace:*
         version: link:../../packages/realtime-client-openai

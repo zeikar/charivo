@@ -12,10 +12,12 @@
   "dependencies": {
     "@charivo/core": "workspace:*",
     "@charivo/llm-client-openai": "workspace:*",
+    "@charivo/llm-client-openclaw": "workspace:*",
     "@charivo/llm-client-remote": "workspace:^",
     "@charivo/llm-client-stub": "workspace:*",
     "@charivo/llm-core": "workspace:*",
     "@charivo/llm-provider-openai": "workspace:*",
+    "@charivo/llm-provider-openclaw": "workspace:*",
     "@charivo/realtime-client-openai": "workspace:*",
     "@charivo/realtime-core": "workspace:*",
     "@charivo/render-core": "workspace:*",

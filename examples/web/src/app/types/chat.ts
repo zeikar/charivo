@@ -6,4 +6,9 @@ export type TTSPlayerType = "remote" | "web" | "openai" | "none";
 
 export type STTTranscriberType = "remote" | "web" | "openai" | "none";
 
-export type LLMClientType = "remote" | "openai" | "stub";
+export type LLMClientType =
+  | "remote"
+  | "openai"
+  | "openclaw-remote"
+  | "openclaw"
+  | "stub";
