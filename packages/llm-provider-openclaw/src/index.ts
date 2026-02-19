@@ -1,6 +1,13 @@
 import OpenAI from "openai";
 import { LLMProvider } from "@charivo/core";
 
+/**
+ * OpenClaw LLM Provider
+ *
+ * Server-side LLM provider using OpenClaw's OpenAI-compatible HTTP API.
+ *
+ * @see https://docs.openclaw.ai/gateway/openai-http-api
+ */
 export interface OpenClawLLMConfig {
   token: string;
   baseURL?: string;
