@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -128,12 +127,6 @@ export default function RootLayout({
               },
             }),
           }}
-        />
-
-        {/* Load Live2D Cubism 4 Core (required by pixi-live2d-display/cubism4) */}
-        <Script
-          src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"
-          strategy="beforeInteractive"
         />
       </head>
       <body

@@ -37,6 +37,7 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
     if (!this.canvas)
       throw new Error("Canvas element is required for Live2D rendering");
 
+    await loadCubismCore();
     this.initializeCubism();
 
     this.host = new CubismModelHost(this.canvas);
@@ -52,16 +53,6 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
 
   async loadModel(modelPath: string): Promise<void> {
     if (!this.host) throw new Error("Live2D renderer is not initialized");
-
-    if (typeof window !== "undefined") {
-      const core = (window as unknown as { Live2DCubismCore?: unknown })
-        .Live2DCubismCore;
-      if (!core) {
-        console.warn(
-          "⚠️ Live2DCubismCore not found. Include live2dcubismcore.min.js on the page before initializing the renderer.",
-        );
-      }
-    }
 
     this.model?.release();
 
@@ -297,4 +288,39 @@ export function createLive2DRenderer(
   options?: Live2DRendererOptions,
 ): Live2DRenderer {
   return new Live2DRenderer(options);
+}
+
+async function loadCubismCore(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (isCubismCoreReady()) return;
+
+  // Import as raw text (text loader in tsup) so esbuild doesn't treat it as an
+  // ESM module. Then inject as a classic <script> so var declarations become
+  // window-scoped globals (required by CubismFramework).
+  const { default: coreScript } = await import(
+    "../CubismSdkForWeb-5-r.4/Core/live2dcubismcore.min.js"
+  );
+  const script = document.createElement("script");
+  script.text = coreScript;
+  document.head.appendChild(script);
+
+  // The Emscripten WASM runtime initializes asynchronously even when the script
+  // runs synchronously. Poll until Live2DCubismCore.Version.csmGetVersion()
+  // succeeds, which confirms all WASM exports are linked and ready.
+  await new Promise<void>((resolve) => {
+    const check = () => {
+      if (isCubismCoreReady()) resolve();
+      else setTimeout(check, 16);
+    };
+    check();
+  });
+}
+
+function isCubismCoreReady(): boolean {
+  try {
+    Live2DCubismCore.Version.csmGetVersion();
+    return true;
+  } catch {
+    return false;
+  }
 }
