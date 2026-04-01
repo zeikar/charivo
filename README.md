@@ -1,8 +1,11 @@
 # Charivo
 
-Charivo is a modular TypeScript framework for interactive character apps.
+Charivo is a modular TypeScript framework for Live2D AI characters with LLM,
+TTS, STT, and realtime voice.
 It separates orchestration, stateful managers, browser-side clients, and
 server-side providers so you can swap pieces without rewriting the whole stack.
+The current provider surface includes OpenAI and OpenClaw for LLM workflows,
+with remote/browser options depending on your deployment model.
 
 Live demo: https://charivo.vercel.app/
 
@@ -82,7 +85,7 @@ For a complete app, see [`examples/web`](./examples/web).
 
 Use the remote/server-mediated path by default:
 
-- LLM: `@charivo/llm-client-remote` + a server route using a provider package
+- LLM: `@charivo/llm-client-remote` + a server route using a provider package such as `@charivo/llm-provider-openai` or `@charivo/llm-provider-openclaw`
 - TTS: `@charivo/tts-player-remote` + `@charivo/tts-provider-openai`
 - STT: `@charivo/stt-transcriber-remote` + `@charivo/stt-provider-openai`
 - Realtime: `@charivo/realtime-client-openai` + a server `/api/realtime` route
