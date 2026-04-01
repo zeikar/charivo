@@ -1,26 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Character, LLMClient, Message, TTSOptions } from "@charivo/core";
+import type {
+  Character,
+  CharivoEventBus,
+  CharivoEventEmitter,
+  LLMClient,
+  Message,
+  RenderManager,
+  TTSManager,
+  TTSOptions,
+} from "@charivo/core";
 import { Charivo, EventBus, hasEmotionTag } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
-class StubRenderManager {
+class StubRenderManager implements RenderManager {
   initialize = vi.fn(async () => undefined);
   destroy = vi.fn(async () => undefined);
   render = vi.fn(
     async (_message: Message, _character?: Character) => undefined,
   );
   setCharacter = vi.fn((_character: Character) => undefined);
-  setEventBus = vi.fn((_eventBus: any) => undefined);
+  setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
 }
 
-class StubTTSManager {
+class StubTTSManager implements TTSManager {
   speak = vi.fn(async (_text: string, _options?: TTSOptions) => undefined);
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((voice: string) => {
     this.voice = voice;
   });
   isSupported = vi.fn(() => true);
-  setEventEmitter = vi.fn((_eventEmitter: any) => undefined);
+  setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
   voice: string | undefined;
 }
 

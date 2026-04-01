@@ -83,7 +83,6 @@ export class LLMManager {
 
       return assistantMessage;
     } catch (error) {
-      console.error("LLM Manager Error:", error);
       // 에러가 발생하면 마지막 메시지를 히스토리에서 제거
       this.historyManager.removeLast();
       throw error;

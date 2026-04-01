@@ -17,37 +17,32 @@ export class RemoteLLMClient implements LLMClient {
   async call(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
-    try {
-      const response = await fetch(this.apiEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages,
-        }),
-      });
+    const response = await fetch(this.apiEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(
-          `API call failed: ${errorData.error || response.statusText}`,
-        );
-      }
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Failed to generate response");
-      }
-
-      return data.message || "";
-    } catch (error) {
-      console.error("Remote LLM Client Error:", error);
-      throw error;
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ error: "Unknown error" }));
+      throw new Error(
+        `API call failed: ${errorData.error || response.statusText}`,
+      );
     }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error(data.error || "Failed to generate response");
+    }
+
+    return data.message || "";
   }
 }
 

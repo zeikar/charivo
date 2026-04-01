@@ -77,6 +77,27 @@ export interface CharivoConfig {
   renderProvider?: string;
 }
 
+export interface RealtimeTool {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+export interface RealtimeSessionConfig {
+  voice?: string;
+  model?: string;
+  instructions?: string;
+  temperature?: number;
+  maxTokens?: number;
+  tools?: RealtimeTool[];
+  tool_choice?: "auto" | "none" | "required";
+}
+
 export interface LLMAdapter {
   generateResponse(message: Message): Promise<string>;
   setCharacter(character: Character): void;
@@ -120,6 +141,7 @@ export interface RenderManager {
   destroy(): Promise<void>;
   setCharacter(character: Character): void;
   render(message: Message, character?: Character): Promise<void>;
+  setEventBus(eventBus: CharivoEventBus): void;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(
     callback: (message: Message, character?: Character) => void,
@@ -155,9 +177,7 @@ export interface TTSManager {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
-  setEventEmitter?(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void;
+  setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
 export interface STTOptions {
@@ -182,20 +202,16 @@ export interface STTManager {
   start(options?: STTOptions): Promise<void>;
   stop(): Promise<string>;
   isRecording(): boolean;
-  setEventEmitter?(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void;
+  setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
 // Realtime Manager - Manages Realtime API session state
 export interface RealtimeManager {
-  startSession(config: any): Promise<void>;
+  startSession(config: RealtimeSessionConfig): Promise<void>;
   stopSession(): Promise<void>;
   sendMessage(text: string): Promise<void>;
   sendAudioChunk(audio: ArrayBuffer): Promise<void>;
-  setEventEmitter?(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void;
+  setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
 export type EventMap = {
@@ -211,7 +227,23 @@ export type EventMap = {
   "stt:start": { options?: STTOptions };
   "stt:stop": { transcription: string };
   "stt:error": { error: Error };
+  "realtime:emotion": { emotion: Emotion };
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
   error: { error: Error };
 };
+
+export interface CharivoEventEmitter {
+  emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void;
+}
+
+export interface CharivoEventBus extends CharivoEventEmitter {
+  on<K extends keyof EventMap>(
+    event: K,
+    listener: (data: EventMap[K]) => void,
+  ): void;
+  off<K extends keyof EventMap>(
+    event: K,
+    listener: (data: EventMap[K]) => void,
+  ): void;
+}

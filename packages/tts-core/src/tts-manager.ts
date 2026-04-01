@@ -1,4 +1,9 @@
-import { TTSPlayer, TTSOptions, TTSManager } from "@charivo/core";
+import {
+  CharivoEventEmitter,
+  TTSPlayer,
+  TTSOptions,
+  TTSManager,
+} from "@charivo/core";
 import { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 import {
   detectTTSPlayerType,
@@ -19,7 +24,7 @@ import {
  */
 export class TTSManagerImpl implements TTSManager {
   private ttsPlayer: TTSPlayer;
-  private eventEmitter?: { emit: (event: string, data: any) => void };
+  private eventEmitter?: CharivoEventEmitter;
   private currentAudio: HTMLAudioElement | null = null;
   private currentAudioUrl: string | null = null;
   private playerType: TTSPlayerType;
@@ -39,10 +44,7 @@ export class TTSManagerImpl implements TTSManager {
   /**
    * 이벤트 발신자 설정
    */
-  setEventEmitter(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void {
-    console.log("🔗 TTS Manager: Event emitter connected");
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void {
     this.eventEmitter = eventEmitter;
 
     // Connect event emitter to Web Speech simulator
@@ -157,10 +159,7 @@ export class TTSManagerImpl implements TTSManager {
     text: string,
     options?: TTSOptions,
   ): Promise<void> {
-    const audioData = await (this.ttsPlayer as any).generateAudio(
-      text,
-      options,
-    );
+    const audioData = await this.ttsPlayer.generateAudio!(text, options);
     const mimeType = getMimeTypeForPlayer(this.playerType);
     const blob = new Blob([audioData], { type: mimeType });
     const audioUrl = URL.createObjectURL(blob);

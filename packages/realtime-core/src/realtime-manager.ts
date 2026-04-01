@@ -1,8 +1,10 @@
 import {
-  RealtimeClient,
-  RealtimeManager as IRealtimeManager,
+  CharivoEventEmitter,
+  RealtimeManager as CoreRealtimeManager,
   RealtimeSessionConfig,
+  RealtimeClient,
 } from "./types";
+import { Emotion } from "@charivo/core";
 
 /**
  * Realtime Manager - Realtime API 세션 관리
@@ -15,9 +17,9 @@ import {
  * Note: WebRTC 클라이언트는 오디오를 자동으로 처리하므로
  * 이 Manager는 이벤트 중계에 집중합니다.
  */
-export class RealtimeManagerImpl implements IRealtimeManager {
+export class RealtimeManagerImpl implements CoreRealtimeManager {
   private client: RealtimeClient;
-  private eventEmitter?: { emit: (event: string, data: any) => void };
+  private eventEmitter?: CharivoEventEmitter;
   private isSessionActive = false;
   private isAudioPlaybackActive = false;
 
@@ -29,11 +31,8 @@ export class RealtimeManagerImpl implements IRealtimeManager {
   /**
    * 이벤트 발신자 설정
    */
-  setEventEmitter(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void {
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void {
     this.eventEmitter = eventEmitter;
-    console.log("🔗 Realtime Manager: Event emitter connected");
   }
 
   /**
@@ -44,14 +43,10 @@ export class RealtimeManagerImpl implements IRealtimeManager {
       throw new Error("Realtime session already active");
     }
 
-    console.log("🚀 Starting Realtime session with config:", config);
-
     // 클라이언트 연결
     await this.client.connect(config);
 
     this.isSessionActive = true;
-
-    console.log("✅ Realtime session started");
   }
 
   /**
@@ -60,15 +55,11 @@ export class RealtimeManagerImpl implements IRealtimeManager {
   async stopSession(): Promise<void> {
     if (!this.isSessionActive) return;
 
-    console.log("🛑 Stopping Realtime session");
-
     // 클라이언트 연결 해제
     await this.client.disconnect();
     this.emitAudioEnd();
 
     this.isSessionActive = false;
-
-    console.log("✅ Realtime session stopped");
   }
 
   /**
@@ -125,14 +116,13 @@ export class RealtimeManagerImpl implements IRealtimeManager {
 
     // Tool call 처리
     if (this.client.onToolCall) {
-      this.client.onToolCall((name: string, args: any) => {
+      this.client.onToolCall((name: string, args: Record<string, unknown>) => {
         this.handleToolCall(name, args);
       });
     }
 
     // 에러 처리
     this.client.onError((error: Error) => {
-      console.error("Realtime client error:", error);
       this.emitAudioEnd();
       this.eventEmitter?.emit("realtime:error", { error });
     });
@@ -141,12 +131,12 @@ export class RealtimeManagerImpl implements IRealtimeManager {
   /**
    * Tool call 처리
    */
-  private handleToolCall(name: string, args: any): void {
-    if (name === "setEmotion") {
-      console.log(`🎭 [Realtime] Emotion update:`, args.emotion);
-      // Emit emotion event for RenderManager
+  private handleToolCall(name: string, args: Record<string, unknown>): void {
+    const emotion = args.emotion;
+
+    if (name === "setEmotion" && typeof emotion === "string") {
       this.eventEmitter?.emit("realtime:emotion", {
-        emotion: args.emotion,
+        emotion: emotion as Emotion,
       });
     }
   }
@@ -174,6 +164,6 @@ export class RealtimeManagerImpl implements IRealtimeManager {
  */
 export function createRealtimeManager(
   client: RealtimeClient,
-): IRealtimeManager {
+): CoreRealtimeManager {
   return new RealtimeManagerImpl(client);
 }

@@ -1,37 +1,76 @@
 "use client";
 
 import {
-  useEffect,
   useCallback,
+  useEffect,
   useRef,
-  type MutableRefObject,
   type KeyboardEvent,
+  type MutableRefObject,
 } from "react";
-import { Charivo, type Character, type Message } from "@charivo/core";
-import { createTTSManager } from "@charivo/tts-core";
+import {
+  Charivo,
+  type Character,
+  type LLMClient,
+  type Message,
+  type RenderManager,
+  type STTManager,
+  type STTTranscriber,
+  type TTSManager,
+  type TTSPlayer,
+} from "@charivo/core";
 import { createSTTManager } from "@charivo/stt-core";
-type Live2DRendererModule = typeof import("@charivo/render-live2d");
-type Live2DRendererClass = Live2DRendererModule["Live2DRenderer"];
-type Live2DRendererHandle = InstanceType<Live2DRendererClass>;
+import { createTTSManager } from "@charivo/tts-core";
 
-import type { AppCharacter } from "../config/characters";
 import type {
   LLMClientType,
-  TTSPlayerType,
   STTTranscriberType,
+  TTSPlayerType,
 } from "../types/chat";
 import { useLive2D } from "./useLive2D";
 import { useCharacterStore } from "../stores/useCharacterStore";
 import { useChatStore } from "../stores/useChatStore";
 
+type Live2DRendererHandle = {
+  playExpression(expressionId: string): void;
+  playMotionByGroup(group: string, index: number): void;
+  getAvailableExpressions(): string[];
+  getAvailableMotionGroups(): Record<string, number>;
+};
+
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
 };
 
+const OPENAI_TESTING_PROMPT =
+  "Enter your OpenAI API key. This direct browser client is for development/testing only.";
+const OPENCLAW_TESTING_PROMPT =
+  "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
+
+function promptForSecret(message: string, missingMessage: string): string {
+  const value = window.prompt(message)?.trim();
+  if (!value) {
+    throw new Error(missingMessage);
+  }
+  return value;
+}
+
+async function stopRealtime(instance: Charivo | null): Promise<void> {
+  const realtimeManager = instance?.getRealtimeManager();
+  if (!realtimeManager) {
+    return;
+  }
+
+  try {
+    await realtimeManager.stopSession();
+  } catch {
+    // Ignore teardown errors during effect cleanup.
+  }
+}
+
 export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const { getLive2DModelPath } = useCharacterStore();
+  const { canvas, character } = useLive2D({ canvasContainerRef });
 
-  // Get all states and actions from store
   const {
     charivo,
     setCharivo,
@@ -51,32 +90,17 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setTtsError,
     setSttError,
     isRealtimeMode,
+    setIsRealtimeMode,
+    setIsConnecting,
+    setIsConnected,
+    setRealtimeError,
   } = useChatStore();
 
-  const initialLLMClientRef = useRef<LLMClientType>(selectedLLMClient);
-  const initialTTSPlayerRef = useRef<TTSPlayerType>(selectedTTSPlayer);
-  const initialSTTTranscriberRef = useRef<STTTranscriberType>(
-    selectedSTTTranscriber,
-  );
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
-  const sttManagerRef = useRef<ReturnType<typeof createSTTManager> | null>(
-    null,
-  );
-
-  useEffect(() => {
-    initialLLMClientRef.current = selectedLLMClient;
-  }, [selectedLLMClient]);
-
-  useEffect(() => {
-    initialTTSPlayerRef.current = selectedTTSPlayer;
-  }, [selectedTTSPlayer]);
-
-  useEffect(() => {
-    initialSTTTranscriberRef.current = selectedSTTTranscriber;
-  }, [selectedSTTTranscriber]);
+  const sttManagerRef = useRef<STTManager | null>(null);
 
   const createLLMClient = useCallback(
-    async (type: LLMClientType) => {
+    async (type: LLMClientType): Promise<LLMClient> => {
       setLlmError(null);
 
       try {
@@ -88,12 +112,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
           }
           case "openai": {
-            const apiKey = prompt(
-              "Enter your OpenAI API key for testing (not recommended for production):",
+            const apiKey = promptForSecret(
+              OPENAI_TESTING_PROMPT,
+              "API key is required for the direct OpenAI LLM client.",
             );
-            if (!apiKey) {
-              throw new Error("API key is required for OpenAI LLM");
-            }
             const { createOpenAILLMClient } = await import(
               "@charivo/llm-client-openai"
             );
@@ -106,13 +128,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return createRemoteLLMClient({ apiEndpoint: "/api/chat-openclaw" });
           }
           case "openclaw": {
-            const token = prompt(
-              "Enter your OpenClaw token (leave empty if not required):",
+            const token = promptForSecret(
+              OPENCLAW_TESTING_PROMPT,
+              "Token is required for the direct OpenClaw client.",
             );
             const { createOpenClawLLMClient } = await import(
               "@charivo/llm-client-openclaw"
             );
-            return createOpenClawLLMClient({ token: token ?? "" });
+            return createOpenClawLLMClient({ token });
           }
           case "stub":
           default: {
@@ -123,10 +146,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           }
         }
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        setLlmError(`Failed to load ${type} LLM client: ${errorMessage}`);
-        console.error("LLM Client Error:", error);
+        const message =
+          error instanceof Error ? error.message : "Unknown LLM client error";
+        setLlmError(`Failed to load ${type} LLM client: ${message}`);
         throw error;
       }
     },
@@ -134,7 +156,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   );
 
   const createTTSPlayer = useCallback(
-    async (type: TTSPlayerType) => {
+    async (type: TTSPlayerType): Promise<TTSPlayer | null> => {
       setTtsError(null);
 
       try {
@@ -152,12 +174,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return createWebTTSPlayer();
           }
           case "openai": {
-            const apiKey = prompt(
-              "Enter your OpenAI API key for testing (not recommended for production):",
+            const apiKey = promptForSecret(
+              OPENAI_TESTING_PROMPT,
+              "API key is required for the direct OpenAI TTS client.",
             );
-            if (!apiKey) {
-              throw new Error("API key is required for OpenAI TTS");
-            }
             const { createOpenAITTSPlayer } = await import(
               "@charivo/tts-player-openai"
             );
@@ -168,18 +188,17 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return null;
         }
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        setTtsError(`Failed to load ${type} TTS player: ${errorMessage}`);
-        console.error("TTS Player Error:", error);
-        return null;
+        const message =
+          error instanceof Error ? error.message : "Unknown TTS client error";
+        setTtsError(`Failed to load ${type} TTS player: ${message}`);
+        throw error;
       }
     },
     [setTtsError],
   );
 
   const createSTTTranscriber = useCallback(
-    async (type: STTTranscriberType) => {
+    async (type: STTTranscriberType): Promise<STTTranscriber | null> => {
       setSttError(null);
 
       try {
@@ -197,12 +216,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return createWebSTTTranscriber();
           }
           case "openai": {
-            const apiKey = prompt(
-              "Enter your OpenAI API key for testing (not recommended for production):",
+            const apiKey = promptForSecret(
+              OPENAI_TESTING_PROMPT,
+              "API key is required for the direct OpenAI STT client.",
             );
-            if (!apiKey) {
-              throw new Error("API key is required for OpenAI STT");
-            }
             const { createOpenAISTTTranscriber } = await import(
               "@charivo/stt-transcriber-openai"
             );
@@ -213,207 +230,223 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return null;
         }
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-        setSttError(`Failed to load ${type} STT transcriber: ${errorMessage}`);
-        console.error("STT Transcriber Error:", error);
-        return null;
+        const message =
+          error instanceof Error ? error.message : "Unknown STT client error";
+        setSttError(`Failed to load ${type} STT transcriber: ${message}`);
+        throw error;
       }
     },
     [setSttError],
   );
 
-  const handleRendererReady = useCallback(
-    async (
-      renderer: Live2DRendererHandle,
-      character: AppCharacter,
-      canvas: HTMLCanvasElement,
-    ) => {
-      rendererRef.current = renderer;
-      const instance = new Charivo();
+  useEffect(() => {
+    if (!canvas) {
+      return;
+    }
 
-      // Wrap with RenderManager (stateful)
-      const { createRenderManager } = await import("@charivo/render-core");
-      const renderManager = createRenderManager(renderer, {
-        canvas,
-        mouseTracking: "document",
-      });
+    let disposed = false;
+    let instance: Charivo | null = null;
+    let renderManager: RenderManager | null = null;
+    let ttsManager: TTSManager | null = null;
+    let sttManager: STTManager | null = null;
 
-      await renderManager.initialize();
-      await renderManager.loadModel?.(getLive2DModelPath(character.id));
+    const teardown = async () => {
+      setCharivo(null);
+      sttManagerRef.current = null;
+      rendererRef.current = null;
+      setIsLoading(false);
+      setIsSpeaking(false);
+      setIsRecording(false);
+      setIsTranscribing(false);
+      setIsConnecting(false);
+      setIsConnected(false);
+      setIsRealtimeMode(false);
 
-      renderManager.setMessageCallback(
-        (message: Message, character?: Character) => {
-          addMessage({ ...message, character });
-        },
-      );
-
-      const llmClient = await createLLMClient(initialLLMClientRef.current);
-      const { createLLMManager } = await import("@charivo/llm-core");
-      const llmManager = createLLMManager(llmClient);
-
-      instance.attachRenderer(renderManager);
-      instance.attachLLM(llmManager);
-
-      const ttsPlayer = await createTTSPlayer(initialTTSPlayerRef.current);
-      if (ttsPlayer) {
-        const ttsManager = createTTSManager(ttsPlayer);
-        instance.attachTTS(ttsManager);
-      }
-
-      instance.setCharacter(character);
-
-      instance.on(
-        "character:speak",
-        ({ character: speakingCharacter, message }) => {
-          console.log(`🎵 ${speakingCharacter.name}: "${message}"`);
-        },
-      );
-
-      instance.on("tts:start", ({ text, characterId }) => {
-        console.log(`🔊 TTS started for ${characterId}: "${text}"`);
-        setIsSpeaking(true);
-      });
-
-      instance.on("tts:end", ({ characterId }) => {
-        console.log(`🔇 TTS ended for ${characterId}`);
-        setIsSpeaking(false);
-      });
-
-      instance.on("tts:error", ({ error }) => {
-        console.error("❌ TTS Error:", error);
-        setIsSpeaking(false);
-      });
-
-      // Initialize STT Manager
-      const initializeSTT = async () => {
+      if (ttsManager) {
         try {
-          const transcriber = await createSTTTranscriber(
-            initialSTTTranscriberRef.current,
-          );
-          if (transcriber) {
-            const sttManager = createSTTManager(transcriber);
-            instance.attachSTT(sttManager);
-            sttManagerRef.current = sttManager;
-          }
-        } catch (error) {
-          console.error("Failed to initialize STT:", error);
-          setSttError("STT initialization failed");
+          await ttsManager.stop();
+        } catch {
+          // Ignore teardown errors during effect cleanup.
         }
-      };
+      }
 
-      instance.on("stt:start", ({ options }) => {
-        console.log("🎤 STT recording started", options);
-        setIsRecording(true);
-      });
+      if (sttManager?.isRecording()) {
+        try {
+          await sttManager.stop();
+        } catch {
+          // Ignore teardown errors during effect cleanup.
+        }
+      }
 
-      instance.on("stt:stop", ({ transcription }) => {
-        console.log("✅ STT transcription:", transcription);
-        setIsRecording(false);
-        setIsTranscribing(false);
-        setInput(transcription);
-      });
+      await stopRealtime(instance);
+      instance?.detachRealtime();
+      instance?.detachSTT();
+      instance?.detachTTS();
 
-      instance.on("stt:error", ({ error }) => {
-        console.error("❌ STT Error:", error);
-        setIsRecording(false);
-        setIsTranscribing(false);
-        setSttError(error.message);
-      });
-
-      initializeSTT().catch(console.error);
-
-      clearMessages();
-      setCharivo(instance);
-
-      return () => {
-        setCharivo(null);
-        clearMessages();
-        setIsSpeaking(false);
-      };
-    },
-    [
-      createLLMClient,
-      createTTSPlayer,
-      createSTTTranscriber,
-      getLive2DModelPath,
-      addMessage,
-      clearMessages,
-      setCharivo,
-      setIsSpeaking,
-      setIsRecording,
-      setIsTranscribing,
-      setInput,
-      setSttError,
-    ],
-  );
-
-  useLive2D({ canvasContainerRef, onRendererReady: handleRendererReady });
-
-  useEffect(() => {
-    if (!charivo) return;
-
-    const updateTTSPlayer = async () => {
-      const player = await createTTSPlayer(selectedTTSPlayer);
-      if (player) {
-        const ttsManager = createTTSManager(player);
-        charivo.attachTTS(ttsManager);
-      } else {
-        charivo.detachTTS();
+      if (renderManager) {
+        try {
+          await renderManager.destroy();
+        } catch {
+          // Ignore teardown errors during effect cleanup.
+        }
       }
     };
 
-    updateTTSPlayer().catch((error: unknown) => {
-      console.error("Failed to update TTS player:", error);
-    });
-  }, [charivo, selectedTTSPlayer, createTTSPlayer]);
-
-  useEffect(() => {
-    if (!charivo) return;
-
-    const updateLLMClient = async () => {
+    const initialize = async () => {
       try {
+        const [
+          { Live2DRenderer },
+          { createRenderManager },
+          { createLLMManager },
+        ] = await Promise.all([
+          import("@charivo/render-live2d"),
+          import("@charivo/render-core"),
+          import("@charivo/llm-core"),
+        ]);
+
+        const renderer = new Live2DRenderer({ canvas });
+        rendererRef.current = renderer;
+
+        renderManager = createRenderManager(renderer, {
+          canvas,
+          mouseTracking: "document",
+        });
+
+        await renderManager.initialize();
+        await renderManager.loadModel?.(getLive2DModelPath(character.id));
+
+        if (disposed) {
+          await teardown();
+          return;
+        }
+
+        renderManager.setMessageCallback?.(
+          (message: Message, owner?: Character) => {
+            if (disposed) {
+              return;
+            }
+            addMessage({ ...message, character: owner });
+          },
+        );
+
         const llmClient = await createLLMClient(selectedLLMClient);
-        const { createLLMManager } = await import("@charivo/llm-core");
-        const llmManager = createLLMManager(llmClient);
-        charivo.clearHistory();
-        charivo.attachLLM(llmManager);
-      } catch (error) {
-        console.error("Failed to update LLM client:", error);
-      }
-    };
-
-    updateLLMClient().catch((error: unknown) => {
-      console.error("Failed to update LLM client:", error);
-    });
-  }, [charivo, selectedLLMClient, createLLMClient]);
-
-  useEffect(() => {
-    if (!charivo) return;
-
-    const updateSTTTranscriber = async () => {
-      try {
-        const transcriber = await createSTTTranscriber(selectedSTTTranscriber);
-        if (transcriber) {
-          const sttManager = createSTTManager(transcriber);
-          charivo.attachSTT(sttManager);
-          sttManagerRef.current = sttManager;
-        } else {
-          charivo.detachSTT();
-          sttManagerRef.current = null;
+        if (disposed) {
+          await teardown();
+          return;
         }
+
+        const llmManager = createLLMManager(llmClient);
+        instance = new Charivo();
+        instance.attachRenderer(renderManager);
+        instance.attachLLM(llmManager);
+
+        const nextTtsPlayer = await createTTSPlayer(selectedTTSPlayer);
+        if (nextTtsPlayer) {
+          ttsManager = createTTSManager(nextTtsPlayer);
+          instance.attachTTS(ttsManager);
+        }
+
+        const nextSttTranscriber = await createSTTTranscriber(
+          selectedSTTTranscriber,
+        );
+        if (nextSttTranscriber) {
+          sttManager = createSTTManager(nextSttTranscriber);
+          instance.attachSTT(sttManager);
+          sttManagerRef.current = sttManager;
+        }
+
+        instance.setCharacter(character);
+
+        instance.on("tts:start", () => {
+          if (!disposed) {
+            setIsSpeaking(true);
+          }
+        });
+
+        instance.on("tts:end", () => {
+          if (!disposed) {
+            setIsSpeaking(false);
+          }
+        });
+
+        instance.on("tts:error", () => {
+          if (!disposed) {
+            setIsSpeaking(false);
+          }
+        });
+
+        instance.on("stt:start", () => {
+          if (!disposed) {
+            setIsRecording(true);
+          }
+        });
+
+        instance.on("stt:stop", ({ transcription }) => {
+          if (disposed) {
+            return;
+          }
+          setIsRecording(false);
+          setIsTranscribing(false);
+          setInput(transcription);
+        });
+
+        instance.on("stt:error", ({ error }) => {
+          if (disposed) {
+            return;
+          }
+          setIsRecording(false);
+          setIsTranscribing(false);
+          setSttError(error.message);
+        });
+
+        clearMessages();
+        setRealtimeError(null);
+        setCharivo(instance);
       } catch (error) {
-        console.error("Failed to update STT transcriber:", error);
+        if (!disposed) {
+          console.error("Failed to initialize chat session:", error);
+        }
+        await teardown();
       }
     };
 
-    updateSTTTranscriber().catch((error: unknown) => {
-      console.error("Failed to update STT transcriber:", error);
-    });
-  }, [charivo, selectedSTTTranscriber, createSTTTranscriber]);
+    void initialize();
+
+    return () => {
+      disposed = true;
+      clearMessages();
+      void teardown();
+    };
+  }, [
+    addMessage,
+    canvas,
+    character,
+    clearMessages,
+    createLLMClient,
+    createSTTTranscriber,
+    createTTSPlayer,
+    getLive2DModelPath,
+    selectedLLMClient,
+    selectedSTTTranscriber,
+    selectedTTSPlayer,
+    setCharivo,
+    setInput,
+    setIsConnected,
+    setIsConnecting,
+    setIsLoading,
+    setIsRecording,
+    setIsRealtimeMode,
+    setIsSpeaking,
+    setIsTranscribing,
+    setLlmError,
+    setRealtimeError,
+    setSttError,
+  ]);
 
   const handleSend = useCallback(async () => {
-    if (!charivo || !input.trim()) return;
+    if (!charivo || !input.trim()) {
+      return;
+    }
 
     const userMessage = input;
     setInput("");
@@ -422,11 +455,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     try {
       await charivo.userSay(userMessage);
     } catch (error) {
-      console.error("Failed to send message:", error);
+      setLlmError(
+        error instanceof Error ? error.message : "Failed to send message",
+      );
     } finally {
       setIsLoading(false);
     }
-  }, [charivo, input, setInput, setIsLoading]);
+  }, [charivo, input, setInput, setIsLoading, setLlmError]);
 
   const handleKeyPress = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
@@ -443,34 +478,30 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         }
       }
     },
-    [handleSend, isRealtimeMode, charivo, input, setInput],
+    [charivo, handleSend, input, isRealtimeMode, setInput],
   );
 
   const playExpression = useCallback((expressionId: string) => {
-    if (rendererRef.current) {
-      rendererRef.current.playExpression(expressionId);
-    }
+    rendererRef.current?.playExpression(expressionId);
   }, []);
 
   const playMotion = useCallback((group: string, index: number) => {
-    if (rendererRef.current) {
-      rendererRef.current.playMotionByGroup(group, index);
-    }
+    rendererRef.current?.playMotionByGroup(group, index);
   }, []);
 
   const getAvailableExpressions = useCallback((): string[] => {
-    if (!rendererRef.current) return [];
-    return rendererRef.current.getAvailableExpressions();
+    return rendererRef.current?.getAvailableExpressions() ?? [];
   }, []);
 
   const getAvailableMotionGroups = useCallback((): Record<string, number> => {
-    if (!rendererRef.current) return {};
-    return rendererRef.current.getAvailableMotionGroups();
+    return rendererRef.current?.getAvailableMotionGroups() ?? {};
   }, []);
 
   const handleStartRecording = useCallback(async () => {
     if (!sttManagerRef.current) {
-      setSttError("STT is not initialized. Please provide an OpenAI API key.");
+      setSttError(
+        "STT is not initialized. Use the remote/browser path or provide a direct-testing API key.",
+      );
       return;
     }
 
@@ -478,27 +509,27 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setSttError(null);
       await sttManagerRef.current.start();
     } catch (error) {
-      console.error("Failed to start recording:", error);
       setSttError(error instanceof Error ? error.message : "Recording failed");
       setIsRecording(false);
     }
-  }, [setSttError, setIsRecording]);
+  }, [setIsRecording, setSttError]);
 
   const handleStopRecording = useCallback(async () => {
-    if (!sttManagerRef.current || !isRecording) return;
+    if (!sttManagerRef.current || !isRecording) {
+      return;
+    }
 
     try {
       setIsTranscribing(true);
       await sttManagerRef.current.stop();
     } catch (error) {
-      console.error("Failed to stop recording:", error);
       setSttError(
         error instanceof Error ? error.message : "Transcription failed",
       );
       setIsRecording(false);
       setIsTranscribing(false);
     }
-  }, [isRecording, setIsTranscribing, setSttError, setIsRecording]);
+  }, [isRecording, setIsRecording, setIsTranscribing, setSttError]);
 
   return {
     handleSend,

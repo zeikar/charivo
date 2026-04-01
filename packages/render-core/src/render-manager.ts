@@ -4,6 +4,7 @@ import {
   Character,
   RenderManager as IRenderManager,
   Emotion,
+  CharivoEventBus,
 } from "@charivo/core";
 import { RealTimeLipSync } from "./lipsync";
 import {
@@ -49,32 +50,23 @@ export class RenderManager implements IRenderManager {
   /**
    * 이벤트 버스 연결
    */
-  setEventBus(eventBus: {
-    on: (event: string, callback: (...args: any[]) => void) => void;
-    emit: (event: string, data: any) => void;
-  }): void {
+  setEventBus(eventBus: CharivoEventBus): void {
     // TTS audio events
-    eventBus.on(
-      "tts:audio:start",
-      (data: { audioElement?: HTMLAudioElement; characterId?: string }) => {
-        this.startRealtimeLipSync(data.audioElement);
-      },
-    );
+    eventBus.on("tts:audio:start", (data) => {
+      this.startRealtimeLipSync(data.audioElement);
+    });
 
     eventBus.on("tts:audio:end", () => {
       this.stopRealtimeLipSync();
     });
 
-    eventBus.on(
-      "tts:lipsync:update",
-      (data: { rms: number; characterId?: string }) => {
-        this.updateLipSync(data.rms);
-      },
-    );
+    eventBus.on("tts:lipsync:update", (data) => {
+      this.updateLipSync(data.rms);
+    });
 
     // Realtime emotion events
-    eventBus.on("realtime:emotion", (data: { emotion: string }) => {
-      this.handleRealtimeEmotion(data.emotion as Emotion);
+    eventBus.on("realtime:emotion", (data) => {
+      this.handleRealtimeEmotion(data.emotion);
     });
   }
 
@@ -117,8 +109,10 @@ export class RenderManager implements IRenderManager {
     renderer: Renderer,
   ): renderer is Renderer & MouseTrackable {
     return (
-      typeof (renderer as any).updateViewWithMouse === "function" &&
-      typeof (renderer as any).handleMouseTap === "function"
+      "updateViewWithMouse" in renderer &&
+      typeof renderer.updateViewWithMouse === "function" &&
+      "handleMouseTap" in renderer &&
+      typeof renderer.handleMouseTap === "function"
     );
   }
 
@@ -230,18 +224,32 @@ export class RenderManager implements IRenderManager {
     }
 
     // Play expression if available
-    if (mapping.expression && "playExpression" in this.renderer) {
-      (this.renderer as any).playExpression(mapping.expression);
+    if (mapping.expression && this.hasExpressionControl(this.renderer)) {
+      this.renderer.playExpression(mapping.expression);
     }
 
     // Play motion if available
-    if (mapping.motion && "playMotionByGroup" in this.renderer) {
+    if (mapping.motion && this.hasMotionControl(this.renderer)) {
       const { group, index = 0 } = mapping.motion;
-      (this.renderer as any).playMotionByGroup(group, index);
+      this.renderer.playMotionByGroup(group, index);
     }
+  }
 
-    console.log(
-      `🎨 [Animation] ${emotion} → ${mapping.expression || "none"} + ${mapping.motion?.group || "none"}`,
+  private hasExpressionControl(
+    renderer: Renderer,
+  ): renderer is Renderer & { playExpression(expressionId: string): void } {
+    return (
+      "playExpression" in renderer &&
+      typeof renderer.playExpression === "function"
+    );
+  }
+
+  private hasMotionControl(renderer: Renderer): renderer is Renderer & {
+    playMotionByGroup(group: string, index: number): void;
+  } {
+    return (
+      "playMotionByGroup" in renderer &&
+      typeof renderer.playMotionByGroup === "function"
     );
   }
 }

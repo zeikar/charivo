@@ -105,8 +105,6 @@ export function parseEmotion(text: string): ParsedEmotion {
 
     if (emotion) {
       detectedEmotion = emotion;
-    } else {
-      console.warn(`⚠️ [Emotion] Unknown keyword: [${match[1]}]`);
     }
 
     // Remove the tag from text
@@ -115,10 +113,6 @@ export function parseEmotion(text: string): ParsedEmotion {
 
   // Clean up extra spaces
   cleanedText = cleanedText.replace(/\s+/g, " ").trim();
-
-  if (detectedEmotion) {
-    console.log(`🎭 [Emotion] ${detectedEmotion} → "${cleanedText}"`);
-  }
 
   return {
     text: cleanedText,

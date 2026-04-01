@@ -18,8 +18,15 @@ export class RealTimeLipSync {
     this.onRmsUpdate = onRmsUpdate;
 
     try {
-      this.audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const audioContextConstructor =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!audioContextConstructor) {
+        throw new Error("AudioContext is not supported in this browser");
+      }
+
+      this.audioContext = new audioContextConstructor();
 
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;

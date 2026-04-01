@@ -32,12 +32,7 @@ export class Charivo {
    * Automatically connects the event bus and sets the current character if available.
    */
   attachRenderer(renderManager: RenderManager): void {
-    console.log(
-      "🎭 Charivo: Attaching render manager",
-      renderManager.constructor.name,
-    );
     this.renderManager = renderManager;
-
     this.connectRenderManagerEventBus(renderManager);
 
     // Set character if it was already configured
@@ -50,38 +45,7 @@ export class Charivo {
    * Connects the render manager to the event bus for bidirectional communication.
    */
   private connectRenderManagerEventBus(renderManager: RenderManager): void {
-    if (
-      "setEventBus" in renderManager &&
-      typeof renderManager.setEventBus === "function"
-    ) {
-      console.log(
-        "🔗 Charivo: ✅ Render manager supports event bus - connecting",
-      );
-      (renderManager as any).setEventBus({
-        on: (event: string, callback: (...args: any[]) => void) => {
-          console.log(
-            `🔗 Charivo: Render manager subscribing to event: ${event}`,
-          );
-          this.eventBus.on(event as any, callback as any);
-        },
-        emit: (event: string, data: any) => {
-          console.log(
-            `🔗 Charivo: Render manager emitting event: ${event}`,
-            data,
-          );
-          this.eventBus.emit(event as any, data);
-        },
-      });
-      console.log("🔗 Charivo: Event bus connection completed");
-    } else {
-      console.warn(
-        "⚠️ Charivo: Render manager doesn't support event bus connection",
-        {
-          hasSetEventBus: "setEventBus" in renderManager,
-          setEventBusType: typeof (renderManager as any).setEventBus,
-        },
-      );
-    }
+    renderManager.setEventBus(this.eventBus);
   }
 
   /**
@@ -102,9 +66,7 @@ export class Charivo {
    * Automatically connects the event emitter for audio events.
    */
   attachTTS(manager: TTSManager): void {
-    console.log("🔊 Charivo: Attaching TTS manager", manager.constructor.name);
     this.ttsManager = manager;
-
     this.connectTTSManagerEventEmitter(manager);
   }
 
@@ -112,7 +74,6 @@ export class Charivo {
    * Detach the TTS manager to disable voice synthesis.
    */
   detachTTS(): void {
-    console.log("🔇 Charivo: Detaching TTS manager");
     this.ttsManager = undefined;
   }
 
@@ -121,9 +82,7 @@ export class Charivo {
    * Automatically connects the event emitter for STT events.
    */
   attachSTT(manager: STTManager): void {
-    console.log("🎤 Charivo: Attaching STT manager", manager.constructor.name);
     this.sttManager = manager;
-
     this.connectSTTManagerEventEmitter(manager);
   }
 
@@ -131,7 +90,6 @@ export class Charivo {
    * Detach the STT manager to disable speech recognition.
    */
   detachSTT(): void {
-    console.log("🔇 Charivo: Detaching STT manager");
     this.sttManager = undefined;
   }
 
@@ -140,21 +98,7 @@ export class Charivo {
    */
   private connectTTSManagerEventEmitter(manager: TTSManager): void {
     if (manager.setEventEmitter) {
-      console.log(
-        "🔗 Charivo: ✅ TTS manager supports event emitter - connecting",
-      );
-      manager.setEventEmitter({
-        emit: (event: string, data: any) => {
-          console.log(`🎵 Charivo: ✅ TTS EMITTING EVENT: ${event}`, data);
-          this.eventBus.emit(event as any, data);
-          console.log(`🎵 Charivo: ✅ Event ${event} emitted to event bus`);
-        },
-      });
-      console.log("🔗 Charivo: TTS Manager connection completed");
-    } else {
-      console.warn("⚠️ Charivo: TTS manager doesn't support event emitter", {
-        managerType: manager.constructor.name,
-      });
+      manager.setEventEmitter(this.eventBus);
     }
   }
 
@@ -163,21 +107,7 @@ export class Charivo {
    */
   private connectSTTManagerEventEmitter(manager: STTManager): void {
     if (manager.setEventEmitter) {
-      console.log(
-        "🔗 Charivo: ✅ STT manager supports event emitter - connecting",
-      );
-      manager.setEventEmitter({
-        emit: (event: string, data: any) => {
-          console.log(`🎤 Charivo: ✅ STT EMITTING EVENT: ${event}`, data);
-          this.eventBus.emit(event as any, data);
-          console.log(`🎤 Charivo: ✅ Event ${event} emitted to event bus`);
-        },
-      });
-      console.log("🔗 Charivo: STT Manager connection completed");
-    } else {
-      console.warn("⚠️ Charivo: STT manager doesn't support event emitter", {
-        managerType: manager.constructor.name,
-      });
+      manager.setEventEmitter(this.eventBus);
     }
   }
 
@@ -303,13 +233,8 @@ export class Charivo {
    * Automatically connects the event emitter and enables Realtime mode.
    */
   attachRealtime(manager: import("./types").RealtimeManager): void {
-    console.log(
-      "🌐 Charivo: Attaching Realtime manager",
-      manager.constructor.name,
-    );
     this.realtimeManager = manager;
     this.isRealtimeMode = true;
-
     this.connectRealtimeManagerEventEmitter(manager);
   }
 
@@ -317,7 +242,6 @@ export class Charivo {
    * Detach the Realtime manager and disable Realtime mode.
    */
   detachRealtime(): void {
-    console.log("🔌 Charivo: Detaching Realtime manager");
     this.realtimeManager = undefined;
     this.isRealtimeMode = false;
   }
@@ -336,32 +260,7 @@ export class Charivo {
     manager: import("./types").RealtimeManager,
   ): void {
     if (manager.setEventEmitter) {
-      console.log(
-        "🔗 Charivo: ✅ Realtime manager supports event emitter - connecting",
-      );
-      manager.setEventEmitter({
-        emit: (event: string, data: any) => {
-          // Skip logging for high-frequency lipsync events
-          if (event !== "tts:lipsync:update") {
-            console.log(
-              `🌐 Charivo: ✅ Realtime EMITTING EVENT: ${event}`,
-              data,
-            );
-          }
-          this.eventBus.emit(event as any, data);
-          if (event !== "tts:lipsync:update") {
-            console.log(`🌐 Charivo: ✅ Event ${event} emitted to event bus`);
-          }
-        },
-      });
-      console.log("🔗 Charivo: Realtime Manager connection completed");
-    } else {
-      console.warn(
-        "⚠️ Charivo: Realtime manager doesn't support event emitter",
-        {
-          managerType: manager.constructor.name,
-        },
-      );
+      manager.setEventEmitter(this.eventBus);
     }
   }
 
@@ -380,6 +279,16 @@ export class Charivo {
     listener: (data: import("./types").EventMap[K]) => void,
   ): void {
     this.eventBus.on(event, listener);
+  }
+
+  /**
+   * Unsubscribe from events from the event bus.
+   */
+  off<K extends keyof import("./types").EventMap>(
+    event: K,
+    listener: (data: import("./types").EventMap[K]) => void,
+  ): void {
+    this.eventBus.off(event, listener);
   }
 
   /**

@@ -42,25 +42,25 @@ const LLM_OPTIONS: Option<LLMClientType>[] = [
   {
     label: "Remote API",
     value: "remote",
-    description: "Calls server LLM API (secure, recommended)",
+    description: "Calls a server LLM route. Secure, production-ready default.",
     Icon: GlobeAltIcon,
   },
   {
-    label: "OpenAI Direct",
+    label: "OpenAI Direct (Dev)",
     value: "openai",
-    description: "Direct OpenAI API (test only, requires API key)",
+    description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
   },
   {
-    label: "Remote OpenClaw API",
+    label: "OpenClaw Proxy",
     value: "openclaw-remote",
-    description: "OpenClaw via server proxy (no CORS, requires env vars)",
+    description: "OpenClaw through your server route. Safer than direct mode.",
     Icon: CpuChipIcon,
   },
   {
-    label: "OpenClaw Direct",
+    label: "OpenClaw Direct (Dev)",
     value: "openclaw",
-    description: "Direct browser→OpenClaw connection (CORS issues expected)",
+    description: "Development/testing only. Browser CORS issues are common.",
     Icon: CpuChipIcon,
     corsWarning: true,
   },
@@ -76,7 +76,7 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
   {
     label: "Remote API",
     value: "remote",
-    description: "Calls server TTS API (secure)",
+    description: "Calls a server TTS route. Secure, production-ready default.",
     Icon: GlobeAltIcon,
   },
   {
@@ -86,9 +86,9 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
     Icon: SpeakerWaveIcon,
   },
   {
-    label: "OpenAI Direct",
+    label: "OpenAI Direct (Dev)",
     value: "openai",
-    description: "Direct OpenAI API (test only)",
+    description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
   },
   {
@@ -103,7 +103,7 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
   {
     label: "Remote API",
     value: "remote",
-    description: "Calls server STT API (secure)",
+    description: "Calls a server STT route. Secure, production-ready default.",
     Icon: GlobeAltIcon,
   },
   {
@@ -113,9 +113,9 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     Icon: MicrophoneIcon,
   },
   {
-    label: "OpenAI Direct",
+    label: "OpenAI Direct (Dev)",
     value: "openai",
-    description: "Direct OpenAI API (test only)",
+    description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
   },
   {

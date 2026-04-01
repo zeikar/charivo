@@ -75,7 +75,6 @@ export class LAppModel extends CubismUserModel {
     modelPath: string,
     host: CubismModelHost,
   ): Promise<void> {
-    console.log(`🎯 LAppModel: Loading model from ${modelPath}`);
     this.host = host;
 
     const separator = modelPath.lastIndexOf("/") + 1;
@@ -472,16 +471,14 @@ export class LAppModel extends CubismUserModel {
 
   private setupLipSyncIds(setting: ICubismModelSetting): void {
     const count = setting.getLipSyncParameterCount();
-    console.log(`🎯 LAppModel: Setting up ${count} lip sync parameters`);
 
     for (let i = 0; i < count; i++) {
       const paramId = setting.getLipSyncParameterId(i);
       this.lipSyncIds.pushBack(paramId);
-      console.log(`🎯 LAppModel: Lip sync parameter ${i}:`, paramId);
     }
 
     if (count === 0) {
-      console.warn(`⚠️ LAppModel: No lip sync parameters found in model!`);
+      console.warn("Live2D model has no lip sync parameters.");
     }
   }
 

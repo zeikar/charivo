@@ -3,12 +3,26 @@ import type {
   RealtimeSessionConfig,
 } from "@charivo/realtime-core";
 
-/**
- * OpenAI Realtime API 이벤트 타입
- */
+interface ServerError {
+  message?: string;
+}
+
+interface ServerEventItem {
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+}
+
 interface ServerEvent {
   type: string;
-  [key: string]: any;
+  delta?: string;
+  transcript?: string;
+  call_id?: string;
+  item_id?: string;
+  name?: string;
+  arguments?: string;
+  item?: ServerEventItem;
+  error?: ServerError;
 }
 
 interface ClientEventOptions {
@@ -44,7 +58,10 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   private audioDeltaCallback?: (base64Audio: string) => void;
   private lipSyncCallback?: (rms: number) => void; // Direct RMS callback
   private audioDoneCallback?: () => void;
-  private toolCallCallback?: (name: string, args: any) => void;
+  private toolCallCallback?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => void;
   private errorCallback?: (error: Error) => void;
 
   constructor(options: ClientEventOptions) {
@@ -55,7 +72,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   /**
    * Debug logging helper
    */
-  private log(...args: any[]): void {
+  private log(...args: unknown[]): void {
     if (this.debug) {
       console.log(...args);
     }
@@ -66,7 +83,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
    */
   async connect(config?: RealtimeSessionConfig): Promise<void> {
     try {
-      console.log("🔌 Starting WebRTC connection to Realtime API");
+      this.log("Starting WebRTC connection to Realtime API");
 
       // 1. Create RTCPeerConnection
       this.pc = new RTCPeerConnection();
@@ -76,7 +93,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       this.audioElement.autoplay = true;
 
       this.pc.ontrack = (e) => {
-        console.log("🎵 Received audio track from OpenAI");
+        this.log("Received audio track from OpenAI");
         if (this.audioElement) {
           this.audioElement.srcObject = e.streams[0];
         }
@@ -92,9 +109,8 @@ export class OpenAIRealtimeClient implements RealtimeClient {
         });
         const audioTrack = this.mediaStream.getTracks()[0];
         this.pc.addTrack(audioTrack, this.mediaStream);
-        console.log("🎤 Added microphone track");
-      } catch (error) {
-        console.error("❌ Failed to get microphone access:", error);
+        this.log("Added microphone track");
+      } catch {
         throw new Error("Microphone access required for Realtime API");
       }
 
@@ -102,24 +118,21 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       this.dc = this.pc.createDataChannel("oai-events");
 
       this.dc.onopen = () => {
-        console.log("📡 DataChannel opened");
+        this.log("DataChannel opened");
       };
 
       this.dc.onmessage = (e) => {
-        const event = JSON.parse(e.data);
+        const event = JSON.parse(e.data) as ServerEvent;
         this.handleServerEvent(event);
       };
 
-      this.dc.onerror = (error) => {
-        console.error("❌ DataChannel error:", error);
+      this.dc.onerror = () => {
         this.errorCallback?.(new Error("DataChannel error"));
       };
 
       // 5. Create SDP offer
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
-
-      console.log("📤 Sending SDP offer to server");
 
       // 6. Send SDP offer to server (unified interface)
       const sdpResponse = await fetch(this.apiEndpoint, {
@@ -145,10 +158,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
         sdp: sdpAnswer,
       };
       await this.pc.setRemoteDescription(answer);
-
-      console.log("✅ WebRTC connection established");
     } catch (error) {
-      console.error("❌ WebRTC connection error:", error);
       this.cleanup();
       throw error;
     }
@@ -158,7 +168,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
    * WebRTC 연결 종료
    */
   async disconnect(): Promise<void> {
-    console.log("🔌 Disconnecting WebRTC");
+    this.log("Disconnecting WebRTC");
     this.cleanup();
   }
 
@@ -199,8 +209,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
 
     this.dc.send(JSON.stringify(responseEvent));
     this.isResponseInProgress = true;
-
-    console.log("📤 Sent text message:", text);
+    this.log("Sent text message", text);
   }
 
   /**
@@ -235,7 +244,9 @@ export class OpenAIRealtimeClient implements RealtimeClient {
     this.audioDoneCallback = callback;
   }
 
-  onToolCall(callback: (name: string, args: any) => void): void {
+  onToolCall(
+    callback: (name: string, args: Record<string, unknown>) => void,
+  ): void {
     this.toolCallCallback = callback;
   }
 
@@ -295,7 +306,6 @@ export class OpenAIRealtimeClient implements RealtimeClient {
         break;
 
       case "error":
-        console.error("❌ Realtime API error:", event.error);
         this.errorCallback?.(
           new Error(event.error?.message || "Unknown error"),
         );
@@ -348,9 +358,12 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       return;
     }
 
-    let args: any = {};
+    let args: Record<string, unknown> = {};
     try {
-      args = JSON.parse(argsJson);
+      const parsed = JSON.parse(argsJson) as unknown;
+      if (isRecord(parsed)) {
+        args = parsed;
+      }
     } catch (e) {
       console.error("Failed to parse tool call args", e, argsJson);
       return;
@@ -368,7 +381,10 @@ export class OpenAIRealtimeClient implements RealtimeClient {
   /**
    * Send tool output back to OpenAI
    */
-  private sendToolOutput(callId: string, output: any): void {
+  private sendToolOutput(
+    callId: string,
+    output: Record<string, unknown>,
+  ): void {
     if (!this.dc || this.dc.readyState !== "open") {
       console.warn("⚠️ Cannot send tool output: DataChannel not ready");
       return;
@@ -400,9 +416,16 @@ export class OpenAIRealtimeClient implements RealtimeClient {
    */
   private setupAudioAnalysis(stream: MediaStream): void {
     try {
+      const audioContextConstructor =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!audioContextConstructor) {
+        throw new Error("AudioContext is not supported in this browser");
+      }
+
       // AudioContext 생성
-      this.audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      this.audioContext = new audioContextConstructor();
 
       // MediaStream → AudioContext
       const source = this.audioContext.createMediaStreamSource(stream);
@@ -415,7 +438,7 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       // Connect: source → analyser (not to destination, just analyze)
       source.connect(this.analyser);
 
-      console.log("🎵 Audio analysis setup complete for lip sync");
+      this.log("Audio analysis setup complete for lip sync");
 
       // Start analyzing audio for lip sync
       this.startLipSyncAnalysis();
@@ -516,4 +539,8 @@ export function createOpenAIRealtimeClient(
   options: ClientEventOptions,
 ): RealtimeClient {
   return new OpenAIRealtimeClient(options);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

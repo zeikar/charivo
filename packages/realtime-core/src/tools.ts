@@ -1,5 +1,8 @@
-import type { RealtimeSessionConfig, RealtimeTool } from "./types";
-import { Emotion } from "@charivo/core";
+import {
+  Emotion,
+  type RealtimeSessionConfig,
+  type RealtimeTool,
+} from "@charivo/core";
 
 /**
  * Get emotion enum values for tool definition

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     // FormData에서 audio 파일 읽기
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;
+    const language = formData.get("language");
 
     if (!audioFile) {
       return NextResponse.json(
@@ -33,7 +34,9 @@ export async function POST(request: NextRequest) {
     });
 
     // STT 변환
-    const transcription = await sttProvider.transcribe(audioBlob);
+    const transcription = await sttProvider.transcribe(audioBlob, {
+      language: typeof language === "string" ? language : undefined,
+    });
 
     return NextResponse.json({ transcription });
   } catch (error) {

@@ -1,13 +1,14 @@
 /**
  * TTS Player Type Detection Utilities
  */
+import type { TTSOptions, TTSPlayer } from "@charivo/core";
 
 export type TTSPlayerType = "web" | "openai" | "remote" | "unknown";
 
 /**
  * TTS Player 타입을 클래스명으로부터 감지
  */
-export function detectTTSPlayerType(player: any): TTSPlayerType {
+export function detectTTSPlayerType(player: TTSPlayer): TTSPlayerType {
   const playerName = player.constructor.name.toLowerCase();
 
   if (playerName.includes("web")) return "web";
@@ -34,6 +35,10 @@ export function getMimeTypeForPlayer(playerType: TTSPlayerType): string {
 /**
  * TTS Player가 generateAudio 메서드를 지원하는지 확인
  */
-export function supportsGenerateAudio(player: any): boolean {
+export function supportsGenerateAudio(
+  player: TTSPlayer,
+): player is TTSPlayer & {
+  generateAudio(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
+} {
   return typeof player.generateAudio === "function";
 }

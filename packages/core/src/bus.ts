@@ -1,40 +1,44 @@
-import { EventMap } from "./types";
+import { CharivoEventBus, EventMap } from "./types";
 
-export class EventBus {
-  private listeners: Map<keyof EventMap, Array<(data: any) => void>> =
-    new Map();
+type ListenerStore = {
+  [K in keyof EventMap]?: Array<(data: EventMap[K]) => void>;
+};
+
+export class EventBus implements CharivoEventBus {
+  private listeners: ListenerStore = {};
 
   on<K extends keyof EventMap>(
     event: K,
     listener: (data: EventMap[K]) => void,
   ): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, []);
-    }
-    this.listeners.get(event)!.push(listener);
+    this.listeners[event] ??= [];
+    this.listeners[event]!.push(listener);
   }
 
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
-    const eventListeners = this.listeners.get(event);
-    if (eventListeners) {
-      eventListeners.forEach((listener) => listener(data));
-    }
+    this.listeners[event]?.forEach((listener) => listener(data));
   }
 
   off<K extends keyof EventMap>(
     event: K,
     listener: (data: EventMap[K]) => void,
   ): void {
-    const eventListeners = this.listeners.get(event);
-    if (eventListeners) {
-      const index = eventListeners.indexOf(listener);
-      if (index > -1) {
-        eventListeners.splice(index, 1);
-      }
+    const eventListeners = this.listeners[event];
+    if (!eventListeners) {
+      return;
+    }
+
+    const index = eventListeners.indexOf(listener);
+    if (index > -1) {
+      eventListeners.splice(index, 1);
+    }
+
+    if (eventListeners.length === 0) {
+      delete this.listeners[event];
     }
   }
 
   clear(): void {
-    this.listeners.clear();
+    this.listeners = {};
   }
 }

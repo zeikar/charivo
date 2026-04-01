@@ -96,9 +96,10 @@ export class LAppWavFileHandler {
   private ensureContext(): void {
     if (this.audioContext) return;
 
-    const ctor = (window.AudioContext || (window as any).webkitAudioContext) as
-      | typeof AudioContext
-      | undefined;
+    const ctor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!ctor) return;
 
     this.audioContext = new ctor();

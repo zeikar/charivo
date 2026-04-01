@@ -29,7 +29,7 @@ export class LAppPal {
   }
 
   public static printMessage(message: string): void {
-    console.log(message);
+    void message;
   }
 
   static lastUpdate = Date.now();

@@ -1,4 +1,9 @@
-import { STTTranscriber, STTOptions, STTManager } from "@charivo/core";
+import {
+  CharivoEventEmitter,
+  STTTranscriber,
+  STTOptions,
+  STTManager,
+} from "@charivo/core";
 
 /**
  * STT Manager - Manages STT session state
@@ -10,7 +15,7 @@ import { STTTranscriber, STTOptions, STTManager } from "@charivo/core";
  */
 export class STTManagerImpl implements STTManager {
   private sttTranscriber: STTTranscriber;
-  private eventEmitter?: { emit: (event: string, data: any) => void };
+  private eventEmitter?: CharivoEventEmitter;
 
   constructor(sttTranscriber: STTTranscriber) {
     this.sttTranscriber = sttTranscriber;
@@ -19,10 +24,7 @@ export class STTManagerImpl implements STTManager {
   /**
    * Set event emitter for STT events
    */
-  setEventEmitter(eventEmitter: {
-    emit: (event: string, data: any) => void;
-  }): void {
-    console.log("🔗 STT Manager: Event emitter connected");
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void {
     this.eventEmitter = eventEmitter;
   }
 
@@ -30,14 +32,11 @@ export class STTManagerImpl implements STTManager {
    * Start audio recording (delegates to transcriber)
    */
   async start(options?: STTOptions): Promise<void> {
-    console.log("🎤 STT Manager: Starting recording", options);
     this.eventEmitter?.emit("stt:start", { options });
 
     try {
       await this.sttTranscriber.startRecording(options);
-      console.log("✅ STT Manager: Recording started");
     } catch (error) {
-      console.error("❌ STT Manager: Recording failed", error);
       this.eventEmitter?.emit("stt:error", { error: error as Error });
       throw error;
     }
@@ -47,15 +46,11 @@ export class STTManagerImpl implements STTManager {
    * Stop audio recording and get transcription (delegates to transcriber)
    */
   async stop(): Promise<string> {
-    console.log("🛑 STT Manager: Stopping recording");
-
     try {
       const transcription = await this.sttTranscriber.stopRecording();
-      console.log("✅ STT Manager: Transcription completed", transcription);
       this.eventEmitter?.emit("stt:stop", { transcription });
       return transcription;
     } catch (error) {
-      console.error("❌ STT Manager: Transcription failed", error);
       this.eventEmitter?.emit("stt:error", { error: error as Error });
       throw error;
     }

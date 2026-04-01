@@ -1,3 +1,5 @@
+import type { CharivoEventEmitter } from "@charivo/core";
+
 /**
  * Web Speech Lip Sync Simulator
  *
@@ -6,9 +8,9 @@
  */
 export class WebSpeechLipSyncSimulator {
   private intervals: number[] = [];
-  private eventEmitter?: { emit: (event: string, data: any) => void };
+  private eventEmitter?: CharivoEventEmitter;
 
-  constructor(eventEmitter?: { emit: (event: string, data: any) => void }) {
+  constructor(eventEmitter?: CharivoEventEmitter) {
     this.eventEmitter = eventEmitter;
   }
 

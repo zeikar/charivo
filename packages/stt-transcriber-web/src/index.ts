@@ -1,5 +1,20 @@
 import { STTTranscriber, STTOptions } from "@charivo/core";
 
+type SpeechRecognitionHandler<TEvent extends Event> = (
+  this: SpeechRecognition,
+  ev: TEvent,
+) => void;
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition;
+}
+
+type SpeechRecognitionWindow = Window &
+  typeof globalThis & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+
 // Web Speech API type definitions
 interface SpeechRecognitionEvent extends Event {
   readonly resultIndex: number;
@@ -35,14 +50,10 @@ interface SpeechRecognition extends EventTarget {
   lang: string;
   maxAlternatives: number;
 
-  onresult:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any)
-    | null;
-  onerror:
-    | ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any)
-    | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
+  onresult: SpeechRecognitionHandler<SpeechRecognitionEvent> | null;
+  onerror: SpeechRecognitionHandler<SpeechRecognitionErrorEvent> | null;
+  onend: SpeechRecognitionHandler<Event> | null;
+  onstart: SpeechRecognitionHandler<Event> | null;
 
   start(): void;
   stop(): void;
@@ -75,9 +86,7 @@ export class WebSTTTranscriber implements STTTranscriber {
 
   constructor() {
     // Check browser support
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionAPI = getSpeechRecognitionConstructor();
 
     this.isSupported = !!SpeechRecognitionAPI;
 
@@ -102,9 +111,10 @@ export class WebSTTTranscriber implements STTTranscriber {
       throw new Error("Already recording");
     }
 
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+    const SpeechRecognitionAPI = getSpeechRecognitionConstructor();
+    if (!SpeechRecognitionAPI) {
+      throw new Error("Web Speech API is not supported in this browser");
+    }
 
     this.recognition = new SpeechRecognitionAPI();
     this.recognition!.continuous = true; // Keep listening until stop() is called
@@ -116,37 +126,20 @@ export class WebSTTTranscriber implements STTTranscriber {
 
     return new Promise((resolve, reject) => {
       this.recognition!.onstart = () => {
-        console.log("🎤 Web Speech API started (continuous mode)");
         this.recording = true;
         resolve();
       };
 
       this.recognition!.onresult = (event: SpeechRecognitionEvent) => {
-        let interimTranscript = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             this.finalTranscript += transcript + " ";
-            console.log("🎤 Final segment added:", transcript);
-          } else {
-            interimTranscript += transcript;
           }
-        }
-        if (interimTranscript) {
-          console.log(
-            "🎤 Interim:",
-            interimTranscript,
-            "| Total final:",
-            this.finalTranscript.trim(),
-          );
         }
       };
 
       this.recognition!.onend = () => {
-        console.log(
-          "🎤 Web Speech API ended. Final transcript:",
-          this.finalTranscript.trim(),
-        );
         this.recording = false;
         if (this.resolveTranscription) {
           this.resolveTranscription(this.finalTranscript.trim());
@@ -156,7 +149,6 @@ export class WebSTTTranscriber implements STTTranscriber {
       };
 
       this.recognition!.onerror = (event: SpeechRecognitionErrorEvent) => {
-        console.error("🎤 Web Speech API error:", event.error, event.message);
         this.recording = false;
         const error = new Error(
           `Speech recognition error: ${event.error}${event.message ? " - " + event.message : ""}`,
@@ -209,4 +201,11 @@ export class WebSTTTranscriber implements STTTranscriber {
 
 export function createWebSTTTranscriber(): WebSTTTranscriber {
   return new WebSTTTranscriber();
+}
+
+function getSpeechRecognitionConstructor():
+  | SpeechRecognitionConstructor
+  | undefined {
+  const speechWindow = window as SpeechRecognitionWindow;
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
 }
