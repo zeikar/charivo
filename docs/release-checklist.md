@@ -8,6 +8,15 @@ Run this from the repository root before publishing public packages.
 - `pnpm verify`
 - `pnpm pack:check`
 - `pnpm build:web` if the demo app changed
+- `pnpm changeset status` if package changes are expected to publish
+
+## Versioning
+
+- Add a changeset for any publishable package change that should reach npm.
+- Skip changesets for docs-only or demo-only changes that should not publish packages.
+- Use `minor` for public API or contract changes.
+- Use `patch` for fixes, packaging corrections, and non-breaking updates.
+- Confirm the generated changeset only includes the intended publishable packages.
 
 ## Docs
 

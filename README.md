@@ -158,6 +158,33 @@ pnpm pack:check
 - `pnpm verify` runs build, test, typecheck, lint, and format checks.
 - `pnpm pack:check` validates public package manifests and dry-run package contents.
 
+## Versioning And Release Flow
+
+Charivo uses Changesets for package versioning and npm publishing.
+
+When a change should result in a published package update:
+
+1. Add or update the code change.
+2. Run `pnpm changeset`.
+3. Select only the publishable packages that should be bumped.
+4. Choose the correct bump level: `patch`, `minor`, or `major`.
+5. Commit the generated `.changeset/*.md` file with the code change.
+6. Push to `main`.
+7. The release workflow opens a `chore: release packages` PR.
+8. Merge that release PR to publish the new versions to npm.
+
+Rules of thumb:
+
+- Add a changeset when public package behavior, package metadata, dependencies, or public types change.
+- Do not add a changeset for docs-only or demo-only changes that should not publish packages.
+- `minor` is appropriate for new public API surface or contract changes.
+- `patch` is appropriate for fixes, packaging corrections, and non-breaking behavior updates.
+
+Repository requirements for the automated release flow:
+
+- `NPM_TOKEN` must be configured in GitHub repository secrets.
+- GitHub Actions must be allowed to create pull requests.
+
 ## Release Checklist
 
 Release guidance lives in [`docs/release-checklist.md`](./docs/release-checklist.md).
