@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Core utilities and helpers for rendering functionality in Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
