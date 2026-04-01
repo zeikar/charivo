@@ -1,215 +1,92 @@
-# 🧩✨ Charivo Web Demo
+# Charivo Web Demo
 
-A complete Next.js application showcasing the Charivo framework with Live2D character integration, AI conversations, and flexible TTS support.
+This is the reference Next.js app for the Charivo workspace. It exercises the
+current architecture as it is actually shipped:
 
-## ✨ Features
+- Live2D rendering through `@charivo/render-live2d` and `@charivo/render-core`
+- LLM chat through remote, direct, OpenClaw proxy, and stub clients
+- TTS through remote, browser-native, and direct OpenAI players
+- STT through remote, browser-native, and direct OpenAI transcribers
+- OpenAI Realtime voice sessions through `/api/realtime`
 
-- 🎎 **Live2D Character**: Hiyori character with real-time animations
-- 🤖 **AI Conversations**: OpenAI GPT-powered responses
-- 🔊 **Flexible TTS**: Multiple TTS providers with easy switching
-- 💬 **Interactive Chat**: Real-time chat interface
-- 📱 **Responsive Design**: Works on desktop and mobile
+## Environment
 
-## 🚀 Getting Started
+Copy the example file and fill in the values you actually plan to use:
 
-### 1. Environment Setup
-
-Copy the environment template:
 ```bash
-cp .env.example .env.local
+cp examples/web/.env.example examples/web/.env.local
 ```
 
-Edit `.env.local` with your API keys:
 ```env
-# Required: OpenAI API key for chat and TTS
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Optional: TTS Provider selection
-TTS_PROVIDER=openai
+# Optional OpenClaw proxy settings
+OPENCLAW_TOKEN=your_openclaw_token_here
+OPENCLAW_BASE_URL=http://127.0.0.1:18789/v1
+OPENCLAW_AGENT_ID=main
 ```
 
-### 2. Install Dependencies
+## Run
+
+From the repository root:
 
 ```bash
 pnpm install
-```
-
-### 3. Build Required Packages
-
-```bash
-# From the root of the repository
 pnpm build
+pnpm --filter ./examples/web dev
 ```
 
-### 4. Run Development Server
+Then open `http://localhost:3000`.
 
-```bash
-pnpm dev
+## API Routes
+
+The demo ships these routes:
+
+- `POST /api/chat`
+  Uses `@charivo/llm-provider-openai` with model `gpt-4.1-nano`
+- `POST /api/chat-openclaw`
+  Uses `@charivo/llm-provider-openclaw`
+- `POST /api/tts`
+  Uses `@charivo/tts-provider-openai` with default voice `marin` and model `gpt-4o-mini-tts`
+- `POST /api/stt`
+  Uses `@charivo/stt-provider-openai` with model `whisper-1`
+  Accepts multipart form data with `audio` and optional `language`
+- `POST /api/realtime`
+  Proxies the OpenAI Realtime call flow and applies `getEmotionSessionConfig(...)`
+  defaults from `@charivo/realtime-core`
+
+There is no `GET /api/tts` route in the current demo.
+
+## Runtime Modes
+
+The settings menu intentionally mixes several implementation styles so you can
+compare the tradeoffs:
+
+- Remote API options are the production-ready defaults.
+- Browser-direct OpenAI and OpenClaw options expose credentials to the browser.
+  They are for local development and testing only.
+- Browser TTS/STT options use Web Speech APIs and depend on browser support.
+- The stub LLM mode is useful for UI work and deterministic demos.
+
+## Structure
+
+```text
+examples/web/src/app
+  api/
+    chat/route.ts
+    chat-openclaw/route.ts
+    realtime/route.ts
+    stt/route.ts
+    tts/route.ts
+  components/
+  hooks/
+  stores/
+  page.tsx
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the demo.
+The current lifecycle boundary is deliberate:
 
-## 🔧 Configuration
+- `useLive2D` owns canvas mount and unmount.
+- `useCharivoChat` owns Charivo setup, manager attachment, event subscription, and teardown.
 
-### TTS Provider Configuration
-
-The demo supports flexible TTS provider switching via environment variables:
-
-#### OpenAI TTS (Default)
-```env
-TTS_PROVIDER=openai
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-#### Adding Custom TTS Providers
-
-You can extend the TTS system by modifying `/app/api/tts/route.ts`:
-
-```typescript
-const ttsProviders = {
-  // ... existing providers
-  
-  async elevenlabs(text: string, options: any) {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${options.voice}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'Content-Type': 'application/json',
-        'xi-api-key': process.env.ELEVENLABS_API_KEY!
-      },
-      body: JSON.stringify({ text })
-    });
-    return await response.arrayBuffer();
-  }
-};
-```
-
-### TTS API Endpoints
-
-#### POST `/api/tts` - Generate Speech
-Generate speech from text using the configured TTS provider.
-
-**Request:**
-```json
-{
-  "text": "Hello world!",
-  "voice": "alloy",
-  "model": "tts-1-hd",
-  "speed": 1.0,
-  "format": "mp3",
-  "provider": "openai"
-}
-```
-
-**Response:** Audio data (binary)
-
-#### GET `/api/tts` - Provider Information
-Get information about available TTS providers and their configurations.
-
-**Response:**
-```json
-{
-  "currentProvider": "openai",
-  "availableProviders": ["openai"],
-  "providerInfo": {
-    "openai": {
-      "name": "OpenAI TTS",
-      "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-      "models": ["tts-1", "tts-1-hd"],
-      "formats": ["mp3", "opus", "aac", "flac"]
-    }
-  }
-}
-```
-
-## 🏗️ Architecture
-
-```
-Frontend (React/Next.js)
-├── @charivo/core                 # Core framework
-├── @charivo/adapter-llm-openai   # LLM integration  
-├── @charivo/adapter-tts-remote   # Client-side TTS adapter
-├── @charivo/render-live2d        # Live2D rendering
-└── Backend API Routes
-    ├── /api/chat                 # OpenAI GPT chat
-    └── /api/tts                  # Flexible TTS providers
-        └── @charivo/adapter-tts-openai  # Server-side TTS
-```
-
-## 🎮 Usage Examples
-
-### Basic Chat
-1. Type a message in the chat input
-2. Hiyori will respond with AI-generated text
-3. Response is automatically converted to speech
-4. Live2D character animations react to interactions
-
-### Voice Customization
-The demo supports different OpenAI voices:
-- **Alloy**: Neutral, balanced
-- **Echo**: Clear, expressive  
-- **Fable**: Warm, engaging
-- **Onyx**: Deep, authoritative
-- **Nova**: Bright, energetic
-- **Shimmer**: Gentle, soothing
-
-## 📁 Project Structure
-
-```
-src/
-├── app/
-│   ├── api/
-│   │   ├── chat/route.ts         # LLM chat endpoint
-│   │   └── tts/route.ts          # TTS generation endpoint
-│   ├── globals.css
-│   ├── layout.tsx
-│   ├── page.tsx                  # Main demo page
-│   └── manifest.json
-├── live2d/                       # Live2D model assets
-└── public/
-```
-
-## 🔧 Development
-
-### Adding New TTS Providers
-
-1. **Add provider configuration** in `/app/api/tts/route.ts`
-2. **Implement provider function** in `ttsProviders` object
-3. **Add environment variables** in `.env.example`
-4. **Update provider info** in GET endpoint
-
-### Customizing the Character
-
-- **Model**: Replace Live2D model in `/public/live2d/`
-- **Personality**: Modify character definition in `page.tsx`
-- **Voice**: Change default voice settings
-
-## 🚀 Deployment
-
-### Vercel (Recommended)
-
-1. Connect your repository to Vercel
-2. Add environment variables in Vercel dashboard
-3. Deploy automatically on git push
-
-### Environment Variables for Production
-
-```env
-OPENAI_API_KEY=your_production_api_key
-TTS_PROVIDER=openai
-```
-
-## 📚 Learn More
-
-- [Charivo Documentation](../../README.md)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Live2D Documentation](https://docs.live2d.com/)
-- [OpenAI API Documentation](https://platform.openai.com/docs)
-
-## 🤝 Contributing
-
-This is part of the Charivo framework. See the main repository for contribution guidelines.
-
----
-
-Built with ❤️ using Charivo Framework
+That split keeps renderer lifecycle separate from conversation/session lifecycle.
