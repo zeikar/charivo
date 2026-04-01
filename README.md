@@ -6,6 +6,8 @@ server-side providers so you can swap pieces without rewriting the whole stack.
 
 Live demo: https://charivo.vercel.app/
 
+![Charivo Demo](./docs/images/screenshot.png)
+
 ## Architecture
 
 Charivo follows one rule consistently:
