@@ -38,6 +38,15 @@ export default defineConfig({
       "@charivo/llm-client-openclaw": resolvePackage(
         "packages/llm-client-openclaw/src/index.ts",
       ),
+      "@charivo/realtime-client-openai": resolvePackage(
+        "packages/realtime-client-openai/src/index.ts",
+      ),
+      "@charivo/realtime-core": resolvePackage(
+        "packages/realtime-core/src/index.ts",
+      ),
+      "@charivo/render-core": resolvePackage(
+        "packages/render-core/src/index.ts",
+      ),
       "@charivo/render-live2d": resolvePackage(
         "packages/render-live2d/src/index.ts",
       ),
@@ -45,6 +54,20 @@ export default defineConfig({
         "packages/render-stub/src/index.ts",
       ),
       "@charivo/shared": resolvePackage("packages/shared/src/index.ts"),
+      "@charivo/stt-core": resolvePackage("packages/stt-core/src/index.ts"),
+      "@charivo/stt-provider-openai": resolvePackage(
+        "packages/stt-provider-openai/src/index.ts",
+      ),
+      "@charivo/stt-transcriber-openai": resolvePackage(
+        "packages/stt-transcriber-openai/src/index.ts",
+      ),
+      "@charivo/stt-transcriber-remote": resolvePackage(
+        "packages/stt-transcriber-remote/src/index.ts",
+      ),
+      "@charivo/stt-transcriber-web": resolvePackage(
+        "packages/stt-transcriber-web/src/index.ts",
+      ),
+      "@charivo/tts-core": resolvePackage("packages/tts-core/src/index.ts"),
       "@charivo/tts-player-openai": resolvePackage(
         "packages/tts-player-openai/src/index.ts",
       ),

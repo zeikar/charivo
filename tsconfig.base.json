@@ -3,6 +3,51 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@charivo/core": ["packages/core/src/index.ts"],
+      "@charivo/llm-client-openai": ["packages/llm-client-openai/src/index.ts"],
+      "@charivo/llm-client-openclaw": [
+        "packages/llm-client-openclaw/src/index.ts"
+      ],
+      "@charivo/llm-client-remote": ["packages/llm-client-remote/src/index.ts"],
+      "@charivo/llm-client-stub": ["packages/llm-client-stub/src/index.ts"],
+      "@charivo/llm-core": ["packages/llm-core/src/index.ts"],
+      "@charivo/llm-provider-openai": [
+        "packages/llm-provider-openai/src/index.ts"
+      ],
+      "@charivo/llm-provider-openclaw": [
+        "packages/llm-provider-openclaw/src/index.ts"
+      ],
+      "@charivo/realtime-client-openai": [
+        "packages/realtime-client-openai/src/index.ts"
+      ],
+      "@charivo/realtime-core": ["packages/realtime-core/src/index.ts"],
+      "@charivo/render-core": ["packages/render-core/src/index.ts"],
+      "@charivo/render-live2d": ["packages/render-live2d/src/index.ts"],
+      "@charivo/render-stub": ["packages/render-stub/src/index.ts"],
+      "@charivo/shared": ["packages/shared/src/index.ts"],
+      "@charivo/stt-core": ["packages/stt-core/src/index.ts"],
+      "@charivo/stt-provider-openai": [
+        "packages/stt-provider-openai/src/index.ts"
+      ],
+      "@charivo/stt-transcriber-openai": [
+        "packages/stt-transcriber-openai/src/index.ts"
+      ],
+      "@charivo/stt-transcriber-remote": [
+        "packages/stt-transcriber-remote/src/index.ts"
+      ],
+      "@charivo/stt-transcriber-web": [
+        "packages/stt-transcriber-web/src/index.ts"
+      ],
+      "@charivo/tts-core": ["packages/tts-core/src/index.ts"],
+      "@charivo/tts-player-openai": ["packages/tts-player-openai/src/index.ts"],
+      "@charivo/tts-player-remote": ["packages/tts-player-remote/src/index.ts"],
+      "@charivo/tts-player-web": ["packages/tts-player-web/src/index.ts"],
+      "@charivo/tts-provider-openai": [
+        "packages/tts-provider-openai/src/index.ts"
+      ]
+    },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

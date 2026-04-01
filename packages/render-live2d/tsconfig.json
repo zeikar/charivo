@@ -2,7 +2,6 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": ".",
     "baseUrl": ".",
     "paths": {
       "@framework/*": ["CubismSdkForWeb-5-r.4/Framework/src/*"]

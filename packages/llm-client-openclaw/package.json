@@ -3,15 +3,23 @@
   "version": "0.0.1",
   "description": "OpenClaw LLM client for Charivo (local/testing)",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
-    "@charivo/llm-core": "workspace:*",
     "@charivo/llm-provider-openclaw": "workspace:*"
   },
   "devDependencies": {

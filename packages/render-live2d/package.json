@@ -4,11 +4,13 @@
   "description": "Live2D rendering engine for Charivo",
   "type": "module",
   "main": "dist/renderer.js",
-  "types": "dist/renderer.d.ts",
+  "module": "dist/renderer.js",
+  "types": "dist/src/renderer.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/renderer.d.ts",
-      "import": "./dist/renderer.js"
+      "types": "./dist/src/renderer.d.ts",
+      "import": "./dist/renderer.js",
+      "default": "./dist/renderer.js"
     }
   },
   "files": [

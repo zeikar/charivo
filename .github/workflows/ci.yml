@@ -28,19 +28,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm build
+      - name: Run Repo Verification
+        run: pnpm verify
 
-      - name: Run tests
-        run: pnpm test
-
-      - name: Run type checking
-        run: pnpm typecheck
-
-      # Note: Lint and format checks are now handled by pre-commit hooks locally
-      # Uncomment the following lines if you still want CI validation as backup:
-      # - name: Run linting
-      #   run: pnpm lint
-      #
-      # - name: Check formatting
-      #   run: pnpm format:check
+      - name: Validate Package Manifests
+        run: pnpm pack:check

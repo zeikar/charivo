@@ -13,12 +13,12 @@ if (typeof globalAny.setImmediate === "undefined") {
   globalAny.setImmediate = ((
     fn: (...args: unknown[]) => void,
     ...args: unknown[]
-  ) => globalThis.setTimeout(fn, 0, ...args)) as any;
+  ) => globalThis.setTimeout(fn, 0, ...args)) as unknown as typeof setImmediate;
 }
 
 if (typeof globalAny.clearImmediate === "undefined") {
   globalAny.clearImmediate = ((id: number) =>
-    globalThis.clearTimeout(id)) as any;
+    globalThis.clearTimeout(id)) as unknown as typeof clearImmediate;
 }
 
 if (typeof globalAny.Audio === "undefined") {

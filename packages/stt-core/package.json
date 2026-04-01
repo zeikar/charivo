@@ -16,6 +16,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "keywords": [

@@ -186,9 +186,6 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
-      '@charivo/llm-core':
-        specifier: workspace:*
-        version: link:../llm-core
       '@charivo/llm-provider-openai':
         specifier: workspace:*
         version: link:../llm-provider-openai
@@ -205,9 +202,6 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
-      '@charivo/llm-core':
-        specifier: workspace:*
-        version: link:../llm-core
       '@charivo/llm-provider-openclaw':
         specifier: workspace:*
         version: link:../llm-provider-openclaw
@@ -224,12 +218,6 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
-      '@charivo/llm-core':
-        specifier: workspace:*
-        version: link:../llm-core
-      openai:
-        specifier: ^4.28.4
-        version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
         specifier: ^8.0.2
