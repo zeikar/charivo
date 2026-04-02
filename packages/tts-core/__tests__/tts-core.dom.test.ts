@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTTSManager } from "../src";
+import { createTTSManager, WebSpeechLipSyncSimulator } from "../src";
 
 class MockAudio {
   static instances: MockAudio[] = [];
@@ -104,5 +104,45 @@ describe("TTSManagerImpl", () => {
       audioElement: expect.any(HTMLAudioElement),
     });
     expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+  });
+});
+
+describe("WebSpeechLipSyncSimulator", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("emits lip sync updates while simulating speech", () => {
+    const emitter = { emit: vi.fn() };
+    const simulator = new WebSpeechLipSyncSimulator(emitter);
+
+    simulator.startSimulation("hello ai", 1);
+    vi.runAllTimers();
+
+    expect(emitter.emit).toHaveBeenCalled();
+    expect(
+      emitter.emit.mock.calls.some(
+        ([eventName, payload]) =>
+          eventName === "tts:lipsync:update" &&
+          typeof payload.rms === "number" &&
+          payload.rms > 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("clears pending timers and closes the mouth on stop", () => {
+    const emitter = { emit: vi.fn() };
+    const simulator = new WebSpeechLipSyncSimulator(emitter);
+
+    simulator.startSimulation("hello world", 1);
+    simulator.stopSimulation();
+    vi.runAllTimers();
+
+    expect(emitter.emit).toHaveBeenCalledTimes(1);
+    expect(emitter.emit).toHaveBeenCalledWith("tts:lipsync:update", { rms: 0 });
   });
 });
