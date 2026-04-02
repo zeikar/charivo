@@ -175,10 +175,10 @@ importers:
   packages/core:
     devDependencies:
       tsup:
-        specifier: ^8.0.2
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-client-openai:
@@ -191,10 +191,10 @@ importers:
         version: link:../llm-provider-openai
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-client-openclaw:
@@ -207,10 +207,10 @@ importers:
         version: link:../llm-provider-openclaw
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-client-remote:
@@ -220,10 +220,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.2
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-client-stub:
@@ -233,10 +233,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-core:
@@ -246,10 +246,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-provider-openai:
@@ -262,10 +262,10 @@ importers:
         version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/llm-provider-openclaw:
@@ -278,10 +278,10 @@ importers:
         version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/realtime-client-openai:
@@ -294,10 +294,10 @@ importers:
         version: link:../realtime-core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/realtime-core:
@@ -307,10 +307,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/render-core:
@@ -320,10 +320,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/render-live2d:
@@ -336,10 +336,10 @@ importers:
         version: link:../render-core
     devDependencies:
       tsup:
-        specifier: ^8.0.2
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/render-stub:
@@ -349,19 +349,19 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/shared:
     devDependencies:
       tsup:
-        specifier: ^8.0.2
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.3.3
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/stt-core:
@@ -373,6 +373,12 @@ importers:
       '@charivo/shared':
         specifier: workspace:*
         version: link:../shared
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
 
   packages/stt-provider-openai:
     dependencies:
@@ -384,10 +390,10 @@ importers:
         version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/stt-transcriber-openai:
@@ -403,10 +409,10 @@ importers:
         version: link:../stt-provider-openai
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/stt-transcriber-remote:
@@ -419,10 +425,10 @@ importers:
         version: link:../stt-core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/stt-transcriber-web:
@@ -432,10 +438,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/tts-core:
@@ -447,6 +453,12 @@ importers:
       '@charivo/shared':
         specifier: workspace:*
         version: link:../shared
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
 
   packages/tts-player-openai:
     dependencies:
@@ -458,10 +470,10 @@ importers:
         version: link:../tts-provider-openai
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/tts-player-remote:
@@ -471,10 +483,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/tts-player-web:
@@ -484,10 +496,10 @@ importers:
         version: link:../core
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
   packages/tts-provider-openai:
@@ -500,10 +512,10 @@ importers:
         version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
-        specifier: ^8.0.0
+        specifier: ^8.5.0
         version: 8.5.0(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
       typescript:
-        specifier: ^5.0.0
+        specifier: ^5.9.2
         version: 5.9.2
 
 packages:
