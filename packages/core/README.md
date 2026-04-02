@@ -60,6 +60,10 @@ The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` so the core can connect typed character, TTS, and
 realtime events without duck typing.
 
+Emotion parsing keeps the current simple rule: if a message contains multiple
+valid emotion tags, the last valid tag wins and all emotion tags are stripped
+from the rendered text.
+
 ## Events
 
 Important event names include:
