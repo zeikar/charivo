@@ -18,6 +18,19 @@ Run this from the repository root before publishing public packages.
 - Use `patch` for fixes, packaging corrections, and non-breaking updates.
 - Confirm the generated changeset only includes the intended publishable packages.
 
+## Release PR Review
+
+- Confirm only the intended publishable packages were bumped.
+- Confirm bump levels match the actual change scope.
+- Review generated changelog text for accuracy and overstatement.
+- Confirm private or demo-only packages are not included in the release PR.
+
+## Changeset Examples
+
+- Public package fix: a runtime bug fix in `@charivo/tts-core` should include a changeset.
+- Docs/demo-only change: README updates or `examples/web` UI copy changes should not include a changeset.
+- Multi-package contract change: a typed contract update that affects `@charivo/core` and `@charivo/realtime-core` can ship in one changeset covering both packages.
+
 ## Docs
 
 - Confirm the root README matches the current package map and architecture.
@@ -30,6 +43,14 @@ Run this from the repository root before publishing public packages.
 - Verify every publishable package has aligned `main`, `module`, `types`, and `exports`.
 - Review `npm pack --dry-run` output through `pnpm pack:check`.
 - Check that runtime dependencies are still necessary.
+
+## Publish Failure Checks
+
+- Confirm `NPM_TOKEN` is configured and has publish rights.
+- Confirm GitHub Actions is allowed to create pull requests.
+- Confirm the target version does not already exist on npm.
+- Confirm the release PR was merged, not just opened.
+- Confirm `pnpm verify` and `pnpm pack:check` were green before retrying.
 
 ## Live2D
 

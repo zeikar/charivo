@@ -35,7 +35,11 @@ await ttsManager.speak("Hello", { voice: "marin" });
 
 ## Event Bridge
 
-When connected to the Charivo event bus, the manager emits:
+`TTSManager` accepts an emit-only event bridge through `setEventEmitter(...)`.
+It emits TTS lifecycle and lip-sync events back into core, but it does not
+subscribe to upstream Charivo events.
+
+When connected, the manager emits:
 
 - `tts:audio:start`
 - `tts:lipsync:update`

@@ -30,7 +30,11 @@ const text = await sttManager.stop();
 
 ## Event Bridge
 
-When connected to the Charivo event bus, the manager emits:
+`STTManager` accepts an emit-only event bridge through `setEventEmitter(...)`.
+It emits STT lifecycle and error events back into core, and does not subscribe
+through the shared event bus.
+
+When connected, the manager emits:
 
 - `stt:start`
 - `stt:stop`

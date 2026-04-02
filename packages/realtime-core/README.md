@@ -38,7 +38,11 @@ await manager.startSession(
 
 ## Event Bridge
 
-When connected to the Charivo event bus, the manager relays:
+`RealtimeManager` accepts an emit-only event bridge through
+`setEventEmitter(...)`. It relays client output into the Charivo event stream,
+but it does not subscribe through the shared event bus.
+
+When connected, the manager relays:
 
 - `realtime:text:delta`
 - `realtime:emotion`

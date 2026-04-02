@@ -30,6 +30,23 @@ App
   -> optional server providers behind API routes
 ```
 
+## Event Wiring
+
+Charivo keeps two event contracts on purpose:
+
+- `CharivoEventBus`: the full subscribe-and-emit contract
+- `CharivoEventEmitter`: the emit-only subset
+
+`RenderManager` keeps `setEventBus(...)` because it subscribes to upstream
+events such as `tts:audio:start`, `tts:audio:end`, `tts:lipsync:update`, and
+`realtime:emotion`.
+
+`TTSManager`, `STTManager`, and `RealtimeManager` keep `setEventEmitter(...)`
+because they primarily publish lifecycle and output events back into core.
+
+This split is intentional. Do not normalize both contracts into one unless the
+public manager contract is being redesigned.
+
 ## Quick Start
 
 ```bash
@@ -180,6 +197,9 @@ Rules of thumb:
 - `minor` is appropriate for new public API surface or contract changes.
 - `patch` is appropriate for fixes, packaging corrections, and non-breaking behavior updates.
 
+For release PR review rules, changeset examples, and publish-failure checks, use
+[`docs/release-checklist.md`](./docs/release-checklist.md).
+
 Repository requirements for the automated release flow:
 
 - `NPM_TOKEN` must be configured in GitHub repository secrets.
@@ -187,8 +207,9 @@ Repository requirements for the automated release flow:
 
 ## Release Checklist
 
-Release guidance lives in [`docs/release-checklist.md`](./docs/release-checklist.md).
-That checklist includes verification commands, docs sync, pack dry-runs, and the
+Detailed release guidance lives in
+[`docs/release-checklist.md`](./docs/release-checklist.md). That checklist
+includes verification commands, release PR review, pack dry-runs, and the
 Live2D SDK license review step.
 
 ## Live2D Note

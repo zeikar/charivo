@@ -2,6 +2,7 @@
 
 Read [README.md](README.md) first for the current architecture, package layout, and release workflow.
 Use [docs/release-checklist.md](docs/release-checklist.md) before merging a release PR.
+Use the `Event Wiring` section in [README.md](README.md) when working on manager event contracts.
 
 ## Prerequisites
 

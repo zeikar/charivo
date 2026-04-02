@@ -31,7 +31,7 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 ## What It Does
 
 - wraps a `Renderer` implementation
-- subscribes to the typed `CharivoEventBus`
+- consumes the typed `CharivoEventBus`
 - reacts to `tts:audio:start`, `tts:audio:end`, and `tts:lipsync:update`
 - reacts to `realtime:emotion`
 - applies character emotion mappings to expressions and motions
@@ -50,3 +50,16 @@ At minimum, a renderer must implement the `Renderer` contract from `@charivo/cor
 If it also exposes optional methods such as `loadModel`, `setRealtimeLipSync`,
 `updateRealtimeLipSyncRms`, `playExpression`, or `playMotionByGroup`, the render
 manager will use them automatically.
+
+## Event Wiring
+
+`RenderManager` uses `setEventBus(...)` because it subscribes to upstream
+Charivo events. In the default flow it listens for:
+
+- `tts:audio:start`
+- `tts:audio:end`
+- `tts:lipsync:update`
+- `realtime:emotion`
+
+This manager consumes the full bus because it needs subscription access, not
+just event emission.
