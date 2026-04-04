@@ -1,5 +1,13 @@
 # @charivo/llm-client-openai
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [ca98036]
+  - @charivo/core@0.2.0
+  - @charivo/llm-provider-openai@0.0.3
+
 ## 0.0.2
 
 ### Patch Changes

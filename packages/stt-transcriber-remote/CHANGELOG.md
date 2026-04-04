@@ -1,5 +1,13 @@
 # @charivo/stt-transcriber-remote
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [ca98036]
+  - @charivo/core@0.2.0
+  - @charivo/stt-core@0.0.3
+
 ## 0.0.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@charivo/tts-provider-openai",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "OpenAI TTS provider for Charivo (server-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
