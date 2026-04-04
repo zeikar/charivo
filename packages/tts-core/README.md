@@ -6,6 +6,10 @@ This package coordinates a `TTSPlayer`, audio playback lifecycle, and lip-sync
 events. It works with browser-native speech, remote TTS APIs, and direct OpenAI
 players.
 
+Concrete players should declare `playbackMode` (`"audio"` or `"web-speech"`)
+and can optionally declare `audioMimeType` so the manager does not need to rely
+on constructor-name inference.
+
 ## Install
 
 ```bash
@@ -29,9 +33,9 @@ await ttsManager.speak("Hello", { voice: "marin" });
 
 - `createTTSManager(player)`
 - `WebSpeechLipSyncSimulator`
-- `detectTTSPlayerType(player)`
+- `getTTSPlaybackMode(player)`
+- `getTTSAudioMimeType(player)`
 - `supportsGenerateAudio(player)`
-- `getMimeTypeForPlayer(playerType)`
 
 ## Event Bridge
 

@@ -14,6 +14,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * Stateless 설계: 오디오 재생과 립싱크는 TTS Manager에서 담당
  */
 export class RemoteTTSPlayer implements TTSPlayer {
+  readonly playbackMode = "audio" as const;
+  readonly audioMimeType = "audio/wav";
   private apiEndpoint: string;
   private defaultVoice: string;
 

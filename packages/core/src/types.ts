@@ -155,8 +155,19 @@ export interface TTSOptions {
   voice?: string;
 }
 
+export type TTSPlaybackMode = "audio" | "web-speech";
+
 // TTS 플레이어 (브라우저에서 음성 재생)
 export interface TTSPlayer {
+  /**
+   * Explicit playback mode for the manager. Prefer setting this on concrete
+   * players instead of relying on constructor-name inference.
+   */
+  readonly playbackMode?: TTSPlaybackMode;
+  /**
+   * MIME type used when the manager turns generated audio into a Blob.
+   */
+  readonly audioMimeType?: string;
   speak(text: string, options?: TTSOptions): Promise<void>;
   stop(): Promise<void>;
   setVoice(voice: string): void;

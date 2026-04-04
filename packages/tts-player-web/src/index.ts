@@ -7,6 +7,7 @@ import { TTSPlayer, TTSOptions } from "@charivo/core";
  * Stateless 설계: 립싱크 시뮬레이션은 TTS Manager에서 담당
  */
 export class WebTTSPlayer implements TTSPlayer {
+  readonly playbackMode = "web-speech" as const;
   private synthesis: SpeechSynthesis;
   private voices: SpeechSynthesisVoice[] = [];
   private defaultVoice?: SpeechSynthesisVoice;

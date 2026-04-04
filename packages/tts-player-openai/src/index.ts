@@ -17,6 +17,8 @@ export type OpenAITTSPlayerConfig = OpenAITTSConfig;
  * Stateless 설계: 오디오 재생과 립싱크는 TTS Manager에서 담당
  */
 export class OpenAITTSPlayer implements TTSPlayer {
+  readonly playbackMode = "audio" as const;
+  readonly audioMimeType = "audio/wav";
   private provider: OpenAITTSProvider;
 
   constructor(config: OpenAITTSPlayerConfig) {

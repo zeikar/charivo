@@ -1,8 +1,7 @@
-export type { TTSPlayerType } from "./tts-utils";
 export { createTTSManager } from "./tts-manager";
 export { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 export {
-  detectTTSPlayerType,
-  getMimeTypeForPlayer,
+  getTTSAudioMimeType,
+  getTTSPlaybackMode,
   supportsGenerateAudio,
 } from "./tts-utils";

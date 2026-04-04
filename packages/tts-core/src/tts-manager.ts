@@ -1,15 +1,15 @@
 import {
   CharivoEventEmitter,
   TTSPlayer,
+  TTSPlaybackMode,
   TTSOptions,
   TTSManager,
 } from "@charivo/core";
 import { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 import {
-  detectTTSPlayerType,
-  getMimeTypeForPlayer,
+  getTTSAudioMimeType,
+  getTTSPlaybackMode,
   supportsGenerateAudio,
-  TTSPlayerType,
 } from "./tts-utils";
 
 /**
@@ -27,7 +27,7 @@ export class TTSManagerImpl implements TTSManager {
   private eventEmitter?: CharivoEventEmitter;
   private currentAudio: HTMLAudioElement | null = null;
   private currentAudioUrl: string | null = null;
-  private playerType: TTSPlayerType;
+  private playbackMode: TTSPlaybackMode;
   private isAudioSessionActive = false;
 
   // Web Speech 립싱크 시뮬레이션만 필요
@@ -35,7 +35,7 @@ export class TTSManagerImpl implements TTSManager {
 
   constructor(ttsPlayer: TTSPlayer) {
     this.ttsPlayer = ttsPlayer;
-    this.playerType = detectTTSPlayerType(ttsPlayer);
+    this.playbackMode = getTTSPlaybackMode(ttsPlayer);
 
     // Initialize Web Speech simulator
     this.webSimulator = new WebSpeechLipSyncSimulator();
@@ -57,7 +57,7 @@ export class TTSManagerImpl implements TTSManager {
   async speak(text: string, options?: TTSOptions): Promise<void> {
     await this.stop();
 
-    if (this.playerType === "web") {
+    if (this.playbackMode === "web-speech") {
       return this.handleWebSpeech(text, options);
     } else {
       return this.handleAudioSpeech(text, options);
@@ -160,7 +160,7 @@ export class TTSManagerImpl implements TTSManager {
     options?: TTSOptions,
   ): Promise<void> {
     const audioData = await this.ttsPlayer.generateAudio!(text, options);
-    const mimeType = getMimeTypeForPlayer(this.playerType);
+    const mimeType = getTTSAudioMimeType(this.ttsPlayer);
     const blob = new Blob([audioData], { type: mimeType });
     const audioUrl = URL.createObjectURL(blob);
 

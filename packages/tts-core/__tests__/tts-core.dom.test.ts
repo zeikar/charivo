@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTTSManager, WebSpeechLipSyncSimulator } from "../src";
+import {
+  createTTSManager,
+  getTTSAudioMimeType,
+  getTTSPlaybackMode,
+  WebSpeechLipSyncSimulator,
+} from "../src";
 
 class MockAudio {
   static instances: MockAudio[] = [];
@@ -22,6 +27,8 @@ class MockAudio {
 }
 
 class RemotePlayerWithAudio {
+  playbackMode = "audio" as const;
+  audioMimeType = "audio/wav";
   speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
@@ -30,6 +37,7 @@ class RemotePlayerWithAudio {
 }
 
 class RemotePlayerWithoutAudio {
+  playbackMode = "audio" as const;
   speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
@@ -37,6 +45,24 @@ class RemotePlayerWithoutAudio {
 }
 
 class WebPlayer {
+  playbackMode = "web-speech" as const;
+  speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
+  stop = vi.fn(async () => undefined);
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+}
+
+class ExplicitAudioPlayerWithWebName {
+  playbackMode = "audio" as const;
+  speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
+  stop = vi.fn(async () => undefined);
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+}
+
+class AudioPlayerWithCustomMime {
+  playbackMode = "audio" as const;
+  audioMimeType = "audio/mpeg";
   speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
@@ -104,6 +130,38 @@ describe("TTSManagerImpl", () => {
       audioElement: expect.any(HTMLAudioElement),
     });
     expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+  });
+
+  it("prefers explicit playback capabilities over constructor-name inference", async () => {
+    const player = new ExplicitAudioPlayerWithWebName();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+
+    manager.setEventEmitter(emitter);
+
+    await manager.speak("audio fallback");
+
+    expect(player.speak).toHaveBeenCalledWith("audio fallback", undefined);
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:start", {
+      audioElement: undefined,
+    });
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+  });
+});
+
+describe("tts capabilities", () => {
+  it("resolves playback mode from explicit player capabilities", () => {
+    expect(getTTSPlaybackMode(new WebPlayer())).toBe("web-speech");
+    expect(getTTSPlaybackMode(new RemotePlayerWithoutAudio())).toBe("audio");
+  });
+
+  it("prefers an explicit audio mime type and falls back when missing", () => {
+    expect(getTTSAudioMimeType(new AudioPlayerWithCustomMime())).toBe(
+      "audio/mpeg",
+    );
+    expect(getTTSAudioMimeType(new RemotePlayerWithoutAudio())).toBe(
+      "audio/wav",
+    );
   });
 });
 

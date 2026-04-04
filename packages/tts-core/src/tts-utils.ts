@@ -1,35 +1,21 @@
 /**
- * TTS Player Type Detection Utilities
+ * TTS Player Capability Utilities
  */
-import type { TTSOptions, TTSPlayer } from "@charivo/core";
-
-export type TTSPlayerType = "web" | "openai" | "remote" | "unknown";
+import type { TTSOptions, TTSPlaybackMode, TTSPlayer } from "@charivo/core";
 
 /**
- * TTS Player 타입을 클래스명으로부터 감지
+ * Resolve the playback mode used by the manager. Concrete players should
+ * provide `playbackMode`. The default fallback is `"audio"`.
  */
-export function detectTTSPlayerType(player: TTSPlayer): TTSPlayerType {
-  const playerName = player.constructor.name.toLowerCase();
-
-  if (playerName.includes("web")) return "web";
-  if (playerName.includes("openai")) return "openai";
-  if (playerName.includes("remote")) return "remote";
-
-  return "unknown";
+export function getTTSPlaybackMode(player: TTSPlayer): TTSPlaybackMode {
+  return player.playbackMode || "audio";
 }
 
 /**
- * TTS Player 타입에 따른 MIME 타입 반환
+ * Resolve the MIME type used when generated audio is wrapped in a Blob.
  */
-export function getMimeTypeForPlayer(playerType: TTSPlayerType): string {
-  switch (playerType) {
-    case "openai":
-      return "audio/wav";
-    case "remote":
-    case "web":
-    default:
-      return "audio/wav";
-  }
+export function getTTSAudioMimeType(player: TTSPlayer): string {
+  return player.audioMimeType || "audio/wav";
 }
 
 /**
