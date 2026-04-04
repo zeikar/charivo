@@ -10,7 +10,17 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
     coverage: {
+      provider: "v8",
+      all: true,
+      include: ["packages/*/src/**/*.{ts,tsx}"],
+      exclude: ["**/__tests__/**", "**/*.d.ts", "**/*.d.mts", "**/*.d.cts"],
       reporter: ["text", "json-summary", "html"],
+      thresholds: {
+        statements: 60,
+        branches: 75,
+        functions: 80,
+        lines: 60,
+      },
     },
     environmentMatchGlobs: [
       ["packages/**/__tests__/**/*.dom.test.{ts,tsx}", "jsdom"],

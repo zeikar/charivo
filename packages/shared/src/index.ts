@@ -7,7 +7,13 @@ export const DEFAULT_CONFIG = {
 } as const;
 
 export function generateId(): string {
-  return Math.random().toString(36).substr(2, 9);
+  let id = "";
+
+  while (id.length < 9) {
+    id += Math.random().toString(36).slice(2);
+  }
+
+  return id.slice(0, 9);
 }
 
 export function formatTimestamp(date: Date): string {

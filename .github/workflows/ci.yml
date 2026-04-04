@@ -31,5 +31,8 @@ jobs:
       - name: Run Repo Verification
         run: pnpm verify
 
+      - name: Enforce Coverage Thresholds
+        run: pnpm test:coverage
+
       - name: Validate Package Manifests
         run: pnpm pack:check
