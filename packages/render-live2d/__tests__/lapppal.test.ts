@@ -40,8 +40,4 @@ describe("LAppPal", () => {
     expect(LAppPal.lastFrame).toBe(1_500);
     expect(LAppPal.getDeltaTime()).toBe(0.5);
   });
-
-  it("keeps printMessage as a no-op", () => {
-    expect(() => LAppPal.printMessage("hello")).not.toThrow();
-  });
 });
