@@ -33,6 +33,7 @@
     "build": "pnpm -r --filter './packages/*' build",
     "build:web": "pnpm build && pnpm --filter ./examples/web build",
     "verify": "pnpm build && pnpm test && pnpm typecheck && pnpm lint && pnpm format:check",
+    "verify:ci": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check",
     "pack:check": "node ./scripts/check-packages.mjs",
     "release": "pnpm release:ci",
     "release:ci": "pnpm verify && pnpm pack:check && changeset publish",
@@ -66,7 +67,7 @@
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2",
-    "vitest": "^2.1.4",
+    "vitest": "^2.1.9",
     "@vitest/coverage-v8": "^2.1.9"
   },
   "engines": {

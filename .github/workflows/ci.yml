@@ -28,8 +28,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run Repo Verification
-        run: pnpm verify
+      - name: Run CI Verification
+        run: pnpm verify:ci
 
       - name: Enforce Coverage Thresholds
         run: pnpm test:coverage
