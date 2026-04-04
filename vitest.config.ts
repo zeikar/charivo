@@ -63,6 +63,9 @@ export default defineConfig({
       "@charivo/render-stub": resolvePackage(
         "packages/render-stub/src/index.ts",
       ),
+      "@framework": resolvePackage(
+        "packages/render-live2d/CubismSdkForWeb-5-r.4/Framework/src",
+      ),
       "@charivo/shared": resolvePackage("packages/shared/src/index.ts"),
       "@charivo/stt-core": resolvePackage("packages/stt-core/src/index.ts"),
       "@charivo/stt-provider-openai": resolvePackage(

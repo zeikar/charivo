@@ -20,7 +20,9 @@ export class LAppWavFileHandler {
 
     this.stop();
     this.ensureContext();
-    const context = this.audioContext!;
+    if (!this.audioContext) return;
+
+    const context = this.audioContext;
 
     fetch(filePath)
       .then((response) => response.arrayBuffer())
