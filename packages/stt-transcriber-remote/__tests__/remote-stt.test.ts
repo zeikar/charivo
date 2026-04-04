@@ -13,9 +13,15 @@ vi.mock("@charivo/stt-core", () => ({
 import { RemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
 
 const originalFetch = globalThis.fetch;
+const createAbortError = () => {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+};
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -46,5 +52,39 @@ describe("RemoteSTTTranscriber", () => {
       "/api/stt",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("throws a timeout-specific error after recording completes", async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(createAbortError());
+          });
+        }),
+    ) as typeof fetch;
+
+    const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    await transcriber.startRecording();
+    const request = transcriber.stopRecording();
+    const expectation = expect(request).rejects.toThrow(
+      "STT request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+  });
+
+  it("preserves non-timeout fetch failures", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    }) as typeof fetch;
+
+    const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    await transcriber.startRecording();
+
+    await expect(transcriber.stopRecording()).rejects.toThrow("network down");
   });
 });

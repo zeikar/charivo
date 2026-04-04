@@ -30,6 +30,8 @@ interface ClientEventOptions {
   debug?: boolean; // Enable debug logging
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * OpenAI Realtime API Client (WebRTC)
  *
@@ -135,16 +137,20 @@ export class OpenAIRealtimeClient implements RealtimeClient {
       await this.pc.setLocalDescription(offer);
 
       // 6. Send SDP offer to server (unified interface)
-      const sdpResponse = await fetch(this.apiEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const sdpResponse = await fetchWithTimeout(
+        this.apiEndpoint,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sdpOffer: offer.sdp,
+            sessionConfig: config,
+          }),
         },
-        body: JSON.stringify({
-          sdpOffer: offer.sdp,
-          sessionConfig: config,
-        }),
-      });
+        `Realtime session request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      );
 
       if (!sdpResponse.ok) {
         const errorText = await sdpResponse.text();
@@ -543,4 +549,34 @@ export function createOpenAIRealtimeClient(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMessage: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }

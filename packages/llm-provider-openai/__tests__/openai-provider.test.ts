@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const openaiMocks = vi.hoisted(() => {
   const createCompletion = vi.fn(
@@ -43,6 +43,17 @@ import { OpenAILLMProvider } from "@charivo/llm-provider-openai";
 
 beforeEach(() => {
   openaiMocks.createCompletion.mockClear();
+  openaiMocks.createCompletion.mockResolvedValue({
+    choices: [
+      {
+        message: { content: "Final answer" },
+      },
+    ],
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("OpenAILLMProvider", () => {
@@ -71,5 +82,24 @@ describe("OpenAILLMProvider", () => {
     await expect(
       provider.generateResponse([{ role: "user", content: "hi" }]),
     ).rejects.toThrow("OpenAI LLM Error: boom");
+  });
+
+  it("wraps timeout errors with the same provider prefix", async () => {
+    vi.useFakeTimers();
+    openaiMocks.createCompletion.mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
+
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+    const request = provider.generateResponse([
+      { role: "user", content: "hi" },
+    ]);
+    const expectation = expect(request).rejects.toThrow(
+      "OpenAI LLM Error: request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
   });
 });

@@ -3,12 +3,18 @@ import { RemoteTTSPlayer } from "@charivo/tts-player-remote";
 
 const originalFetch = globalThis.fetch;
 const originalAudio = globalThis.Audio;
+const createAbortError = () => {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+};
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   globalThis.Audio = originalAudio;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -74,5 +80,53 @@ describe("RemoteTTSPlayer", () => {
 
     const player = new RemoteTTSPlayer();
     await expect(player.speak("hi")).rejects.toThrow("TTS API failed: Server");
+  });
+
+  it("throws a timeout-specific error when audio generation stalls", async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(createAbortError());
+          });
+        }),
+    ) as typeof fetch;
+
+    const player = new RemoteTTSPlayer();
+    const request = player.generateAudio("hello");
+    const expectation = expect(request).rejects.toThrow(
+      "TTS request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+  });
+
+  it("revokes object URLs when playback fails", async () => {
+    const buffer = new ArrayBuffer(4);
+    globalThis.fetch = vi.fn(async () => new Response(buffer)) as typeof fetch;
+
+    const audioInstance = {
+      volume: 1,
+      currentTime: 0,
+      play: vi.fn(() => Promise.resolve()),
+      pause: vi.fn(),
+      onended: null as ((event?: Event) => void) | null,
+      onerror: null as ((event?: Event) => void) | null,
+    } as unknown as HTMLAudioElement;
+
+    globalThis.Audio = vi.fn(() => audioInstance) as unknown as typeof Audio;
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+
+    const player = new RemoteTTSPlayer();
+    const speakPromise = player.speak("hello");
+
+    await flushAsync();
+    audioInstance.onerror?.(new Event("error"));
+
+    await expect(speakPromise).rejects.toThrow("Audio playback failed");
+    expect(revokeSpy).toHaveBeenCalled();
   });
 });

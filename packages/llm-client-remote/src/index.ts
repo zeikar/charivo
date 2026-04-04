@@ -4,6 +4,8 @@ export interface RemoteLLMConfig {
   apiEndpoint?: string;
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Remote LLM Client - 서버 API를 호출하는 stateless 클라이언트
  */
@@ -17,15 +19,19 @@ export class RemoteLLMClient implements LLMClient {
   async call(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
-    const response = await fetch(this.apiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    const response = await fetchWithTimeout(
+      this.apiEndpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages,
+        }),
       },
-      body: JSON.stringify({
-        messages,
-      }),
-    });
+      `LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+    );
 
     if (!response.ok) {
       const errorData = await response
@@ -50,4 +56,34 @@ export function createRemoteLLMClient(
   config?: RemoteLLMConfig,
 ): RemoteLLMClient {
   return new RemoteLLMClient(config);
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMessage: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }

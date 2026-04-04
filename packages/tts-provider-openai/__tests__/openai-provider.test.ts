@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const openaiMocks = vi.hoisted(() => {
   const createSpeech = vi.fn(
@@ -34,6 +34,13 @@ import { OpenAITTSProvider } from "@charivo/tts-provider-openai";
 
 beforeEach(() => {
   openaiMocks.createSpeech.mockClear();
+  openaiMocks.createSpeech.mockResolvedValue({
+    arrayBuffer: vi.fn(async () => new ArrayBuffer(4)),
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("OpenAITTSProvider", () => {
@@ -67,5 +74,29 @@ describe("OpenAITTSProvider", () => {
       speed: 1,
       format: "wav",
     });
+  });
+
+  it("preserves non-timeout SDK errors", async () => {
+    openaiMocks.createSpeech.mockRejectedValueOnce(new Error("boom"));
+    const provider = new OpenAITTSProvider({ apiKey: "key" });
+
+    await expect(provider.generateSpeech("hello")).rejects.toThrow("boom");
+  });
+
+  it("throws a timeout-specific error when OpenAI does not respond", async () => {
+    vi.useFakeTimers();
+    openaiMocks.createSpeech.mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
+
+    const provider = new OpenAITTSProvider({ apiKey: "key" });
+    const request = provider.generateSpeech("hello");
+    const expectation = expect(request).rejects.toThrow(
+      "OpenAI TTS request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
   });
 });

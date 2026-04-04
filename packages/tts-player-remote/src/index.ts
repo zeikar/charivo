@@ -5,6 +5,8 @@ export interface RemoteTTSConfig {
   defaultVoice?: string;
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Remote TTS Player - 원격 서버의 TTS API를 사용하는 Stateless TTS Player
  *
@@ -27,16 +29,20 @@ export class RemoteTTSPlayer implements TTSPlayer {
     text: string,
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
-    const response = await fetch(this.apiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: options?.voice || this.defaultVoice,
-        speed: options?.rate || 1.0,
-        format: "wav",
-      }),
-    });
+    const response = await fetchWithTimeout(
+      this.apiEndpoint,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          voice: options?.voice || this.defaultVoice,
+          speed: options?.rate || 1.0,
+          format: "wav",
+        }),
+      },
+      `TTS request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+    );
 
     if (!response.ok) {
       throw new Error(`TTS API failed: ${response.statusText}`);
@@ -92,4 +98,34 @@ export function createRemoteTTSPlayer(
   config?: RemoteTTSConfig,
 ): RemoteTTSPlayer {
   return new RemoteTTSPlayer(config);
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMessage: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }

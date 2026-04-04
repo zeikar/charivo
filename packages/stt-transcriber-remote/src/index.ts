@@ -5,6 +5,8 @@ export interface RemoteSTTConfig {
   apiEndpoint?: string;
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * Remote STT Transcriber - Uses remote server's STT API for transcription
  *
@@ -42,10 +44,14 @@ export class RemoteSTTTranscriber implements STTTranscriber {
       formData.append("language", this.recordingOptions.language);
     }
 
-    const response = await fetch(this.apiEndpoint, {
-      method: "POST",
-      body: formData,
-    });
+    const response = await fetchWithTimeout(
+      this.apiEndpoint,
+      {
+        method: "POST",
+        body: formData,
+      },
+      `STT request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+    );
 
     if (!response.ok) {
       throw new Error(`STT API failed: ${response.statusText}`);
@@ -68,4 +74,34 @@ export function createRemoteSTTTranscriber(
   config?: RemoteSTTConfig,
 ): RemoteSTTTranscriber {
   return new RemoteSTTTranscriber(config);
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMessage: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }

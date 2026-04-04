@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { LLMProvider } from "@charivo/core";
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export interface OpenAILLMConfig {
   apiKey: string;
   model?: string;
@@ -47,12 +49,15 @@ export class OpenAILLMProvider implements LLMProvider {
         content: msg.content,
       }));
 
-      const completion = await this.openai.chat.completions.create({
-        model: this.model,
-        messages: openAIMessages,
-        temperature: this.temperature,
-        max_tokens: this.maxTokens,
-      });
+      const completion = await withTimeout(
+        this.openai.chat.completions.create({
+          model: this.model,
+          messages: openAIMessages,
+          temperature: this.temperature,
+          max_tokens: this.maxTokens,
+        }),
+        `request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      );
 
       return completion.choices[0]?.message?.content || "";
     } catch (error) {
@@ -67,4 +72,26 @@ export function createOpenAILLMProvider(
   config: OpenAILLMConfig,
 ): OpenAILLMProvider {
   return new OpenAILLMProvider(config);
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMessage: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(timeoutMessage)),
+      REQUEST_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
