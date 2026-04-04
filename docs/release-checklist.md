@@ -41,6 +41,7 @@ Run this from the repository root before publishing public packages.
 ## Packaging
 
 - Verify every publishable package has aligned `main`, `module`, `types`, and `exports`.
+- Use [`docs/adr/0001-package-output-strategy.md`](./adr/0001-package-output-strategy.md) when deciding whether a package should stay dual-format or ESM-only.
 - Review `npm pack --dry-run` output through `pnpm pack:check`.
 - Check that runtime dependencies are still necessary.
 

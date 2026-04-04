@@ -175,6 +175,11 @@ pnpm pack:check
 - `pnpm verify` runs build, test, typecheck, lint, and format checks.
 - `pnpm pack:check` validates public package manifests and dry-run package contents.
 
+## Decision Records
+
+Package output policy is recorded in
+[`docs/adr/0001-package-output-strategy.md`](./docs/adr/0001-package-output-strategy.md).
+
 ## Versioning And Release Flow
 
 Charivo uses Changesets for package versioning and npm publishing.

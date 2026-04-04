@@ -7,7 +7,9 @@ Read [README.md](./README.md) first for the current architecture, package map, a
 - Preserve the current layering: `@charivo/core` -> `*-core` managers -> browser clients/players/transcribers/renderers -> server providers.
 - Do not collapse package boundaries or redesign the architecture unless explicitly requested.
 - Keep the event split intentional: `RenderManager` uses `setEventBus(...)`, while TTS/STT/Realtime managers use `setEventEmitter(...)`. Do not normalize them into one contract unless explicitly requested.
+- Do not normalize package outputs (`.mjs`, `.d.mts`, dual-format manifests) unless explicitly requested.
 - Keep docs aligned with actual behavior. If code changes public behavior, update the relevant README.
+- Use [`docs/adr/0001-package-output-strategy.md`](./docs/adr/0001-package-output-strategy.md) as the source of truth for package output policy.
 
 ## Validation
 
