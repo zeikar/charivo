@@ -1,5 +1,14 @@
 # @charivo/stt-transcriber-openai
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [d773cca]
+  - @charivo/core@0.3.0
+  - @charivo/stt-core@0.0.4
+  - @charivo/stt-provider-openai@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes

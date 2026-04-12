@@ -1,6 +1,6 @@
 {
   "name": "@charivo/stt-transcriber-web",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Web Speech API STT transcriber for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

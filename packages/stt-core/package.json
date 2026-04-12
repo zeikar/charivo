@@ -1,6 +1,6 @@
 {
   "name": "@charivo/stt-core",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Core STT functionality for Charivo framework",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

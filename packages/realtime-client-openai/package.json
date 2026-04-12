@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-client-openai",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "OpenAI Realtime API client for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

@@ -1,5 +1,13 @@
 # @charivo/tts-player-openai
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [d773cca]
+  - @charivo/core@0.3.0
+  - @charivo/tts-provider-openai@0.0.4
+
 ## 0.0.3
 
 ### Patch Changes
