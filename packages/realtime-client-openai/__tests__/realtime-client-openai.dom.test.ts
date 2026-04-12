@@ -461,6 +461,158 @@ describe("OpenAIRealtimeClient", () => {
     });
   });
 
+  it("streams assistant text from response.output_text events", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+    await client.sendText("hello");
+
+    const peer = MockPeerConnection.instances[0]!;
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.output_text.delta",
+          delta: "Hel",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.output_text.done",
+          text: "Hello there",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.done",
+        }),
+      }),
+    );
+
+    expect(events).toContainEqual({ type: "assistant.response.started" });
+    expect(events).toContainEqual({
+      type: "assistant.text.delta",
+      text: "Hel",
+    });
+    expect(events).toContainEqual({
+      type: "assistant.text.delta",
+      text: "lo there",
+    });
+    expect(events).toContainEqual({
+      type: "assistant.response.completed",
+      text: "Hello there",
+    });
+  });
+
+  it("streams assistant audio transcripts from output_audio_transcript events", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+    await client.sendText("hello");
+
+    const peer = MockPeerConnection.instances[0]!;
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.output_audio_transcript.delta",
+          delta: "Hel",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.output_audio_transcript.done",
+          transcript: "Hello there",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.done",
+        }),
+      }),
+    );
+
+    expect(events).toContainEqual({ type: "assistant.response.started" });
+    expect(events).toContainEqual({
+      type: "assistant.text.delta",
+      text: "Hel",
+    });
+    expect(events).toContainEqual({
+      type: "assistant.text.delta",
+      text: "lo there",
+    });
+    expect(events).toContainEqual({
+      type: "assistant.response.completed",
+      text: "Hello there",
+    });
+  });
+
   it("submits tool results through the OpenAI wire format", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],

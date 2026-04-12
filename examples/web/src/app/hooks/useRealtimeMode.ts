@@ -6,6 +6,8 @@ import {
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import { useChatStore } from "../stores/useChatStore";
 
+const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
+
 const DEMO_REALTIME_TOOLS: RealtimeToolRegistration[] = [
   {
     definition: {
@@ -40,6 +42,7 @@ export function useRealtimeMode() {
     setIsConnecting,
     setIsConnected,
     setRealtimeError,
+    resetRealtimeUiState,
   } = useChatStore();
 
   const enableRealtimeMode = useCallback(async () => {
@@ -61,6 +64,7 @@ export function useRealtimeMode() {
 
       const realtimeClient = createRemoteRealtimeClient({
         apiEndpoint: "/api/realtime",
+        debug: REALTIME_DEBUG,
       });
 
       const realtimeManager = createRealtimeManager(realtimeClient, {
@@ -79,6 +83,7 @@ export function useRealtimeMode() {
       console.error("❌ Failed to enable Realtime mode:", error);
       setIsRealtimeMode(false);
       setIsConnected(false);
+      resetRealtimeUiState();
       setRealtimeError(
         error instanceof Error ? error.message : "Unknown error",
       );
@@ -93,6 +98,7 @@ export function useRealtimeMode() {
     setIsRealtimeMode,
     setIsConnected,
     setRealtimeError,
+    resetRealtimeUiState,
   ]);
 
   const disableRealtimeMode = useCallback(async () => {
@@ -112,6 +118,7 @@ export function useRealtimeMode() {
 
       setIsRealtimeMode(false);
       setIsConnected(false);
+      resetRealtimeUiState();
 
       console.log("✅ Realtime mode disabled");
     } catch (error) {
@@ -126,6 +133,7 @@ export function useRealtimeMode() {
     setIsRealtimeMode,
     setIsConnected,
     setRealtimeError,
+    resetRealtimeUiState,
   ]);
 
   const toggleRealtimeMode = useCallback(async () => {

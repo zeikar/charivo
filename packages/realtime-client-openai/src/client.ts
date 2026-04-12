@@ -28,6 +28,7 @@ interface ServerEventItem {
 interface ServerEvent {
   type: string;
   delta?: string;
+  text?: string;
   transcript?: string;
   call_id?: string;
   item_id?: string;
@@ -224,6 +225,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio.delta":
+      case "output_audio_buffer.started":
         if (this.cancelInFlight) {
           return;
         }
@@ -235,6 +237,8 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio.done":
+      case "response.output_audio.done":
+      case "output_audio_buffer.stopped":
         if (this.cancelInFlight) {
           this.hasStartedAudioOutput = false;
           return;
@@ -259,6 +263,8 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio_transcript.delta":
+      case "response.output_audio_transcript.delta":
+      case "response.output_text.delta":
         if (this.cancelInFlight || !event.delta) {
           return;
         }
@@ -273,6 +279,56 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
           type: "assistant.text.delta",
           text: event.delta,
         });
+        return;
+
+      case "response.output_text.done":
+        if (this.cancelInFlight || !event.text) {
+          return;
+        }
+
+        if (!this.hasStartedAssistantResponse) {
+          this.hasStartedAssistantResponse = true;
+          this.emitEvent({ type: "assistant.response.started" });
+        }
+
+        if (event.text !== this.assistantText) {
+          const delta = event.text.startsWith(this.assistantText)
+            ? event.text.slice(this.assistantText.length)
+            : event.text;
+
+          this.assistantText = event.text;
+          if (delta) {
+            this.emitEvent({
+              type: "assistant.text.delta",
+              text: delta,
+            });
+          }
+        }
+        return;
+
+      case "response.output_audio_transcript.done":
+        if (this.cancelInFlight || !event.transcript) {
+          return;
+        }
+
+        if (!this.hasStartedAssistantResponse) {
+          this.hasStartedAssistantResponse = true;
+          this.emitEvent({ type: "assistant.response.started" });
+        }
+
+        if (event.transcript !== this.assistantText) {
+          const delta = event.transcript.startsWith(this.assistantText)
+            ? event.transcript.slice(this.assistantText.length)
+            : event.transcript;
+
+          this.assistantText = event.transcript;
+          if (delta) {
+            this.emitEvent({
+              type: "assistant.text.delta",
+              text: delta,
+            });
+          }
+        }
         return;
 
       case "conversation.item.input_audio_transcription.completed":

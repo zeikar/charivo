@@ -16,6 +16,8 @@ Read [README.md](./README.md) first for the current architecture, package map, a
 - Run `pnpm verify` for repo-wide validation.
 - Run `pnpm pack:check` before release-related changes.
 - Run `pnpm build:web` when the demo app or bundling behavior changes.
+- Do not run repo-wide validation commands in parallel. Execute `pnpm verify`, `pnpm build:web`, `pnpm pack:check`, and similar full-repo build/test commands sequentially because they share build outputs and can conflict with each other.
+- Prefer log-efficient validation runs. When invoking long-running repo-wide commands, avoid streaming the full build log unless needed; capture or inspect the tail/end of the output first, then expand only around failures.
 
 ## Versioning
 

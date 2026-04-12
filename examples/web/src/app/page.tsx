@@ -22,6 +22,7 @@ export default function Home() {
     setInput,
     isLoading,
     isSpeaking,
+    isRealtimeMode,
     selectedLLMClient,
     setSelectedLLMClient,
     selectedTTSPlayer,
@@ -31,8 +32,8 @@ export default function Home() {
     llmError,
     ttsError,
     sttError,
-    isRealtimeMode,
     realtimeError,
+    realtimeAssistantDraft,
   } = useChatStore();
 
   // Initialize hooks
@@ -102,6 +103,7 @@ export default function Home() {
             <MessageBubbles
               messages={messages}
               isLoading={isLoading && !isSpeaking}
+              realtimeAssistantDraft={realtimeAssistantDraft}
             />
 
             <ControlPanel

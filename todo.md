@@ -124,15 +124,15 @@ Definition of done:
 
 - [x] Update `examples/web/src/app/hooks/useRealtimeMode.ts` to pass character-aware config
 - [x] Subscribe to richer realtime events from `Charivo`
-- [ ] Show live assistant deltas in the UI instead of only completed non-realtime messages
-- [ ] Show user transcript updates during voice conversations
+- [x] Show live assistant deltas in the UI instead of only completed non-realtime messages
+- [x] Show user transcript updates during voice conversations
 - [x] Reflect session state, reconnect state, and tool/error state in the store
 - [x] Ensure realtime mode teardown is clean when switching character or transport mode
 
 Definition of done:
 
-- [ ] Realtime mode feels like a first-class chat path in the demo
-- [ ] Switching between classic and realtime mode does not leave stale state behind
+- [x] Realtime mode feels like a first-class chat path in the demo
+- [x] Switching between classic and realtime mode does not leave stale state behind
 
 ### Phase 7: Tests, Docs, And Release Hygiene
 

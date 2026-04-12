@@ -3,6 +3,7 @@ import type { Charivo, RealtimeState } from "@charivo/core";
 import type {
   ChatMessage,
   LLMClientType,
+  RealtimeTurnStatus,
   TTSPlayerType,
   STTTranscriberType,
 } from "../types/chat";
@@ -58,6 +59,12 @@ type ChatStore = {
   setRealtimeError: (error: string | null) => void;
   realtimeState: RealtimeState | null;
   setRealtimeState: (state: RealtimeState | null) => void;
+  realtimeAssistantDraft: string | null;
+  setRealtimeAssistantDraft: (draft: string | null) => void;
+  appendRealtimeAssistantDraft: (chunk: string) => void;
+  realtimeTurnStatus: RealtimeTurnStatus;
+  setRealtimeTurnStatus: (status: RealtimeTurnStatus) => void;
+  resetRealtimeUiState: () => void;
 };
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -113,4 +120,18 @@ export const useChatStore = create<ChatStore>((set) => ({
   setRealtimeError: (realtimeError) => set({ realtimeError }),
   realtimeState: null,
   setRealtimeState: (realtimeState) => set({ realtimeState }),
+  realtimeAssistantDraft: null,
+  setRealtimeAssistantDraft: (realtimeAssistantDraft) =>
+    set({ realtimeAssistantDraft }),
+  appendRealtimeAssistantDraft: (chunk) =>
+    set((state) => ({
+      realtimeAssistantDraft: `${state.realtimeAssistantDraft ?? ""}${chunk}`,
+    })),
+  realtimeTurnStatus: "idle",
+  setRealtimeTurnStatus: (realtimeTurnStatus) => set({ realtimeTurnStatus }),
+  resetRealtimeUiState: () =>
+    set({
+      realtimeAssistantDraft: null,
+      realtimeTurnStatus: "idle",
+    }),
 }));

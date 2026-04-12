@@ -29,6 +29,11 @@ import type {
 import { useLive2D } from "./useLive2D";
 import { useCharacterStore } from "../stores/useCharacterStore";
 import { useChatStore } from "../stores/useChatStore";
+import {
+  createRealtimeAssistantMessage,
+  getRealtimeTurnStatus,
+  shouldResetRealtimeUiState,
+} from "./realtime-ui";
 
 type Live2DRendererHandle = {
   playExpression(expressionId: string): void;
@@ -45,6 +50,13 @@ const OPENAI_TESTING_PROMPT =
   "Enter your OpenAI API key. This direct browser client is for development/testing only.";
 const OPENCLAW_TESTING_PROMPT =
   "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
+const REALTIME_UI_DEBUG = process.env.NODE_ENV !== "production";
+
+function logRealtimeUi(...args: unknown[]): void {
+  if (REALTIME_UI_DEBUG) {
+    console.debug("[realtime-ui]", ...args);
+  }
+}
 
 function promptForSecret(message: string, missingMessage: string): string {
   const value = window.prompt(message)?.trim();
@@ -95,6 +107,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setIsConnected,
     setRealtimeError,
     setRealtimeState,
+    appendRealtimeAssistantDraft,
+    resetRealtimeUiState,
+    setRealtimeAssistantDraft,
+    setRealtimeTurnStatus,
   } = useChatStore();
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
@@ -263,6 +279,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setIsConnected(false);
       setIsRealtimeMode(false);
       setRealtimeState(null);
+      resetRealtimeUiState();
 
       if (ttsManager) {
         try {
@@ -406,9 +423,59 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return;
           }
 
+          logRealtimeUi("state", state);
           setRealtimeState(state);
           setIsConnecting(state.connection === "connecting");
           setIsConnected(state.connection === "connected");
+          setRealtimeTurnStatus(getRealtimeTurnStatus(state));
+
+          if (shouldResetRealtimeUiState(state)) {
+            resetRealtimeUiState();
+          }
+        });
+
+        instance.on("realtime:session:end", () => {
+          if (disposed) {
+            return;
+          }
+
+          resetRealtimeUiState();
+        });
+
+        instance.on("realtime:assistant:start", () => {
+          if (disposed) {
+            return;
+          }
+
+          logRealtimeUi("assistant.start");
+          setRealtimeAssistantDraft(null);
+        });
+
+        instance.on("realtime:assistant:delta", ({ text }) => {
+          if (disposed) {
+            return;
+          }
+
+          logRealtimeUi("assistant.delta", text);
+          appendRealtimeAssistantDraft(text);
+        });
+
+        instance.on("realtime:assistant:done", ({ text }) => {
+          if (disposed) {
+            return;
+          }
+
+          // Read the latest draft from the store because this handler may run
+          // after multiple delta events and a captured value would go stale.
+          const draft = useChatStore.getState().realtimeAssistantDraft;
+          const finalText = draft || text;
+
+          if (finalText.trim()) {
+            logRealtimeUi("assistant.done", finalText);
+            addMessage(createRealtimeAssistantMessage(finalText, character));
+          }
+
+          setRealtimeAssistantDraft(null);
         });
 
         instance.on("realtime:error", ({ error }) => {
@@ -417,11 +484,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           }
 
           setRealtimeError(error.message);
+
+          // Read the latest realtime state at event time rather than relying on
+          // a captured closure value from the effect setup.
+          const latestState = useChatStore.getState().realtimeState;
+          if (shouldResetRealtimeUiState(latestState)) {
+            resetRealtimeUiState();
+          }
         });
 
         clearMessages();
         setRealtimeError(null);
         setRealtimeState(null);
+        resetRealtimeUiState();
         setCharivo(instance);
       } catch (error) {
         if (!disposed) {
@@ -462,6 +537,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setLlmError,
     setRealtimeError,
     setRealtimeState,
+    appendRealtimeAssistantDraft,
+    resetRealtimeUiState,
+    setRealtimeAssistantDraft,
+    setRealtimeTurnStatus,
     setSttError,
   ]);
 
