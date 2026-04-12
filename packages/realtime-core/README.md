@@ -11,11 +11,34 @@ pnpm add @charivo/realtime-core
 ## Usage
 
 ```ts
-import { createRealtimeManager } from "@charivo/realtime-core";
+import {
+  createRealtimeManager,
+  type RealtimeToolRegistration,
+} from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
-const manager = createRealtimeManager(client);
+const tools: RealtimeToolRegistration[] = [
+  {
+    definition: {
+      type: "function",
+      name: "describeCharacterProfile",
+      description: "Return the active character profile.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+    async handler(_args, context) {
+      return {
+        success: true,
+        name: context.character?.name ?? null,
+      };
+    },
+  },
+];
+
+const manager = createRealtimeManager(client, { tools });
 manager.setCharacter({
   id: "hiyori",
   name: "Hiyori",
@@ -34,8 +57,41 @@ await manager.startSession({
 - `createRealtimeManager(client, options?)`
 - `buildRealtimeSessionConfig({ character, baseConfig? })`
 - `setEmotionTool`
+- `setEmotionRealtimeTool`
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
+
+## Tool Registry
+
+`RealtimeManager` owns the tool registry. Definitions sent to the provider come
+from the registry, not from `defaultSessionConfig.tools`.
+
+```ts
+manager.registerTool({
+  definition: {
+    type: "function",
+    name: "describeScene",
+    description: "Describe the current scene.",
+    parameters: {
+      type: "object",
+      properties: {},
+    },
+  },
+  async handler() {
+    return {
+      success: true,
+      scene: "Cafe",
+    };
+  },
+});
+```
+
+Current limitation:
+
+- `registerTool(...)` and `unregisterTool(...)` update the local manager registry immediately
+- active provider sessions are not updated mid-session yet
+- newly registered tool definitions are reflected on the next `startSession(...)`
+- unregistered tools may still be called by an already-active provider session and will return a failure result
 
 ## Event Bridge
 
@@ -54,6 +110,7 @@ When connected, the manager relays:
 - `realtime:assistant:done`
 - `realtime:tool:call`
 - `realtime:tool:result`
+- `realtime:tool:error`
 - `realtime:text:delta`
 - `realtime:emotion`
 - `realtime:error`

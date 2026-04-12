@@ -176,16 +176,35 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     );
   }
 
+  async sendToolResult(
+    callId: string,
+    output: Record<string, unknown>,
+  ): Promise<void> {
+    const dc = this.requireOpenDataChannel();
+
+    dc.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: callId,
+          output: JSON.stringify(output),
+        },
+      }),
+    );
+    dc.send(JSON.stringify({ type: "response.create" }));
+
+    this.beginResponseRequest();
+  }
+
   async interrupt(): Promise<void> {
-    if (!this.dc || this.dc.readyState !== "open") {
-      throw new Error("DataChannel not ready");
-    }
+    const dc = this.requireOpenDataChannel();
 
     if (!this.isResponseInProgress) {
       return;
     }
 
-    this.dc.send(JSON.stringify({ type: "response.cancel" }));
+    dc.send(JSON.stringify({ type: "response.cancel" }));
     this.isResponseInProgress = false;
     this.cancelInFlight = true;
   }
@@ -308,31 +327,6 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       type: "tool.call",
       name,
       args,
-      callId,
-    });
-
-    if (!callId || !this.dc || this.dc.readyState !== "open") {
-      return;
-    }
-
-    // Temporary Phase 4 placeholder until tool handlers live behind a registry.
-    const output = { success: true };
-    this.dc.send(
-      JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "function_call_output",
-          call_id: callId,
-          output: JSON.stringify(output),
-        },
-      }),
-    );
-    this.dc.send(JSON.stringify({ type: "response.create" }));
-
-    this.emitEvent({
-      type: "tool.result",
-      name,
-      output,
       callId,
     });
   }
@@ -475,6 +469,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.resetResponseTracking();
     this.isResponseInProgress = true;
     this.cancelInFlight = false;
+  }
+
+  private requireOpenDataChannel(): RTCDataChannel {
+    if (!this.dc || this.dc.readyState !== "open") {
+      throw new Error("DataChannel not ready");
+    }
+
+    return this.dc;
   }
 
   private resetResponseTracking(): void {

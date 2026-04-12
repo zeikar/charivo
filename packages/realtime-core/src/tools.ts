@@ -2,6 +2,7 @@ import {
   Emotion,
   type Character,
   type RealtimeSessionConfig,
+  type RealtimeToolRegistration,
   type RealtimeTool,
 } from "@charivo/core";
 
@@ -39,6 +40,25 @@ export interface EmotionArgs {
   emotion: Emotion;
 }
 
+export const setEmotionRealtimeTool: RealtimeToolRegistration = {
+  definition: setEmotionTool,
+  async handler(args) {
+    const emotion = args.emotion;
+
+    if (
+      typeof emotion !== "string" ||
+      !EMOTION_VALUES.includes(emotion as Emotion)
+    ) {
+      throw new Error('setEmotion requires a valid "emotion" string');
+    }
+
+    return {
+      success: true,
+      emotion,
+    };
+  },
+};
+
 export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
 You are a realtime voice agent controlling a Live2D character.
 Respond naturally, stay in character, and keep replies concise enough for spoken delivery.
@@ -55,14 +75,6 @@ export function buildRealtimeSessionConfig({
   character,
   baseConfig,
 }: BuildRealtimeSessionConfigOptions = {}): RealtimeSessionConfig {
-  const toolsFromConfig = baseConfig?.tools ?? [];
-  const hasEmotionTool = toolsFromConfig.some(
-    (tool) => tool.type === "function" && tool.name === setEmotionTool.name,
-  );
-  const tools = hasEmotionTool
-    ? toolsFromConfig
-    : [setEmotionTool, ...toolsFromConfig];
-
   return {
     provider: baseConfig?.provider ?? DEFAULT_PROVIDER,
     transport: baseConfig?.transport ?? "webrtc",
@@ -72,7 +84,7 @@ export function buildRealtimeSessionConfig({
       baseConfig?.instructions ?? buildCharacterInstructions(character),
     temperature: baseConfig?.temperature,
     maxTokens: baseConfig?.maxTokens,
-    tools,
+    tools: baseConfig?.tools,
     toolChoice: baseConfig?.toolChoice ?? "auto",
   };
 }

@@ -54,5 +54,6 @@ The endpoint must respond with a `RealtimeSessionBootstrap` JSON object:
 - Microphone access is required
 - Audio playback is handled by WebRTC
 - Lip-sync values are extracted from the incoming audio stream
-- Tool call outputs are still a built-in placeholder until the Phase 4 tool registry lands
+- Tool calls are normalized into `tool.call` transport events only
+- Tool execution lives in `@charivo/realtime-core`; use `sendToolResult(...)` to submit outputs back to OpenAI
 - For production apps, prefer `@charivo/realtime-client-remote`

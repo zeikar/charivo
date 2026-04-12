@@ -89,6 +89,7 @@ Important event names include:
 - `realtime:assistant:done`
 - `realtime:tool:call`
 - `realtime:tool:result`
+- `realtime:tool:error`
 - `realtime:emotion`
 - `realtime:text:delta`
 - `realtime:error`

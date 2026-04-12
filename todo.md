@@ -93,17 +93,17 @@ Definition of done:
 
 ### Phase 4: Tool Registry And Execution Flow
 
-- [ ] Replace hardcoded tool handling with a registry-based approach
-- [ ] Support registering tool handlers by name
-- [ ] Keep `setEmotion` as the first built-in tool implemented via the registry
-- [ ] Return real tool outputs to OpenAI instead of always `{ success: true }`
-- [ ] Emit tool lifecycle events for debugging and UI visibility
-- [ ] Define behavior for tool failure, timeout, and malformed arguments
+- [x] Replace hardcoded tool handling with a registry-based approach
+- [x] Support registering tool handlers by name
+- [x] Keep `setEmotion` as the first built-in tool implemented via the registry
+- [x] Return real tool outputs to OpenAI instead of always `{ success: true }`
+- [x] Emit tool lifecycle events for debugging and UI visibility
+- [x] Define behavior for tool failure, timeout, and malformed arguments
 
 Definition of done:
 
-- [ ] New tools can be added without editing OpenAI client internals
-- [ ] Emotion handling still works through the generalized path
+- [x] New tools can be added without editing OpenAI client internals
+- [x] Emotion handling still works through the generalized path
 
 ### Phase 5: OpenAI Realtime Client Expansion
 
@@ -147,7 +147,7 @@ Validation checklist:
 
 - [x] `pnpm verify`
 - [x] `pnpm build:web` if demo behavior changed
-- [ ] `pnpm pack:check` if package surface or release behavior changed
+- [x] `pnpm pack:check` if package surface or release behavior changed
 
 ## Suggested First Slice
 

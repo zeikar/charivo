@@ -112,6 +112,13 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
     await this.getActiveTransportClient().sendAudio(audio);
   }
 
+  async sendToolResult(
+    callId: string,
+    output: Record<string, unknown>,
+  ): Promise<void> {
+    await this.getActiveTransportClient().sendToolResult(callId, output);
+  }
+
   async interrupt(): Promise<void> {
     await this.getActiveTransportClient().interrupt();
   }

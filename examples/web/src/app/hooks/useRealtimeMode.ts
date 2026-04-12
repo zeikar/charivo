@@ -1,7 +1,32 @@
 import { useCallback } from "react";
-import { createRealtimeManager } from "@charivo/realtime-core";
+import {
+  createRealtimeManager,
+  type RealtimeToolRegistration,
+} from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import { useChatStore } from "../stores/useChatStore";
+
+const DEMO_REALTIME_TOOLS: RealtimeToolRegistration[] = [
+  {
+    definition: {
+      type: "function",
+      name: "describeCharacterProfile",
+      description: "Return the active character profile for grounding.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+    async handler(_args, context) {
+      return {
+        success: true,
+        characterId: context.character?.id ?? null,
+        name: context.character?.name ?? null,
+        personality: context.character?.personality ?? null,
+      };
+    },
+  },
+];
 
 /**
  * Realtime Mode Hook (Refactored with Zustand)
@@ -38,7 +63,9 @@ export function useRealtimeMode() {
         apiEndpoint: "/api/realtime",
       });
 
-      const realtimeManager = createRealtimeManager(realtimeClient);
+      const realtimeManager = createRealtimeManager(realtimeClient, {
+        tools: DEMO_REALTIME_TOOLS,
+      });
       charivo.attachRealtime(realtimeManager);
 
       await realtimeManager.startSession({

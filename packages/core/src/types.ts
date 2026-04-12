@@ -159,6 +159,23 @@ export interface RealtimeState {
   lastError: Error | null;
 }
 
+export interface RealtimeToolContext {
+  character?: Character | null;
+  state: RealtimeState;
+  callId?: string;
+}
+
+export type RealtimeToolHandler = (
+  args: Record<string, unknown>,
+  context: RealtimeToolContext,
+) => Promise<Record<string, unknown>>;
+
+export interface RealtimeToolRegistration {
+  definition: RealtimeTool;
+  handler: RealtimeToolHandler;
+  timeoutMs?: number;
+}
+
 export interface LLMAdapter {
   generateResponse(message: Message): Promise<string>;
   setCharacter(character: Character): void;
@@ -286,6 +303,9 @@ export interface RealtimeManager {
   sendMessage(text: string): Promise<void>;
   sendAudioChunk(audio: ArrayBuffer): Promise<void>;
   interrupt(): Promise<void>;
+  registerTool(tool: RealtimeToolRegistration): void;
+  unregisterTool(name: string): void;
+  getRegisteredTools(): RealtimeTool[];
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
@@ -317,6 +337,11 @@ export type EventMap = {
   "realtime:tool:result": {
     name: string;
     output: Record<string, unknown>;
+    callId?: string;
+  };
+  "realtime:tool:error": {
+    name: string;
+    error: Error;
     callId?: string;
   };
   "realtime:emotion": { emotion: Emotion };

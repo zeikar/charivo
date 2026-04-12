@@ -12,6 +12,9 @@ export type {
   RealtimeSessionRequest,
   RealtimeSessionStatus,
   RealtimeState,
+  RealtimeToolContext,
+  RealtimeToolHandler,
+  RealtimeToolRegistration,
   RealtimeTool,
   RealtimeToolChoice,
   RealtimeTransportKind,
@@ -49,6 +52,10 @@ export interface RealtimeTransportClient {
   disconnect(): Promise<void>;
   sendText(text: string): Promise<void>;
   sendAudio(audio: ArrayBuffer): Promise<void>;
+  sendToolResult(
+    callId: string,
+    output: Record<string, unknown>,
+  ): Promise<void>;
   interrupt(): Promise<void>;
   onEvent(callback: (event: RealtimeTransportEvent) => void): void;
 }

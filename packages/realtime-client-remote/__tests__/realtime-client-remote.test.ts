@@ -24,6 +24,9 @@ const transportClient = {
   disconnect: vi.fn(async () => undefined),
   sendText: vi.fn(async (_text: string) => undefined),
   sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
+  sendToolResult: vi.fn(
+    async (_callId: string, _output: Record<string, unknown>) => undefined,
+  ),
   interrupt: vi.fn(async () => undefined),
   onEvent: vi.fn((callback: (event: unknown) => void) => {
     transportState.callbacks.push(callback);
@@ -50,6 +53,7 @@ afterEach(() => {
   transportClient.disconnect.mockClear();
   transportClient.sendText.mockClear();
   transportClient.sendAudio.mockClear();
+  transportClient.sendToolResult.mockClear();
   transportClient.interrupt.mockClear();
   transportClient.onEvent.mockClear();
 });
@@ -139,5 +143,34 @@ describe("RemoteRealtimeClient", () => {
     await expect(client.interrupt()).rejects.toThrow(
       "Realtime session not active",
     );
+  });
+
+  it("forwards tool results to the active transport", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+    });
+    await client.sendToolResult("call-1", { success: true });
+
+    expect(transportClient.sendToolResult).toHaveBeenCalledWith("call-1", {
+      success: true,
+    });
   });
 });

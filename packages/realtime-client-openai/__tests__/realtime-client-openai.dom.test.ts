@@ -388,12 +388,6 @@ describe("OpenAIRealtimeClient", () => {
       callId: "call-1",
     });
     expect(events).toContainEqual({
-      type: "tool.result",
-      name: "setEmotion",
-      output: { success: true },
-      callId: "call-1",
-    });
-    expect(events).toContainEqual({
       type: "assistant.response.completed",
       text: "hel",
     });
@@ -465,6 +459,62 @@ describe("OpenAIRealtimeClient", () => {
       type: "assistant.response.completed",
       text: "",
     });
+  });
+
+  it("submits tool results through the OpenAI wire format", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect();
+    await client.sendToolResult("call-1", {
+      success: true,
+      emotion: "happy",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    expect(peer.dataChannel.send).toHaveBeenNthCalledWith(
+      1,
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: "call-1",
+          output: JSON.stringify({
+            success: true,
+            emotion: "happy",
+          }),
+        },
+      }),
+    );
+    expect(peer.dataChannel.send).toHaveBeenNthCalledWith(
+      2,
+      JSON.stringify({ type: "response.create" }),
+    );
   });
 
   it("notifies multiple event listeners", async () => {

@@ -4,26 +4,34 @@ import type {
   RealtimeManager as CoreRealtimeManager,
   RealtimeSessionConfig,
   RealtimeState,
+  RealtimeTool,
+  RealtimeToolRegistration,
 } from "@charivo/core";
 import { Emotion } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
-import { buildRealtimeSessionConfig } from "./tools";
+import { buildRealtimeSessionConfig, setEmotionRealtimeTool } from "./tools";
+
+const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 
 export interface RealtimeManagerOptions {
-  defaultSessionConfig?: RealtimeSessionConfig;
+  defaultSessionConfig?: Omit<RealtimeSessionConfig, "tools">;
+  tools?: RealtimeToolRegistration[];
+  defaultToolTimeoutMs?: number;
 }
 
 /**
  * Provider-agnostic realtime manager.
  *
- * It owns session state, character-aware session config generation, and event
- * relaying. Transport-specific event parsing belongs to concrete client
- * packages such as `@charivo/realtime-client-openai`.
+ * It owns session state, character-aware session config generation, tool
+ * execution, and event relaying. Transport-specific event parsing belongs to
+ * concrete client packages such as `@charivo/realtime-client-openai`.
  */
 export class RealtimeManagerImpl implements CoreRealtimeManager {
   private eventEmitter?: CharivoEventEmitter;
   private character: Character | null = null;
   private isStoppingSession = false;
+  private isAudioPlaybackActive = false;
+  private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
   private state: RealtimeState = {
     connection: "idle",
     session: {
@@ -36,14 +44,23 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     },
     lastError: null,
   };
-  private isAudioPlaybackActive = false;
 
   constructor(
     private client: RealtimeTransportClient,
     private options: RealtimeManagerOptions = {},
   ) {
+    this.registerTool(setEmotionRealtimeTool);
+    for (const tool of options.tools ?? []) {
+      this.registerTool(tool);
+    }
+
     this.client.onEvent((event) => {
-      this.handleClientEvent(event);
+      void this.handleClientEvent(event).catch((error) => {
+        this.applyError(
+          error instanceof Error ? error : new Error(String(error)),
+          this.state.connection === "idle" ? "error" : this.state.connection,
+        );
+      });
     });
   }
 
@@ -63,13 +80,39 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.emitState();
   }
 
+  registerTool(tool: RealtimeToolRegistration): void {
+    this.toolRegistry.set(tool.definition.name, tool);
+  }
+
+  unregisterTool(name: string): void {
+    this.toolRegistry.delete(name);
+  }
+
+  getRegisteredTools(): RealtimeTool[] {
+    return Array.from(this.toolRegistry.values(), (tool) => ({
+      ...tool.definition,
+      parameters: {
+        ...tool.definition.parameters,
+        properties: { ...tool.definition.parameters.properties },
+        required: tool.definition.parameters.required
+          ? [...tool.definition.parameters.required]
+          : undefined,
+      },
+    }));
+  }
+
   getState(): RealtimeState {
     return {
       ...this.state,
       session: {
         ...this.state.session,
         config: this.state.session.config
-          ? { ...this.state.session.config }
+          ? {
+              ...this.state.session.config,
+              tools: this.state.session.config.tools
+                ? [...this.state.session.config.tools]
+                : undefined,
+            }
           : null,
       },
       response: {
@@ -89,7 +132,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     );
     const sessionConfig = buildRealtimeSessionConfig({
       character: this.character,
-      baseConfig: mergedConfig,
+      baseConfig: {
+        ...mergedConfig,
+        tools: this.getRegisteredTools(),
+      },
     });
 
     this.state = {
@@ -184,7 +230,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.emitState();
   }
 
-  private handleClientEvent(event: RealtimeTransportEvent): void {
+  private async handleClientEvent(
+    event: RealtimeTransportEvent,
+  ): Promise<void> {
     switch (event.type) {
       case "session.started":
         this.state = {
@@ -281,7 +329,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           args: event.args,
           callId: event.callId,
         });
-        this.handleBuiltInToolCall(event.name, event.args);
+        await this.executeToolCall(event);
         return;
 
       case "tool.result":
@@ -303,21 +351,114 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     }
   }
 
-  private handleBuiltInToolCall(
-    name: string,
-    args: Record<string, unknown>,
-  ): void {
-    if (name !== "setEmotion") {
+  private async executeToolCall(
+    event: Extract<RealtimeTransportEvent, { type: "tool.call" }>,
+  ): Promise<void> {
+    const tool = this.toolRegistry.get(event.name);
+    if (!event.callId) {
+      this.emitToolError(
+        event.name,
+        new Error(`Tool "${event.name}" is missing a call ID`),
+        event.callId,
+      );
       return;
     }
 
-    const emotion = args.emotion;
+    if (!tool) {
+      await this.handleToolExecutionFailure(
+        event.name,
+        event.callId,
+        new Error(`No realtime tool registered for "${event.name}"`),
+      );
+      return;
+    }
+
+    try {
+      const output = await this.runToolHandler(tool, event);
+      await this.client.sendToolResult(event.callId, output);
+      this.postProcessToolResult(event.name, output);
+      this.eventEmitter?.emit("realtime:tool:result", {
+        name: event.name,
+        output,
+        callId: event.callId,
+      });
+    } catch (error) {
+      await this.handleToolExecutionFailure(
+        event.name,
+        event.callId,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  }
+
+  private async runToolHandler(
+    tool: RealtimeToolRegistration,
+    event: Extract<RealtimeTransportEvent, { type: "tool.call" }>,
+  ): Promise<Record<string, unknown>> {
+    const timeoutMs =
+      tool.timeoutMs ??
+      this.options.defaultToolTimeoutMs ??
+      DEFAULT_TOOL_TIMEOUT_MS;
+    const result = await withTimeout(
+      tool.handler(event.args, {
+        character: this.character,
+        state: this.getState(),
+        callId: event.callId,
+      }),
+      timeoutMs,
+      tool.definition.name,
+    );
+
+    if (!isRecord(result)) {
+      throw new Error(
+        `Realtime tool "${tool.definition.name}" must return an object`,
+      );
+    }
+
+    return result;
+  }
+
+  private async handleToolExecutionFailure(
+    name: string,
+    callId: string,
+    error: Error,
+  ): Promise<void> {
+    this.emitToolError(name, error, callId);
+
+    try {
+      await this.client.sendToolResult(callId, createFailureOutput(error));
+    } catch (sendError) {
+      this.emitToolError(
+        name,
+        sendError instanceof Error ? sendError : new Error(String(sendError)),
+        callId,
+      );
+    }
+  }
+
+  private postProcessToolResult(
+    name: string,
+    output: Record<string, unknown>,
+  ): void {
+    if (name !== setEmotionRealtimeTool.definition.name) {
+      return;
+    }
+
+    const emotion = output.emotion;
     if (typeof emotion !== "string") {
       return;
     }
 
     this.eventEmitter?.emit("realtime:emotion", {
       emotion: emotion as Emotion,
+    });
+  }
+
+  private emitToolError(name: string, error: Error, callId?: string): void {
+    this.eventEmitter?.emit("realtime:tool:error", {
+      name,
+      error,
+      callId,
     });
   }
 
@@ -411,17 +552,19 @@ export function createRealtimeManager(
 }
 
 function mergeSessionConfig(
-  baseConfig?: RealtimeSessionConfig,
+  baseConfig?: Omit<RealtimeSessionConfig, "tools">,
   overrideConfig?: RealtimeSessionConfig,
 ): RealtimeSessionConfig | undefined {
   if (!baseConfig && !overrideConfig) {
     return undefined;
   }
 
+  const { tools: _ignoredOverrideTools, ...overrideWithoutTools } =
+    overrideConfig ?? {};
+
   return {
     ...baseConfig,
-    ...overrideConfig,
-    tools: overrideConfig?.tools ?? baseConfig?.tools,
+    ...overrideWithoutTools,
   };
 }
 
@@ -432,14 +575,52 @@ function mergeRealtimeState(
   return {
     connection: partial.connection ?? current.connection,
     session: {
-      ...current.session,
-      ...partial.session,
+      status: partial.session?.status ?? current.session.status,
+      config: partial.session?.config ?? current.session.config,
+      characterId: partial.session?.characterId ?? current.session.characterId,
     },
     response: {
-      ...current.response,
-      ...partial.response,
+      status: partial.response?.status ?? current.response.status,
+      text: partial.response?.text ?? current.response.text,
     },
-    lastError:
-      partial.lastError === undefined ? current.lastError : partial.lastError,
+    lastError: partial.lastError ?? current.lastError,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function createFailureOutput(error: Error): Record<string, unknown> {
+  return {
+    success: false,
+    error: error.message,
+  };
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  toolName: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            new Error(
+              `Realtime tool "${toolName}" timed out after ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
