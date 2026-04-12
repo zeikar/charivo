@@ -106,7 +106,7 @@ export async function fetchWithTimeout(
       throw new Error(timeoutMessage);
     }
     throw error;
-  } finally {
+  } /* v8 ignore next */ finally {
     clearTimeout(timeoutId);
   }
 }

@@ -109,6 +109,38 @@ describe("shared utilities", () => {
         answerSdp: "answer-sdp",
       }),
     ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "future-invalid",
+        transport: 1,
+      }),
+    ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "openai-webrtc",
+        transport: "webrtc",
+      }),
+    ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "future-ws",
+        transport: "websocket",
+        url: "wss://example.test/socket",
+      }),
+    ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "future-ws",
+        transport: "websocket",
+        token: "secret",
+      }),
+    ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "future-custom",
+        transport: "sse",
+      }),
+    ).toBe(false);
   });
 
   it("detects abort errors and rewrites fetch timeouts", async () => {
@@ -136,9 +168,59 @@ describe("shared utilities", () => {
     await expectation;
 
     expect(isAbortError(abortError)).toBe(true);
+    expect(isAbortError(new DOMException("aborted", "AbortError"))).toBe(true);
     expect(isAbortError(new Error("other"))).toBe(false);
 
     globalThis.fetch = originalFetch;
     vi.useRealTimers();
+  });
+
+  it("returns fetch responses and preserves provided request init", async () => {
+    const originalFetch = globalThis.fetch;
+    const response = new Response("ok", { status: 200 });
+
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        expect(init?.method).toBe("POST");
+        expect(init?.signal).toBeInstanceOf(AbortSignal);
+        return response;
+      },
+    ) as typeof fetch;
+
+    await expect(
+      fetchWithTimeout("/api/test", { method: "POST" }, "timeout", 10),
+    ).resolves.toBe(response);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it("rethrows non-abort fetch errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const failure = new Error("network down");
+
+    globalThis.fetch = vi.fn(async () => {
+      throw failure;
+    }) as typeof fetch;
+
+    await expect(
+      fetchWithTimeout("/api/test", { method: "GET" }, "timeout", 10),
+    ).rejects.toBe(failure);
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it("rethrows synchronously thrown fetch errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const failure = new Error("sync failure");
+
+    globalThis.fetch = vi.fn(() => {
+      throw failure;
+    }) as typeof fetch;
+
+    await expect(
+      fetchWithTimeout("/api/test", { method: "GET" }, "timeout", 10),
+    ).rejects.toBe(failure);
+
+    globalThis.fetch = originalFetch;
   });
 });
