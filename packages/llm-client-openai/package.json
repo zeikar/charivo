@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-client-openai",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "OpenAI LLM client for Charivo (local/testing)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

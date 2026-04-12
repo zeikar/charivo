@@ -1,5 +1,19 @@
 # @charivo/tts-core
 
+## 0.1.0
+
+### Minor Changes
+
+- ca98036: Add explicit TTS player playback capabilities so `tts-core` can prefer
+  `playbackMode` and `audioMimeType` over implicit detection. This also removes
+  the old constructor-name and mime helper exports from `@charivo/tts-core`, so
+  player implementations should declare their playback behavior explicitly.
+
+### Patch Changes
+
+- Updated dependencies [ca98036]
+  - @charivo/core@0.2.0
+
 ## 0.0.2
 
 ### Patch Changes

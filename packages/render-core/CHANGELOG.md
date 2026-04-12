@@ -1,5 +1,12 @@
 # @charivo/render-core
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [ca98036]
+  - @charivo/core@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
