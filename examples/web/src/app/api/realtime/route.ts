@@ -1,15 +1,9 @@
-/**
- * OpenAI Realtime API - WebRTC Session Endpoint
- *
- * Creates a Realtime API session using the unified interface.
- * Client sends SDP offer → Server forwards to OpenAI → Returns SDP answer
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { getEmotionSessionConfig } from "@charivo/realtime-core";
-import type { RealtimeSessionConfig } from "@charivo/realtime-core";
-
-const OPENAI_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
+import {
+  createOpenAIRealtimeProvider,
+  type OpenAIRealtimeProviderConfig,
+} from "@charivo/realtime-provider-openai";
+import type { RealtimeSessionRequest } from "@charivo/core";
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,57 +15,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const contentType = request.headers.get("content-type") || "";
-    let sdpOffer = "";
-    let sessionConfig: RealtimeSessionConfig | undefined;
-
-    if (contentType.includes("application/json")) {
-      const body = (await request.json()) as {
-        sdpOffer?: string;
-        sessionConfig?: RealtimeSessionConfig;
-      };
-      sdpOffer = body.sdpOffer || "";
-      sessionConfig = body.sessionConfig;
-    } else {
-      // Backward compatibility for legacy clients
-      sdpOffer = await request.text();
-    }
-
-    if (!sdpOffer) {
+    const body = (await request.json()) as Partial<RealtimeSessionRequest>;
+    if (!body.transport || !body.session) {
       return NextResponse.json(
-        { error: "SDP offer is required" },
+        { error: "transport and session are required" },
         { status: 400 },
       );
     }
 
-    // Create multipart form with SDP + session config
-    const formData = new FormData();
-    formData.set("sdp", sdpOffer);
-    formData.set(
-      "session",
-      JSON.stringify(getEmotionSessionConfig(sessionConfig)),
-    );
+    const providerConfig: OpenAIRealtimeProviderConfig = {
+      apiKey,
+    };
+    const provider = createOpenAIRealtimeProvider(providerConfig);
 
-    // Forward to OpenAI
-    const response = await fetch(OPENAI_REALTIME_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: formData,
+    const bootstrap = await provider.createSession({
+      transport: body.transport,
+      session: body.session,
+      sdpOffer: body.sdpOffer,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error("OpenAI Realtime API error:", error);
-      return NextResponse.json(
-        { error: "Failed to create Realtime session", details: error },
-        { status: response.status },
-      );
-    }
-
-    const sdpAnswer = await response.text();
-    return new NextResponse(sdpAnswer, {
-      headers: { "Content-Type": "application/sdp" },
-    });
+    return NextResponse.json(bootstrap);
   } catch (error) {
     console.error("Realtime session error:", error);
     return NextResponse.json(

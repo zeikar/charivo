@@ -80,6 +80,15 @@ Important event names include:
 - `stt:start`
 - `stt:stop`
 - `stt:error`
+- `realtime:session:start`
+- `realtime:session:end`
+- `realtime:state`
+- `realtime:user:transcript`
+- `realtime:assistant:start`
+- `realtime:assistant:delta`
+- `realtime:assistant:done`
+- `realtime:tool:call`
+- `realtime:tool:result`
 - `realtime:emotion`
 - `realtime:text:delta`
 - `realtime:error`

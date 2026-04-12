@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Charivo } from "@charivo/core";
+import type { Charivo, RealtimeState } from "@charivo/core";
 import type {
   ChatMessage,
   LLMClientType,
@@ -56,6 +56,8 @@ type ChatStore = {
   setIsConnected: (connected: boolean) => void;
   realtimeError: string | null;
   setRealtimeError: (error: string | null) => void;
+  realtimeState: RealtimeState | null;
+  setRealtimeState: (state: RealtimeState | null) => void;
 };
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -109,4 +111,6 @@ export const useChatStore = create<ChatStore>((set) => ({
   setIsConnected: (isConnected) => set({ isConnected }),
   realtimeError: null,
   setRealtimeError: (realtimeError) => set({ realtimeError }),
+  realtimeState: null,
+  setRealtimeState: (realtimeState) => set({ realtimeState }),
 }));

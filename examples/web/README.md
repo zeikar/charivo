@@ -7,7 +7,7 @@ current architecture as it is actually shipped:
 - LLM chat through remote, direct, OpenClaw proxy, and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
-- OpenAI Realtime voice sessions through `/api/realtime`
+- Realtime voice sessions through `@charivo/realtime-client-remote` and `/api/realtime`
 
 ## Environment
 
@@ -52,8 +52,8 @@ The demo ships these routes:
   Uses `@charivo/stt-provider-openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
 - `POST /api/realtime`
-  Proxies the OpenAI Realtime call flow and applies `getEmotionSessionConfig(...)`
-  defaults from `@charivo/realtime-core`
+  Uses `@charivo/realtime-provider-openai` to create a realtime session
+  bootstrap for `@charivo/realtime-client-remote`
 
 There is no `GET /api/tts` route in the current demo.
 

@@ -1,24 +1,27 @@
 import {
   Emotion,
+  type Character,
   type RealtimeSessionConfig,
   type RealtimeTool,
 } from "@charivo/core";
 
+const DEFAULT_PROVIDER = "openai";
+const DEFAULT_MODEL = "gpt-realtime-mini";
+const DEFAULT_VOICE = "marin";
+
 /**
- * Get emotion enum values for tool definition
+ * Get emotion enum values for tool definition.
  */
 const EMOTION_VALUES = Object.values(Emotion);
 
 /**
- * setEmotion tool definition for OpenAI Realtime API
- *
- * This tool allows the LLM to update the Live2D character's emotion.
+ * Built-in emotion tool definition for realtime agents.
  */
 export const setEmotionTool: RealtimeTool = {
   type: "function",
   name: "setEmotion",
   description:
-    "Update Live2D character emotion. Call this when the conversation mood or emotion changes.",
+    "Update the Live2D character emotion when the conversation mood changes.",
   parameters: {
     type: "object",
     properties: {
@@ -32,35 +35,27 @@ export const setEmotionTool: RealtimeTool = {
   },
 };
 
-/**
- * Emotion tool call arguments type
- */
 export interface EmotionArgs {
   emotion: Emotion;
 }
 
-/**
- * Default instructions for character with emotion support
- */
-export const DEFAULT_EMOTION_INSTRUCTIONS = `
-You are a Live2D character with emotions and expressions.
-Respond naturally to the user's messages.
-When the conversation mood or emotion changes, call the 'setEmotion' tool to update your expression and motion.
-Do NOT mention the tool call in your response - just respond naturally and let the emotion show through your character.
+export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
+You are a realtime voice agent controlling a Live2D character.
+Respond naturally, stay in character, and keep replies concise enough for spoken delivery.
+When the conversation mood changes, call the "setEmotion" tool so the character expression can update.
+Do not mention tool calls in the spoken response.
 `.trim();
 
-/**
- * Get default Realtime session config with emotion support
- */
-export function getEmotionSessionConfig(overrides?: RealtimeSessionConfig): {
-  type: string;
-  model: string;
-  audio: { output: { voice: string } };
-  instructions: string;
-  tools: RealtimeTool[];
-  tool_choice: "auto" | "none" | "required";
-} {
-  const toolsFromConfig = overrides?.tools ?? [];
+export interface BuildRealtimeSessionConfigOptions {
+  character?: Character | null;
+  baseConfig?: RealtimeSessionConfig;
+}
+
+export function buildRealtimeSessionConfig({
+  character,
+  baseConfig,
+}: BuildRealtimeSessionConfigOptions = {}): RealtimeSessionConfig {
+  const toolsFromConfig = baseConfig?.tools ?? [];
   const hasEmotionTool = toolsFromConfig.some(
     (tool) => tool.type === "function" && tool.name === setEmotionTool.name,
   );
@@ -69,15 +64,34 @@ export function getEmotionSessionConfig(overrides?: RealtimeSessionConfig): {
     : [setEmotionTool, ...toolsFromConfig];
 
   return {
-    type: "realtime",
-    model: overrides?.model || "gpt-realtime-mini",
-    audio: {
-      output: {
-        voice: overrides?.voice || "marin",
-      },
-    },
-    instructions: overrides?.instructions || DEFAULT_EMOTION_INSTRUCTIONS,
+    provider: baseConfig?.provider ?? DEFAULT_PROVIDER,
+    transport: baseConfig?.transport ?? "webrtc",
+    model: baseConfig?.model ?? DEFAULT_MODEL,
+    voice: baseConfig?.voice ?? character?.voice?.voiceId ?? DEFAULT_VOICE,
+    instructions:
+      baseConfig?.instructions ?? buildCharacterInstructions(character),
+    temperature: baseConfig?.temperature,
+    maxTokens: baseConfig?.maxTokens,
     tools,
-    tool_choice: overrides?.tool_choice ?? "auto",
+    toolChoice: baseConfig?.toolChoice ?? "auto",
   };
+}
+
+function buildCharacterInstructions(character?: Character | null): string {
+  if (!character) {
+    return DEFAULT_REALTIME_AGENT_INSTRUCTIONS;
+  }
+
+  const lines = [DEFAULT_REALTIME_AGENT_INSTRUCTIONS];
+  lines.push(`Character name: ${character.name}.`);
+
+  if (character.description) {
+    lines.push(`Character description: ${character.description}.`);
+  }
+
+  if (character.personality) {
+    lines.push(`Character personality: ${character.personality}.`);
+  }
+
+  return lines.join("\n");
 }

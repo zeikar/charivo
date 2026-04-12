@@ -22,7 +22,13 @@
       "@charivo/realtime-client-openai": [
         "packages/realtime-client-openai/src/index.ts"
       ],
+      "@charivo/realtime-client-remote": [
+        "packages/realtime-client-remote/src/index.ts"
+      ],
       "@charivo/realtime-core": ["packages/realtime-core/src/index.ts"],
+      "@charivo/realtime-provider-openai": [
+        "packages/realtime-provider-openai/src/index.ts"
+      ],
       "@charivo/render-core": ["packages/render-core/src/index.ts"],
       "@charivo/render-live2d": ["packages/render-live2d/src/index.ts"],
       "@charivo/render-stub": ["packages/render-stub/src/index.ts"],

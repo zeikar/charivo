@@ -125,6 +125,10 @@ export class Charivo {
     if (this.renderManager) {
       this.renderManager.setCharacter(character);
     }
+
+    if (this.realtimeManager) {
+      this.realtimeManager.setCharacter(character);
+    }
   }
 
   /**
@@ -236,6 +240,10 @@ export class Charivo {
     this.realtimeManager = manager;
     this.isRealtimeMode = true;
     this.connectRealtimeManagerEventEmitter(manager);
+
+    if (this.character) {
+      manager.setCharacter(this.character);
+    }
   }
 
   /**

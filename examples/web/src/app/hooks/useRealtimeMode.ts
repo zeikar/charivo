@@ -1,6 +1,9 @@
 import { useCallback } from "react";
-import { createRealtimeManager } from "@charivo/realtime-core";
-import { createOpenAIRealtimeClient } from "@charivo/realtime-client-openai";
+import {
+  buildRealtimeSessionConfig,
+  createRealtimeManager,
+} from "@charivo/realtime-core";
+import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import { useChatStore } from "../stores/useChatStore";
 
 /**
@@ -29,24 +32,28 @@ export function useRealtimeMode() {
     }
 
     setIsConnecting(true);
+    setRealtimeError(null);
 
     try {
       console.log("🌐 Enabling Realtime mode...");
 
-      const realtimeClient = createOpenAIRealtimeClient({
+      const realtimeClient = createRemoteRealtimeClient({
         apiEndpoint: "/api/realtime",
       });
 
       const realtimeManager = createRealtimeManager(realtimeClient);
       charivo.attachRealtime(realtimeManager);
 
-      await realtimeManager.startSession({
-        model: "gpt-realtime-mini",
-        voice: "marin",
-      });
+      await realtimeManager.startSession(
+        buildRealtimeSessionConfig({
+          character: charivo.getCurrentCharacter(),
+          baseConfig: {
+            provider: "openai",
+          },
+        }),
+      );
 
       setIsRealtimeMode(true);
-      setIsConnected(true);
 
       console.log("✅ Realtime mode enabled");
     } catch (error) {

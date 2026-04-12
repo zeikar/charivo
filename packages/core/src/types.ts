@@ -77,6 +77,10 @@ export interface CharivoConfig {
   renderProvider?: string;
 }
 
+export type RealtimeTransportKind = "webrtc" | "websocket";
+
+export type RealtimeToolChoice = "auto" | "none" | "required";
+
 export interface RealtimeTool {
   type: "function";
   name: string;
@@ -89,13 +93,67 @@ export interface RealtimeTool {
 }
 
 export interface RealtimeSessionConfig {
+  provider?: string;
+  transport?: RealtimeTransportKind;
   voice?: string;
   model?: string;
   instructions?: string;
   temperature?: number;
   maxTokens?: number;
   tools?: RealtimeTool[];
-  tool_choice?: "auto" | "none" | "required";
+  toolChoice?: RealtimeToolChoice;
+}
+
+export interface RealtimeSessionRequest {
+  transport: RealtimeTransportKind;
+  session: RealtimeSessionConfig;
+  sdpOffer?: string;
+}
+
+export type RealtimeSessionBootstrap =
+  | {
+      transport: "webrtc";
+      answerSdp: string;
+    }
+  | {
+      transport: "websocket";
+      url: string;
+      token: string;
+    };
+
+export interface RealtimeProvider {
+  createSession(
+    request: RealtimeSessionRequest,
+  ): Promise<RealtimeSessionBootstrap>;
+}
+
+export type RealtimeConnectionState =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "disconnecting"
+  | "error";
+
+export type RealtimeSessionStatus = "idle" | "starting" | "active" | "stopped";
+
+export type RealtimeResponseStatus =
+  | "idle"
+  | "responding"
+  | "interrupted"
+  | "completed";
+
+export interface RealtimeState {
+  connection: RealtimeConnectionState;
+  session: {
+    status: RealtimeSessionStatus;
+    config: RealtimeSessionConfig | null;
+    characterId?: string;
+  };
+  response: {
+    status: RealtimeResponseStatus;
+    text: string;
+  };
+  lastError: Error | null;
 }
 
 export interface LLMAdapter {
@@ -218,10 +276,13 @@ export interface STTManager {
 
 // Realtime Manager - Manages Realtime API session state
 export interface RealtimeManager {
-  startSession(config: RealtimeSessionConfig): Promise<void>;
+  setCharacter(character: Character): void;
+  getState(): RealtimeState;
+  startSession(config?: RealtimeSessionConfig): Promise<void>;
   stopSession(): Promise<void>;
   sendMessage(text: string): Promise<void>;
   sendAudioChunk(audio: ArrayBuffer): Promise<void>;
+  interrupt(): Promise<void>;
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
@@ -238,6 +299,23 @@ export type EventMap = {
   "stt:start": { options?: STTOptions };
   "stt:stop": { transcription: string };
   "stt:error": { error: Error };
+  "realtime:session:start": { state: RealtimeState };
+  "realtime:session:end": { state: RealtimeState };
+  "realtime:state": { state: RealtimeState };
+  "realtime:user:transcript": { text: string };
+  "realtime:assistant:start": { state: RealtimeState };
+  "realtime:assistant:delta": { text: string };
+  "realtime:assistant:done": { text: string };
+  "realtime:tool:call": {
+    name: string;
+    args: Record<string, unknown>;
+    callId?: string;
+  };
+  "realtime:tool:result": {
+    name: string;
+    output: Record<string, unknown>;
+    callId?: string;
+  };
   "realtime:emotion": { emotion: Emotion };
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };

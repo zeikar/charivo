@@ -105,7 +105,7 @@ Use the remote/server-mediated path by default:
 - LLM: `@charivo/llm-client-remote` + a server route using a provider package such as `@charivo/llm-provider-openai` or `@charivo/llm-provider-openclaw`
 - TTS: `@charivo/tts-player-remote` + `@charivo/tts-provider-openai`
 - STT: `@charivo/stt-transcriber-remote` + `@charivo/stt-provider-openai`
-- Realtime: `@charivo/realtime-client-openai` + a server `/api/realtime` route
+- Realtime: `@charivo/realtime-client-remote` + a server route using a provider package such as `@charivo/realtime-provider-openai`
 
 Keep the direct browser packages for local development, demos, and testing only:
 
@@ -154,8 +154,10 @@ STT:
 
 Realtime:
 
-- `@charivo/realtime-core`: session manager, typed session config, emotion tool helpers
-- `@charivo/realtime-client-openai`: OpenAI Realtime WebRTC client through a server endpoint
+- `@charivo/realtime-core`: provider-agnostic realtime manager, typed state, and session config helpers
+- `@charivo/realtime-client-remote`: browser client for server realtime routes
+- `@charivo/realtime-client-openai`: OpenAI-specific realtime transport client and adapter
+- `@charivo/realtime-provider-openai`: server-side OpenAI realtime session provider
 
 Rendering:
 

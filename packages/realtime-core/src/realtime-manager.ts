@@ -1,150 +1,396 @@
-import {
+import type {
+  Character,
   CharivoEventEmitter,
   RealtimeManager as CoreRealtimeManager,
   RealtimeSessionConfig,
-  RealtimeClient,
-} from "./types";
+  RealtimeState,
+} from "@charivo/core";
 import { Emotion } from "@charivo/core";
+import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
+import { buildRealtimeSessionConfig } from "./tools";
+
+export interface RealtimeManagerOptions {
+  defaultSessionConfig?: RealtimeSessionConfig;
+}
 
 /**
- * Realtime Manager - Realtime API 세션 관리
+ * Provider-agnostic realtime manager.
  *
- * 역할:
- * - Realtime 클라이언트 관리 (WebRTC)
- * - 립싱크 이벤트 중계
- * - 텍스트 스트리밍 처리
- *
- * Note: WebRTC 클라이언트는 오디오를 자동으로 처리하므로
- * 이 Manager는 이벤트 중계에 집중합니다.
+ * It owns session state, character-aware session config generation, and event
+ * relaying. Transport-specific event parsing belongs to concrete client
+ * packages such as `@charivo/realtime-client-openai`.
  */
 export class RealtimeManagerImpl implements CoreRealtimeManager {
-  private client: RealtimeClient;
   private eventEmitter?: CharivoEventEmitter;
-  private isSessionActive = false;
+  private character: Character | null = null;
+  private state: RealtimeState = {
+    connection: "idle",
+    session: {
+      status: "idle",
+      config: null,
+    },
+    response: {
+      status: "idle",
+      text: "",
+    },
+    lastError: null,
+  };
   private isAudioPlaybackActive = false;
 
-  constructor(client: RealtimeClient) {
-    this.client = client;
-    this.setupClientListeners();
+  constructor(
+    private client: RealtimeTransportClient,
+    private options: RealtimeManagerOptions = {},
+  ) {
+    this.client.onEvent((event) => {
+      this.handleClientEvent(event);
+    });
   }
 
-  /**
-   * 이벤트 발신자 설정
-   */
   setEventEmitter(eventEmitter: CharivoEventEmitter): void {
     this.eventEmitter = eventEmitter;
   }
 
-  /**
-   * Realtime 세션 시작
-   */
-  async startSession(config: RealtimeSessionConfig): Promise<void> {
-    if (this.isSessionActive) {
+  setCharacter(character: Character): void {
+    this.character = character;
+    this.state = {
+      ...this.state,
+      session: {
+        ...this.state.session,
+        characterId: character.id,
+      },
+    };
+    this.emitState();
+  }
+
+  getState(): RealtimeState {
+    return {
+      ...this.state,
+      session: {
+        ...this.state.session,
+        config: this.state.session.config
+          ? { ...this.state.session.config }
+          : null,
+      },
+      response: {
+        ...this.state.response,
+      },
+    };
+  }
+
+  async startSession(config?: RealtimeSessionConfig): Promise<void> {
+    if (this.state.session.status === "active") {
       throw new Error("Realtime session already active");
     }
 
-    // 클라이언트 연결
-    await this.client.connect(config);
+    const mergedConfig = mergeSessionConfig(
+      this.options.defaultSessionConfig,
+      config,
+    );
+    const sessionConfig = buildRealtimeSessionConfig({
+      character: this.character,
+      baseConfig: mergedConfig,
+    });
 
-    this.isSessionActive = true;
-  }
+    this.state = {
+      ...this.state,
+      connection: "connecting",
+      session: {
+        status: "starting",
+        config: sessionConfig,
+        characterId: this.character?.id,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: null,
+    };
+    this.emitState();
 
-  /**
-   * Realtime 세션 종료
-   */
-  async stopSession(): Promise<void> {
-    if (!this.isSessionActive) return;
-
-    // 클라이언트 연결 해제
-    await this.client.disconnect();
-    this.emitAudioEnd();
-
-    this.isSessionActive = false;
-  }
-
-  /**
-   * 텍스트 메시지 전송
-   */
-  async sendMessage(text: string): Promise<void> {
-    if (!this.isSessionActive) {
-      throw new Error("Realtime session not active");
-    }
-
-    this.emitAudioStart();
     try {
-      await this.client.sendText(text);
+      await this.client.connect(sessionConfig);
+      this.state = {
+        ...this.state,
+        connection: "connected",
+        session: {
+          ...this.state.session,
+          status: "active",
+        },
+      };
+      this.emitState();
+      this.eventEmitter?.emit("realtime:session:start", {
+        state: this.getState(),
+      });
     } catch (error) {
-      this.emitAudioEnd();
+      this.applyError(
+        error instanceof Error ? error : new Error(String(error)),
+        "error",
+      );
       throw error;
     }
   }
 
-  /**
-   * 오디오 청크 전송 (사용자 음성)
-   */
+  async stopSession(): Promise<void> {
+    if (this.state.session.status !== "active") {
+      return;
+    }
+
+    this.state = {
+      ...this.state,
+      connection: "disconnecting",
+    };
+    this.emitState();
+
+    await this.client.disconnect();
+    this.emitAudioEnd();
+    this.state = {
+      ...this.state,
+      connection: "idle",
+      session: {
+        status: "stopped",
+        config: null,
+        characterId: this.character?.id,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: null,
+    };
+    this.emitState();
+    this.eventEmitter?.emit("realtime:session:end", {
+      state: this.getState(),
+    });
+  }
+
+  async sendMessage(text: string): Promise<void> {
+    if (this.state.session.status !== "active") {
+      throw new Error("Realtime session not active");
+    }
+
+    await this.client.sendText(text);
+  }
+
   async sendAudioChunk(audio: ArrayBuffer): Promise<void> {
-    if (!this.isSessionActive) {
+    if (this.state.session.status !== "active") {
       throw new Error("Realtime session not active");
     }
 
     await this.client.sendAudio(audio);
   }
 
-  /**
-   * 클라이언트 이벤트 리스너 설정
-   */
-  private setupClientListeners(): void {
-    // 텍스트 스트리밍
-    this.client.onTextDelta((text: string) => {
-      this.eventEmitter?.emit("realtime:text:delta", { text });
-    });
+  async interrupt(): Promise<void> {
+    if (this.state.session.status !== "active") {
+      throw new Error("Realtime session not active");
+    }
 
-    // Direct RMS callback (for WebRTC clients)
-    if (this.client.onLipSyncUpdate) {
-      this.client.onLipSyncUpdate((rms: number) => {
-        if (rms > 0.001 && !this.isAudioPlaybackActive) {
+    if (!this.client.interrupt) {
+      throw new Error("Realtime client does not support interruption");
+    }
+
+    await this.client.interrupt();
+    this.state = {
+      ...this.state,
+      response: {
+        ...this.state.response,
+        status: "interrupted",
+      },
+    };
+    this.emitAudioEnd();
+    this.emitState();
+  }
+
+  private handleClientEvent(event: RealtimeTransportEvent): void {
+    switch (event.type) {
+      case "session.started":
+        this.state = {
+          ...this.state,
+          connection: "connected",
+          session: {
+            ...this.state.session,
+            status: "active",
+          },
+        };
+        this.emitState();
+        return;
+
+      case "session.ended":
+        this.emitAudioEnd();
+        this.state = {
+          ...this.state,
+          connection: "idle",
+          session: {
+            ...this.state.session,
+            status: "stopped",
+            config: null,
+          },
+          response: {
+            status: "idle",
+            text: "",
+          },
+        };
+        this.emitState();
+        return;
+
+      case "user.transcript":
+        this.eventEmitter?.emit("realtime:user:transcript", {
+          text: event.text,
+        });
+        return;
+
+      case "assistant.response.started":
+        this.state = {
+          ...this.state,
+          response: {
+            status: "responding",
+            text: "",
+          },
+        };
+        this.eventEmitter?.emit("realtime:assistant:start", {
+          state: this.getState(),
+        });
+        this.emitState();
+        return;
+
+      case "assistant.text.delta":
+        this.ensureResponseStarted();
+        this.state = {
+          ...this.state,
+          response: {
+            status: "responding",
+            text: this.state.response.text + event.text,
+          },
+        };
+        this.eventEmitter?.emit("realtime:text:delta", { text: event.text });
+        this.eventEmitter?.emit("realtime:assistant:delta", {
+          text: event.text,
+        });
+        this.emitState();
+        return;
+
+      case "assistant.response.completed": {
+        const text = event.text || this.state.response.text;
+        this.state = {
+          ...this.state,
+          response: {
+            status: "completed",
+            text,
+          },
+        };
+        this.eventEmitter?.emit("realtime:assistant:done", { text });
+        this.emitState();
+        return;
+      }
+
+      case "audio.output.started":
+        this.emitAudioStart();
+        return;
+
+      case "audio.output.ended":
+        this.emitAudioEnd();
+        return;
+
+      case "audio.lipsync":
+        if (event.rms > 0.001 && !this.isAudioPlaybackActive) {
           this.emitAudioStart();
         }
-        this.eventEmitter?.emit("tts:lipsync:update", { rms });
-      });
+        this.eventEmitter?.emit("tts:lipsync:update", { rms: event.rms });
+        return;
+
+      case "tool.call":
+        this.eventEmitter?.emit("realtime:tool:call", {
+          name: event.name,
+          args: event.args,
+          callId: event.callId,
+        });
+        this.handleBuiltInToolCall(event.name, event.args);
+        return;
+
+      case "tool.result":
+        this.eventEmitter?.emit("realtime:tool:result", {
+          name: event.name,
+          output: event.output,
+          callId: event.callId,
+        });
+        return;
+
+      case "emotion":
+        this.eventEmitter?.emit("realtime:emotion", {
+          emotion: event.emotion,
+        });
+        return;
+
+      case "state":
+        this.state = mergeRealtimeState(this.state, event.state);
+        this.emitState();
+        return;
+
+      case "error":
+        this.applyError(event.error, this.state.connection);
+        return;
+    }
+  }
+
+  private handleBuiltInToolCall(
+    name: string,
+    args: Record<string, unknown>,
+  ): void {
+    if (name !== "setEmotion") {
+      return;
     }
 
-    // 오디오 스트리밍 종료
-    this.client.onAudioDone(() => {
-      this.emitAudioEnd();
-    });
-
-    // Tool call 처리
-    if (this.client.onToolCall) {
-      this.client.onToolCall((name: string, args: Record<string, unknown>) => {
-        this.handleToolCall(name, args);
-      });
+    const emotion = args.emotion;
+    if (typeof emotion !== "string") {
+      return;
     }
 
-    // 에러 처리
-    this.client.onError((error: Error) => {
-      this.emitAudioEnd();
-      this.eventEmitter?.emit("realtime:error", { error });
+    this.eventEmitter?.emit("realtime:emotion", {
+      emotion: emotion as Emotion,
     });
   }
 
-  /**
-   * Tool call 처리
-   */
-  private handleToolCall(name: string, args: Record<string, unknown>): void {
-    const emotion = args.emotion;
-
-    if (name === "setEmotion" && typeof emotion === "string") {
-      this.eventEmitter?.emit("realtime:emotion", {
-        emotion: emotion as Emotion,
-      });
+  private ensureResponseStarted(): void {
+    if (this.state.response.status === "responding") {
+      return;
     }
+
+    this.state = {
+      ...this.state,
+      response: {
+        status: "responding",
+        text: this.state.response.text,
+      },
+    };
+    this.eventEmitter?.emit("realtime:assistant:start", {
+      state: this.getState(),
+    });
+  }
+
+  private emitState(): void {
+    this.eventEmitter?.emit("realtime:state", {
+      state: this.getState(),
+    });
+  }
+
+  private applyError(
+    error: Error,
+    connection: RealtimeState["connection"],
+  ): void {
+    this.emitAudioEnd();
+    this.state = {
+      ...this.state,
+      connection,
+      lastError: error,
+    };
+    this.eventEmitter?.emit("realtime:error", { error });
+    this.emitState();
   }
 
   private emitAudioStart(): void {
     if (this.isAudioPlaybackActive) {
       return;
     }
+
     this.isAudioPlaybackActive = true;
     this.eventEmitter?.emit("tts:audio:start", {});
   }
@@ -153,17 +399,50 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     if (!this.isAudioPlaybackActive) {
       return;
     }
+
     this.isAudioPlaybackActive = false;
     this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
     this.eventEmitter?.emit("tts:audio:end", {});
   }
 }
 
-/**
- * Realtime Manager 생성 헬퍼 함수
- */
 export function createRealtimeManager(
-  client: RealtimeClient,
+  client: RealtimeTransportClient,
+  options?: RealtimeManagerOptions,
 ): CoreRealtimeManager {
-  return new RealtimeManagerImpl(client);
+  return new RealtimeManagerImpl(client, options);
+}
+
+function mergeSessionConfig(
+  baseConfig?: RealtimeSessionConfig,
+  overrideConfig?: RealtimeSessionConfig,
+): RealtimeSessionConfig | undefined {
+  if (!baseConfig && !overrideConfig) {
+    return undefined;
+  }
+
+  return {
+    ...baseConfig,
+    ...overrideConfig,
+    tools: overrideConfig?.tools ?? baseConfig?.tools,
+  };
+}
+
+function mergeRealtimeState(
+  current: RealtimeState,
+  partial: Partial<RealtimeState>,
+): RealtimeState {
+  return {
+    connection: partial.connection ?? current.connection,
+    session: {
+      ...current.session,
+      ...partial.session,
+    },
+    response: {
+      ...current.response,
+      ...partial.response,
+    },
+    lastError:
+      partial.lastError === undefined ? current.lastError : partial.lastError,
+  };
 }

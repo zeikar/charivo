@@ -94,6 +94,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setIsConnecting,
     setIsConnected,
     setRealtimeError,
+    setRealtimeState,
   } = useChatStore();
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
@@ -261,6 +262,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setIsConnecting(false);
       setIsConnected(false);
       setIsRealtimeMode(false);
+      setRealtimeState(null);
 
       if (ttsManager) {
         try {
@@ -399,8 +401,27 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           setSttError(error.message);
         });
 
+        instance.on("realtime:state", ({ state }) => {
+          if (disposed) {
+            return;
+          }
+
+          setRealtimeState(state);
+          setIsConnecting(state.connection === "connecting");
+          setIsConnected(state.connection === "connected");
+        });
+
+        instance.on("realtime:error", ({ error }) => {
+          if (disposed) {
+            return;
+          }
+
+          setRealtimeError(error.message);
+        });
+
         clearMessages();
         setRealtimeError(null);
+        setRealtimeState(null);
         setCharivo(instance);
       } catch (error) {
         if (!disposed) {
@@ -440,6 +461,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setIsTranscribing,
     setLlmError,
     setRealtimeError,
+    setRealtimeState,
     setSttError,
   ]);
 

@@ -1,9 +1,10 @@
 # @charivo/realtime-client-openai
 
-Browser-side OpenAI Realtime WebRTC client for Charivo.
+OpenAI-specific realtime transport client for Charivo.
 
-This package does not hold your API key. It expects a server endpoint that
-creates the Realtime session and returns the SDP answer.
+This package normalizes OpenAI Realtime WebRTC events into the transport event
+contract used by `@charivo/realtime-core`. It can bootstrap sessions through an
+API endpoint or a custom `sessionBootstrap(...)` callback.
 
 ## Install
 
@@ -28,19 +29,24 @@ The client posts JSON shaped like:
 
 ```json
 {
+  "transport": "webrtc",
   "sdpOffer": "...",
-  "sessionConfig": {
+  "session": {
+    "provider": "openai",
     "model": "gpt-realtime-mini",
     "voice": "marin"
   }
 }
 ```
 
-The endpoint should respond with the SDP answer body as plain text.
+The endpoint may respond with either:
+
+- a `RealtimeSessionBootstrap` JSON object
+- a plain SDP answer body for backward compatibility
 
 ## Notes
 
 - Microphone access is required
 - Audio playback is handled by WebRTC
 - Lip-sync values are extracted from the incoming audio stream
-- Pair this package with `@charivo/realtime-core`
+- For production apps, prefer `@charivo/realtime-client-remote`

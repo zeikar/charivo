@@ -1,6 +1,6 @@
 # @charivo/realtime-core
 
-Realtime session manager and typed OpenAI Realtime helpers for Charivo.
+Provider-agnostic realtime session manager and typed config helpers for Charivo.
 
 ## Install
 
@@ -12,28 +12,42 @@ pnpm add @charivo/realtime-core
 
 ```ts
 import {
+  buildRealtimeSessionConfig,
   createRealtimeManager,
-  getEmotionSessionConfig,
 } from "@charivo/realtime-core";
-import { createOpenAIRealtimeClient } from "@charivo/realtime-client-openai";
+import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 
-const client = createOpenAIRealtimeClient({ apiEndpoint: "/api/realtime" });
+const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
 const manager = createRealtimeManager(client);
+manager.setCharacter({
+  id: "hiyori",
+  name: "Hiyori",
+  personality: "Cheerful and helpful assistant",
+  voice: { voiceId: "marin" },
+});
 
 await manager.startSession(
-  getEmotionSessionConfig({
-    model: "gpt-realtime-mini",
-    voice: "marin",
+  buildRealtimeSessionConfig({
+    character: {
+      id: "hiyori",
+      name: "Hiyori",
+      personality: "Cheerful and helpful assistant",
+      voice: { voiceId: "marin" },
+    },
+    baseConfig: {
+      provider: "openai",
+      model: "gpt-realtime-mini",
+    },
   }),
 );
 ```
 
 ## Exports
 
-- `createRealtimeManager(client)`
-- `getEmotionSessionConfig(overrides?)`
+- `createRealtimeManager(client, options?)`
+- `buildRealtimeSessionConfig({ character, baseConfig? })`
 - `setEmotionTool`
-- `DEFAULT_EMOTION_INSTRUCTIONS`
+- `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
 
 ## Event Bridge
@@ -44,6 +58,15 @@ but it does not subscribe through the shared event bus.
 
 When connected, the manager relays:
 
+- `realtime:session:start`
+- `realtime:session:end`
+- `realtime:state`
+- `realtime:user:transcript`
+- `realtime:assistant:start`
+- `realtime:assistant:delta`
+- `realtime:assistant:done`
+- `realtime:tool:call`
+- `realtime:tool:result`
 - `realtime:text:delta`
 - `realtime:emotion`
 - `realtime:error`

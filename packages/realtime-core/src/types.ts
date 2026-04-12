@@ -1,23 +1,58 @@
-import type { RealtimeSessionConfig } from "@charivo/core";
+import type { Emotion } from "@charivo/core";
+import type { RealtimeState } from "@charivo/core";
 
 export type {
+  Character,
   CharivoEventEmitter,
+  RealtimeConnectionState,
   RealtimeManager,
+  RealtimeProvider,
+  RealtimeResponseStatus,
+  RealtimeSessionBootstrap,
   RealtimeSessionConfig,
+  RealtimeSessionRequest,
+  RealtimeSessionStatus,
+  RealtimeState,
   RealtimeTool,
+  RealtimeToolChoice,
+  RealtimeTransportKind,
 } from "@charivo/core";
 
-export interface RealtimeClient {
-  connect(config?: RealtimeSessionConfig): Promise<void>;
+export type RealtimeTransportEvent =
+  | { type: "session.started" }
+  | { type: "session.ended" }
+  | { type: "user.transcript"; text: string }
+  | { type: "assistant.response.started" }
+  | { type: "assistant.text.delta"; text: string }
+  | { type: "assistant.response.completed"; text: string }
+  | { type: "audio.output.started" }
+  | { type: "audio.output.ended" }
+  | { type: "audio.lipsync"; rms: number }
+  | {
+      type: "tool.call";
+      name: string;
+      args: Record<string, unknown>;
+      callId?: string;
+    }
+  | {
+      type: "tool.result";
+      name: string;
+      output: Record<string, unknown>;
+      callId?: string;
+    }
+  | { type: "emotion"; emotion: Emotion }
+  | { type: "state"; state: Partial<RealtimeState> }
+  | { type: "error"; error: Error };
+
+export interface RealtimeTransportClient {
+  connect(
+    config?: import("@charivo/core").RealtimeSessionConfig,
+  ): Promise<void>;
   disconnect(): Promise<void>;
   sendText(text: string): Promise<void>;
   sendAudio(audio: ArrayBuffer): Promise<void>;
-  onTextDelta(callback: (text: string) => void): void;
-  onAudioDelta(callback: (base64Audio: string) => void): void;
-  onLipSyncUpdate?(callback: (rms: number) => void): void; // Optional: Direct RMS callback for WebRTC
-  onAudioDone(callback: () => void): void;
-  onToolCall?(
-    callback: (name: string, args: Record<string, unknown>) => void,
-  ): void;
-  onError(callback: (error: Error) => void): void;
+  interrupt?(): Promise<void>;
+  onEvent(callback: (event: RealtimeTransportEvent) => void): void;
 }
+
+export type RealtimeClient = RealtimeTransportClient;
