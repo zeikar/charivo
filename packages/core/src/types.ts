@@ -80,6 +80,7 @@ export interface CharivoConfig {
 export type RealtimeTransportKind = "webrtc" | "websocket";
 
 export type RealtimeToolChoice = "auto" | "none" | "required";
+export const OPENAI_REALTIME_ADAPTER = "openai-webrtc";
 
 export interface RealtimeTool {
   type: "function";
@@ -112,10 +113,12 @@ export interface RealtimeSessionRequest {
 
 export type RealtimeSessionBootstrap =
   | {
+      adapter: string;
       transport: "webrtc";
       answerSdp: string;
     }
   | {
+      adapter: string;
       transport: "websocket";
       url: string;
       token: string;

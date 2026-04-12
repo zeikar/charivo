@@ -1,4 +1,3 @@
-import type { Emotion } from "@charivo/core";
 import type { RealtimeState } from "@charivo/core";
 
 export type {
@@ -40,7 +39,6 @@ export type RealtimeTransportEvent =
       output: Record<string, unknown>;
       callId?: string;
     }
-  | { type: "emotion"; emotion: Emotion }
   | { type: "state"; state: Partial<RealtimeState> }
   | { type: "error"; error: Error };
 
@@ -51,7 +49,7 @@ export interface RealtimeTransportClient {
   disconnect(): Promise<void>;
   sendText(text: string): Promise<void>;
   sendAudio(audio: ArrayBuffer): Promise<void>;
-  interrupt?(): Promise<void>;
+  interrupt(): Promise<void>;
   onEvent(callback: (event: RealtimeTransportEvent) => void): void;
 }
 

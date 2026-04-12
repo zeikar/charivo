@@ -7,19 +7,28 @@ import type { RealtimeSessionRequest } from "@charivo/core";
 
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY not configured" },
-        { status: 500 },
-      );
-    }
-
     const body = (await request.json()) as Partial<RealtimeSessionRequest>;
     if (!body.transport || !body.session) {
       return NextResponse.json(
         { error: "transport and session are required" },
         { status: 400 },
+      );
+    }
+
+    if (body.session.provider !== "openai") {
+      return NextResponse.json(
+        {
+          error: `Unsupported realtime provider: ${body.session.provider ?? "(unspecified)"}`,
+        },
+        { status: 501 },
+      );
+    }
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY not configured" },
+        { status: 500 },
       );
     }
 

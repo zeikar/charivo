@@ -3,6 +3,13 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout,
+  isRealtimeSessionBootstrap,
+  isRecord,
+} from "@charivo/shared";
 import type {
   RealtimeTransportClient,
   RealtimeTransportEvent,
@@ -38,8 +45,6 @@ export interface OpenAIRealtimeClientOptions {
   ) => Promise<RealtimeSessionBootstrap>;
 }
 
-const REQUEST_TIMEOUT_MS = 30_000;
-
 /**
  * OpenAI-specific realtime transport client.
  *
@@ -55,10 +60,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private analyser: AnalyserNode | null = null;
   private lipSyncInterval: number | null = null;
   private isResponseInProgress = false;
+  private cancelInFlight = false;
   private hasStartedAssistantResponse = false;
   private hasStartedAudioOutput = false;
   private assistantText = "";
-  private eventCallback?: (event: RealtimeTransportEvent) => void;
+  private eventCallbacks = new Set<(event: RealtimeTransportEvent) => void>();
 
   constructor(private options: OpenAIRealtimeClientOptions = {}) {}
 
@@ -108,9 +114,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         sdpOffer: offer.sdp,
       });
 
-      if (bootstrap.transport !== "webrtc") {
+      if (
+        bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
+        bootstrap.transport !== "webrtc"
+      ) {
         throw new Error(
-          `OpenAI realtime client only supports WebRTC bootstrap, received ${bootstrap.transport}`,
+          `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,
         );
       }
 
@@ -129,7 +138,6 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   async disconnect(): Promise<void> {
     this.log("Disconnecting OpenAI Realtime WebRTC");
     this.cleanup();
-    this.emitEvent({ type: "session.ended" });
   }
 
   async sendText(text: string): Promise<void> {
@@ -159,8 +167,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     );
     this.dc.send(JSON.stringify({ type: "response.create" }));
 
-    this.resetResponseTracking();
-    this.isResponseInProgress = true;
+    this.beginResponseRequest();
   }
 
   async sendAudio(_audio: ArrayBuffer): Promise<void> {
@@ -180,11 +187,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     this.dc.send(JSON.stringify({ type: "response.cancel" }));
     this.isResponseInProgress = false;
-    this.resetResponseTracking();
+    this.cancelInFlight = true;
   }
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
-    this.eventCallback = callback;
+    this.eventCallbacks.add(callback);
   }
 
   private handleServerEvent(event: ServerEvent): void {
@@ -198,6 +205,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio.delta":
+        if (this.cancelInFlight) {
+          return;
+        }
+
         if (!this.hasStartedAudioOutput) {
           this.hasStartedAudioOutput = true;
           this.emitEvent({ type: "audio.output.started" });
@@ -205,12 +216,22 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio.done":
+        if (this.cancelInFlight) {
+          this.hasStartedAudioOutput = false;
+          return;
+        }
+
         this.emitEvent({ type: "audio.output.ended" });
         this.hasStartedAudioOutput = false;
         return;
 
       case "response.done":
         this.isResponseInProgress = false;
+        if (this.cancelInFlight) {
+          this.cancelInFlight = false;
+          this.resetResponseTracking();
+          return;
+        }
         this.emitEvent({
           type: "assistant.response.completed",
           text: this.assistantText,
@@ -219,7 +240,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.audio_transcript.delta":
-        if (!event.delta) {
+        if (this.cancelInFlight || !event.delta) {
           return;
         }
 
@@ -250,6 +271,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
       case "error":
         this.isResponseInProgress = false;
+        this.cancelInFlight = false;
         this.emitEvent({
           type: "error",
           error: new Error(event.error?.message || "Unknown error"),
@@ -262,16 +284,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   private handleToolCallDone(event: ServerEvent): void {
-    const callId =
-      (event.call_id as string | undefined) ||
-      (event.item?.call_id as string | undefined) ||
-      (event.item_id as string | undefined);
-    const name =
-      (event.name as string | undefined) ||
-      (event.item?.name as string | undefined);
-    const argsJson =
-      (event.arguments as string | undefined) ||
-      (event.item?.arguments as string | undefined);
+    const callId = event.call_id || event.item?.call_id || event.item_id;
+    const name = event.name || event.item?.name;
+    const argsJson = event.arguments || event.item?.arguments;
 
     if (!name || !argsJson) {
       console.warn("⚠️ Tool call done but missing name or arguments");
@@ -300,6 +315,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       return;
     }
 
+    // Temporary Phase 4 placeholder until tool handlers live behind a registry.
     const output = { success: true };
     this.dc.send(
       JSON.stringify({
@@ -344,7 +360,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         },
         body: JSON.stringify(request),
       },
-      `Realtime session request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
     );
 
     if (!response.ok) {
@@ -352,20 +368,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       throw new Error(`Failed to create Realtime session: ${errorText}`);
     }
 
-    const contentType = response.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const bootstrap = (await response.json()) as unknown;
-      if (!isRealtimeSessionBootstrap(bootstrap)) {
-        throw new Error("Invalid realtime session bootstrap response");
-      }
-      return bootstrap;
+    const bootstrap = (await response.json()) as unknown;
+    if (!isRealtimeSessionBootstrap(bootstrap)) {
+      throw new Error("Invalid realtime session bootstrap response");
     }
 
-    const answerSdp = await response.text();
-    return {
-      transport: "webrtc",
-      answerSdp,
-    };
+    return bootstrap as RealtimeSessionBootstrap;
   }
 
   private setupAudioAnalysis(stream: MediaStream): void {
@@ -459,7 +467,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     this.analyser = null;
     this.isResponseInProgress = false;
+    this.cancelInFlight = false;
     this.resetResponseTracking();
+  }
+
+  private beginResponseRequest(): void {
+    this.resetResponseTracking();
+    this.isResponseInProgress = true;
+    this.cancelInFlight = false;
   }
 
   private resetResponseTracking(): void {
@@ -469,7 +484,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   private emitEvent(event: RealtimeTransportEvent): void {
-    this.eventCallback?.(event);
+    for (const callback of this.eventCallbacks) {
+      callback(event);
+    }
   }
 
   private log(...args: unknown[]): void {
@@ -483,56 +500,4 @@ export function createOpenAIRealtimeClient(
   options?: OpenAIRealtimeClientOptions,
 ): RealtimeTransportClient {
   return new OpenAIRealtimeClient(options);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isRealtimeSessionBootstrap(
-  value: unknown,
-): value is RealtimeSessionBootstrap {
-  if (!isRecord(value) || typeof value.transport !== "string") {
-    return false;
-  }
-
-  if (value.transport === "webrtc") {
-    return typeof value.answerSdp === "string";
-  }
-
-  if (value.transport === "websocket") {
-    return typeof value.url === "string" && typeof value.token === "string";
-  }
-
-  return false;
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }

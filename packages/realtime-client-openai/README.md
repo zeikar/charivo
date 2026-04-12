@@ -39,14 +39,20 @@ The client posts JSON shaped like:
 }
 ```
 
-The endpoint may respond with either:
+The endpoint must respond with a `RealtimeSessionBootstrap` JSON object:
 
-- a `RealtimeSessionBootstrap` JSON object
-- a plain SDP answer body for backward compatibility
+```json
+{
+  "adapter": "openai-webrtc",
+  "transport": "webrtc",
+  "answerSdp": "..."
+}
+```
 
 ## Notes
 
 - Microphone access is required
 - Audio playback is handled by WebRTC
 - Lip-sync values are extracted from the incoming audio stream
+- Tool call outputs are still a built-in placeholder until the Phase 4 tool registry lands
 - For production apps, prefer `@charivo/realtime-client-remote`

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import { OpenAIRealtimeProvider } from "../src";
 
 const originalFetch = globalThis.fetch;
@@ -67,9 +68,24 @@ describe("OpenAIRealtimeProvider", () => {
     });
 
     expect(session).toEqual({
+      adapter: OPENAI_REALTIME_ADAPTER,
       transport: "webrtc",
       answerSdp: "answer-sdp",
     });
+  });
+
+  it("rejects unsupported providers", async () => {
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        transport: "webrtc",
+        sdpOffer: "offer-sdp",
+        session: {
+          provider: "google",
+        },
+      }),
+    ).rejects.toThrow('only supports provider "openai"');
   });
 
   it("rejects unsupported transports", async () => {

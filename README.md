@@ -155,7 +155,7 @@ STT:
 Realtime:
 
 - `@charivo/realtime-core`: provider-agnostic realtime manager, typed state, and session config helpers
-- `@charivo/realtime-client-remote`: browser client for server realtime routes
+- `@charivo/realtime-client-remote`: adapter-dispatched browser client for server realtime routes
 - `@charivo/realtime-client-openai`: OpenAI-specific realtime transport client and adapter
 - `@charivo/realtime-provider-openai`: server-side OpenAI realtime session provider
 

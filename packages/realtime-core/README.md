@@ -11,10 +11,7 @@ pnpm add @charivo/realtime-core
 ## Usage
 
 ```ts
-import {
-  buildRealtimeSessionConfig,
-  createRealtimeManager,
-} from "@charivo/realtime-core";
+import { createRealtimeManager } from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
@@ -26,20 +23,10 @@ manager.setCharacter({
   voice: { voiceId: "marin" },
 });
 
-await manager.startSession(
-  buildRealtimeSessionConfig({
-    character: {
-      id: "hiyori",
-      name: "Hiyori",
-      personality: "Cheerful and helpful assistant",
-      voice: { voiceId: "marin" },
-    },
-    baseConfig: {
-      provider: "openai",
-      model: "gpt-realtime-mini",
-    },
-  }),
-);
+await manager.startSession({
+  provider: "openai",
+  model: "gpt-realtime-mini",
+});
 ```
 
 ## Exports

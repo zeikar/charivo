@@ -23,6 +23,7 @@ export interface RealtimeManagerOptions {
 export class RealtimeManagerImpl implements CoreRealtimeManager {
   private eventEmitter?: CharivoEventEmitter;
   private character: Character | null = null;
+  private isStoppingSession = false;
   private state: RealtimeState = {
     connection: "idle",
     session: {
@@ -135,32 +136,19 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       return;
     }
 
+    this.isStoppingSession = true;
     this.state = {
       ...this.state,
       connection: "disconnecting",
     };
     this.emitState();
 
-    await this.client.disconnect();
-    this.emitAudioEnd();
-    this.state = {
-      ...this.state,
-      connection: "idle",
-      session: {
-        status: "stopped",
-        config: null,
-        characterId: this.character?.id,
-      },
-      response: {
-        status: "idle",
-        text: "",
-      },
-      lastError: null,
-    };
-    this.emitState();
-    this.eventEmitter?.emit("realtime:session:end", {
-      state: this.getState(),
-    });
+    try {
+      await this.client.disconnect();
+      this.finalizeStoppedSession(true);
+    } finally {
+      this.isStoppingSession = false;
+    }
   }
 
   async sendMessage(text: string): Promise<void> {
@@ -182,10 +170,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   async interrupt(): Promise<void> {
     if (this.state.session.status !== "active") {
       throw new Error("Realtime session not active");
-    }
-
-    if (!this.client.interrupt) {
-      throw new Error("Realtime client does not support interruption");
     }
 
     await this.client.interrupt();
@@ -215,21 +199,11 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "session.ended":
-        this.emitAudioEnd();
-        this.state = {
-          ...this.state,
-          connection: "idle",
-          session: {
-            ...this.state.session,
-            status: "stopped",
-            config: null,
-          },
-          response: {
-            status: "idle",
-            text: "",
-          },
-        };
-        this.emitState();
+        if (this.isStoppingSession) {
+          return;
+        }
+
+        this.finalizeStoppedSession(true);
         return;
 
       case "user.transcript":
@@ -269,6 +243,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "assistant.response.completed": {
+        if (this.state.response.status === "interrupted") {
+          return;
+        }
+
         const text = event.text || this.state.response.text;
         this.state = {
           ...this.state,
@@ -311,12 +289,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           name: event.name,
           output: event.output,
           callId: event.callId,
-        });
-        return;
-
-      case "emotion":
-        this.eventEmitter?.emit("realtime:emotion", {
-          emotion: event.emotion,
         });
         return;
 
@@ -403,6 +375,31 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.isAudioPlaybackActive = false;
     this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
     this.eventEmitter?.emit("tts:audio:end", {});
+  }
+
+  private finalizeStoppedSession(emitSessionEnd: boolean): void {
+    this.emitAudioEnd();
+    this.state = {
+      ...this.state,
+      connection: "idle",
+      session: {
+        status: "stopped",
+        config: null,
+        characterId: this.character?.id,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: null,
+    };
+    this.emitState();
+
+    if (emitSessionEnd) {
+      this.eventEmitter?.emit("realtime:session:end", {
+        state: this.getState(),
+      });
+    }
   }
 }
 

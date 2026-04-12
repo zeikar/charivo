@@ -1,70 +1,152 @@
 import type {
   RealtimeSessionBootstrap,
+  RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import {
-  createOpenAIRealtimeClient,
-  type OpenAIRealtimeClientOptions,
-} from "@charivo/realtime-client-openai";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import { createOpenAIRealtimeClient } from "@charivo/realtime-client-openai";
 import type {
-  RealtimeSessionConfig,
   RealtimeTransportClient,
+  RealtimeTransportEvent,
 } from "@charivo/realtime-core";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout,
+  isRealtimeSessionBootstrap,
+} from "@charivo/shared";
+
+export interface RemoteRealtimeAdapterFactoryOptions {
+  debug?: boolean;
+  requestBootstrap: (
+    request: RealtimeSessionRequest,
+  ) => Promise<RealtimeSessionBootstrap>;
+}
+
+export type RemoteRealtimeAdapterFactory = (
+  options: RemoteRealtimeAdapterFactoryOptions,
+) => RealtimeTransportClient;
+
+export const DEFAULT_REMOTE_REALTIME_ADAPTERS = {
+  [OPENAI_REALTIME_ADAPTER]: (options) =>
+    createOpenAIRealtimeClient({
+      debug: options.debug,
+      sessionBootstrap: options.requestBootstrap,
+    }),
+} satisfies Record<string, RemoteRealtimeAdapterFactory>;
 
 export interface RemoteRealtimeClientConfig {
   apiEndpoint?: string;
   debug?: boolean;
+  adapters?: Record<string, RemoteRealtimeAdapterFactory>;
+  resolveAdapterId?: (config?: RealtimeSessionConfig) => string;
 }
-
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Production browser client for server-mediated realtime sessions.
  *
- * Phase 1 supports the OpenAI WebRTC transport through a provider-agnostic
- * bootstrap contract returned by the server route.
+ * It resolves a browser-side transport adapter, forwards bootstrap requests to
+ * your server route, and validates that the returned bootstrap matches the
+ * selected adapter.
  */
 export class RemoteRealtimeClient implements RealtimeTransportClient {
-  private transportClient: RealtimeTransportClient;
+  private transportClient: RealtimeTransportClient | null = null;
+  private readonly adapters: Map<string, RemoteRealtimeAdapterFactory>;
+  private readonly eventCallbacks = new Set<
+    (event: RealtimeTransportEvent) => void
+  >();
 
   constructor(private config: RemoteRealtimeClientConfig = {}) {
-    const transportConfig: OpenAIRealtimeClientOptions = {
-      debug: config.debug,
-      sessionBootstrap: (request) => this.requestBootstrap(request),
-    };
-    this.transportClient = createOpenAIRealtimeClient(transportConfig);
+    this.adapters = new Map(
+      Object.entries({
+        ...DEFAULT_REMOTE_REALTIME_ADAPTERS,
+        ...config.adapters,
+      }),
+    );
   }
 
-  connect(config?: RealtimeSessionConfig): Promise<void> {
-    return this.transportClient.connect(config);
-  }
+  async connect(config?: RealtimeSessionConfig): Promise<void> {
+    const adapterId = this.resolveAdapterId(config);
+    const factory = this.adapters.get(adapterId);
 
-  disconnect(): Promise<void> {
-    return this.transportClient.disconnect();
-  }
-
-  sendText(text: string): Promise<void> {
-    return this.transportClient.sendText(text);
-  }
-
-  sendAudio(audio: ArrayBuffer): Promise<void> {
-    return this.transportClient.sendAudio(audio);
-  }
-
-  interrupt(): Promise<void> {
-    if (!this.transportClient.interrupt) {
-      throw new Error("Realtime transport does not support interruption");
+    if (!factory) {
+      throw new Error(
+        `No realtime adapter registered for "${adapterId}". Registered adapters: ${Array.from(this.adapters.keys()).join(", ") || "(none)"}`,
+      );
     }
 
-    return this.transportClient.interrupt();
+    const transportClient = factory({
+      debug: this.config.debug,
+      requestBootstrap: (request) =>
+        this.requestBootstrap(request, { expectedAdapterId: adapterId }),
+    });
+
+    for (const callback of this.eventCallbacks) {
+      transportClient.onEvent(callback);
+    }
+
+    this.transportClient = transportClient;
+
+    try {
+      await transportClient.connect(config);
+    } catch (error) {
+      this.transportClient = null;
+      throw error;
+    }
   }
 
-  onEvent(callback: Parameters<RealtimeTransportClient["onEvent"]>[0]): void {
-    this.transportClient.onEvent(callback);
+  async disconnect(): Promise<void> {
+    if (!this.transportClient) {
+      return;
+    }
+
+    const transportClient = this.transportClient;
+    this.transportClient = null;
+    await transportClient.disconnect();
+  }
+
+  async sendText(text: string): Promise<void> {
+    await this.getActiveTransportClient().sendText(text);
+  }
+
+  async sendAudio(audio: ArrayBuffer): Promise<void> {
+    await this.getActiveTransportClient().sendAudio(audio);
+  }
+
+  async interrupt(): Promise<void> {
+    await this.getActiveTransportClient().interrupt();
+  }
+
+  onEvent(callback: (event: RealtimeTransportEvent) => void): void {
+    this.eventCallbacks.add(callback);
+    this.transportClient?.onEvent(callback);
+  }
+
+  private getActiveTransportClient(): RealtimeTransportClient {
+    if (!this.transportClient) {
+      throw new Error("Realtime session not active");
+    }
+
+    return this.transportClient;
+  }
+
+  private resolveAdapterId(config?: RealtimeSessionConfig): string {
+    if (this.config.resolveAdapterId) {
+      return this.config.resolveAdapterId(config);
+    }
+
+    const transport = config?.transport ?? "webrtc";
+    if (config?.provider === "openai" && transport === "webrtc") {
+      return OPENAI_REALTIME_ADAPTER;
+    }
+
+    throw new Error(
+      `No remote realtime adapter resolver for provider "${config?.provider ?? "(unspecified)"}" and transport "${transport}"`,
+    );
   }
 
   private async requestBootstrap(
     request: RealtimeSessionRequest,
+    options: { expectedAdapterId: string },
   ): Promise<RealtimeSessionBootstrap> {
     const response = await fetchWithTimeout(
       this.config.apiEndpoint || "/api/realtime",
@@ -75,7 +157,7 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
         },
         body: JSON.stringify(request),
       },
-      `Realtime session request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
     );
 
     if (!response.ok) {
@@ -88,7 +170,13 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
       throw new Error("Invalid realtime session bootstrap response");
     }
 
-    return bootstrap;
+    if (bootstrap.adapter !== options.expectedAdapterId) {
+      throw new Error(
+        `Realtime session bootstrap adapter mismatch: expected ${options.expectedAdapterId}, received ${bootstrap.adapter}`,
+      );
+    }
+
+    return bootstrap as RealtimeSessionBootstrap;
   }
 }
 
@@ -96,56 +184,4 @@ export function createRemoteRealtimeClient(
   config?: RemoteRealtimeClientConfig,
 ): RealtimeTransportClient {
   return new RemoteRealtimeClient(config);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isRealtimeSessionBootstrap(
-  value: unknown,
-): value is RealtimeSessionBootstrap {
-  if (!isRecord(value) || typeof value.transport !== "string") {
-    return false;
-  }
-
-  if (value.transport === "webrtc") {
-    return typeof value.answerSdp === "string";
-  }
-
-  if (value.transport === "websocket") {
-    return typeof value.url === "string" && typeof value.token === "string";
-  }
-
-  return false;
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }

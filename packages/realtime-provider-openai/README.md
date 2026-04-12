@@ -32,6 +32,16 @@ const session = await provider.createSession({
 });
 ```
 
+Returned bootstrap:
+
+```json
+{
+  "adapter": "openai-webrtc",
+  "transport": "webrtc",
+  "answerSdp": "..."
+}
+```
+
 ## Config
 
 - `apiKey`

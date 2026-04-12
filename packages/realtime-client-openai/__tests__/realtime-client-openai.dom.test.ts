@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAIRealtimeClient } from "@charivo/realtime-client-openai";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import type { RealtimeTransportEvent } from "@charivo/realtime-core";
 
 type RealtimeClientTestInternals = OpenAIRealtimeClient & {
@@ -88,6 +89,7 @@ describe("OpenAIRealtimeClient", () => {
       async () =>
         new Response(
           JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
             transport: "webrtc",
             answerSdp: "answer-sdp",
           }),
@@ -135,7 +137,7 @@ describe("OpenAIRealtimeClient", () => {
     expect(setupAudioAnalysisSpy).toHaveBeenCalledWith(remoteStream);
   });
 
-  it("supports plain SDP responses for compatibility", async () => {
+  it("rejects invalid bootstrap payloads", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],
     } as unknown as MediaStream;
@@ -147,21 +149,25 @@ describe("OpenAIRealtimeClient", () => {
       configurable: true,
     });
     globalThis.fetch = vi.fn(
-      async () => new Response("answer-sdp"),
+      async () =>
+        new Response(
+          JSON.stringify({
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
     ) as typeof fetch;
 
     const client = new OpenAIRealtimeClient({
       apiEndpoint: "/api/realtime",
     });
 
-    await client.connect();
-
-    expect(
-      MockPeerConnection.instances[0]?.setRemoteDescription,
-    ).toHaveBeenCalledWith({
-      type: "answer",
-      sdp: "answer-sdp",
-    });
+    await expect(client.connect()).rejects.toThrow(
+      "Invalid realtime session bootstrap response",
+    );
   });
 
   it("cleans up when microphone access is denied", async () => {
@@ -236,6 +242,7 @@ describe("OpenAIRealtimeClient", () => {
       async () =>
         new Response(
           JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
             transport: "webrtc",
             answerSdp: "answer-sdp",
           }),
@@ -284,6 +291,7 @@ describe("OpenAIRealtimeClient", () => {
       async () =>
         new Response(
           JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
             transport: "webrtc",
             answerSdp: "answer-sdp",
           }),
@@ -393,6 +401,109 @@ describe("OpenAIRealtimeClient", () => {
       type: "error",
       error: new Error("boom"),
     });
+  });
+
+  it("swallows late completion events after interrupt", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+    await client.sendText("hello");
+    await client.interrupt();
+
+    const peer = MockPeerConnection.instances[0]!;
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.audio_transcript.delta",
+          delta: "ignored",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.done",
+        }),
+      }),
+    );
+
+    expect(events).not.toContainEqual({
+      type: "assistant.text.delta",
+      text: "ignored",
+    });
+    expect(events).not.toContainEqual({
+      type: "assistant.response.completed",
+      text: "",
+    });
+  });
+
+  it("notifies multiple event listeners", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent(firstListener);
+    client.onEvent(secondListener);
+
+    await client.connect();
+
+    expect(firstListener).toHaveBeenCalledWith({ type: "session.started" });
+    expect(secondListener).toHaveBeenCalledWith({ type: "session.started" });
   });
 
   it("warns when sendAudio is called explicitly", async () => {

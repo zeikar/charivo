@@ -1,8 +1,5 @@
 import { useCallback } from "react";
-import {
-  buildRealtimeSessionConfig,
-  createRealtimeManager,
-} from "@charivo/realtime-core";
+import { createRealtimeManager } from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import { useChatStore } from "../stores/useChatStore";
 
@@ -44,14 +41,9 @@ export function useRealtimeMode() {
       const realtimeManager = createRealtimeManager(realtimeClient);
       charivo.attachRealtime(realtimeManager);
 
-      await realtimeManager.startSession(
-        buildRealtimeSessionConfig({
-          character: charivo.getCurrentCharacter(),
-          baseConfig: {
-            provider: "openai",
-          },
-        }),
-      );
+      await realtimeManager.startSession({
+        provider: "openai",
+      });
 
       setIsRealtimeMode(true);
 

@@ -89,6 +89,8 @@ describe("realtime-core", () => {
 
     state = manager.getState();
     expect(state.response.status).toBe("interrupted");
+    stub.emit({ type: "assistant.response.completed", text: "" });
+    expect(manager.getState().response.status).toBe("interrupted");
 
     stub.emit({ type: "assistant.response.started" });
     stub.emit({ type: "assistant.text.delta", text: "hel" });
@@ -158,6 +160,19 @@ describe("realtime-core", () => {
     state = manager.getState();
     expect(state.connection).toBe("idle");
     expect(state.session.status).toBe("stopped");
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:session:end", {
+      state: expect.objectContaining({
+        connection: "idle",
+        session: expect.objectContaining({
+          status: "stopped",
+        }),
+      }),
+    });
+    expect(
+      vi
+        .mocked(eventEmitter.emit)
+        .mock.calls.filter(([event]) => event === "realtime:session:end"),
+    ).toHaveLength(1);
   });
 
   it("merges state updates emitted by the transport client", async () => {

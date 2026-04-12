@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
-    "@charivo/realtime-core": "workspace:*"
+    "@charivo/realtime-core": "workspace:*",
+    "@charivo/shared": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

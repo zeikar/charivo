@@ -12,10 +12,15 @@ pnpm add @charivo/shared
 
 - `CHARIVO_VERSION`
 - `DEFAULT_CONFIG`
+- `DEFAULT_REQUEST_TIMEOUT_MS`
 - `generateId()`
 - `formatTimestamp(date)`
 - `debounce(fn, wait)`
 - `throttle(fn, limit)`
+- `isRecord(value)`
+- `isRealtimeSessionBootstrap(value)`
+- `fetchWithTimeout(input, init, timeoutMessage, timeoutMs?)`
+- `isAbortError(error)`
 
 This package is intentionally small. It does not contain framework orchestration
 logic; that lives in `@charivo/core`.

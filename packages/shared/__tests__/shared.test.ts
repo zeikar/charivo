@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CHARIVO_VERSION,
   DEFAULT_CONFIG,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   debounce,
+  fetchWithTimeout,
   formatTimestamp,
   generateId,
+  isAbortError,
+  isRealtimeSessionBootstrap,
+  isRecord,
   throttle,
 } from "@charivo/shared";
 
@@ -19,6 +24,7 @@ describe("shared utilities", () => {
       responseTimeout: 30000,
       retryAttempts: 3,
     });
+    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(30000);
   });
 
   it("generates reasonably unique ids", () => {
@@ -72,6 +78,67 @@ describe("shared utilities", () => {
     vi.advanceTimersByTime(1);
     throttled();
     expect(spy).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("detects record-like values", () => {
+    expect(isRecord({ ok: true })).toBe(true);
+    expect(isRecord(null)).toBe(false);
+    expect(isRecord("text")).toBe(false);
+  });
+
+  it("validates realtime bootstrap payloads", () => {
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "openai-webrtc",
+        transport: "webrtc",
+        answerSdp: "answer-sdp",
+      }),
+    ).toBe(true);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "future-ws",
+        transport: "websocket",
+        url: "wss://example.test/socket",
+        token: "secret",
+      }),
+    ).toBe(true);
+    expect(
+      isRealtimeSessionBootstrap({
+        transport: "webrtc",
+        answerSdp: "answer-sdp",
+      }),
+    ).toBe(false);
+  });
+
+  it("detects abort errors and rewrites fetch timeouts", async () => {
+    vi.useFakeTimers();
+    const originalFetch = globalThis.fetch;
+    const abortError = new Error("aborted");
+    abortError.name = "AbortError";
+
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(abortError));
+        }),
+    ) as typeof fetch;
+
+    const request = fetchWithTimeout(
+      "/api/test",
+      { method: "POST" },
+      "timeout",
+      10,
+    );
+    const expectation = expect(request).rejects.toThrow("timeout");
+
+    await vi.advanceTimersByTimeAsync(10);
+    await expectation;
+
+    expect(isAbortError(abortError)).toBe(true);
+    expect(isAbortError(new Error("other"))).toBe(false);
+
+    globalThis.fetch = originalFetch;
     vi.useRealTimers();
   });
 });

@@ -4,9 +4,10 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchWithTimeout } from "@charivo/shared";
 
 const DEFAULT_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
-const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface OpenAIRealtimeProviderConfig {
   apiKey: string;
@@ -32,6 +33,15 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
   async createSession(
     request: RealtimeSessionRequest,
   ): Promise<RealtimeSessionBootstrap> {
+    if (
+      request.session.provider !== undefined &&
+      request.session.provider !== "openai"
+    ) {
+      throw new Error(
+        `OpenAI realtime provider only supports provider "openai", received ${request.session.provider}`,
+      );
+    }
+
     if (request.transport !== "webrtc") {
       throw new Error(
         `OpenAI realtime provider only supports webrtc transport, received ${request.transport}`,
@@ -51,7 +61,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         },
         body: toRealtimeFormData(request),
       },
-      `OpenAI realtime request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      `OpenAI realtime request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
     );
 
     if (!response.ok) {
@@ -60,6 +70,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     }
 
     return {
+      adapter: OPENAI_REALTIME_ADAPTER,
       transport: "webrtc",
       answerSdp: await response.text(),
     };
@@ -113,34 +124,4 @@ function toOpenAIRealtimeSession(
   }
 
   return payload;
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }
