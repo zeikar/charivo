@@ -1,6 +1,6 @@
 {
   "name": "@charivo/tts-player-openai",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "OpenAI TTS player for Charivo (local/testing)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

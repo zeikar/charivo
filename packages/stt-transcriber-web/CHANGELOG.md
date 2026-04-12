@@ -1,5 +1,12 @@
 # @charivo/stt-transcriber-web
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [d773cca]
+  - @charivo/core@0.3.0
+
 ## 0.0.3
 
 ### Patch Changes
