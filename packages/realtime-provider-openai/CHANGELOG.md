@@ -1,5 +1,12 @@
 # @charivo/realtime-provider-openai
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [18fd6e4]
+  - @charivo/core@0.5.0
+
 ## 0.2.1
 
 ### Patch Changes

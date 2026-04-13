@@ -1,5 +1,14 @@
 # @charivo/realtime-client-remote
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [18fd6e4]
+  - @charivo/core@0.5.0
+  - @charivo/realtime-core@0.4.0
+  - @charivo/realtime-client-openai@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes

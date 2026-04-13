@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-client-openclaw",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "OpenClaw LLM client for Charivo (local/testing)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

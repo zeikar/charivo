@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Core utilities for Realtime API functionality in Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

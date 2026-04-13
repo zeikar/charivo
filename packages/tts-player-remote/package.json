@@ -1,6 +1,6 @@
 {
   "name": "@charivo/tts-player-remote",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Remote HTTP TTS player for Charivo (client-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

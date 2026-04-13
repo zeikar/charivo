@@ -1,5 +1,18 @@
 # @charivo/realtime-core
 
+## 0.4.0
+
+### Minor Changes
+
+- 18fd6e4: Add explicit realtime session refresh support through `updateSession(...)`,
+  including reconnect-based config updates, refresh reasons on session lifecycle
+  events, and manager reuse across refresh and recovery flows.
+
+### Patch Changes
+
+- Updated dependencies [18fd6e4]
+  - @charivo/core@0.5.0
+
 ## 0.3.0
 
 ### Minor Changes
