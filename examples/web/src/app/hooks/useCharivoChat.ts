@@ -114,7 +114,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   } = useChatStore();
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
+  const renderManagerRef = useRef<RenderManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
+  const currentCharacterRef = useRef(character);
+  const syncedCharacterIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentCharacterRef.current = character;
+  }, [character]);
 
   const createLLMClient = useCallback(
     async (type: LLMClientType): Promise<LLMClient> => {
@@ -271,6 +278,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setCharivo(null);
       sttManagerRef.current = null;
       rendererRef.current = null;
+      renderManagerRef.current = null;
+      syncedCharacterIdRef.current = null;
       setIsLoading(false);
       setIsSpeaking(false);
       setIsRecording(false);
@@ -313,6 +322,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
     const initialize = async () => {
       try {
+        const initialCharacter = currentCharacterRef.current;
         const [
           { Live2DRenderer },
           { createRenderManager },
@@ -330,9 +340,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           canvas,
           mouseTracking: "document",
         });
+        renderManagerRef.current = renderManager;
 
         await renderManager.initialize();
-        await renderManager.loadModel?.(getLive2DModelPath(character.id));
+        await renderManager.loadModel?.(
+          getLive2DModelPath(initialCharacter.id),
+        );
 
         if (disposed) {
           await teardown();
@@ -374,7 +387,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           sttManagerRef.current = sttManager;
         }
 
-        instance.setCharacter(character);
+        instance.setCharacter(initialCharacter);
+        syncedCharacterIdRef.current = initialCharacter.id;
 
         instance.on("tts:start", () => {
           if (!disposed) {
@@ -472,7 +486,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
           if (finalText.trim()) {
             logRealtimeUi("assistant.done", finalText);
-            addMessage(createRealtimeAssistantMessage(finalText, character));
+            addMessage(
+              createRealtimeAssistantMessage(
+                finalText,
+                currentCharacterRef.current,
+              ),
+            );
           }
 
           setRealtimeAssistantDraft(null);
@@ -516,7 +535,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   }, [
     addMessage,
     canvas,
-    character,
     clearMessages,
     createLLMClient,
     createSTTTranscriber,
@@ -542,6 +560,68 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setRealtimeAssistantDraft,
     setRealtimeTurnStatus,
     setSttError,
+  ]);
+
+  useEffect(() => {
+    if (!charivo || !renderManagerRef.current) {
+      return;
+    }
+
+    if (syncedCharacterIdRef.current === character.id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncCharacter = async () => {
+      try {
+        clearMessages();
+        resetRealtimeUiState();
+        setRealtimeError(null);
+        charivo.clearHistory();
+        charivo.setCharacter(character);
+        await renderManagerRef.current?.loadModel?.(
+          getLive2DModelPath(character.id),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        syncedCharacterIdRef.current = character.id;
+
+        if (isRealtimeMode) {
+          const realtimeManager = charivo.getRealtimeManager();
+          if (realtimeManager?.getState().session.status === "active") {
+            await realtimeManager.updateSession();
+          }
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setRealtimeError(
+          error instanceof Error
+            ? error.message
+            : "Failed to sync character session",
+        );
+      }
+    };
+
+    void syncCharacter();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    character,
+    charivo,
+    clearMessages,
+    getLive2DModelPath,
+    isRealtimeMode,
+    resetRealtimeUiState,
+    setRealtimeError,
   ]);
 
   const handleSend = useCallback(async () => {

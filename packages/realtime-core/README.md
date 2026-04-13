@@ -50,6 +50,10 @@ await manager.startSession({
   provider: "openai",
   model: "gpt-realtime-mini",
 });
+
+await manager.updateSession({
+  voice: "alloy",
+});
 ```
 
 ## Exports
@@ -60,6 +64,22 @@ await manager.startSession({
 - `setEmotionRealtimeTool`
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
+
+## Session Refresh
+
+`updateSession(...)` refreshes the active provider session by reconnecting with
+the latest requested config, current character, and current tool registry.
+
+- inactive managers only cache the requested base config for the next
+  `startSession(...)`
+- active managers reconnect instead of attempting a transport-level patch
+- refresh lifecycle events use `reason: "refresh"` on
+  `realtime:session:end/start`
+- refresh failures do not roll back to the previous live session
+- `state.session.config` is only replaced after the new connection succeeds
+- repeated `updateSession(...)` calls are coalesced to the latest config
+- `stopSession()` wins over an in-flight refresh and converges to a stopped
+  session
 
 ## Tool Registry
 
@@ -89,8 +109,7 @@ manager.registerTool({
 Current limitation:
 
 - `registerTool(...)` and `unregisterTool(...)` update the local manager registry immediately
-- active provider sessions are not updated mid-session yet
-- newly registered tool definitions are reflected on the next `startSession(...)`
+- active provider sessions are not updated until `updateSession(...)` or the next `startSession(...)`
 - unregistered tools may still be called by an already-active provider session and will return a failure result
 
 ## Event Bridge

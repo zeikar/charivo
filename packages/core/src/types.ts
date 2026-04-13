@@ -138,6 +138,7 @@ export type RealtimeConnectionState =
   | "error";
 
 export type RealtimeSessionStatus = "idle" | "starting" | "active" | "stopped";
+export type RealtimeSessionTransitionReason = "user" | "refresh";
 
 export type RealtimeResponseStatus =
   | "idle"
@@ -299,6 +300,7 @@ export interface RealtimeManager {
   setCharacter(character: Character): void;
   getState(): RealtimeState;
   startSession(config?: RealtimeSessionConfig): Promise<void>;
+  updateSession(config?: RealtimeSessionConfig): Promise<void>;
   stopSession(): Promise<void>;
   sendMessage(text: string): Promise<void>;
   sendAudioChunk(audio: ArrayBuffer): Promise<void>;
@@ -322,8 +324,14 @@ export type EventMap = {
   "stt:start": { options?: STTOptions };
   "stt:stop": { transcription: string };
   "stt:error": { error: Error };
-  "realtime:session:start": { state: RealtimeState };
-  "realtime:session:end": { state: RealtimeState };
+  "realtime:session:start": {
+    state: RealtimeState;
+    reason?: RealtimeSessionTransitionReason;
+  };
+  "realtime:session:end": {
+    state: RealtimeState;
+    reason?: RealtimeSessionTransitionReason;
+  };
   "realtime:state": { state: RealtimeState };
   "realtime:user:transcript": { text: string };
   "realtime:assistant:start": { state: RealtimeState };

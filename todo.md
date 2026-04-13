@@ -81,7 +81,7 @@ Definition of done:
 - [x] Store session state inside the manager instead of only booleans
 - [x] Add `setCharacter(...)`
 - [x] Add `getState()`
-- [ ] Add `updateSession(...)` or equivalent config refresh API
+- [x] Add `updateSession(...)` or equivalent config refresh API
 - [x] Add `interrupt()` support for cancelling the current assistant turn
 - [x] Emit richer lifecycle events through the existing emitter bridge
 - [x] Decide how partial assistant text is accumulated and finalized
@@ -89,7 +89,7 @@ Definition of done:
 Definition of done:
 
 - [x] Manager exposes enough state for UI without reaching into the client
-- [ ] Manager can be reused across reconnects and character changes
+- [x] Manager can be reused across reconnects and character changes
 
 ### Phase 4: Tool Registry And Execution Flow
 

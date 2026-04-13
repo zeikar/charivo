@@ -11,6 +11,7 @@ export type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
   RealtimeSessionStatus,
+  RealtimeSessionTransitionReason,
   RealtimeState,
   RealtimeToolContext,
   RealtimeToolHandler,

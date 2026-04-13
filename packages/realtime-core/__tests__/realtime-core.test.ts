@@ -14,14 +14,34 @@ import {
   type RealtimeTransportEvent,
 } from "@charivo/realtime-core";
 
-function createRealtimeClientStub() {
+function createRealtimeClientStub(options?: {
+  emitSessionStartedOnConnect?: boolean;
+  emitSessionEndedOnDisconnect?: boolean;
+}) {
   const eventHandlers = new Set<
     (event: RealtimeTransportEvent) => void | Promise<void>
   >();
 
+  const emitEvent = async (event: RealtimeTransportEvent) => {
+    for (const handler of eventHandlers) {
+      await handler(event);
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
   const client: RealtimeTransportClient = {
-    connect: vi.fn(async () => undefined),
-    disconnect: vi.fn(async () => undefined),
+    connect: vi.fn(async () => {
+      if (options?.emitSessionStartedOnConnect) {
+        await emitEvent({ type: "session.started" });
+      }
+    }),
+    disconnect: vi.fn(async () => {
+      if (options?.emitSessionEndedOnDisconnect) {
+        await emitEvent({ type: "session.ended" });
+      }
+    }),
     sendText: vi.fn(async () => undefined),
     sendAudio: vi.fn(async () => undefined),
     sendToolResult: vi.fn(async () => undefined),
@@ -33,15 +53,34 @@ function createRealtimeClientStub() {
 
   return {
     client,
-    emit: async (event: RealtimeTransportEvent) => {
-      for (const handler of eventHandlers) {
-        await handler(event);
-      }
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    },
+    emit: emitEvent,
   };
+}
+
+function createEventEmitter(): CharivoEventEmitter {
+  return {
+    emit: vi.fn(),
+  };
+}
+
+function getEventPayloads(
+  eventEmitter: CharivoEventEmitter,
+  eventName: string,
+): unknown[] {
+  return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
+    .filter(([name]) => name === eventName)
+    .map(([, payload]) => payload);
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  return { promise, resolve, reject };
 }
 
 describe("realtime-core", () => {
@@ -106,6 +145,15 @@ describe("realtime-core", () => {
       provider: "openai",
       model: "gpt-realtime-mini",
       voice: "marin",
+    });
+
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:session:start", {
+      state: expect.objectContaining({
+        session: expect.objectContaining({
+          status: "active",
+        }),
+      }),
+      reason: "user",
     });
 
     expect(manager.getRegisteredTools().map((tool) => tool.name)).toEqual([
@@ -349,5 +397,352 @@ describe("realtime-core", () => {
       status: "responding",
       text: "partial",
     });
+  });
+
+  it("caches inactive session updates for the next start", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.updateSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+
+    await manager.startSession();
+
+    expect(stub.client.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai",
+        voice: "marin",
+      }),
+    );
+  });
+
+  it("refreshes active sessions without emitting a stopped intermediate state", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+
+    await manager.updateSession({
+      voice: "alloy",
+    });
+
+    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
+    expect(stub.client.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: "alloy",
+      }),
+    );
+
+    const statePayloads = getEventPayloads(
+      eventEmitter,
+      "realtime:state",
+    ) as Array<{ state: RealtimeState }>;
+    expect(statePayloads.map(({ state }) => state.connection)).toEqual([
+      "disconnecting",
+      "connecting",
+      "connected",
+    ]);
+    expect(
+      statePayloads.every(({ state }) => state.session.status !== "stopped"),
+    ).toBe(true);
+    expect(statePayloads[0]?.state.session.config?.voice).toBe("marin");
+    expect(statePayloads[1]?.state.session.config?.voice).toBe("marin");
+    expect(statePayloads[2]?.state.session.config?.voice).toBe("alloy");
+
+    const sessionBoundaryCalls = (
+      eventEmitter.emit as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(
+      ([name]) =>
+        name === "realtime:session:end" || name === "realtime:session:start",
+    );
+    expect(sessionBoundaryCalls.map(([name]) => name)).toEqual([
+      "realtime:session:end",
+      "realtime:session:start",
+    ]);
+    expect(sessionBoundaryCalls[0]?.[1]).toMatchObject({
+      reason: "refresh",
+      state: {
+        session: {
+          config: expect.objectContaining({
+            voice: "marin",
+          }),
+        },
+      },
+    });
+    expect(sessionBoundaryCalls[1]?.[1]).toMatchObject({
+      reason: "refresh",
+      state: {
+        session: {
+          config: expect.objectContaining({
+            voice: "alloy",
+          }),
+        },
+      },
+    });
+  });
+
+  it("keeps setCharacter side-effect free until updateSession is called", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setCharacter({
+      id: "char-1",
+      name: "Hiyori",
+      voice: {
+        voiceId: "marin",
+      },
+    });
+
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+
+    manager.setCharacter({
+      id: "char-2",
+      name: "Mika",
+      personality: "Calm and observant",
+      voice: {
+        voiceId: "alloy",
+      },
+    });
+
+    expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+
+    await manager.updateSession();
+
+    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
+    expect(stub.client.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai",
+        voice: "alloy",
+        instructions: expect.stringContaining("Mika"),
+      }),
+    );
+  });
+
+  it("applies tool registry mutations on the next session refresh", async () => {
+    const stub = createRealtimeClientStub();
+    const toolA: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolA",
+        description: "Tool A",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const toolB: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolB",
+        description: "Tool B",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [toolA],
+    });
+
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+
+    manager.registerTool(toolB);
+    await manager.updateSession();
+
+    expect(stub.client.connect).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tools: expect.arrayContaining([
+          expect.objectContaining({ name: "setEmotion" }),
+          expect.objectContaining({ name: "toolA" }),
+          expect.objectContaining({ name: "toolB" }),
+        ]),
+      }),
+    );
+
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+
+    manager.unregisterTool("toolA");
+    await manager.updateSession();
+
+    const refreshedConfig = vi.mocked(stub.client.connect).mock.calls[0]?.[0];
+    expect(refreshedConfig).toMatchObject({
+      tools: expect.arrayContaining([
+        expect.objectContaining({ name: "setEmotion" }),
+        expect.objectContaining({ name: "toolB" }),
+      ]),
+    });
+    expect(
+      (refreshedConfig?.tools ?? []).some((tool) => tool.name === "toolA"),
+    ).toBe(false);
+  });
+
+  it("stops cleanly on refresh failures and can be started again", async () => {
+    const stub = createRealtimeClientStub();
+    let connectAttempts = 0;
+
+    vi.mocked(stub.client.connect).mockImplementation(async () => {
+      connectAttempts += 1;
+      if (connectAttempts === 2) {
+        throw new Error("refresh failed");
+      }
+    });
+
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    await expect(
+      manager.updateSession({
+        voice: "alloy",
+      }),
+    ).rejects.toThrow("refresh failed");
+
+    expect(manager.getState()).toMatchObject({
+      connection: "error",
+      session: {
+        status: "stopped",
+        config: null,
+      },
+      lastError: expect.objectContaining({
+        message: "refresh failed",
+      }),
+    });
+
+    vi.mocked(stub.client.connect).mockImplementation(async () => undefined);
+
+    await manager.startSession();
+
+    expect(stub.client.connect).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        voice: "alloy",
+      }),
+    );
+  });
+
+  it("coalesces repeated session refresh requests to the latest config", async () => {
+    const stub = createRealtimeClientStub();
+    const firstDisconnect = createDeferred<void>();
+    let disconnectCount = 0;
+
+    vi.mocked(stub.client.disconnect).mockImplementation(async () => {
+      disconnectCount += 1;
+      if (disconnectCount === 1) {
+        await firstDisconnect.promise;
+      }
+    });
+
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+    disconnectCount = 0;
+
+    const firstRefresh = manager.updateSession({
+      voice: "alloy",
+    });
+    const secondRefresh = manager.updateSession({
+      voice: "nova",
+    });
+
+    expect(firstRefresh).toBe(secondRefresh);
+
+    firstDisconnect.resolve(undefined);
+    await firstRefresh;
+
+    expect(stub.client.disconnect).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(stub.client.connect).mock.calls).toHaveLength(2);
+    expect(vi.mocked(stub.client.connect).mock.calls[0]?.[0]).toMatchObject({
+      voice: "alloy",
+    });
+    expect(vi.mocked(stub.client.connect).mock.calls[1]?.[0]).toMatchObject({
+      voice: "nova",
+    });
+    expect(manager.getState().session.config?.voice).toBe("nova");
+  });
+
+  it("cancels refresh and converges to stopped when stopSession wins", async () => {
+    const stub = createRealtimeClientStub();
+    const disconnectGate = createDeferred<void>();
+    let disconnectCount = 0;
+
+    vi.mocked(stub.client.disconnect).mockImplementation(async () => {
+      disconnectCount += 1;
+      if (disconnectCount === 1) {
+        await disconnectGate.promise;
+      }
+    });
+
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+    manager.setEventEmitter(eventEmitter);
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.disconnect).mockClear();
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+    disconnectCount = 0;
+
+    const refreshPromise = manager.updateSession({
+      voice: "alloy",
+    });
+    const stopPromise = manager.stopSession();
+
+    disconnectGate.resolve(undefined);
+    await Promise.all([refreshPromise, stopPromise]);
+
+    expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(manager.getState().session.status).toBe("stopped");
+    expect(manager.getState().connection).toBe("idle");
+    expect(
+      getEventPayloads(eventEmitter, "realtime:session:end"),
+    ).toContainEqual(
+      expect.objectContaining({
+        reason: "user",
+      }),
+    );
   });
 });

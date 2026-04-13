@@ -3,6 +3,7 @@ import type {
   CharivoEventEmitter,
   RealtimeManager as CoreRealtimeManager,
   RealtimeSessionConfig,
+  RealtimeSessionTransitionReason,
   RealtimeState,
   RealtimeTool,
   RealtimeToolRegistration,
@@ -30,7 +31,13 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private eventEmitter?: CharivoEventEmitter;
   private character: Character | null = null;
   private isStoppingSession = false;
+  private isRefreshingSession = false;
   private isAudioPlaybackActive = false;
+  private sessionBaseConfig?: RealtimeSessionConfig;
+  private refreshInFlight: Promise<void> | null = null;
+  private hasQueuedRefresh = false;
+  private stopRequestedDuringRefresh = false;
+  private emittedUserStopDuringRefresh = false;
   private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
   private state: RealtimeState = {
     connection: "idle",
@@ -122,28 +129,23 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   async startSession(config?: RealtimeSessionConfig): Promise<void> {
-    if (this.state.session.status === "active") {
+    if (
+      this.state.session.status === "active" ||
+      this.state.session.status === "starting" ||
+      this.refreshInFlight
+    ) {
       throw new Error("Realtime session already active");
     }
 
-    const mergedConfig = mergeSessionConfig(
-      this.options.defaultSessionConfig,
-      config,
-    );
-    const sessionConfig = buildRealtimeSessionConfig({
-      character: this.character,
-      baseConfig: {
-        ...mergedConfig,
-        tools: this.getRegisteredTools(),
-      },
-    });
+    this.sessionBaseConfig = this.resolveNextSessionBaseConfig(config);
+    const sessionConfig = this.buildEffectiveSessionConfig();
 
     this.state = {
       ...this.state,
       connection: "connecting",
       session: {
         status: "starting",
-        config: sessionConfig,
+        config: null,
         characterId: this.character?.id,
       },
       response: {
@@ -156,45 +158,69 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
     try {
       await this.client.connect(sessionConfig);
-      this.state = {
-        ...this.state,
-        connection: "connected",
-        session: {
-          ...this.state.session,
-          status: "active",
-        },
-      };
-      this.emitState();
-      this.eventEmitter?.emit("realtime:session:start", {
-        state: this.getState(),
-      });
+      this.commitActiveSession(sessionConfig);
+      this.emitSessionStart("user");
     } catch (error) {
-      this.applyError(
+      this.finalizeFailedSession(
         error instanceof Error ? error : new Error(String(error)),
-        "error",
       );
       throw error;
     }
   }
 
+  updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    this.sessionBaseConfig = this.resolveNextSessionBaseConfig(config);
+
+    if (this.state.session.status !== "active") {
+      return Promise.resolve();
+    }
+
+    if (this.refreshInFlight) {
+      this.hasQueuedRefresh = true;
+      return this.refreshInFlight;
+    }
+
+    this.stopRequestedDuringRefresh = false;
+    this.hasQueuedRefresh = false;
+    this.emittedUserStopDuringRefresh = false;
+    this.refreshInFlight = this.runRefreshLoop().finally(() => {
+      this.refreshInFlight = null;
+      this.hasQueuedRefresh = false;
+      this.stopRequestedDuringRefresh = false;
+      this.emittedUserStopDuringRefresh = false;
+    });
+
+    return this.refreshInFlight;
+  }
+
   async stopSession(): Promise<void> {
+    if (this.refreshInFlight) {
+      this.stopRequestedDuringRefresh = true;
+      this.hasQueuedRefresh = false;
+
+      try {
+        await this.refreshInFlight;
+      } catch {
+        // Refresh failure already updates manager state.
+      }
+
+      if (this.state.session.status === "active") {
+        await this.performStopSession();
+      } else if (
+        this.stopRequestedDuringRefresh &&
+        !this.emittedUserStopDuringRefresh
+      ) {
+        this.emitSessionEnd("user");
+      }
+
+      return;
+    }
+
     if (this.state.session.status !== "active") {
       return;
     }
 
-    this.isStoppingSession = true;
-    this.state = {
-      ...this.state,
-      connection: "disconnecting",
-    };
-    this.emitState();
-
-    try {
-      await this.client.disconnect();
-      this.finalizeStoppedSession(true);
-    } finally {
-      this.isStoppingSession = false;
-    }
+    await this.performStopSession();
   }
 
   async sendMessage(text: string): Promise<void> {
@@ -235,23 +261,37 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   ): Promise<void> {
     switch (event.type) {
       case "session.started":
-        this.state = {
-          ...this.state,
+        if (
+          this.state.connection === "connecting" ||
+          this.isRefreshingSession
+        ) {
+          return;
+        }
+
+        this.state = mergeRealtimeState(this.state, {
           connection: "connected",
           session: {
-            ...this.state.session,
-            status: "active",
+            status:
+              this.state.session.status === "starting"
+                ? "active"
+                : this.state.session.status,
+            config: this.state.session.config,
+            characterId: this.character?.id,
           },
-        };
+        });
         this.emitState();
         return;
 
       case "session.ended":
-        if (this.isStoppingSession) {
+        if (
+          this.isStoppingSession ||
+          this.isRefreshingSession ||
+          this.state.connection === "disconnecting"
+        ) {
           return;
         }
 
-        this.finalizeStoppedSession(true);
+        this.finalizeStoppedSession(true, "user");
         return;
 
       case "user.transcript":
@@ -518,7 +558,168 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.eventEmitter?.emit("tts:audio:end", {});
   }
 
-  private finalizeStoppedSession(emitSessionEnd: boolean): void {
+  private resolveNextSessionBaseConfig(
+    config?: RealtimeSessionConfig,
+  ): RealtimeSessionConfig | undefined {
+    return mergeSessionConfig(
+      this.sessionBaseConfig ?? this.options.defaultSessionConfig,
+      config,
+    );
+  }
+
+  private buildEffectiveSessionConfig(): RealtimeSessionConfig {
+    return buildRealtimeSessionConfig({
+      character: this.character,
+      baseConfig: {
+        ...(this.sessionBaseConfig ?? {}),
+        tools: this.getRegisteredTools(),
+      },
+    });
+  }
+
+  private commitActiveSession(config: RealtimeSessionConfig): void {
+    this.state = {
+      ...this.state,
+      connection: "connected",
+      session: {
+        status: "active",
+        config,
+        characterId: this.character?.id,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: null,
+    };
+    this.emitState();
+  }
+
+  private async performStopSession(): Promise<void> {
+    this.isStoppingSession = true;
+    this.state = {
+      ...this.state,
+      connection: "disconnecting",
+    };
+    this.emitState();
+
+    try {
+      await this.client.disconnect();
+      this.finalizeStoppedSession(true, "user");
+    } catch (error) {
+      this.finalizeFailedSession(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      throw error;
+    } finally {
+      this.isStoppingSession = false;
+    }
+  }
+
+  private async runRefreshLoop(): Promise<void> {
+    do {
+      this.hasQueuedRefresh = false;
+      await this.performSessionRefresh();
+    } while (this.hasQueuedRefresh && !this.stopRequestedDuringRefresh);
+  }
+
+  private async performSessionRefresh(): Promise<void> {
+    const previousState = this.getState();
+    const sessionConfig = this.buildEffectiveSessionConfig();
+
+    this.isRefreshingSession = true;
+    this.state = {
+      ...this.state,
+      connection: "disconnecting",
+      lastError: null,
+    };
+    this.emitState();
+
+    try {
+      await this.client.disconnect();
+
+      if (this.stopRequestedDuringRefresh) {
+        this.emittedUserStopDuringRefresh = true;
+        this.finalizeStoppedSession(true, "user");
+        return;
+      }
+
+      this.state = {
+        ...this.state,
+        connection: "connecting",
+        response: {
+          status: "idle",
+          text: "",
+        },
+      };
+      this.emitState();
+
+      await this.client.connect(sessionConfig);
+
+      if (this.stopRequestedDuringRefresh) {
+        await this.client.disconnect();
+        this.emittedUserStopDuringRefresh = true;
+        this.finalizeStoppedSession(true, "user");
+        return;
+      }
+
+      this.commitActiveSession(sessionConfig);
+      this.emitSessionEnd("refresh", previousState);
+      this.emitSessionStart("refresh");
+    } catch (error) {
+      this.finalizeFailedSession(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      throw error;
+    } finally {
+      this.isRefreshingSession = false;
+    }
+  }
+
+  private emitSessionStart(
+    reason: RealtimeSessionTransitionReason,
+    state: RealtimeState = this.getState(),
+  ): void {
+    this.eventEmitter?.emit("realtime:session:start", {
+      state,
+      reason,
+    });
+  }
+
+  private emitSessionEnd(
+    reason: RealtimeSessionTransitionReason,
+    state: RealtimeState = this.getState(),
+  ): void {
+    this.eventEmitter?.emit("realtime:session:end", {
+      state,
+      reason,
+    });
+  }
+
+  private finalizeFailedSession(error: Error): void {
+    this.emitAudioEnd();
+    this.state = {
+      ...this.state,
+      connection: "error",
+      session: {
+        status: "stopped",
+        config: null,
+        characterId: this.character?.id,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: error,
+    };
+    this.eventEmitter?.emit("realtime:error", { error });
+    this.emitState();
+  }
+
+  private finalizeStoppedSession(
+    emitSessionEnd: boolean,
+    reason: RealtimeSessionTransitionReason,
+  ): void {
     this.emitAudioEnd();
     this.state = {
       ...this.state,
@@ -537,9 +738,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.emitState();
 
     if (emitSessionEnd) {
-      this.eventEmitter?.emit("realtime:session:end", {
-        state: this.getState(),
-      });
+      this.emitSessionEnd(reason);
     }
   }
 }
