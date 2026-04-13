@@ -46,6 +46,16 @@ export interface OpenAIRealtimeClientOptions {
   ) => Promise<RealtimeSessionBootstrap>;
 }
 
+const DEBUG_EVENT_ALLOWLIST = new Set<string>([
+  "session.created",
+  "session.updated",
+  "response.created",
+  "response.done",
+  "response.function_call_arguments.done",
+  "conversation.item.input_audio_transcription.completed",
+  "error",
+]);
+
 /**
  * OpenAI-specific realtime transport client.
  *
@@ -215,7 +225,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   private handleServerEvent(event: ServerEvent): void {
-    if (this.options.debug && !event.type.includes("audio.delta")) {
+    if (this.options.debug && this.shouldLogDebugEvent(event.type)) {
       this.log("📡 [OpenAI Realtime Event]", event.type, event);
     }
 
@@ -551,6 +561,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     if (this.options.debug) {
       console.log(...args);
     }
+  }
+
+  private shouldLogDebugEvent(eventType: string): boolean {
+    if (DEBUG_EVENT_ALLOWLIST.has(eventType)) {
+      return true;
+    }
+
+    return eventType.startsWith("response.output_text.");
   }
 }
 
