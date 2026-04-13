@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-provider-openai",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "OpenAI LLM provider for Charivo (server-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
