@@ -11,6 +11,11 @@ Live demo: https://charivo.vercel.app/
 
 ![Charivo Demo](./docs/images/screenshot.png)
 
+Documentation:
+
+- https://zeikar.github.io/charivo/
+- [ROADMAP.md](./ROADMAP.md): Amadeus-oriented product and technical roadmap
+
 ## Architecture
 
 Charivo follows one rule consistently:
@@ -29,6 +34,20 @@ App
   -> browser implementations (client/player/transcriber/renderer)
   -> optional server providers behind API routes
 ```
+
+## Repo Layout
+
+```text
+packages/
+  core/ shared/
+  *-core/
+  *-client-* | *-player-* | *-transcriber-* | render-*/
+  *-provider-*/
+examples/web/
+docs/
+  guide/ adr/ history/ images/
+```
+
 
 ## Event Wiring
 
