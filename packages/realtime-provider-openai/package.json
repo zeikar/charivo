@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-provider-openai",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "OpenAI realtime provider for Charivo (server-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
