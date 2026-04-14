@@ -179,6 +179,14 @@ describe("OpenAIRealtimeAgentsClient", () => {
     });
     expect(sdkState.session?.sendMessage).toHaveBeenCalledWith("hello");
     expect(sdkState.session?.options.config).not.toHaveProperty("tools");
+    expect(sdkState.session?.options.config).not.toHaveProperty("voice");
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        output: {
+          voice: "marin",
+        },
+      },
+    });
     expect(events).toContainEqual({ type: "session.started" });
   });
 
@@ -329,6 +337,53 @@ describe("OpenAIRealtimeAgentsClient", () => {
     await expect(pendingResult).resolves.toEqual({
       success: true,
       emotion: "happy",
+    });
+  });
+
+  it("preserves strict tool schemas when additionalProperties is false", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      tools: [
+        {
+          type: "function",
+          name: "setEmotion",
+          description: "Update emotion",
+          parameters: {
+            type: "object",
+            properties: {
+              emotion: { type: "string" },
+            },
+            required: ["emotion"],
+            additionalProperties: false,
+          } as {
+            type: "object";
+            properties: Record<string, unknown>;
+            required: string[];
+            additionalProperties: false;
+          },
+        },
+      ],
+    });
+
+    expect(sdkState.session?.initialAgent.tools[0]).toMatchObject({
+      strict: true,
+      parameters: {
+        type: "object",
+        required: ["emotion"],
+        additionalProperties: false,
+      },
     });
   });
 

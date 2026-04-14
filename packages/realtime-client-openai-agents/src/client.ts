@@ -4,12 +4,7 @@ import type {
   RealtimeSessionRequest,
 } from "@charivo/core";
 import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
-import {
-  DEFAULT_REQUEST_TIMEOUT_MS,
-  fetchWithTimeout,
-  isRealtimeSessionBootstrap,
-  isRecord,
-} from "@charivo/shared";
+import { isRecord } from "@charivo/shared";
 import type {
   RealtimeTransportClient,
   RealtimeTransportEvent,
@@ -23,9 +18,19 @@ import {
   type RealtimeItem,
   type TransportLayerTranscriptDelta,
 } from "@openai/agents-realtime";
+import {
+  getOpenAIRealtimeAgentsBootstrap,
+  type RealtimeBootstrapLoaderOptions,
+} from "./bootstrap";
+import { LipSyncAnalyzer } from "./lip-sync-analyzer";
+import {
+  resolveInstructions,
+  resolveVoice,
+  toOpenAIRealtimeAgentsSessionConfig,
+} from "./session-config";
+import { createToolSchemaOptions } from "./tool-schema";
 
 interface PendingToolCall {
-  name: string;
   resolve: (output: Record<string, unknown>) => void;
   reject: (error: Error) => void;
 }
@@ -35,19 +40,9 @@ interface AssistantState {
   started: boolean;
 }
 
-interface AgentsToolParameters {
-  type: "object";
-  properties: Record<string, unknown>;
-  required: string[];
-  additionalProperties: true;
-}
-
-export interface OpenAIRealtimeAgentsClientOptions {
-  apiEndpoint?: string;
+export interface OpenAIRealtimeAgentsClientOptions
+  extends RealtimeBootstrapLoaderOptions {
   debug?: boolean;
-  sessionBootstrap?: (
-    request: RealtimeSessionRequest,
-  ) => Promise<RealtimeSessionBootstrap>;
 }
 
 const DEBUG_EVENT_ALLOWLIST = new Set([
@@ -62,11 +57,6 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;
   private transport: OpenAIRealtimeWebRTC | null = null;
   private audioElement: HTMLAudioElement | null = null;
-  private audioAnalysisStream: MediaStream | null = null;
-  private audioContext: AudioContext | null = null;
-  private analyser: AnalyserNode | null = null;
-  private lipSyncInterval: number | null = null;
-  private pendingAudioElementPoll: number | null = null;
   private connectionWasActive = false;
   private assistant: AssistantState = { text: "", started: false };
   private latestHistory: RealtimeItem[] = [];
@@ -74,6 +64,14 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     (event: RealtimeTransportEvent) => void
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
+  private readonly lipSyncAnalyzer = new LipSyncAnalyzer({
+    onRms: (rms) => {
+      this.emitEvent({ type: "audio.lipsync", rms });
+    },
+    onError: (error) => {
+      console.error("Failed to setup audio analysis:", error);
+    },
+  });
 
   constructor(private options: OpenAIRealtimeAgentsClientOptions = {}) {}
 
@@ -87,11 +85,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
       const agent = new RealtimeAgent({
         name: "charivo-realtime-agent",
-        instructions:
-          config?.instructions ??
-          "You are a realtime voice agent controlling a Live2D character.",
+        instructions: resolveInstructions(config),
         tools: this.createProxyTools(config?.tools),
-        voice: config?.voice,
+        voice: resolveVoice(config),
       });
 
       this.transport = new OpenAIRealtimeWebRTC(
@@ -100,12 +96,12 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
       this.session = new RealtimeSession(agent, {
         transport: this.transport,
-        config: this.toSessionConfig(config),
+        config: toOpenAIRealtimeAgentsSessionConfig(config),
       });
 
       this.bindSessionEvents(this.session);
       this.bindTransportEvents(this.transport);
-      this.observeAudioElement(this.audioElement);
+      this.lipSyncAnalyzer.observeAudioElement(this.audioElement);
 
       const bootstrap = await this.getSessionBootstrap({
         adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
@@ -237,7 +233,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
     transport.on("audio_interrupted", () => {
       this.emitEvent({ type: "audio.output.ended" });
-      this.emitEvent({ type: "audio.lipsync", rms: 0 });
+      this.lipSyncAnalyzer.stopOutput();
     });
 
     transport.on("connection_change", (status) => {
@@ -334,59 +330,52 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private createProxyTools(
     tools: RealtimeSessionConfig["tools"],
   ): Array<ReturnType<typeof tool>> {
-    return (tools ?? []).map((definition) =>
-      tool({
+    return (tools ?? []).map((definition) => {
+      const execute = async (
+        input: unknown,
+        _context?: unknown,
+        details?: { toolCall?: { callId?: string } },
+      ): Promise<Record<string, unknown>> => {
+        const toolCallItem = details?.toolCall;
+        const callId =
+          toolCallItem?.callId ?? this.createToolCallId(definition.name);
+
+        return await new Promise<Record<string, unknown>>((resolve, reject) => {
+          this.pendingToolCalls.set(callId, {
+            resolve,
+            reject,
+          });
+
+          this.emitEvent({
+            type: "tool.call",
+            name: definition.name,
+            args: isRecord(input) ? input : {},
+            callId,
+          });
+        });
+      };
+
+      const schemaOptions = createToolSchemaOptions(definition.parameters);
+      if (schemaOptions.strict) {
+        return tool({
+          name: definition.name,
+          description: definition.description,
+          parameters: schemaOptions.parameters,
+          strict: true,
+          needsApproval: false,
+          execute,
+        });
+      }
+
+      return tool({
         name: definition.name,
         description: definition.description,
-        parameters: toAgentsToolParameters(definition.parameters),
+        parameters: schemaOptions.parameters,
         strict: false,
         needsApproval: false,
-        execute: async (input, _context, details) => {
-          const toolCallItem = details?.toolCall as
-            | { callId?: string }
-            | undefined;
-          const callId =
-            toolCallItem?.callId ??
-            (typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${definition.name}-${Date.now()}`);
-
-          return await new Promise<Record<string, unknown>>(
-            (resolve, reject) => {
-              this.pendingToolCalls.set(callId, {
-                name: definition.name,
-                resolve,
-                reject,
-              });
-
-              this.emitEvent({
-                type: "tool.call",
-                name: definition.name,
-                args: isRecord(input) ? input : {},
-                callId,
-              });
-            },
-          );
-        },
-      }),
-    );
-  }
-
-  private toSessionConfig(
-    config?: RealtimeSessionConfig,
-  ): Record<string, unknown> {
-    return {
-      model: config?.model ?? "gpt-realtime-mini",
-      instructions: config?.instructions ?? "",
-      toolChoice: config?.toolChoice ?? "auto",
-      outputModalities: ["audio"],
-      voice: config?.voice ?? "marin",
-      audio: {
-        output: {
-          voice: config?.voice ?? "marin",
-        },
-      },
-    };
+        execute,
+      });
+    });
   }
 
   private createTransportOptions(
@@ -398,7 +387,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         peerConnection.addEventListener("track", (event) => {
           const stream = event.streams[0];
           if (stream) {
-            this.trySetupAudioAnalysis(stream);
+            this.lipSyncAnalyzer.attachStream(stream);
           }
         });
         return peerConnection;
@@ -406,97 +395,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     };
   }
 
-  private observeAudioElement(audioElement: HTMLAudioElement): void {
-    const tryAttachStream = () => {
-      const stream = audioElement.srcObject;
-      if (stream instanceof MediaStream) {
-        this.trySetupAudioAnalysis(stream);
-      }
-    };
-
-    audioElement.addEventListener("loadedmetadata", tryAttachStream);
-    this.pendingAudioElementPoll = window.setInterval(tryAttachStream, 50);
-  }
-
-  private trySetupAudioAnalysis(stream: MediaStream): void {
-    if (this.audioAnalysisStream === stream) {
-      return;
-    }
-
-    this.stopAudioElementPolling();
-    this.stopLipSyncAnalysis();
-    this.audioAnalysisStream = stream;
-
-    try {
-      const audioContextConstructor =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (!audioContextConstructor) {
-        throw new Error("AudioContext is not supported in this browser");
-      }
-
-      this.audioContext = new audioContextConstructor();
-      const source = this.audioContext.createMediaStreamSource(stream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.8;
-      source.connect(this.analyser);
-
-      this.startLipSyncAnalysis();
-    } catch (error) {
-      console.error("Failed to setup audio analysis:", error);
-    }
-  }
-
-  private startLipSyncAnalysis(): void {
-    if (!this.analyser) {
-      return;
-    }
-
-    const bufferLength = this.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    this.lipSyncInterval = window.setInterval(() => {
-      if (!this.analyser) {
-        return;
-      }
-
-      this.analyser.getByteFrequencyData(dataArray);
-
-      let sum = 0;
-      for (let index = 0; index < bufferLength; index += 1) {
-        const normalized = dataArray[index] / 255;
-        sum += normalized * normalized;
-      }
-
-      const rms = Math.sqrt(sum / bufferLength);
-      this.emitEvent({
-        type: "audio.lipsync",
-        rms: Math.min(rms * 3, 1),
-      });
-    }, 1000 / 60);
-  }
-
-  private stopLipSyncAnalysis(): void {
-    if (this.lipSyncInterval) {
-      clearInterval(this.lipSyncInterval);
-      this.lipSyncInterval = null;
-    }
-    this.emitEvent({ type: "audio.lipsync", rms: 0 });
-  }
-
-  private resetAssistantTracking(): void {
-    this.assistant = {
-      text: "",
-      started: false,
-    };
-  }
-
   private cleanup(error?: unknown): void {
     this.cleanupPendingToolCalls(error);
-    this.stopLipSyncAnalysis();
-    this.stopAudioElementPolling();
+    this.lipSyncAnalyzer.cleanup();
 
     if (this.transport) {
       this.transport.close();
@@ -508,20 +409,20 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.session = null;
     }
 
-    if (this.audioContext) {
-      void this.audioContext.close();
-      this.audioContext = null;
-    }
-
     if (this.audioElement) {
       this.audioElement.srcObject = null;
       this.audioElement = null;
     }
 
-    this.analyser = null;
-    this.audioAnalysisStream = null;
     this.latestHistory = [];
     this.resetAssistantTracking();
+  }
+
+  private resetAssistantTracking(): void {
+    this.assistant = {
+      text: "",
+      started: false,
+    };
   }
 
   private cleanupPendingToolCalls(error?: unknown): void {
@@ -535,50 +436,16 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.pendingToolCalls.clear();
   }
 
-  private stopAudioElementPolling(): void {
-    if (this.pendingAudioElementPoll) {
-      clearInterval(this.pendingAudioElementPoll);
-      this.pendingAudioElementPoll = null;
-    }
+  private createToolCallId(toolName: string): string {
+    return typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${toolName}-${Date.now()}`;
   }
 
   private async getSessionBootstrap(
     request: RealtimeSessionRequest,
   ): Promise<RealtimeSessionBootstrap> {
-    if (this.options.sessionBootstrap) {
-      return this.options.sessionBootstrap(request);
-    }
-
-    const apiEndpoint = this.options.apiEndpoint;
-    if (!apiEndpoint) {
-      throw new Error(
-        "OpenAI agents realtime client requires apiEndpoint or sessionBootstrap",
-      );
-    }
-
-    const response = await fetchWithTimeout(
-      apiEndpoint,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      },
-      `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create Realtime session: ${errorText}`);
-    }
-
-    const bootstrap = (await response.json()) as unknown;
-    if (!isRealtimeSessionBootstrap(bootstrap)) {
-      throw new Error("Invalid realtime session bootstrap response");
-    }
-
-    return bootstrap;
+    return getOpenAIRealtimeAgentsBootstrap(this.options, request);
   }
 
   private emitEvent(event: RealtimeTransportEvent): void {
@@ -600,14 +467,4 @@ export function createOpenAIRealtimeAgentsClient(
   options?: OpenAIRealtimeAgentsClientOptions,
 ): RealtimeTransportClient {
   return new OpenAIRealtimeAgentsClient(options);
-}
-
-function toAgentsToolParameters(
-  parameters: NonNullable<RealtimeSessionConfig["tools"]>[number]["parameters"],
-): AgentsToolParameters {
-  return {
-    ...parameters,
-    required: parameters.required ?? [],
-    additionalProperties: true,
-  };
 }
