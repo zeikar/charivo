@@ -1,14 +1,11 @@
 # Choosing Packages
 
-This guide answers one question: which Charivo packages should you pick for
-your app?
+Charivo supports three runtime styles: remote, browser-direct, and
+browser-native. This page helps you choose the right one for each subsystem.
 
-Use it before wiring an app, especially if you are deciding between production,
-demo, and zero-server setups.
+## Default Choice
 
-## Recommended Default
-
-For most browser apps, choose:
+For most browser apps, use:
 
 - `@charivo/core`
 - the relevant `*-core` manager packages
@@ -18,18 +15,16 @@ For most browser apps, choose:
 Choose browser-direct or browser-native packages only when you explicitly want
 their tradeoffs.
 
-## Decision Table
+## Quick Decision Table
 
 | Need | Pick | Why |
 | --- | --- | --- |
 | Production browser app | Remote browser package + provider package | Keeps credentials on the server |
-| Local development against vendor APIs | Browser-direct vendor package | Fast setup, but browser secrets are exposed |
+| Local development against vendor APIs | Browser-direct vendor package | Faster setup, but browser secrets are exposed |
 | Zero-server browser speech | Browser-native web package | No backend needed, but browser support varies |
 | Deterministic demo or UI work | Stub client where available | No model dependency |
 
 ## Runtime Modes
-
-Charivo currently exposes three runtime styles.
 
 ### Remote
 
@@ -42,15 +37,15 @@ Examples:
 - `@charivo/stt-transcriber-remote`
 - `@charivo/realtime-client-remote`
 
-Use this path when:
+Choose this path when:
 
 - the app runs in the browser
-- you want production-safe credential handling
+- you want credentials to stay on the server
 - you already own API routes or server functions
 
 ### Browser-Direct
 
-Use direct browser vendor packages for development, demos, or trusted
+Use browser-direct vendor packages for development, demos, or trusted
 environments.
 
 Examples:
@@ -62,9 +57,9 @@ Examples:
 - `@charivo/realtime-client-openai-agents`
 - `@charivo/realtime-client-openai`
 
-Use this path when:
+Choose this path when:
 
-- you need the shortest local setup
+- you want the shortest local setup
 - you are testing provider behavior directly
 - exposing credentials in the browser is acceptable
 
@@ -77,13 +72,13 @@ Examples:
 - `@charivo/tts-player-web`
 - `@charivo/stt-transcriber-web`
 
-Use this path when:
+Choose this path when:
 
 - you want a prototype or zero-server feature
 - browser support differences are acceptable
 - provider-level model control is not required
 
-## Package Combos By Feature
+## Common Stacks
 
 ### Text chat with server routes
 
@@ -130,12 +125,12 @@ Use this path when:
 
 ## Rules Of Thumb
 
-- If the app is user-facing and browser-based, start with remote packages.
-- If the app is a demo or a development harness, browser-direct packages are acceptable.
-- If you need the fewest moving parts for speech, browser-native TTS/STT can be enough.
-- If you need realtime today, the recommended path is `@charivo/realtime-client-remote`, which can resolve the OpenAI Agents WebRTC adapter by default.
+- For user-facing browser apps, start with remote packages.
+- For demos and local harnesses, browser-direct packages are acceptable.
+- For the fewest moving parts in speech features, browser-native TTS/STT may be enough.
+- For realtime today, prefer `@charivo/realtime-client-remote`, which can resolve the OpenAI Agents WebRTC adapter by default.
 
-## Next Steps
+## Related Guides
 
 - [Getting Started](./getting-started.md)
 - [LLM](./llm.md)

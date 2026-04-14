@@ -1,21 +1,12 @@
-# Architecture Guide
+# Architecture
 
-This guide answers one question: how is Charivo structured, and where should
-each piece live?
+Charivo keeps a strict package boundary between orchestration, managers,
+browser runtimes, and server providers. The rest of this guide walks through
+that split and how to navigate the repo.
 
-Use it when you are integrating multiple packages and want to understand the
-current boundaries before wiring your app.
+## Dependency Direction
 
-Recommended reading order:
-
-1. [Guide Index](./index.md)
-2. [Getting Started](./getting-started.md)
-3. [Choosing Packages](./choosing-packages.md)
-4. this page
-
-## Design Rule
-
-Charivo keeps a consistent dependency direction:
+The dependency flow is intentionally simple:
 
 ```text
 App
@@ -25,83 +16,70 @@ App
   -> optional server providers behind API routes
 ```
 
-That layering is intentional and should stay visible in app code.
+In practice:
 
-- `@charivo/core` owns the orchestrator, shared domain types, and the event bus.
-- `*-core` packages own stateful feature managers such as LLM, TTS, STT, realtime, and rendering.
-- Browser packages implement runtime-facing capabilities such as clients, players, transcribers, and renderers.
-- Provider packages stay on the server side and hold credentials or provider-specific backend logic.
+- `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
+- `*-core` packages own stateful feature logic
+- browser runtime packages implement clients, players, transcribers, and renderers
+- provider packages stay on the server and hold credentials
 
-The practical rule is simple: higher layers can depend on lower layers, but
-lower layers should not reach back upward and take on orchestration concerns.
-
-If you are building a browser app, the default mental model is:
-
-- `@charivo/core` wires the experience together
-- manager packages own session and feature state
-- browser runtime packages do the actual work in the client
-- provider packages sit behind your API routes
+Lower layers should not take on orchestration concerns from higher layers.
 
 ## Package Roles
 
 ### Core
 
-- `@charivo/core`: the `Charivo` orchestrator, shared contracts, and event bus
+- `@charivo/core`: orchestrator, shared contracts, event bus
 - `@charivo/shared`: lightweight shared utilities
 
 ### Manager Packages
 
-Manager packages are the stateful control layer.
-
 - `@charivo/llm-core`: conversation lifecycle and message orchestration
-- `@charivo/tts-core`: synthesis session flow and lip-sync coordination
+- `@charivo/tts-core`: synthesis flow and lip-sync coordination
 - `@charivo/stt-core`: recording and transcription lifecycle
-- `@charivo/realtime-core`: realtime session state, tools, and reconnect-driven session updates
-- `@charivo/render-core`: renderer lifecycle, mouse tracking, and bridge logic for visual updates
+- `@charivo/realtime-core`: realtime session state, tools, and reconnect-driven updates
+- `@charivo/render-core`: renderer lifecycle, mouse tracking, and visual bridge logic
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.
 
-## Runtime Implementations
+## Browser Runtime Packages
 
-These packages run in the browser and plug into managers.
-
-For most apps, prefer the remote/browser split first and only reach for
-browser-direct packages when you explicitly want local development shortcuts or
-zero-server behavior.
+For most apps, start with remote packages and only use browser-direct packages
+when you explicitly want local development shortcuts or zero-server behavior.
 
 ### LLM
 
-- `@charivo/llm-client-remote`: calls your server route
-- `@charivo/llm-client-openai`: direct browser OpenAI client for development and testing
-- `@charivo/llm-client-openclaw`: direct browser OpenClaw client for development and testing
-- `@charivo/llm-client-stub`: canned responses for tests and demos
+- `@charivo/llm-client-remote`
+- `@charivo/llm-client-openai`
+- `@charivo/llm-client-openclaw`
+- `@charivo/llm-client-stub`
 
 ### TTS
 
-- `@charivo/tts-player-remote`: browser player backed by a server route
-- `@charivo/tts-player-openai`: direct browser OpenAI TTS for development and testing
-- `@charivo/tts-player-web`: Web Speech API implementation
+- `@charivo/tts-player-remote`
+- `@charivo/tts-player-openai`
+- `@charivo/tts-player-web`
 
 ### STT
 
-- `@charivo/stt-transcriber-remote`: browser transcriber backed by a server route
-- `@charivo/stt-transcriber-openai`: direct browser OpenAI STT for development and testing
-- `@charivo/stt-transcriber-web`: Web Speech API implementation
+- `@charivo/stt-transcriber-remote`
+- `@charivo/stt-transcriber-openai`
+- `@charivo/stt-transcriber-web`
 
 ### Realtime
 
-- `@charivo/realtime-client-remote`: adapter-dispatched browser client for server realtime routes
-- `@charivo/realtime-client-openai-agents`: OpenAI Agents SDK realtime transport client and adapter
-- `@charivo/realtime-client-openai`: legacy low-level OpenAI realtime transport client and adapter
+- `@charivo/realtime-client-remote`
+- `@charivo/realtime-client-openai-agents`
+- `@charivo/realtime-client-openai`
 
 ### Rendering
 
-- `@charivo/render-live2d`: Live2D Cubism renderer
-- `@charivo/render-stub`: no-op or console-oriented renderer for tests and demos
+- `@charivo/render-live2d`
+- `@charivo/render-stub`
 
 ## Server Providers
 
-Provider packages stay behind your own API routes.
+Provider packages belong behind your own API routes:
 
 - `@charivo/llm-provider-openai`
 - `@charivo/llm-provider-openclaw`
@@ -109,10 +87,7 @@ Provider packages stay behind your own API routes.
 - `@charivo/stt-provider-openai`
 - `@charivo/realtime-provider-openai`
 
-Use these when you want production-safe deployment with credentials kept on the
-server.
-
-The default production shape looks like this:
+The default production shape is:
 
 ```text
 browser app
@@ -125,54 +100,39 @@ browser app
 
 ## Event Wiring
 
-Charivo intentionally keeps two related but different event contracts:
+Charivo intentionally keeps two event contracts:
 
 - `RenderManager` uses `setEventBus(...)`
 - `TTSManager`, `STTManager`, and `RealtimeManager` use `setEventEmitter(...)`
 
-This is not an inconsistency to clean up. It reflects different responsibilities.
+This is deliberate.
 
-- `RenderManager` subscribes to upstream events and therefore needs the full event bus contract.
-- TTS, STT, and realtime managers mostly publish lifecycle and output events back into core, so they only need the emitter subset.
+- `RenderManager` subscribes to upstream events such as `tts:lipsync:update` and `realtime:emotion`
+- TTS, STT, and realtime managers mainly publish events back into core
 
-If you are adding packages or extending the system, preserve this split unless
-you are intentionally redesigning the public manager contract.
+Do not normalize these contracts unless the public manager API is being
+redesigned.
 
 ## Recommended Integration Model
 
-For production, the default recommendation is:
-
-```text
-browser app
-  -> @charivo/core
-  -> manager package
-  -> remote browser runtime package
-  -> your API route
-  -> provider package
-  -> upstream model vendor
-```
-
-Examples:
+For production browser apps:
 
 - LLM: `@charivo/llm-core` + `@charivo/llm-client-remote` + `@charivo/llm-provider-openai`
 - TTS: `@charivo/tts-core` + `@charivo/tts-player-remote` + `@charivo/tts-provider-openai`
 - STT: `@charivo/stt-core` + `@charivo/stt-transcriber-remote` + `@charivo/stt-provider-openai`
 - Realtime: `@charivo/realtime-core` + `@charivo/realtime-client-remote` + `@charivo/realtime-provider-openai`
 
-Direct browser vendor packages are mainly for local development, demos, and
-testing.
+Direct browser vendor packages are mainly for development, demos, and testing.
 
-Browser-native packages are a separate category:
+Browser-native packages are a separate option:
 
 - `@charivo/tts-player-web`
 - `@charivo/stt-transcriber-web`
 
-They are useful when you want zero-server browser features and can accept
-browser support differences.
+Use them when you want browser-only speech features and can accept browser
+support differences.
 
 ## Repository Layout
-
-At the repo level, the structure is intentionally simple:
 
 ```text
 packages/
@@ -193,29 +153,22 @@ docs/
 scripts/
 ```
 
-Use these directories as follows:
-
 - `packages/`: publishable library packages
-- `examples/web/`: the demo and integration reference app
-- `docs/guide/`: user-facing guides
-- `docs/adr/`: architectural decisions and policy records
-- `docs/history/`: upgrade notes and change narratives
-- `scripts/`: repository tooling and maintenance scripts
+- `examples/web/`: reference app
+- `docs/guide/`: user-facing integration guides
+- `docs/adr/`: design decisions and policy
+- `docs/history/`: upgrade notes and implementation history
+- `scripts/`: repo tooling
 
 ## Documentation Split
 
-Use this rule of thumb:
+- root `README.md`: project overview and top-level entry points
+- `docs/guide/`: integration guides and package selection help
+- `docs/adr/`: architectural decisions
+- `docs/history/`: migrations and historical notes
 
-- Add quick orientation, installation, and top-level links to the root `README.md`
-- Add user-facing walkthroughs and conceptual docs to `docs/guide/`
-- Add internal design decisions or policy documents to `docs/adr/`
-- Add migration stories or implementation history to `docs/history/`
+## Related Guides
 
-That keeps the root README short while still giving the project a proper
-documentation surface like other open source libraries.
-
-## Next Steps
-
-- Read [Choosing Packages](./choosing-packages.md) if you are still deciding between remote, browser-direct, and browser-native paths.
-- Read [Rendering](./rendering.md) if you are starting from a Live2D app shell.
-- Read [Examples Web](./examples-web.md) for the shipped integration reference app.
+- [Choosing Packages](./choosing-packages.md)
+- [Rendering](./rendering.md)
+- [Examples Web](./examples-web.md)

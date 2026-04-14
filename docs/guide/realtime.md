@@ -1,14 +1,9 @@
 # Realtime
 
-This guide answers one question: how should you add realtime voice sessions to
-a Charivo app?
+Use Charivo's realtime stack when you want session-based voice interaction,
+streaming assistant output, or tool-enabled voice workflows.
 
-Use it when you want session-based voice interaction, streaming assistant
-output, or tool-enabled realtime workflows.
-
-## Recommended Default
-
-For current production-oriented browser apps, use:
+## Recommended Stack
 
 ```text
 @charivo/realtime-core
@@ -17,10 +12,11 @@ your /api/realtime route
 @charivo/realtime-provider-openai
 ```
 
-This path lets the browser call your route, receive an adapter-aware bootstrap,
-and connect through the default remote adapter registry.
+This is the current production-oriented browser path. The browser calls your
+route, receives an adapter-aware bootstrap, and connects through the default
+remote adapter registry.
 
-## Core Wiring
+## Basic Setup
 
 ```ts
 import {
@@ -70,7 +66,7 @@ await manager.startSession({
 - it resolves a browser transport adapter from its registry
 - the built-in resolver maps OpenAI WebRTC traffic to the current adapter defaults
 
-Today, that default route can return the OpenAI Agents WebRTC bootstrap flow.
+Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 
 ## Client Choices
 
@@ -83,14 +79,14 @@ Today, that default route can return the OpenAI Agents WebRTC bootstrap flow.
 ### OpenAI Agents SDK Transport
 
 - `@charivo/realtime-client-openai-agents`
-- the current OpenAI Agents SDK transport client and adapter
-- useful when you need the underlying client directly rather than going through the remote adapter layer
+- current OpenAI Agents SDK transport client and adapter
+- useful when you need to own the underlying browser client directly
 
 ### Legacy Low-Level OpenAI Transport
 
 - `@charivo/realtime-client-openai`
 - older low-level OpenAI WebRTC path
-- keep this mainly for legacy compatibility and specialized debugging
+- mainly useful for legacy compatibility and debugging
 
 ## What `realtime-core` Owns
 
@@ -104,7 +100,7 @@ Today, that default route can return the OpenAI Agents WebRTC bootstrap flow.
 bus. It emits realtime, tool, text, emotion, and lip-sync related events back
 into core.
 
-## Provider Path
+## Provider Route
 
 The server route typically uses `@charivo/realtime-provider-openai`:
 
@@ -124,11 +120,11 @@ const bootstrap = await provider.createSession({
 });
 ```
 
-## When To Use Another Path
+## Alternatives
 
 - Use the direct Agents transport package when you need to own the realtime transport client directly in the browser.
 - Use the legacy low-level package only when you intentionally depend on the older `openai-webrtc` flow.
-- Use turn-based [STT](./stt.md) + [TTS](./tts.md) when you do not need continuous live sessions.
+- Use turn-based [STT](./stt.md) and [TTS](./tts.md) when you do not need continuous live sessions.
 
 ## References
 
@@ -136,9 +132,3 @@ const bootstrap = await provider.createSession({
 - [realtime-client-remote README](../../packages/realtime-client-remote/README.md)
 - [realtime-client-openai-agents README](../../packages/realtime-client-openai-agents/README.md)
 - [realtime-provider-openai README](../../packages/realtime-provider-openai/README.md)
-
-## Next Steps
-
-- [Choosing Packages](./choosing-packages.md)
-- [Examples Web](./examples-web.md)
-- [Architecture](./architecture.md)

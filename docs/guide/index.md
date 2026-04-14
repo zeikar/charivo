@@ -1,29 +1,15 @@
 # Guide Index
 
-This guide answers one question: where should you start if you want to use
-Charivo in a real app?
-
 Charivo is a modular TypeScript framework for Live2D AI characters with LLM,
-TTS, STT, realtime voice, and rendering kept in separate packages.
+TTS, STT, realtime voice, and rendering split into focused packages.
 
-For most teams, the recommended learning path is:
+These guides are for integrators building an app on top of Charivo. Use them
+to choose the right packages, understand the layering, and get to a working
+setup quickly.
 
-1. [Getting Started](./getting-started.md)
-2. [Choosing Packages](./choosing-packages.md)
-3. [Architecture](./architecture.md)
-4. subsystem guides for the parts you need
+## Default Stack
 
-## Start Here
-
-If you want the shortest path to a working browser app:
-
-- use `@charivo/core` as the orchestrator
-- use `*-core` managers for stateful behavior
-- use remote browser packages by default
-- keep provider packages behind your own API routes
-- use `@charivo/render-live2d` with `@charivo/render-core` for Live2D rendering
-
-That default production shape is:
+For most browser apps, the default stack looks like this:
 
 ```text
 browser app
@@ -34,15 +20,31 @@ browser app
   -> provider package
 ```
 
-## Reading Paths
+That means:
 
-### I want the quickest working setup
+- `@charivo/core` orchestrates the app
+- `*-core` packages own feature state
+- remote browser packages talk to your server
+- provider packages keep credentials on the server
+
+## Reading Order
+
+If you are new to the repo, read in this order:
+
+1. [Getting Started](./getting-started.md)
+2. [Choosing Packages](./choosing-packages.md)
+3. [Architecture](./architecture.md)
+4. the subsystem guides you need
+
+## Common Paths
+
+### Quickest route to a working browser app
 
 - [Getting Started](./getting-started.md)
 - [Rendering](./rendering.md)
 - [Examples Web](./examples-web.md)
 
-### I need to choose the right packages first
+### Choosing packages before wiring the app
 
 - [Choosing Packages](./choosing-packages.md)
 - [Architecture](./architecture.md)
@@ -51,30 +53,31 @@ browser app
 - [STT](./stt.md)
 - [Realtime](./realtime.md)
 
-### I want the shipped integration reference
+### Reading the shipped reference app
 
 - [Examples Web](./examples-web.md)
 - [examples/web README](../../examples/web/README.md)
 
 ## Guide Map
 
-- [Getting Started](./getting-started.md): fastest copy-paste path for a basic character app
-- [Architecture](./architecture.md): layering, event split, and repo layout
-- [Choosing Packages](./choosing-packages.md): remote vs browser-direct vs browser-native decisions
+- [Getting Started](./getting-started.md): minimal production-oriented setup
+- [Architecture](./architecture.md): package boundaries, layering, and event wiring
+- [Choosing Packages](./choosing-packages.md): remote vs browser-direct vs browser-native
 - [Rendering](./rendering.md): `render-core` and `render-live2d`
 - [LLM](./llm.md): conversation manager and client choices
-- [TTS](./tts.md): playback paths and lip-sync wiring
-- [STT](./stt.md): recording and transcription paths
+- [TTS](./tts.md): speech playback and lip-sync wiring
+- [STT](./stt.md): microphone recording and transcription paths
 - [Realtime](./realtime.md): session-based voice interaction and tool wiring
 - [Examples Web](./examples-web.md): Next.js reference app and API routes
 
-## Reference Split
+## Guide Docs vs Package READMEs
 
-Use the guide docs for integration decisions and copy-paste recipes.
+Use the guides for integration decisions, recommended stacks, and copy-paste
+recipes.
 
 Use package READMEs for package-local details such as exports, request
-contracts, or provider-specific config:
+contracts, and provider-specific config:
 
 - [core README](../../packages/core/README.md)
 - [realtime-client-openai-agents README](../../packages/realtime-client-openai-agents/README.md)
-- any other package in [`packages/`](../../packages)
+- other package docs under [`packages/`](../../packages)

@@ -1,18 +1,10 @@
 # Getting Started
 
-This guide answers one question: what is the shortest production-oriented path
-to a working Charivo browser app?
+This is the shortest production-oriented path to a working Charivo app.
 
-Use it when you want a minimal setup with:
+## Recommended Stack
 
-- `@charivo/core`
-- remote LLM and TTS
-- `@charivo/render-core`
-- `@charivo/render-live2d`
-
-## Recommended Default
-
-For a browser app, start with this stack:
+Start with:
 
 ```text
 @charivo/core
@@ -22,8 +14,9 @@ For a browser app, start with this stack:
 server routes backed by provider packages
 ```
 
-This keeps credentials on the server and matches the current production
-recommendation across the repo.
+This is the default browser setup across the repo. It keeps vendor credentials
+on the server and leaves room to add STT or realtime later without changing the
+overall shape of the app.
 
 ## Install
 
@@ -35,7 +28,7 @@ pnpm add \
   @charivo/render-core @charivo/render-live2d
 ```
 
-For the server side you also need provider packages:
+For the server side:
 
 ```bash
 pnpm add \
@@ -43,9 +36,7 @@ pnpm add \
   @charivo/tts-provider-openai
 ```
 
-## Browser App
-
-Create a `Charivo` instance, attach the renderer, then attach the managers:
+## Minimal Browser Setup
 
 ```ts
 import { Charivo } from "@charivo/core";
@@ -87,11 +78,11 @@ charivo.setCharacter({
 await charivo.userSay("Hello");
 ```
 
-## Server Routes
+## Minimal Server Routes
 
-Your browser clients should call your own routes, not vendor APIs directly.
+Browser clients should call your own routes, not vendor APIs directly.
 
-Minimal LLM route:
+LLM route:
 
 ```ts
 import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
@@ -104,7 +95,7 @@ const provider = createOpenAILLMProvider({
 const text = await provider.generateResponse(messages);
 ```
 
-Minimal TTS route:
+TTS route:
 
 ```ts
 import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
@@ -121,23 +112,17 @@ const audio = await provider.generateSpeech(text, {
 });
 ```
 
-For a working Next.js reference, read [Examples Web](./examples-web.md).
+For a full Next.js example, see [Examples Web](./examples-web.md).
 
-## What This Setup Gives You
+## What You Get
 
 - typed orchestration through `Charivo`
 - character-aware LLM history management
 - server-mediated TTS playback
 - Live2D rendering with mouse tracking
-- a path that can expand later to STT and realtime without changing the overall layering
+- a clean path to add STT or realtime later
 
-## When To Pick Something Else
-
-- Add [STT](./stt.md) when you want microphone input with turn-based transcription.
-- Add [Realtime](./realtime.md) when you want live voice sessions instead of turn-based chat.
-- Read [Choosing Packages](./choosing-packages.md) if you are deciding between remote, browser-direct, or browser-native modes.
-
-## Next Steps
+## Related Guides
 
 - [Choosing Packages](./choosing-packages.md)
 - [Rendering](./rendering.md)

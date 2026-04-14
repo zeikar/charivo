@@ -1,14 +1,14 @@
 # LLM
 
-This guide answers one question: how should you choose and wire the LLM layer
-in Charivo?
+Charivo's LLM layer is built from two pieces:
 
-Use it when you want text chat or character-driven responses and need to choose
-between remote, direct, OpenClaw, or stub paths.
+- `@charivo/llm-core` for conversation state
+- an `LLMClient` implementation for transport
 
-## Recommended Default
+For production browser apps, pair `llm-core` with `@charivo/llm-client-remote`
+and a server route backed by a provider package.
 
-For production browser apps, use:
+## Recommended Stack
 
 ```text
 @charivo/llm-core
@@ -17,10 +17,9 @@ your /api/chat route
 @charivo/llm-provider-openai
 ```
 
-That keeps the browser client simple and the provider credentials on the
-server.
+This keeps the browser client simple and vendor credentials on the server.
 
-## Core Wiring
+## Basic Setup
 
 ```ts
 import { Charivo } from "@charivo/core";
@@ -41,7 +40,7 @@ charivo.setCharacter({
 ```
 
 Set the character through `charivo.setCharacter(...)` after attaching managers.
-That keeps the character state consistent across LLM, rendering, and realtime
+That keeps character state aligned across LLM, rendering, and realtime
 managers.
 
 ## Client Choices
@@ -62,7 +61,7 @@ managers.
 
 - `@charivo/llm-client-openclaw`
 - useful when your app targets an OpenClaw deployment directly
-- treat it like a development or trusted-environment option unless your deployment model explicitly allows browser access
+- best treated as a development or trusted-environment option unless browser access is intentional
 
 ### Stub
 
@@ -71,7 +70,7 @@ managers.
 
 ## Provider Choices
 
-Remote LLM clients pair with provider packages on the server:
+Remote clients pair with provider packages on the server:
 
 - `@charivo/llm-provider-openai`
 - `@charivo/llm-provider-openclaw`
@@ -93,10 +92,10 @@ const text = await provider.generateResponse(messages);
 - character-aware prompt building
 - response generation through an injected client
 
-That means the client is replaceable, but the manager remains the stable place
-for conversation state.
+The client is replaceable. The manager remains the stable place for
+conversation state.
 
-## When To Use Another Path
+## Alternatives
 
 - Use OpenClaw when your backend or testing flow targets OpenClaw instead of OpenAI.
 - Use the stub client when you want UI behavior without network or model variability.
@@ -107,10 +106,4 @@ for conversation state.
 - [llm-core README](../../packages/llm-core/README.md)
 - [llm-client-remote README](../../packages/llm-client-remote/README.md)
 - [llm-provider-openai README](../../packages/llm-provider-openai/README.md)
-- [Examples Web](./examples-web.md)
-
-## Next Steps
-
-- [Choosing Packages](./choosing-packages.md)
-- [TTS](./tts.md)
 - [Examples Web](./examples-web.md)

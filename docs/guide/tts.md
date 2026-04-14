@@ -1,14 +1,11 @@
 # TTS
 
-This guide answers one question: how should you add speech playback to a
-Charivo app?
+Charivo's TTS layer combines `@charivo/tts-core` with a concrete player.
 
-Use it when you want the assistant to speak and need to choose between remote,
-browser-direct OpenAI, and browser-native TTS.
+For production browser apps, use the remote player with a server route backed
+by `@charivo/tts-provider-openai`.
 
-## Recommended Default
-
-For production browser apps, use:
+## Recommended Stack
 
 ```text
 @charivo/tts-core
@@ -17,9 +14,7 @@ your /api/tts route
 @charivo/tts-provider-openai
 ```
 
-That is the default path when you want server-mediated speech generation.
-
-## Core Wiring
+## Basic Setup
 
 ```ts
 import { createTTSManager } from "@charivo/tts-core";
@@ -32,7 +27,7 @@ const ttsManager = createTTSManager(
 await ttsManager.speak("Hello", { voice: "marin" });
 ```
 
-Attach that manager to `Charivo`:
+Attach the manager to `Charivo`:
 
 ```ts
 charivo.attachTTS(ttsManager);
@@ -69,10 +64,10 @@ charivo.attachTTS(ttsManager);
 It emits TTS lifecycle and lip-sync events back into core, but it does not
 subscribe to upstream Charivo events.
 
-## Provider Path
+## Provider Route
 
-The remote path pairs the browser player with `@charivo/tts-provider-openai` on
-the server:
+The remote player usually pairs with `@charivo/tts-provider-openai` on the
+server:
 
 ```ts
 const provider = createOpenAITTSProvider({
@@ -87,11 +82,11 @@ const audio = await provider.generateSpeech(text, {
 });
 ```
 
-## When To Use Another Path
+## Alternatives
 
 - Use `tts-player-web` when you want no backend and browser variability is acceptable.
 - Use `tts-player-openai` when you are debugging OpenAI TTS behavior directly.
-- Skip TTS entirely when text chat is enough for the current experience.
+- Skip TTS when text chat is enough for the current experience.
 
 ## References
 
@@ -99,9 +94,3 @@ const audio = await provider.generateSpeech(text, {
 - [tts-player-remote README](../../packages/tts-player-remote/README.md)
 - [tts-player-web README](../../packages/tts-player-web/README.md)
 - [tts-provider-openai README](../../packages/tts-provider-openai/README.md)
-
-## Next Steps
-
-- [Rendering](./rendering.md)
-- [STT](./stt.md)
-- [Realtime](./realtime.md)

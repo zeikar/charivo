@@ -1,14 +1,11 @@
 # STT
 
-This guide answers one question: how should you add microphone transcription to
-a Charivo app?
+Charivo's STT layer combines `@charivo/stt-core` with a concrete transcriber.
 
-Use it when you want turn-based speech input and need to choose between remote,
-browser-direct OpenAI, and browser-native STT.
+For production browser apps, use the remote transcriber with a server route
+backed by `@charivo/stt-provider-openai`.
 
-## Recommended Default
-
-For production browser apps, use:
+## Recommended Stack
 
 ```text
 @charivo/stt-core
@@ -17,10 +14,9 @@ your /api/stt route
 @charivo/stt-provider-openai
 ```
 
-That is the default path when the browser records locally and the actual
-transcription happens through your backend.
+The browser records locally. The backend handles transcription.
 
-## Core Wiring
+## Basic Setup
 
 ```ts
 import { createSTTManager } from "@charivo/stt-core";
@@ -34,7 +30,7 @@ await sttManager.start({ language: "ko" });
 const text = await sttManager.stop();
 ```
 
-Attach that manager to `Charivo`:
+Attach the manager to `Charivo`:
 
 ```ts
 charivo.attachSTT(sttManager);
@@ -65,15 +61,15 @@ charivo.attachSTT(sttManager);
 
 - recording lifecycle
 - interaction with the transcriber implementation
-- STT lifecycle and error event emission back into core
+- STT lifecycle and error events back into core
 
 `STTManager` intentionally uses `setEventEmitter(...)` rather than the full
 event bus.
 
-## Provider Path
+## Provider Route
 
-The remote path pairs the browser transcriber with
-`@charivo/stt-provider-openai` on the server:
+The remote transcriber usually pairs with `@charivo/stt-provider-openai` on the
+server:
 
 ```ts
 const provider = createOpenAISTTProvider({
@@ -86,11 +82,11 @@ const text = await provider.transcribe(audioBlob, {
 });
 ```
 
-## When To Use Another Path
+## Alternatives
 
 - Use `stt-transcriber-web` when you want the fewest moving parts and browser support is good enough.
 - Use `stt-transcriber-openai` when you are testing direct vendor behavior.
-- Move to [Realtime](./realtime.md) when you want continuous session-based voice interaction instead of turn-based start/stop transcription.
+- Move to [Realtime](./realtime.md) when you want continuous session-based voice interaction instead of turn-based transcription.
 
 ## References
 
@@ -98,9 +94,3 @@ const text = await provider.transcribe(audioBlob, {
 - [stt-transcriber-remote README](../../packages/stt-transcriber-remote/README.md)
 - [stt-transcriber-web README](../../packages/stt-transcriber-web/README.md)
 - [stt-provider-openai README](../../packages/stt-provider-openai/README.md)
-
-## Next Steps
-
-- [TTS](./tts.md)
-- [Realtime](./realtime.md)
-- [Examples Web](./examples-web.md)
