@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     const provider = createOpenAIRealtimeProvider(providerConfig);
 
     const bootstrap = await provider.createSession({
+      adapter: body.adapter,
       transport: body.transport,
       session: body.session,
       sdpOffer: body.sdpOffer,
