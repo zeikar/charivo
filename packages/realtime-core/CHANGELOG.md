@@ -1,5 +1,12 @@
 # @charivo/realtime-core
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [ec19d59]
+  - @charivo/core@0.6.0
+
 ## 0.4.0
 
 ### Minor Changes

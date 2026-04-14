@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-client-remote",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Remote realtime client for Charivo (calls server API)",
   "type": "module",
   "main": "dist/index.js",

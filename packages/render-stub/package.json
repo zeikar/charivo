@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-stub",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Stub renderer for Charivo (testing/mocking)",
   "main": "dist/index.mjs",
   "module": "dist/index.mjs",

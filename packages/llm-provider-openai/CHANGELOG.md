@@ -1,5 +1,12 @@
 # @charivo/llm-provider-openai
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [ec19d59]
+  - @charivo/core@0.6.0
+
 ## 0.0.6
 
 ### Patch Changes
