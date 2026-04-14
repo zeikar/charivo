@@ -40,13 +40,13 @@ The current client posts JSON shaped like:
 
 ```json
 {
+  "adapter": "openai-agents-webrtc",
   "transport": "webrtc",
   "session": {
     "provider": "openai",
     "model": "gpt-realtime-mini",
     "voice": "marin"
-  },
-  "sdpOffer": "..."
+  }
 }
 ```
 
@@ -54,13 +54,13 @@ The server should respond with a `RealtimeSessionBootstrap` JSON object:
 
 ```json
 {
-  "adapter": "openai-webrtc",
+  "adapter": "openai-agents-webrtc",
   "transport": "webrtc",
-  "answerSdp": "..."
+  "clientSecret": "..."
 }
 ```
 
 Current defaults:
 
-- the built-in resolver maps `provider: "openai"` + `transport: "webrtc"` to `openai-webrtc`
-- the built-in registry only ships the OpenAI WebRTC adapter
+- the built-in resolver maps `provider: "openai"` + `transport: "webrtc"` to `openai-agents-webrtc`
+- the built-in registry ships both the OpenAI Agents WebRTC adapter and the legacy low-level OpenAI WebRTC adapter

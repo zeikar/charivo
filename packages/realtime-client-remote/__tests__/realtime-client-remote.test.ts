@@ -1,23 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import {
+  OPENAI_REALTIME_ADAPTER,
+  OPENAI_REALTIME_AGENTS_ADAPTER,
+} from "@charivo/core";
 
-const transportState = vi.hoisted(() => ({
+const agentsTransportState = vi.hoisted(() => ({
   bootstrap: null as unknown,
   options: null as unknown,
   callbacks: [] as Array<(event: unknown) => void>,
 }));
 
-const transportClient = {
+const agentsTransportClient = {
   connect: vi.fn(async (_config?: unknown) => {
-    const options = transportState.options as {
+    const options = agentsTransportState.options as {
       sessionBootstrap: (request: unknown) => Promise<unknown>;
     };
-    transportState.bootstrap = await options.sessionBootstrap({
+    agentsTransportState.bootstrap = await options.sessionBootstrap({
       transport: "webrtc",
       session: _config ?? {},
-      sdpOffer: "offer-sdp",
     });
-    for (const callback of transportState.callbacks) {
+    for (const callback of agentsTransportState.callbacks) {
       callback({ type: "session.started" });
     }
   }),
@@ -29,14 +31,53 @@ const transportClient = {
   ),
   interrupt: vi.fn(async () => undefined),
   onEvent: vi.fn((callback: (event: unknown) => void) => {
-    transportState.callbacks.push(callback);
+    agentsTransportState.callbacks.push(callback);
   }),
 };
 
+const legacyTransportState = vi.hoisted(() => ({
+  bootstrap: null as unknown,
+  options: null as unknown,
+  callbacks: [] as Array<(event: unknown) => void>,
+}));
+
+const legacyTransportClient = {
+  connect: vi.fn(async (_config?: unknown) => {
+    const options = legacyTransportState.options as {
+      sessionBootstrap: (request: unknown) => Promise<unknown>;
+    };
+    legacyTransportState.bootstrap = await options.sessionBootstrap({
+      transport: "webrtc",
+      session: _config ?? {},
+      sdpOffer: "offer-sdp",
+    });
+    for (const callback of legacyTransportState.callbacks) {
+      callback({ type: "session.started" });
+    }
+  }),
+  disconnect: vi.fn(async () => undefined),
+  sendText: vi.fn(async (_text: string) => undefined),
+  sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
+  sendToolResult: vi.fn(
+    async (_callId: string, _output: Record<string, unknown>) => undefined,
+  ),
+  interrupt: vi.fn(async () => undefined),
+  onEvent: vi.fn((callback: (event: unknown) => void) => {
+    legacyTransportState.callbacks.push(callback);
+  }),
+};
+
+vi.mock("@charivo/realtime-client-openai-agents", () => ({
+  createOpenAIRealtimeAgentsClient: vi.fn((options) => {
+    agentsTransportState.options = options;
+    return agentsTransportClient;
+  }),
+}));
+
 vi.mock("@charivo/realtime-client-openai", () => ({
   createOpenAIRealtimeClient: vi.fn((options) => {
-    transportState.options = options;
-    return transportClient;
+    legacyTransportState.options = options;
+    return legacyTransportClient;
   }),
 }));
 
@@ -46,16 +87,26 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
-  transportState.bootstrap = null;
-  transportState.options = null;
-  transportState.callbacks = [];
-  transportClient.connect.mockClear();
-  transportClient.disconnect.mockClear();
-  transportClient.sendText.mockClear();
-  transportClient.sendAudio.mockClear();
-  transportClient.sendToolResult.mockClear();
-  transportClient.interrupt.mockClear();
-  transportClient.onEvent.mockClear();
+  agentsTransportState.bootstrap = null;
+  agentsTransportState.options = null;
+  agentsTransportState.callbacks = [];
+  legacyTransportState.bootstrap = null;
+  legacyTransportState.options = null;
+  legacyTransportState.callbacks = [];
+  agentsTransportClient.connect.mockClear();
+  agentsTransportClient.disconnect.mockClear();
+  agentsTransportClient.sendText.mockClear();
+  agentsTransportClient.sendAudio.mockClear();
+  agentsTransportClient.sendToolResult.mockClear();
+  agentsTransportClient.interrupt.mockClear();
+  agentsTransportClient.onEvent.mockClear();
+  legacyTransportClient.connect.mockClear();
+  legacyTransportClient.disconnect.mockClear();
+  legacyTransportClient.sendText.mockClear();
+  legacyTransportClient.sendAudio.mockClear();
+  legacyTransportClient.sendToolResult.mockClear();
+  legacyTransportClient.interrupt.mockClear();
+  legacyTransportClient.onEvent.mockClear();
 });
 
 describe("RemoteRealtimeClient", () => {
@@ -64,9 +115,9 @@ describe("RemoteRealtimeClient", () => {
       async () =>
         new Response(
           JSON.stringify({
-            adapter: OPENAI_REALTIME_ADAPTER,
+            adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
             transport: "webrtc",
-            answerSdp: "answer-sdp",
+            clientSecret: "client-secret",
           }),
           {
             headers: { "Content-Type": "application/json" },
@@ -91,10 +142,21 @@ describe("RemoteRealtimeClient", () => {
         method: "POST",
       }),
     );
-    expect(transportState.bootstrap).toEqual({
-      adapter: OPENAI_REALTIME_ADAPTER,
+    expect(agentsTransportState.bootstrap).toEqual({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
       transport: "webrtc",
-      answerSdp: "answer-sdp",
+      clientSecret: "client-secret",
+    });
+    expect(
+      JSON.parse(
+        String(
+          (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]
+            ?.body,
+        ),
+      ),
+    ).toMatchObject({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+      transport: "webrtc",
     });
     expect(listener).toHaveBeenCalledWith({ type: "session.started" });
   });
@@ -118,7 +180,7 @@ describe("RemoteRealtimeClient", () => {
           JSON.stringify({
             adapter: "different-adapter",
             transport: "webrtc",
-            answerSdp: "answer-sdp",
+            clientSecret: "client-secret",
           }),
           {
             headers: { "Content-Type": "application/json" },
@@ -150,9 +212,9 @@ describe("RemoteRealtimeClient", () => {
       async () =>
         new Response(
           JSON.stringify({
-            adapter: OPENAI_REALTIME_ADAPTER,
+            adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
             transport: "webrtc",
-            answerSdp: "answer-sdp",
+            clientSecret: "client-secret",
           }),
           {
             headers: { "Content-Type": "application/json" },
@@ -169,8 +231,42 @@ describe("RemoteRealtimeClient", () => {
     });
     await client.sendToolResult("call-1", { success: true });
 
-    expect(transportClient.sendToolResult).toHaveBeenCalledWith("call-1", {
-      success: true,
+    expect(agentsTransportClient.sendToolResult).toHaveBeenCalledWith(
+      "call-1",
+      {
+        success: true,
+      },
+    );
+  });
+
+  it("can explicitly resolve the legacy adapter", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+      resolveAdapterId: () => OPENAI_REALTIME_ADAPTER,
+    });
+
+    await client.connect({
+      provider: "openai",
+    });
+
+    expect(legacyTransportState.bootstrap).toEqual({
+      adapter: OPENAI_REALTIME_ADAPTER,
+      transport: "webrtc",
+      answerSdp: "answer-sdp",
     });
   });
 });

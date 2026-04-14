@@ -8,6 +8,7 @@ current architecture as it is actually shipped:
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
 - Realtime voice sessions through `@charivo/realtime-client-remote` and `/api/realtime`
+  using the OpenAI Agents WebRTC adapter by default
 
 ## Environment
 

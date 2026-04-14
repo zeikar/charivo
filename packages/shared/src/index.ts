@@ -60,6 +60,11 @@ export type RealtimeSessionBootstrapShape =
     }
   | {
       adapter: string;
+      transport: "webrtc";
+      clientSecret: string;
+    }
+  | {
+      adapter: string;
       transport: "websocket";
       url: string;
       token: string;
@@ -77,7 +82,10 @@ export function isRealtimeSessionBootstrap(
   }
 
   if (value.transport === "webrtc") {
-    return typeof value.answerSdp === "string";
+    return (
+      typeof value.answerSdp === "string" ||
+      typeof value.clientSecret === "string"
+    );
   }
 
   if (value.transport === "websocket") {

@@ -3,7 +3,11 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import {
+  OPENAI_REALTIME_ADAPTER,
+  OPENAI_REALTIME_AGENTS_ADAPTER,
+} from "@charivo/core";
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime-client-openai-agents";
 import { createOpenAIRealtimeClient } from "@charivo/realtime-client-openai";
 import type {
   RealtimeTransportClient,
@@ -27,6 +31,11 @@ export type RemoteRealtimeAdapterFactory = (
 ) => RealtimeTransportClient;
 
 export const DEFAULT_REMOTE_REALTIME_ADAPTERS = {
+  [OPENAI_REALTIME_AGENTS_ADAPTER]: (options) =>
+    createOpenAIRealtimeAgentsClient({
+      debug: options.debug,
+      sessionBootstrap: options.requestBootstrap,
+    }),
   [OPENAI_REALTIME_ADAPTER]: (options) =>
     createOpenAIRealtimeClient({
       debug: options.debug,
@@ -143,7 +152,7 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
 
     const transport = config?.transport ?? "webrtc";
     if (config?.provider === "openai" && transport === "webrtc") {
-      return OPENAI_REALTIME_ADAPTER;
+      return OPENAI_REALTIME_AGENTS_ADAPTER;
     }
 
     throw new Error(
@@ -162,7 +171,10 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          ...request,
+          adapter: options.expectedAdapterId,
+        } satisfies RealtimeSessionRequest),
       },
       `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
     );

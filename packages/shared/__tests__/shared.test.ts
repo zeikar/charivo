@@ -97,6 +97,13 @@ describe("shared utilities", () => {
     ).toBe(true);
     expect(
       isRealtimeSessionBootstrap({
+        adapter: "openai-agents-webrtc",
+        transport: "webrtc",
+        clientSecret: "secret",
+      }),
+    ).toBe(true);
+    expect(
+      isRealtimeSessionBootstrap({
         adapter: "future-ws",
         transport: "websocket",
         url: "wss://example.test/socket",
@@ -118,6 +125,12 @@ describe("shared utilities", () => {
     expect(
       isRealtimeSessionBootstrap({
         adapter: "openai-webrtc",
+        transport: "webrtc",
+      }),
+    ).toBe(false);
+    expect(
+      isRealtimeSessionBootstrap({
+        adapter: "openai-agents-webrtc",
         transport: "webrtc",
       }),
     ).toBe(false);

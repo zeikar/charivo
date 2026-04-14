@@ -22,6 +22,9 @@
       "@charivo/realtime-client-openai": [
         "packages/realtime-client-openai/src/index.ts"
       ],
+      "@charivo/realtime-client-openai-agents": [
+        "packages/realtime-client-openai-agents/src/index.ts"
+      ],
       "@charivo/realtime-client-remote": [
         "packages/realtime-client-remote/src/index.ts"
       ],

@@ -22,8 +22,8 @@ const provider = createOpenAIRealtimeProvider({
 });
 
 const session = await provider.createSession({
+  adapter: "openai-agents-webrtc",
   transport: "webrtc",
-  sdpOffer: "offer-sdp",
   session: {
     provider: "openai",
     model: "gpt-realtime-mini",
@@ -36,11 +36,14 @@ Returned bootstrap:
 
 ```json
 {
-  "adapter": "openai-webrtc",
+  "adapter": "openai-agents-webrtc",
   "transport": "webrtc",
-  "answerSdp": "..."
+  "clientSecret": "..."
 }
 ```
+
+Legacy direct OpenAI clients can still omit `adapter` and use the older
+`openai-webrtc` + `answerSdp` bootstrap flow.
 
 ## Config
 

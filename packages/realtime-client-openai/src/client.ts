@@ -127,7 +127,8 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
       if (
         bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
-        bootstrap.transport !== "webrtc"
+        bootstrap.transport !== "webrtc" ||
+        !("answerSdp" in bootstrap)
       ) {
         throw new Error(
           `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,

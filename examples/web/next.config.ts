@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     "@charivo/llm-client-stub",
     "@charivo/llm-provider-openai",
     "@charivo/realtime-client-openai",
+    "@charivo/realtime-client-openai-agents",
     "@charivo/realtime-client-remote",
     "@charivo/realtime-core",
     "@charivo/realtime-provider-openai",

@@ -111,6 +111,7 @@ Keep the direct browser packages for local development, demos, and testing only:
 
 - `@charivo/llm-client-openai`
 - `@charivo/llm-client-openclaw`
+- `@charivo/realtime-client-openai`
 - `@charivo/tts-player-openai`
 - `@charivo/stt-transcriber-openai`
 
@@ -157,7 +158,8 @@ Realtime:
 - `@charivo/realtime-core`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
   Supports explicit `updateSession(...)` refresh via reconnect.
 - `@charivo/realtime-client-remote`: adapter-dispatched browser client for server realtime routes
-- `@charivo/realtime-client-openai`: OpenAI-specific realtime transport client and adapter
+- `@charivo/realtime-client-openai-agents`: OpenAI Agents SDK realtime transport client and adapter
+- `@charivo/realtime-client-openai`: legacy low-level OpenAI realtime transport client and adapter
 - `@charivo/realtime-provider-openai`: server-side OpenAI realtime session provider
 
 Rendering:

@@ -2,6 +2,9 @@
 
 OpenAI-specific realtime transport client for Charivo.
 
+This is the legacy low-level OpenAI Realtime WebRTC client. For the current
+OpenAI Agents SDK path, prefer `@charivo/realtime-client-openai-agents`.
+
 This package normalizes OpenAI Realtime WebRTC events into the transport event
 contract used by `@charivo/realtime-core`. It can bootstrap sessions through an
 API endpoint or a custom `sessionBootstrap(...)` callback.

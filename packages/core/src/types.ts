@@ -81,6 +81,7 @@ export type RealtimeTransportKind = "webrtc" | "websocket";
 
 export type RealtimeToolChoice = "auto" | "none" | "required";
 export const OPENAI_REALTIME_ADAPTER = "openai-webrtc";
+export const OPENAI_REALTIME_AGENTS_ADAPTER = "openai-agents-webrtc";
 
 export interface RealtimeTool {
   type: "function";
@@ -106,6 +107,7 @@ export interface RealtimeSessionConfig {
 }
 
 export interface RealtimeSessionRequest {
+  adapter?: string;
   transport: RealtimeTransportKind;
   session: RealtimeSessionConfig;
   sdpOffer?: string;
@@ -116,6 +118,11 @@ export type RealtimeSessionBootstrap =
       adapter: string;
       transport: "webrtc";
       answerSdp: string;
+    }
+  | {
+      adapter: string;
+      transport: "webrtc";
+      clientSecret: string;
     }
   | {
       adapter: string;

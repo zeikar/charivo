@@ -1,37 +1,36 @@
 {
-  "name": "@charivo/realtime-client-remote",
-  "version": "0.3.1",
-  "description": "Remote realtime client for Charivo (calls server API)",
-  "type": "module",
+  "name": "@charivo/realtime-client-openai-agents",
+  "version": "0.1.0",
+  "description": "OpenAI Agents Realtime API client for Charivo",
   "main": "dist/index.js",
-  "module": "dist/index.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
-    "@charivo/realtime-client-openai": "workspace:*",
-    "@charivo/realtime-client-openai-agents": "workspace:*",
     "@charivo/realtime-core": "workspace:*",
-    "@charivo/shared": "workspace:*"
+    "@charivo/shared": "workspace:*",
+    "@openai/agents-realtime": "0.8.3"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -39,7 +38,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/zeikar/charivo.git",
-    "directory": "packages/realtime-client-remote"
+    "directory": "packages/realtime-client-openai-agents"
   },
   "author": {
     "name": "Zeikar",

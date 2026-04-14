@@ -27,5 +27,7 @@ The realtime agent upgrade is complete.
 - `updateSession(...)` uses reconnect refresh rather than transport-level patching
 - Active tool registry changes require `updateSession(...)` or a new session to
   reach the provider
+- Future handoff and guardrail expansion should use reserved `agent_*` realtime
+  events rather than overloading the current transport event union
 - Detailed implementation history is available in git history and related
   changesets

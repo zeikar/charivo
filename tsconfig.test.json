@@ -12,6 +12,9 @@
       "@charivo/llm-provider-openai": [
         "packages/llm-provider-openai/src/index.ts"
       ],
+      "@charivo/realtime-client-openai-agents": [
+        "packages/realtime-client-openai-agents/src/index.ts"
+      ],
       "@charivo/render-live2d": ["packages/render-live2d/src/index.ts"],
       "@charivo/render-stub": ["packages/render-stub/src/index.ts"],
       "@charivo/shared": ["packages/shared/src/index.ts"],

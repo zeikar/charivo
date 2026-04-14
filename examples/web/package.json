@@ -20,6 +20,7 @@
     "@charivo/llm-provider-openai": "workspace:*",
     "@charivo/llm-provider-openclaw": "workspace:*",
     "@charivo/realtime-client-openai": "workspace:*",
+    "@charivo/realtime-client-openai-agents": "workspace:*",
     "@charivo/realtime-client-remote": "workspace:*",
     "@charivo/realtime-core": "workspace:*",
     "@charivo/realtime-provider-openai": "workspace:*",

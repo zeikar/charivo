@@ -197,6 +197,15 @@ export default defineConfig({
       "@charivo/realtime-client-openai": resolvePackage(
         "packages/realtime-client-openai/src/index.ts",
       ),
+      "@charivo/realtime-client-openai-agents": resolvePackage(
+        "packages/realtime-client-openai-agents/src/index.ts",
+      ),
+      "@charivo/realtime-client-remote": resolvePackage(
+        "packages/realtime-client-remote/src/index.ts",
+      ),
+      "@charivo/realtime-provider-openai": resolvePackage(
+        "packages/realtime-provider-openai/src/index.ts",
+      ),
       "@charivo/realtime-core": resolvePackage(
         "packages/realtime-core/src/index.ts",
       ),
