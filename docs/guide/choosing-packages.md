@@ -1,3 +1,8 @@
+---
+title: Choosing Packages
+sidebar_position: 4
+---
+
 # Choosing Packages
 
 Charivo supports three runtime styles: remote, browser-direct, and

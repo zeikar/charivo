@@ -1,3 +1,8 @@
+---
+title: TTS
+sidebar_position: 7
+---
+
 # TTS
 
 Charivo's TTS layer combines `@charivo/tts-core` with a concrete player.
@@ -90,7 +95,7 @@ const audio = await provider.generateSpeech(text, {
 
 ## References
 
-- [tts-core README](../../packages/tts-core/README.md)
-- [tts-player-remote README](../../packages/tts-player-remote/README.md)
-- [tts-player-web README](../../packages/tts-player-web/README.md)
-- [tts-provider-openai README](../../packages/tts-provider-openai/README.md)
+- [tts-core README](https://github.com/zeikar/charivo/blob/main/packages/tts-core/README.md)
+- [tts-player-remote README](https://github.com/zeikar/charivo/blob/main/packages/tts-player-remote/README.md)
+- [tts-player-web README](https://github.com/zeikar/charivo/blob/main/packages/tts-player-web/README.md)
+- [tts-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/tts-provider-openai/README.md)

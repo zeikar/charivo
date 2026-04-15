@@ -1,3 +1,8 @@
+---
+title: Rendering
+sidebar_position: 5
+---
+
 # Rendering
 
 Charivo's rendering layer is usually built from `@charivo/render-core` and
@@ -82,6 +87,6 @@ If the renderer exposes optional methods such as `playExpression` or
 
 ## References
 
-- [render-core README](../../packages/render-core/README.md)
-- [render-live2d README](../../packages/render-live2d/README.md)
+- [render-core README](https://github.com/zeikar/charivo/blob/main/packages/render-core/README.md)
+- [render-live2d README](https://github.com/zeikar/charivo/blob/main/packages/render-live2d/README.md)
 - [Examples Web](./examples-web.md)

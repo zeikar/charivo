@@ -1,3 +1,9 @@
+---
+title: Guide Index
+slug: /
+sidebar_position: 1
+---
+
 # Guide Index
 
 Charivo is a modular TypeScript framework for Live2D AI characters with LLM,
@@ -56,7 +62,7 @@ If you are new to the repo, read in this order:
 ### Reading the shipped reference app
 
 - [Examples Web](./examples-web.md)
-- [examples/web README](../../examples/web/README.md)
+- [examples/web README](https://github.com/zeikar/charivo/blob/main/examples/web/README.md)
 
 ## Guide Map
 
@@ -78,6 +84,6 @@ recipes.
 Use package READMEs for package-local details such as exports, request
 contracts, and provider-specific config:
 
-- [core README](../../packages/core/README.md)
-- [realtime-client-openai-agents README](../../packages/realtime-client-openai-agents/README.md)
-- other package docs under [`packages/`](../../packages)
+- [core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md)
+- [realtime-client-openai-agents README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-openai-agents/README.md)
+- other package docs under [`packages/`](https://github.com/zeikar/charivo/tree/main/packages)

@@ -1,3 +1,8 @@
+---
+title: Getting Started
+sidebar_position: 2
+---
+
 # Getting Started
 
 This is the shortest production-oriented path to a working Charivo app.

@@ -1,3 +1,8 @@
+---
+title: Examples Web
+sidebar_position: 10
+---
+
 # Examples Web
 
 `examples/web` is the reference Next.js app for the Charivo workspace. Read it
@@ -49,12 +54,12 @@ place:
 
 ## Files To Read
 
-- [`examples/web/README.md`](../../examples/web/README.md)
-- [`examples/web/src/app/page.tsx`](../../examples/web/src/app/page.tsx)
-- [`examples/web/src/app/hooks/useCharivoChat.ts`](../../examples/web/src/app/hooks/useCharivoChat.ts)
-- [`examples/web/src/app/hooks/useLive2D.ts`](../../examples/web/src/app/hooks/useLive2D.ts)
-- [`examples/web/src/app/hooks/useRealtimeMode.ts`](../../examples/web/src/app/hooks/useRealtimeMode.ts)
-- [`examples/web/src/app/hooks/realtime-ui.ts`](../../examples/web/src/app/hooks/realtime-ui.ts)
+- [`examples/web/README.md`](https://github.com/zeikar/charivo/blob/main/examples/web/README.md)
+- [`examples/web/src/app/page.tsx`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/page.tsx)
+- [`examples/web/src/app/hooks/useCharivoChat.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/hooks/useCharivoChat.ts)
+- [`examples/web/src/app/hooks/useLive2D.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/hooks/useLive2D.ts)
+- [`examples/web/src/app/hooks/useRealtimeMode.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/hooks/useRealtimeMode.ts)
+- [`examples/web/src/app/hooks/realtime-ui.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/hooks/realtime-ui.ts)
 
 ## When To Use It
 

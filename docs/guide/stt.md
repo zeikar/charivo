@@ -1,3 +1,8 @@
+---
+title: STT
+sidebar_position: 8
+---
+
 # STT
 
 Charivo's STT layer combines `@charivo/stt-core` with a concrete transcriber.
@@ -90,7 +95,7 @@ const text = await provider.transcribe(audioBlob, {
 
 ## References
 
-- [stt-core README](../../packages/stt-core/README.md)
-- [stt-transcriber-remote README](../../packages/stt-transcriber-remote/README.md)
-- [stt-transcriber-web README](../../packages/stt-transcriber-web/README.md)
-- [stt-provider-openai README](../../packages/stt-provider-openai/README.md)
+- [stt-core README](https://github.com/zeikar/charivo/blob/main/packages/stt-core/README.md)
+- [stt-transcriber-remote README](https://github.com/zeikar/charivo/blob/main/packages/stt-transcriber-remote/README.md)
+- [stt-transcriber-web README](https://github.com/zeikar/charivo/blob/main/packages/stt-transcriber-web/README.md)
+- [stt-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/stt-provider-openai/README.md)

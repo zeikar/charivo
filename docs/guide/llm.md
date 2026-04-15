@@ -1,3 +1,8 @@
+---
+title: LLM
+sidebar_position: 6
+---
+
 # LLM
 
 Charivo's LLM layer is built from two pieces:
@@ -103,7 +108,7 @@ conversation state.
 
 ## References
 
-- [llm-core README](../../packages/llm-core/README.md)
-- [llm-client-remote README](../../packages/llm-client-remote/README.md)
-- [llm-provider-openai README](../../packages/llm-provider-openai/README.md)
+- [llm-core README](https://github.com/zeikar/charivo/blob/main/packages/llm-core/README.md)
+- [llm-client-remote README](https://github.com/zeikar/charivo/blob/main/packages/llm-client-remote/README.md)
+- [llm-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/llm-provider-openai/README.md)
 - [Examples Web](./examples-web.md)

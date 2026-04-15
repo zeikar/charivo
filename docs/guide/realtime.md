@@ -1,3 +1,8 @@
+---
+title: Realtime
+sidebar_position: 9
+---
+
 # Realtime
 
 Use Charivo's realtime stack when you want session-based voice interaction,
@@ -128,7 +133,7 @@ const bootstrap = await provider.createSession({
 
 ## References
 
-- [realtime-core README](../../packages/realtime-core/README.md)
-- [realtime-client-remote README](../../packages/realtime-client-remote/README.md)
-- [realtime-client-openai-agents README](../../packages/realtime-client-openai-agents/README.md)
-- [realtime-provider-openai README](../../packages/realtime-provider-openai/README.md)
+- [realtime-core README](https://github.com/zeikar/charivo/blob/main/packages/realtime-core/README.md)
+- [realtime-client-remote README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-remote/README.md)
+- [realtime-client-openai-agents README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-openai-agents/README.md)
+- [realtime-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/realtime-provider-openai/README.md)

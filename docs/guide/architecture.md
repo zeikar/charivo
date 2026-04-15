@@ -1,3 +1,8 @@
+---
+title: Architecture
+sidebar_position: 3
+---
+
 # Architecture
 
 Charivo keeps a strict package boundary between orchestration, managers,
