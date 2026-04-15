@@ -13,7 +13,7 @@ Live demo: https://charivo.vercel.app/
 
 Documentation:
 
-- https://zeikar.github.io/charivo/
+- [https://zeikar.github.io/charivo/](https://zeikar.github.io/charivo/)
 - [ROADMAP.md](./ROADMAP.md): Amadeus-oriented product and technical roadmap
 
 ## Architecture

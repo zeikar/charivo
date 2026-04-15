@@ -53,7 +53,7 @@ export function PageHeader() {
           ⭐ GitHub
         </a>
         <a
-          href="https://github.com/zeikar/charivo#readme"
+          href="https://zeikar.github.io/charivo/"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all font-medium text-xs"
