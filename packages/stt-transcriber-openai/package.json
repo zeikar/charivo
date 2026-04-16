@@ -1,6 +1,6 @@
 {
   "name": "@charivo/stt-transcriber-openai",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "OpenAI STT transcriber for Charivo (local/testing)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

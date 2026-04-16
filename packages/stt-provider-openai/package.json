@@ -1,6 +1,6 @@
 {
   "name": "@charivo/stt-provider-openai",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "OpenAI STT provider for Charivo (server-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

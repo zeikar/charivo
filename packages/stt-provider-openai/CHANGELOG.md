@@ -1,5 +1,12 @@
 # @charivo/stt-provider-openai
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [c2e1cb8]
+  - @charivo/core@0.7.0
+
 ## 0.0.7
 
 ### Patch Changes

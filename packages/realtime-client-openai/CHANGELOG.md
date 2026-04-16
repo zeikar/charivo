@@ -1,5 +1,13 @@
 # @charivo/realtime-client-openai
 
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [c2e1cb8]
+  - @charivo/core@0.7.0
+  - @charivo/realtime-core@0.5.0
+
 ## 0.2.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-core",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Core utilities and helpers for LLM functionality in Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

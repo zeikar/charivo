@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-provider-openclaw",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "OpenClaw LLM provider for Charivo (server-side)",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm-client-stub",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Stub LLM client for Charivo (testing/mocking)",
   "main": "dist/index.mjs",
   "module": "dist/index.mjs",

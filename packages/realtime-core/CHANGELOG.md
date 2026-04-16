@@ -1,5 +1,16 @@
 # @charivo/realtime-core
 
+## 0.5.0
+
+### Minor Changes
+
+- c2e1cb8: Add canonical avatar control support with expression, motion, and gaze events/tools, and remove the legacy emotion-based avatar control surface.
+
+### Patch Changes
+
+- Updated dependencies [c2e1cb8]
+  - @charivo/core@0.7.0
+
 ## 0.4.1
 
 ### Patch Changes
