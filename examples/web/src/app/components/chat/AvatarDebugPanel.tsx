@@ -29,8 +29,7 @@ export function AvatarDebugPanel() {
     !avatarDebug.lastToolResult &&
     !avatarDebug.lastExpression &&
     !avatarDebug.lastMotion &&
-    !avatarDebug.lastGaze &&
-    !avatarDebug.lastEmotionCompat
+    !avatarDebug.lastGaze
   ) {
     return null;
   }
@@ -113,16 +112,6 @@ export function AvatarDebugPanel() {
             </div>
             <div className="text-slate-500">
               {formatTime(avatarDebug.lastGaze?.at)}
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Compat Emotion
-            </div>
-            <div>{avatarDebug.lastEmotionCompat?.emotion ?? "-"}</div>
-            <div className="text-slate-500">
-              {formatTime(avatarDebug.lastEmotionCompat?.at)}
             </div>
           </div>
         </section>

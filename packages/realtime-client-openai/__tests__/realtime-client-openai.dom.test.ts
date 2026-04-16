@@ -342,8 +342,8 @@ describe("OpenAIRealtimeClient", () => {
         data: JSON.stringify({
           type: "response.function_call_arguments.done",
           call_id: "call-1",
-          name: "setEmotion",
-          arguments: JSON.stringify({ emotion: "happy" }),
+          name: "setExpression",
+          arguments: JSON.stringify({ expressionId: "Smile" }),
         }),
       }),
     );
@@ -383,8 +383,8 @@ describe("OpenAIRealtimeClient", () => {
     });
     expect(events).toContainEqual({
       type: "tool.call",
-      name: "setEmotion",
-      args: { emotion: "happy" },
+      name: "setExpression",
+      args: { expressionId: "Smile" },
       callId: "call-1",
     });
     expect(events).toContainEqual({
@@ -645,7 +645,7 @@ describe("OpenAIRealtimeClient", () => {
     await client.connect();
     await client.sendToolResult("call-1", {
       success: true,
-      emotion: "happy",
+      expressionId: "Smile",
     });
 
     const peer = MockPeerConnection.instances[0]!;
@@ -658,7 +658,7 @@ describe("OpenAIRealtimeClient", () => {
           call_id: "call-1",
           output: JSON.stringify({
             success: true,
-            emotion: "happy",
+            expressionId: "Smile",
           }),
         },
       }),

@@ -1,12 +1,9 @@
 import {
-  Emotion,
-  type AvatarActionPreset,
   type AvatarControlCatalog,
   type Character,
   type GazeCoordinates,
   type MotionSelection,
   type RealtimeSessionConfig,
-  type RealtimeTool,
   type RealtimeToolRegistration,
 } from "@charivo/core";
 
@@ -19,43 +16,12 @@ const MAX_GAZE = 1;
 export const SET_EXPRESSION_TOOL_NAME = "setExpression";
 export const PLAY_MOTION_TOOL_NAME = "playMotion";
 export const LOOK_AT_TOOL_NAME = "lookAt";
-export const SET_EMOTION_TOOL_NAME = "setEmotion";
 
 export const AVATAR_CONTROL_TOOL_NAMES = [
   SET_EXPRESSION_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
   LOOK_AT_TOOL_NAME,
 ] as const;
-
-/**
- * Get emotion enum values for tool definition.
- */
-const EMOTION_VALUES = Object.values(Emotion);
-
-/**
- * @deprecated Prefer `setExpression`, `playMotion`, and `lookAt`.
- */
-export const setEmotionTool: RealtimeTool = {
-  type: "function",
-  name: SET_EMOTION_TOOL_NAME,
-  description:
-    "Deprecated compatibility shorthand. Translate an emotion into avatar expression/motion presets.",
-  parameters: {
-    type: "object",
-    properties: {
-      emotion: {
-        type: "string",
-        description: "Emotion shorthand for the active character.",
-        enum: EMOTION_VALUES,
-      },
-    },
-    required: ["emotion"],
-  },
-};
-
-export interface EmotionArgs {
-  emotion: Emotion;
-}
 
 export interface ExpressionArgs {
   expressionId: string;
@@ -64,34 +30,6 @@ export interface ExpressionArgs {
 export type MotionArgs = MotionSelection;
 
 export type LookAtArgs = GazeCoordinates;
-
-export const setEmotionRealtimeTool: RealtimeToolRegistration = {
-  definition: setEmotionTool,
-  async handler(args, context) {
-    const emotion = args.emotion;
-
-    if (
-      typeof emotion !== "string" ||
-      !EMOTION_VALUES.includes(emotion as Emotion)
-    ) {
-      throw new Error('setEmotion requires a valid "emotion" string');
-    }
-
-    const preset = resolveEmotionPreset(context.character, emotion as Emotion);
-
-    return {
-      success: true,
-      emotion,
-      ...(preset?.expression ? { expressionId: preset.expression } : {}),
-      ...(preset?.motion
-        ? {
-            group: preset.motion.group,
-            index: preset.motion.index ?? 0,
-          }
-        : {}),
-    };
-  },
-};
 
 export function createAvatarControlTools(
   catalog: AvatarControlCatalog,
@@ -242,7 +180,6 @@ export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
 You are a realtime voice agent controlling a Live2D character.
 Respond naturally, stay in character, and keep replies concise enough for spoken delivery.
 Use avatar tools such as "setExpression", "playMotion", and "lookAt" to keep the character visually aligned with the conversation.
-"setEmotion" is deprecated compatibility shorthand; prefer the direct avatar tools.
 Do not mention tool calls in the spoken response.
 `.trim();
 
@@ -266,24 +203,6 @@ export function buildRealtimeSessionConfig({
     maxTokens: baseConfig?.maxTokens,
     tools: baseConfig?.tools,
     toolChoice: baseConfig?.toolChoice ?? "auto",
-  };
-}
-
-export function resolveEmotionPreset(
-  character: Character | null | undefined,
-  emotion: Emotion,
-): AvatarActionPreset | null {
-  const mapping = character?.emotionMappings?.find(
-    (item) => item.emotion === emotion,
-  );
-
-  if (!mapping) {
-    return null;
-  }
-
-  return {
-    ...(mapping.expression ? { expression: mapping.expression } : {}),
-    ...(mapping.motion ? { motion: mapping.motion } : {}),
   };
 }
 

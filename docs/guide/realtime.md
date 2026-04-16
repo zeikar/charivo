@@ -113,12 +113,9 @@ Canonical avatar control is expression/motion/gaze-first:
 - `playMotion`
 - `lookAt`
 
-`setEmotion` still exists as a deprecated compatibility shorthand when you need
-to bridge older `emotionMappings`-based integrations.
-
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
-bus. It emits realtime, tool, text, emotion, and lip-sync related events back
-into core.
+bus. It emits realtime, tool, text, avatar action, and lip-sync related events
+back into core.
 
 ## Provider Route
 

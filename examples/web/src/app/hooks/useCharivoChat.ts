@@ -101,30 +101,6 @@ function summarizeToolApplication(
           }
         : null;
 
-    case "setEmotion": {
-      const appliedActions: Record<string, unknown> = {};
-
-      if (typeof output.emotion === "string") {
-        appliedActions.emotion = output.emotion;
-      }
-
-      if (typeof output.expressionId === "string") {
-        appliedActions.expression = output.expressionId;
-      }
-
-      if (
-        typeof output.group === "string" &&
-        typeof output.index === "number"
-      ) {
-        appliedActions.motion = {
-          group: output.group,
-          index: output.index,
-        };
-      }
-
-      return Object.keys(appliedActions).length > 0 ? appliedActions : null;
-    }
-
     default:
       return null;
   }
@@ -688,20 +664,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             },
           });
           logAvatarControl("gaze", { x, y });
-        });
-
-        instance.on("realtime:emotion", ({ emotion }) => {
-          if (disposed) {
-            return;
-          }
-
-          setAvatarDebug({
-            lastEmotionCompat: {
-              emotion,
-              at: Date.now(),
-            },
-          });
-          logAvatarControl("emotion.compat", { emotion });
         });
 
         instance.on("realtime:error", ({ error }) => {

@@ -26,7 +26,9 @@ describe("CharacterPromptBuilder", () => {
   it("falls back to default when character missing", () => {
     const prompt = CharacterPromptBuilder.buildSystemPromptOrDefault();
     expect(prompt).toContain("You are a helpful assistant.");
-    expect(prompt).toContain("IMPORTANT: Express emotions using ONLY");
+    expect(prompt).toContain(
+      "Respond naturally in plain text with no bracketed emotion tags or control markup.",
+    );
   });
 });
 

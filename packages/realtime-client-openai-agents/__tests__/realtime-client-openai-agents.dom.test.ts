@@ -299,12 +299,12 @@ describe("OpenAIRealtimeAgentsClient", () => {
       tools: [
         {
           type: "function",
-          name: "setEmotion",
-          description: "Update emotion",
+          name: "setExpression",
+          description: "Update expression",
           parameters: {
             type: "object",
             properties: {
-              emotion: { type: "string" },
+              expressionId: { type: "string" },
             },
           },
         },
@@ -318,25 +318,29 @@ describe("OpenAIRealtimeAgentsClient", () => {
         details?: { toolCall?: { callId?: string } },
       ) => Promise<Record<string, unknown>>;
     };
-    const pendingResult = proxyTool.execute({ emotion: "happy" }, undefined, {
-      toolCall: { callId: "call-1" },
-    });
+    const pendingResult = proxyTool.execute(
+      { expressionId: "Smile" },
+      undefined,
+      {
+        toolCall: { callId: "call-1" },
+      },
+    );
 
     expect(events).toContainEqual({
       type: "tool.call",
-      name: "setEmotion",
-      args: { emotion: "happy" },
+      name: "setExpression",
+      args: { expressionId: "Smile" },
       callId: "call-1",
     });
 
     await client.sendToolResult("call-1", {
       success: true,
-      emotion: "happy",
+      expressionId: "Smile",
     });
 
     await expect(pendingResult).resolves.toEqual({
       success: true,
-      emotion: "happy",
+      expressionId: "Smile",
     });
   });
 
@@ -358,14 +362,14 @@ describe("OpenAIRealtimeAgentsClient", () => {
       tools: [
         {
           type: "function",
-          name: "setEmotion",
-          description: "Update emotion",
+          name: "setExpression",
+          description: "Update expression",
           parameters: {
             type: "object",
             properties: {
-              emotion: { type: "string" },
+              expressionId: { type: "string" },
             },
-            required: ["emotion"],
+            required: ["expressionId"],
             additionalProperties: false,
           } as {
             type: "object";
@@ -381,7 +385,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       strict: true,
       parameters: {
         type: "object",
-        required: ["emotion"],
+        required: ["expressionId"],
         additionalProperties: false,
       },
     });
@@ -407,12 +411,12 @@ describe("OpenAIRealtimeAgentsClient", () => {
       tools: [
         {
           type: "function",
-          name: "setEmotion",
-          description: "Update emotion",
+          name: "setExpression",
+          description: "Update expression",
           parameters: {
             type: "object",
             properties: {
-              emotion: { type: "string" },
+              expressionId: { type: "string" },
             },
           },
         },
@@ -426,9 +430,13 @@ describe("OpenAIRealtimeAgentsClient", () => {
         details?: { toolCall?: { callId?: string } },
       ) => Promise<Record<string, unknown>>;
     };
-    const stillPending = proxyTool.execute({ emotion: "happy" }, undefined, {
-      toolCall: { callId: "call-keep" },
-    });
+    const stillPending = proxyTool.execute(
+      { expressionId: "Smile" },
+      undefined,
+      {
+        toolCall: { callId: "call-keep" },
+      },
+    );
 
     await client.interrupt();
     await client.sendToolResult("call-keep", { success: true });
@@ -437,7 +445,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       events.filter((event) => event.type === "audio.output.ended"),
     ).toHaveLength(1);
 
-    const doomed = proxyTool.execute({ emotion: "sad" }, undefined, {
+    const doomed = proxyTool.execute({ expressionId: "Sad" }, undefined, {
       toolCall: { callId: "call-drop" },
     });
 

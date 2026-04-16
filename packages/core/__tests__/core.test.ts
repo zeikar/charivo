@@ -9,7 +9,7 @@ import type {
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
-import { Charivo, EventBus, hasEmotionTag, parseEmotion } from "@charivo/core";
+import { Charivo, EventBus } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm-core";
 
 class StubRenderManager implements RenderManager {
@@ -70,44 +70,6 @@ describe("EventBus", () => {
       },
     });
     expect(listener).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("Emotion Parser", () => {
-  it("detects emotion tags consistently across repeated calls", () => {
-    const text = "Hello! [happy]";
-
-    expect(hasEmotionTag(text)).toBe(true);
-    expect(hasEmotionTag(text)).toBe(true);
-    expect(hasEmotionTag(text)).toBe(true);
-  });
-
-  it("parses a single valid emotion tag", () => {
-    expect(parseEmotion("Hello there [happy]")).toEqual({
-      emotion: "happy",
-      text: "Hello there",
-    });
-  });
-
-  it("uses the last valid emotion tag when multiple tags are present", () => {
-    expect(parseEmotion("[sad] Hello there [happy]")).toEqual({
-      emotion: "happy",
-      text: "Hello there",
-    });
-  });
-
-  it("ignores invalid tags and keeps the last valid one", () => {
-    expect(parseEmotion("[unknown] Hi [sad] there [invalid] [angry]")).toEqual({
-      emotion: "angry",
-      text: "Hi there",
-    });
-  });
-
-  it("removes emotion tags from the returned text", () => {
-    expect(parseEmotion("  [happy] Hello   world [sad]  ")).toEqual({
-      emotion: "sad",
-      text: "Hello world",
-    });
   });
 });
 

@@ -5,7 +5,7 @@
 It exports:
 
 - `Charivo`: the top-level orchestrator
-- shared domain types such as `Character`, `Message`, and `Emotion`
+- shared domain types such as `Character`, `Message`, and realtime session types
 - interface contracts for LLM, render, TTS, STT, and realtime managers
 - the typed `EventBus`
 
@@ -18,7 +18,7 @@ pnpm add @charivo/core
 ## Usage
 
 ```ts
-import { Charivo, Emotion } from "@charivo/core";
+import { Charivo } from "@charivo/core";
 
 const charivo = new Charivo();
 
@@ -26,13 +26,6 @@ charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and helpful assistant",
-  emotionMappings: [
-    {
-      emotion: Emotion.HAPPY,
-      expression: "f02",
-      motion: { group: "TapBody", index: 0 },
-    },
-  ],
 });
 
 charivo.on("message:received", ({ message }) => {
@@ -59,10 +52,6 @@ The `Charivo` instance wires managers together:
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` so the core can connect typed character, TTS, and
 realtime events without duck typing.
-
-Emotion parsing keeps the current simple rule: if a message contains multiple
-valid emotion tags, the last valid tag wins and all emotion tags are stripped
-from the rendered text.
 
 ## Events
 
@@ -93,6 +82,5 @@ Important event names include:
 - `realtime:expression`
 - `realtime:motion`
 - `realtime:gaze`
-- `realtime:emotion` (deprecated compatibility event)
 - `realtime:text:delta`
 - `realtime:error`

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  Emotion,
   EventBus,
   type Character,
   type GazeCoordinates,
@@ -112,41 +111,34 @@ describe("RenderManager", () => {
     expect(renderer.lookAt).toHaveBeenCalledWith({ x: 0.25, y: -0.5 });
   });
 
-  it("suppresses emotion compat actions briefly after explicit realtime actions", async () => {
+  it("debounces repeated explicit expression and motion actions", async () => {
     vi.useFakeTimers();
 
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
     const bus = new EventBus();
-    const character: Character = {
-      id: "hiyori",
-      name: "Hiyori",
-      emotionMappings: [
-        {
-          emotion: Emotion.HAPPY,
-          expression: "exp_happy",
-          motion: { group: "TapBody", index: 1 },
-        },
-      ],
-    };
 
-    manager.setCharacter(character);
     manager.setEventBus(bus);
 
     bus.emit("realtime:expression", { expressionId: "exp_happy" });
-    bus.emit("realtime:emotion", { emotion: Emotion.HAPPY });
+    bus.emit("realtime:expression", { expressionId: "exp_happy" });
+    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
+    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
 
     expect(renderer.playExpression).toHaveBeenCalledTimes(1);
-    expect(renderer.playMotionByGroup).not.toHaveBeenCalled();
+    expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(1_200);
-    bus.emit("realtime:emotion", { emotion: Emotion.HAPPY });
+    await vi.advanceTimersByTimeAsync(300);
+    bus.emit("realtime:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(700);
+    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
 
     expect(renderer.playExpression).toHaveBeenCalledTimes(2);
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
+    expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(2);
   });
 
-  it("plays mapped emotion presets before rendering character messages", async () => {
+  it("renders character messages without implicit avatar actions", async () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
     const character: Character = {
@@ -154,26 +146,18 @@ describe("RenderManager", () => {
       name: "Hiyori",
       description: "Assistant",
       personality: "Cheerful",
-      emotionMappings: [
-        {
-          emotion: Emotion.SAD,
-          expression: "exp_sad",
-          motion: { group: "Idle", index: 0 },
-        },
-      ],
     };
     const message: Message = {
       id: "m2",
       content: "I understand.",
       timestamp: new Date(),
       type: "character",
-      emotion: Emotion.SAD,
     };
 
     await manager.render(message, character);
 
-    expect(renderer.playExpression).toHaveBeenCalledWith("exp_sad");
-    expect(renderer.playMotionByGroup).toHaveBeenCalledWith("Idle", 0);
+    expect(renderer.playExpression).not.toHaveBeenCalled();
+    expect(renderer.playMotionByGroup).not.toHaveBeenCalled();
     expect(renderer.render).toHaveBeenCalledWith(message, character);
   });
 

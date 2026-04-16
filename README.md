@@ -57,8 +57,8 @@ Charivo keeps two event contracts on purpose:
 - `CharivoEventEmitter`: the emit-only subset
 
 `RenderManager` keeps `setEventBus(...)` because it subscribes to upstream
-events such as `tts:audio:start`, `tts:audio:end`, `tts:lipsync:update`, and
-`realtime:emotion`.
+events such as `tts:audio:start`, `tts:audio:end`, `tts:lipsync:update`,
+`realtime:expression`, `realtime:motion`, and `realtime:gaze`.
 
 `TTSManager`, `STTManager`, and `RealtimeManager` keep `setEventEmitter(...)`
 because they primarily publish lifecycle and output events back into core.

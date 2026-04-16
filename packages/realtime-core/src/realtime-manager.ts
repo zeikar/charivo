@@ -9,15 +9,12 @@ import type {
   RealtimeTool,
   RealtimeToolRegistration,
 } from "@charivo/core";
-import { Emotion } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import {
   buildRealtimeSessionConfig,
   LOOK_AT_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
-  SET_EMOTION_TOOL_NAME,
   SET_EXPRESSION_TOOL_NAME,
-  setEmotionRealtimeTool,
 } from "./tools";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
@@ -64,7 +61,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     private client: RealtimeTransportClient,
     private options: RealtimeManagerOptions = {},
   ) {
-    this.registerTool(setEmotionRealtimeTool);
     for (const tool of options.tools ?? []) {
       this.registerTool(tool);
     }
@@ -518,37 +514,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
       }
 
-      case SET_EMOTION_TOOL_NAME:
-        this.postProcessEmotionCompatResult(output);
-        return;
-
       default:
         return;
-    }
-  }
-
-  private postProcessEmotionCompatResult(
-    output: Record<string, unknown>,
-  ): void {
-    const emotion = output.emotion;
-    if (typeof emotion === "string") {
-      this.eventEmitter?.emit("realtime:emotion", {
-        emotion: emotion as Emotion,
-      });
-    }
-
-    const expressionId = output.expressionId;
-    if (typeof expressionId === "string") {
-      this.eventEmitter?.emit("realtime:expression", { expressionId });
-    }
-
-    const group = output.group;
-    const index = output.index;
-    if (typeof group === "string" && Number.isInteger(index)) {
-      this.eventEmitter?.emit("realtime:motion", {
-        group,
-        index: index as number,
-      });
     }
   }
 

@@ -46,8 +46,9 @@ There are five major gaps to close.
 
 ### 1. Avatar control is still too narrow
 
-Current realtime avatar control is effectively centered on `setEmotion`.
-An Amadeus-like character needs at least:
+Current realtime avatar control needs to be centered on canonical avatar
+actions rather than semantic shorthands. An Amadeus-like character needs at
+least:
 
 - `setExpression`
 - `playMotion`
@@ -103,7 +104,7 @@ Done when:
 
 ### Phase 1. Expand Avatar Expressiveness
 
-The goal is to move from "a character with emotion tags" to "a character that acts."
+The goal is to move from "a character that speaks" to "a character that acts."
 
 Priority:
 
@@ -113,12 +114,12 @@ Priority:
 
 Work items:
 
-- add `setExpression`, `playMotion`, `lookAt`, and `setIdleMode` next to `setEmotion`
-- extend the built-in realtime tool concept from emotion-only control to avatar action control
+- add `setExpression`, `playMotion`, `lookAt`, and `setIdleMode`
+- extend the built-in realtime tool concept to avatar action control
 - keep the mapping between tools/events and renderer capabilities loose rather than renderer-specific
 - preserve the event split: `realtime-core` keeps emitting via `setEventEmitter(...)`, `render-core` keeps consuming via `setEventBus(...)`; new actions must not collapse the two contracts
-- define precedence when message emotion tags and explicit realtime avatar actions disagree, and locate that decision in `render-core` (the consumer side) rather than in `realtime-core`
 - add basic rate limiting or debounce rules to avoid motion/expression spam
+- document a future follow-up for turn-based avatar action delivery instead of reviving emotion tags
 
 Recommended package scope:
 
@@ -132,6 +133,10 @@ Done when:
 - one live session can drive expression, motion, and gaze changes
 - avatar reactions stay aligned with the spoken/text response
 - noisy over-animation is reduced
+
+Follow-up after Phase 1:
+
+- design a separate turn-based avatar action contract or tag/tool-like pass if non-realtime responses should drive avatar actions again
 
 ### Phase 2. Solidify The Realtime Conversation UX
 

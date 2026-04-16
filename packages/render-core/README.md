@@ -34,8 +34,6 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 - consumes the typed `CharivoEventBus`
 - reacts to `tts:audio:start`, `tts:audio:end`, and `tts:lipsync:update`
 - reacts to `realtime:expression`, `realtime:motion`, and `realtime:gaze`
-- still accepts `realtime:emotion` as a deprecated compatibility input
-- translates `emotionMappings` into expression/motion presets when needed
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
@@ -64,7 +62,6 @@ Charivo events. In the default flow it listens for:
 - `realtime:expression`
 - `realtime:motion`
 - `realtime:gaze`
-- `realtime:emotion` (deprecated compatibility event)
 
 This manager consumes the full bus because it needs subscription access, not
 just event emission.

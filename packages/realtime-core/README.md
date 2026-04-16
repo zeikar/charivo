@@ -61,8 +61,6 @@ await manager.updateSession({
 - `createRealtimeManager(client, options?)`
 - `buildRealtimeSessionConfig({ character, baseConfig? })`
 - `createAvatarControlTools(catalog)`
-- `setEmotionTool`
-- `setEmotionRealtimeTool`
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
 
@@ -74,10 +72,6 @@ loaded Live2D model catalog:
 - `setExpression`
 - `playMotion`
 - `lookAt`
-
-`setEmotion` remains available as a deprecated compatibility shorthand. It can
-translate a configured `emotionMappings` entry into canonical expression/motion
-events, but new integrations should prefer direct avatar tools.
 
 ## Session Refresh
 
@@ -148,7 +142,6 @@ When connected, the manager relays:
 - `realtime:motion`
 - `realtime:gaze`
 - `realtime:text:delta`
-- `realtime:emotion` (deprecated compatibility event)
 - `realtime:error`
 - `tts:lipsync:update`
 - `tts:audio:start`

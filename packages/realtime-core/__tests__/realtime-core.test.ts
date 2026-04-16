@@ -1,17 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  Character,
-  CharivoEventEmitter,
-  Emotion,
-  RealtimeState,
-  RealtimeToolRegistration,
+  type Character,
+  type CharivoEventEmitter,
+  type RealtimeState,
+  type RealtimeToolRegistration,
 } from "@charivo/core";
 import {
   buildRealtimeSessionConfig,
   createAvatarControlTools,
   createRealtimeManager,
-  setEmotionRealtimeTool,
-  setEmotionTool,
   type RealtimeTransportClient,
   type RealtimeTransportEvent,
 } from "@charivo/realtime-core";
@@ -201,13 +198,6 @@ describe("realtime-core", () => {
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
-      emotionMappings: [
-        {
-          emotion: Emotion.HAPPY,
-          expression: "exp_happy",
-          motion: { group: "TapBody", index: 1 },
-        },
-      ],
     });
 
     await manager.startSession({
@@ -226,7 +216,6 @@ describe("realtime-core", () => {
     });
 
     expect(manager.getRegisteredTools().map((tool) => tool.name)).toEqual([
-      "setEmotion",
       "setExpression",
       "playMotion",
       "lookAt",
@@ -239,7 +228,6 @@ describe("realtime-core", () => {
       voice: "marin",
       instructions: expect.any(String),
       tools: [
-        setEmotionTool,
         avatarTools[0]!.definition,
         avatarTools[1]!.definition,
         avatarTools[2]!.definition,
@@ -250,8 +238,8 @@ describe("realtime-core", () => {
 
     await stub.emit({
       type: "tool.call",
-      name: "setEmotion",
-      args: { emotion: "happy" },
+      name: "setExpression",
+      args: { expressionId: "exp_happy" },
       callId: "call-1",
     });
     await stub.emit({
@@ -263,10 +251,7 @@ describe("realtime-core", () => {
 
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(1, "call-1", {
       success: true,
-      emotion: "happy",
       expressionId: "exp_happy",
-      group: "TapBody",
-      index: 1,
     });
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(2, "call-2", {
       success: true,
@@ -283,19 +268,12 @@ describe("realtime-core", () => {
         callId: "call-2",
       }),
     );
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:emotion", {
-      emotion: "happy",
-    });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
       expressionId: "exp_happy",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:motion", {
-      group: "TapBody",
-      index: 1,
-    });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:call", {
-      name: "setEmotion",
-      args: { emotion: "happy" },
+      name: "setExpression",
+      args: { expressionId: "exp_happy" },
       callId: "call-1",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:result", {
@@ -360,7 +338,14 @@ describe("realtime-core", () => {
 
   it("normalizes tool failures and relays transport events", async () => {
     const stub = createRealtimeClientStub();
-    const manager = createRealtimeManager(stub.client);
+    const manager = createRealtimeManager(stub.client, {
+      tools: createAvatarControlTools({
+        expressions: ["Smile"],
+        motions: {
+          Idle: 1,
+        },
+      }),
+    });
     const eventEmitter: CharivoEventEmitter = {
       emit: vi.fn(),
     };
@@ -386,8 +371,8 @@ describe("realtime-core", () => {
     await stub.emit({ type: "assistant.text.delta", text: "hel" });
     await stub.emit({
       type: "tool.call",
-      name: "setEmotion",
-      args: { emotion: "invalid" },
+      name: "setExpression",
+      args: { expressionId: "Missing" },
       callId: "call-invalid",
     });
     await stub.emit({
@@ -415,7 +400,8 @@ describe("realtime-core", () => {
       "call-invalid",
       {
         success: false,
-        error: 'setEmotion requires a valid "emotion" string',
+        error:
+          'setExpression requires a valid "expressionId" from the model catalog',
       },
     );
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
@@ -438,7 +424,7 @@ describe("realtime-core", () => {
       callId: "call-server",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:error", {
-      name: "setEmotion",
+      name: "setExpression",
       error: expect.any(Error),
       callId: "call-invalid",
     });
@@ -483,9 +469,6 @@ describe("realtime-core", () => {
       tools: [slowTool],
     });
 
-    manager.unregisterTool(setEmotionRealtimeTool.definition.name);
-    manager.registerTool(setEmotionRealtimeTool);
-
     await manager.startSession({
       provider: "openai",
     });
@@ -508,7 +491,6 @@ describe("realtime-core", () => {
     await manager.stopSession();
     expect(manager.getRegisteredTools().map((tool) => tool.name)).toEqual([
       "slowTool",
-      "setEmotion",
     ]);
   });
 
@@ -720,7 +702,6 @@ describe("realtime-core", () => {
     expect(stub.client.connect).toHaveBeenLastCalledWith(
       expect.objectContaining({
         tools: expect.arrayContaining([
-          expect.objectContaining({ name: "setEmotion" }),
           expect.objectContaining({ name: "toolA" }),
           expect.objectContaining({ name: "toolB" }),
         ]),
@@ -736,7 +717,6 @@ describe("realtime-core", () => {
     const refreshedConfig = vi.mocked(stub.client.connect).mock.calls[0]?.[0];
     expect(refreshedConfig).toMatchObject({
       tools: expect.arrayContaining([
-        expect.objectContaining({ name: "setEmotion" }),
         expect.objectContaining({ name: "toolB" }),
       ]),
     });

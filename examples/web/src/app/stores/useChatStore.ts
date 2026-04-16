@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type {
   AvatarControlCatalog,
   Charivo,
-  Emotion,
   RealtimeState,
 } from "@charivo/core";
 import type {
@@ -88,7 +87,6 @@ type ChatStore = {
     lastExpression: { expressionId: string; at: number } | null;
     lastMotion: { group: string; index: number; at: number } | null;
     lastGaze: { x: number; y: number; at: number } | null;
-    lastEmotionCompat: { emotion: Emotion; at: number } | null;
   };
   setAvatarDebug: (debugPatch: Partial<ChatStore["avatarDebug"]>) => void;
   resetAvatarDebug: () => void;
@@ -101,7 +99,6 @@ const initialAvatarDebugState: ChatStore["avatarDebug"] = {
   lastExpression: null,
   lastMotion: null,
   lastGaze: null,
-  lastEmotionCompat: null,
 };
 
 export const useChatStore = create<ChatStore>((set) => ({

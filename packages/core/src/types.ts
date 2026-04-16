@@ -1,17 +1,3 @@
-/**
- * Standard emotion types for character expressions
- */
-export enum Emotion {
-  NEUTRAL = "neutral",
-  HAPPY = "happy",
-  SAD = "sad",
-  ANGRY = "angry",
-  SURPRISED = "surprised",
-  THINKING = "thinking",
-  EXCITED = "excited",
-  SHY = "shy",
-}
-
 export interface MotionSelection {
   group: string;
   index?: number;
@@ -22,24 +8,9 @@ export interface GazeCoordinates {
   y: number;
 }
 
-export interface AvatarActionPreset {
-  expression?: string;
-  motion?: MotionSelection;
-}
-
 export interface AvatarControlCatalog {
   expressions: string[];
   motions: Record<string, number>;
-}
-
-/**
- * @deprecated `Emotion` is a compatibility shorthand.
- * Prefer driving avatar state directly with expression, motion, and gaze.
- */
-export interface EmotionMapping {
-  emotion: Emotion;
-  expression?: string; // Live2D expression ID (e.g., "smile", "angry")
-  motion?: MotionSelection;
 }
 
 export interface Character {
@@ -54,11 +25,6 @@ export interface Character {
     pitch?: number;
     volume?: number;
   };
-  /**
-   * @deprecated `Emotion` is a compatibility shorthand.
-   * Use expression/motion/gaze as the primary avatar control surface.
-   */
-  emotionMappings?: EmotionMapping[];
 }
 
 export interface Message {
@@ -67,11 +33,6 @@ export interface Message {
   timestamp: Date;
   characterId?: string;
   type: "user" | "character" | "system";
-  /**
-   * @deprecated `Emotion` is a compatibility shorthand.
-   * Use explicit avatar actions when possible.
-   */
-  emotion?: Emotion;
 }
 
 export interface Conversation {
@@ -386,11 +347,6 @@ export type EventMap = {
   "realtime:expression": { expressionId: string };
   "realtime:motion": { group: string; index: number };
   "realtime:gaze": GazeCoordinates;
-  /**
-   * @deprecated `Emotion` is a compatibility shorthand.
-   * Prefer `realtime:expression` and `realtime:motion`.
-   */
-  "realtime:emotion": { emotion: Emotion };
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
   error: { error: Error };

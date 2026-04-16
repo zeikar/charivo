@@ -17,7 +17,7 @@ The realtime agent upgrade is complete.
 
 - Core realtime state, events, and manager contracts in `@charivo/core`
 - Character-aware realtime session building in `@charivo/realtime-core`
-- Registry-based tool execution with built-in `setEmotion`
+- Registry-based tool execution for canonical avatar tools
 - Expanded OpenAI realtime event normalization and transcript handling
 - Demo integration for realtime UX and reconnect-based session refresh
 - Tests, README updates, and release metadata for publishable package changes

@@ -1,7 +1,5 @@
 import {
-  type AvatarActionPreset,
   type Character,
-  type Emotion,
   type GazeCoordinates,
   type Message,
   type MotionSelection,
@@ -17,11 +15,9 @@ import {
   type MouseTrackingMode,
 } from "./mouse-tracking";
 
-const EXPLICIT_ACTION_HOLD_MS = 1_200;
+const GAZE_MOUSE_SUSPEND_MS = 1_200;
 const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
-
-type ActionSource = "explicit" | "compat";
 
 /**
  * Render Manager - 렌더링 세션의 상태 관리를 담당하는 클래스
@@ -50,7 +46,6 @@ export class RenderManager implements IRenderManager {
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
-  private explicitActionUntil = 0;
   private mouseTrackingSuspendedUntil = 0;
   private lastExpression?: { expressionId: string; at: number };
   private lastMotion?: { group: string; index: number; at: number };
@@ -79,25 +74,18 @@ export class RenderManager implements IRenderManager {
     });
 
     eventBus.on("realtime:expression", (data) => {
-      this.applyExpression(data.expressionId, "explicit");
+      this.applyExpression(data.expressionId);
     });
 
     eventBus.on("realtime:motion", (data) => {
-      this.applyMotion(
-        {
-          group: data.group,
-          index: data.index,
-        },
-        "explicit",
-      );
+      this.applyMotion({
+        group: data.group,
+        index: data.index,
+      });
     });
 
     eventBus.on("realtime:gaze", (data) => {
-      this.applyGaze(data, "explicit");
-    });
-
-    eventBus.on("realtime:emotion", (data) => {
-      this.handleRealtimeEmotion(data.emotion);
+      this.applyGaze(data);
     });
   }
 
@@ -163,10 +151,6 @@ export class RenderManager implements IRenderManager {
   async render(message: Message, character?: Character): Promise<void> {
     const targetCharacter = character || this.character || undefined;
 
-    if (message.type === "character" && message.emotion && targetCharacter) {
-      this.applyEmotionCompat(message.emotion, targetCharacter);
-    }
-
     await this.renderer.render(message, targetCharacter);
     this.messageCallback?.(message, targetCharacter);
   }
@@ -226,44 +210,7 @@ export class RenderManager implements IRenderManager {
     }
   }
 
-  /**
-   * Compat emotion 처리 (tool call로부터)
-   */
-  private handleRealtimeEmotion(emotion: Emotion): void {
-    if (!this.character) {
-      return;
-    }
-
-    this.applyEmotionCompat(emotion, this.character);
-  }
-
-  private applyEmotionCompat(emotion: Emotion, character: Character): void {
-    if (Date.now() < this.explicitActionUntil) {
-      return;
-    }
-
-    const preset = resolveEmotionPreset(character, emotion);
-    if (!preset) {
-      return;
-    }
-
-    this.applyAvatarPreset(preset, "compat");
-  }
-
-  private applyAvatarPreset(
-    preset: AvatarActionPreset,
-    source: ActionSource,
-  ): void {
-    if (preset.expression) {
-      this.applyExpression(preset.expression, source);
-    }
-
-    if (preset.motion) {
-      this.applyMotion(preset.motion, source);
-    }
-  }
-
-  private applyExpression(expressionId: string, source: ActionSource): boolean {
+  private applyExpression(expressionId: string): boolean {
     if (!this.hasExpressionControl(this.renderer)) {
       return false;
     }
@@ -285,11 +232,10 @@ export class RenderManager implements IRenderManager {
 
     this.renderer.playExpression(expressionId);
     this.lastExpression = { expressionId, at: now };
-    this.markExplicitAction(source);
     return true;
   }
 
-  private applyMotion(motion: MotionSelection, source: ActionSource): boolean {
+  private applyMotion(motion: MotionSelection): boolean {
     if (!this.hasMotionControl(this.renderer)) {
       return false;
     }
@@ -316,31 +262,18 @@ export class RenderManager implements IRenderManager {
 
     this.renderer.playMotionByGroup(motion.group, index);
     this.lastMotion = { group: motion.group, index, at: now };
-    this.markExplicitAction(source);
     return true;
   }
 
-  private applyGaze(coords: GazeCoordinates, source: ActionSource): boolean {
+  private applyGaze(coords: GazeCoordinates): boolean {
     if (!this.hasGazeControl(this.renderer)) {
       return false;
     }
 
     this.renderer.lookAt(coords);
-
-    if (source === "explicit") {
-      this.markExplicitAction(source);
-      this.suspendMouseTracking(EXPLICIT_ACTION_HOLD_MS);
-    }
+    this.suspendMouseTracking(GAZE_MOUSE_SUSPEND_MS);
 
     return true;
-  }
-
-  private markExplicitAction(source: ActionSource): void {
-    if (source !== "explicit") {
-      return;
-    }
-
-    this.explicitActionUntil = Date.now() + EXPLICIT_ACTION_HOLD_MS;
   }
 
   private suspendMouseTracking(durationMs: number): void {
@@ -412,24 +345,6 @@ export class RenderManager implements IRenderManager {
   ): renderer is Renderer & { lookAt(coords: GazeCoordinates): void } {
     return "lookAt" in renderer && typeof renderer.lookAt === "function";
   }
-}
-
-function resolveEmotionPreset(
-  character: Character,
-  emotion: Emotion,
-): AvatarActionPreset | null {
-  const mapping = character.emotionMappings?.find(
-    (item) => item.emotion === emotion,
-  );
-
-  if (!mapping) {
-    return null;
-  }
-
-  return {
-    ...(mapping.expression ? { expression: mapping.expression } : {}),
-    ...(mapping.motion ? { motion: mapping.motion } : {}),
-  };
 }
 
 /**

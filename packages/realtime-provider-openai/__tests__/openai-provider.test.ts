@@ -32,8 +32,8 @@ describe("OpenAIRealtimeProvider", () => {
           tools: [
             {
               type: "function",
-              name: "setEmotion",
-              description: "Update emotion",
+              name: "setExpression",
+              description: "Update expression",
               parameters: {
                 type: "object",
                 properties: {},
@@ -59,8 +59,8 @@ describe("OpenAIRealtimeProvider", () => {
         tools: [
           {
             type: "function",
-            name: "setEmotion",
-            description: "Update emotion",
+            name: "setExpression",
+            description: "Update expression",
             parameters: {
               type: "object",
               properties: {},

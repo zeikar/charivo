@@ -54,8 +54,6 @@ charivo.attachRenderer(renderManager);
 - `realtime:expression`
 - `realtime:motion`
 - `realtime:gaze`
-- compatibility `realtime:emotion`
-- emotion-to-expression and emotion-to-motion compatibility mapping
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
