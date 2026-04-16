@@ -15,6 +15,8 @@ export default [
       "**/.next/**",
       "out/**",
       "build/**",
+      "docs-site/build/**",
+      "docs-site/.docusaurus/**",
       "coverage/**",
       ".turbo/**",
       "**/*.d.ts",

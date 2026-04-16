@@ -1,6 +1,8 @@
 node_modules/
 dist/
 build/
+docs-site/build/
+docs-site/.docusaurus/
 coverage/
 .turbo/
 pnpm-lock.yaml
