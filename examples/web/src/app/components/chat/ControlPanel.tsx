@@ -4,18 +4,30 @@ import {
   PlayIcon,
   ChevronDownIcon,
   FaceSmileIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
+import type { GazeCoordinates } from "@charivo/core";
 
 type ControlPanelProps = {
   onPlayExpression: (expressionId: string) => void;
   onPlayMotion: (group: string, index: number) => void;
+  onLookAt: (coords: GazeCoordinates) => void;
   getAvailableExpressions: () => string[];
   getAvailableMotionGroups: () => Record<string, number>;
 };
 
+const GAZE_PRESETS: Array<{ label: string; coords: GazeCoordinates }> = [
+  { label: "Left", coords: { x: -1, y: 0 } },
+  { label: "Center", coords: { x: 0, y: 0 } },
+  { label: "Right", coords: { x: 1, y: 0 } },
+  { label: "Up", coords: { x: 0, y: 1 } },
+  { label: "Down", coords: { x: 0, y: -1 } },
+];
+
 export function ControlPanel({
   onPlayExpression,
   onPlayMotion,
+  onLookAt,
   getAvailableExpressions,
   getAvailableMotionGroups,
 }: ControlPanelProps) {
@@ -35,13 +47,6 @@ export function ControlPanel({
     const interval = setInterval(updateAvailable, 1000);
     return () => clearInterval(interval);
   }, [getAvailableExpressions, getAvailableMotionGroups]);
-
-  const hasContent =
-    expressions.length > 0 || Object.keys(motionGroups).length > 0;
-
-  if (!hasContent) {
-    return null;
-  }
 
   return (
     <div className="absolute bottom-4 left-4 z-20">
@@ -107,6 +112,26 @@ export function ControlPanel({
                     </div>
                   </div>
                 )}
+
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <EyeIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                    <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+                      Gaze
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GAZE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        onClick={() => onLookAt(preset.coords)}
+                        className="px-3 py-2 text-xs font-medium bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </MenuItems>
 

@@ -1,34 +1,16 @@
 import { useCallback } from "react";
-import {
-  createRealtimeManager,
-  type RealtimeToolRegistration,
-} from "@charivo/realtime-core";
+import { createRealtimeManager } from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import { useChatStore } from "../stores/useChatStore";
+import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
-const DEMO_REALTIME_TOOLS: RealtimeToolRegistration[] = [
-  {
-    definition: {
-      type: "function",
-      name: "describeCharacterProfile",
-      description: "Return the active character profile for grounding.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
-    },
-    async handler(_args, context) {
-      return {
-        success: true,
-        characterId: context.character?.id ?? null,
-        name: context.character?.name ?? null,
-        personality: context.character?.personality ?? null,
-      };
-    },
-  },
-];
+function logRealtimeMode(...args: unknown[]): void {
+  if (REALTIME_DEBUG) {
+    console.info("[realtime-mode]", ...args);
+  }
+}
 
 /**
  * Realtime Mode Hook (Refactored with Zustand)
@@ -43,6 +25,7 @@ export function useRealtimeMode() {
     setIsConnected,
     setRealtimeError,
     resetRealtimeUiState,
+    avatarCatalog,
   } = useChatStore();
 
   const enableRealtimeMode = useCallback(async () => {
@@ -68,7 +51,14 @@ export function useRealtimeMode() {
       });
 
       const realtimeManager = createRealtimeManager(realtimeClient, {
-        tools: DEMO_REALTIME_TOOLS,
+        tools: buildDemoRealtimeTools(avatarCatalog),
+      });
+      logRealtimeMode("avatar-tools.registered", {
+        expressions: avatarCatalog.expressions,
+        motions: avatarCatalog.motions,
+        toolNames: realtimeManager
+          .getRegisteredTools()
+          .map((tool) => tool.name),
       });
       charivo.attachRealtime(realtimeManager);
 
@@ -99,6 +89,7 @@ export function useRealtimeMode() {
     setIsConnected,
     setRealtimeError,
     resetRealtimeUiState,
+    avatarCatalog,
   ]);
 
   const disableRealtimeMode = useCallback(async () => {

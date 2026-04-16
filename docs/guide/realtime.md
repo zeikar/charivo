@@ -25,14 +25,20 @@ remote adapter registry.
 
 ```ts
 import {
+  createAvatarControlTools,
   createRealtimeManager,
   type RealtimeToolRegistration,
 } from "@charivo/realtime-core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
+const avatarTools = createAvatarControlTools({
+  expressions: ["Smile", "Sad"],
+  motions: { Idle: 2, TapBody: 3 },
+});
 
 const tools: RealtimeToolRegistration[] = [
+  ...avatarTools,
   {
     definition: {
       type: "function",
@@ -100,6 +106,15 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 - typed session config helpers
 - reconnect-driven `updateSession(...)`
 - relaying realtime output into the Charivo event stream
+
+Canonical avatar control is expression/motion/gaze-first:
+
+- `setExpression`
+- `playMotion`
+- `lookAt`
+
+`setEmotion` still exists as a deprecated compatibility shorthand when you need
+to bridge older `emotionMappings`-based integrations.
 
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
 bus. It emits realtime, tool, text, emotion, and lip-sync related events back

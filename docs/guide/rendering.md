@@ -20,7 +20,7 @@ This is the default rendering path in the repo.
 ## What Each Package Does
 
 - `@charivo/render-live2d` draws the Live2D model and exposes renderer methods
-- `@charivo/render-core` connects the renderer to Charivo events, mouse tracking, emotion mappings, and lip-sync updates
+- `@charivo/render-core` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, compatibility emotion mappings, and lip-sync updates
 
 Most apps use both together.
 
@@ -51,8 +51,11 @@ charivo.attachRenderer(renderManager);
 - character text rendering
 - `tts:audio:start` and `tts:audio:end`
 - `tts:lipsync:update`
-- `realtime:emotion`
-- emotion-to-expression and emotion-to-motion mapping
+- `realtime:expression`
+- `realtime:motion`
+- `realtime:gaze`
+- compatibility `realtime:emotion`
+- emotion-to-expression and emotion-to-motion compatibility mapping
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
@@ -77,8 +80,9 @@ The usual flow is:
 5. call `loadModel(...)`
 6. attach the manager to `Charivo`
 
-If the renderer exposes optional methods such as `playExpression` or
-`playMotionByGroup`, `render-core` will use them automatically.
+If the renderer exposes optional methods such as `playExpression`,
+`playMotionByGroup`, `lookAt`, or model catalog getters, `render-core` will use
+them automatically.
 
 ## Alternatives
 

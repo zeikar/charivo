@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { Charivo, RealtimeState } from "@charivo/core";
+import type {
+  AvatarControlCatalog,
+  Charivo,
+  Emotion,
+  RealtimeState,
+} from "@charivo/core";
 import type {
   ChatMessage,
   LLMClientType,
@@ -64,7 +69,39 @@ type ChatStore = {
   appendRealtimeAssistantDraft: (chunk: string) => void;
   realtimeTurnStatus: RealtimeTurnStatus;
   setRealtimeTurnStatus: (status: RealtimeTurnStatus) => void;
+  avatarCatalog: AvatarControlCatalog;
+  setAvatarCatalog: (catalog: AvatarControlCatalog) => void;
+  avatarDebug: {
+    lastToolCall: {
+      name: string;
+      callId?: string;
+      args: Record<string, unknown>;
+      at: number;
+    } | null;
+    lastToolResult: {
+      name: string;
+      callId?: string;
+      output: Record<string, unknown>;
+      appliedActions: Record<string, unknown> | null;
+      at: number;
+    } | null;
+    lastExpression: { expressionId: string; at: number } | null;
+    lastMotion: { group: string; index: number; at: number } | null;
+    lastGaze: { x: number; y: number; at: number } | null;
+    lastEmotionCompat: { emotion: Emotion; at: number } | null;
+  };
+  setAvatarDebug: (debugPatch: Partial<ChatStore["avatarDebug"]>) => void;
+  resetAvatarDebug: () => void;
   resetRealtimeUiState: () => void;
+};
+
+const initialAvatarDebugState: ChatStore["avatarDebug"] = {
+  lastToolCall: null,
+  lastToolResult: null,
+  lastExpression: null,
+  lastMotion: null,
+  lastGaze: null,
+  lastEmotionCompat: null,
 };
 
 export const useChatStore = create<ChatStore>((set) => ({
@@ -129,6 +166,17 @@ export const useChatStore = create<ChatStore>((set) => ({
     })),
   realtimeTurnStatus: "idle",
   setRealtimeTurnStatus: (realtimeTurnStatus) => set({ realtimeTurnStatus }),
+  avatarCatalog: { expressions: [], motions: {} },
+  setAvatarCatalog: (avatarCatalog) => set({ avatarCatalog }),
+  avatarDebug: initialAvatarDebugState,
+  setAvatarDebug: (debugPatch) =>
+    set((state) => ({
+      avatarDebug: {
+        ...state.avatarDebug,
+        ...debugPatch,
+      },
+    })),
+  resetAvatarDebug: () => set({ avatarDebug: initialAvatarDebugState }),
   resetRealtimeUiState: () =>
     set({
       realtimeAssistantDraft: null,

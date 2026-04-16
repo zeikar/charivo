@@ -1,6 +1,7 @@
 import type {
   Character,
   CharivoEventEmitter,
+  GazeCoordinates,
   RealtimeManager as CoreRealtimeManager,
   RealtimeSessionConfig,
   RealtimeSessionTransitionReason,
@@ -10,7 +11,14 @@ import type {
 } from "@charivo/core";
 import { Emotion } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
-import { buildRealtimeSessionConfig, setEmotionRealtimeTool } from "./tools";
+import {
+  buildRealtimeSessionConfig,
+  LOOK_AT_TOOL_NAME,
+  PLAY_MOTION_TOOL_NAME,
+  SET_EMOTION_TOOL_NAME,
+  SET_EXPRESSION_TOOL_NAME,
+  setEmotionRealtimeTool,
+} from "./tools";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 
@@ -480,18 +488,68 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     name: string,
     output: Record<string, unknown>,
   ): void {
-    if (name !== setEmotionRealtimeTool.definition.name) {
-      return;
-    }
+    switch (name) {
+      case SET_EXPRESSION_TOOL_NAME: {
+        const expressionId = output.expressionId;
+        if (typeof expressionId === "string") {
+          this.eventEmitter?.emit("realtime:expression", { expressionId });
+        }
+        return;
+      }
 
+      case PLAY_MOTION_TOOL_NAME: {
+        const group = output.group;
+        const index = output.index;
+        if (typeof group === "string" && Number.isInteger(index)) {
+          const motionIndex = index as number;
+          this.eventEmitter?.emit("realtime:motion", {
+            group,
+            index: motionIndex,
+          });
+        }
+        return;
+      }
+
+      case LOOK_AT_TOOL_NAME: {
+        const coords = readGazeCoordinates(output);
+        if (coords) {
+          this.eventEmitter?.emit("realtime:gaze", coords);
+        }
+        return;
+      }
+
+      case SET_EMOTION_TOOL_NAME:
+        this.postProcessEmotionCompatResult(output);
+        return;
+
+      default:
+        return;
+    }
+  }
+
+  private postProcessEmotionCompatResult(
+    output: Record<string, unknown>,
+  ): void {
     const emotion = output.emotion;
-    if (typeof emotion !== "string") {
-      return;
+    if (typeof emotion === "string") {
+      this.eventEmitter?.emit("realtime:emotion", {
+        emotion: emotion as Emotion,
+      });
     }
 
-    this.eventEmitter?.emit("realtime:emotion", {
-      emotion: emotion as Emotion,
-    });
+    const expressionId = output.expressionId;
+    if (typeof expressionId === "string") {
+      this.eventEmitter?.emit("realtime:expression", { expressionId });
+    }
+
+    const group = output.group;
+    const index = output.index;
+    if (typeof group === "string" && Number.isInteger(index)) {
+      this.eventEmitter?.emit("realtime:motion", {
+        group,
+        index: index as number,
+      });
+    }
   }
 
   private emitToolError(name: string, error: Error, callId?: string): void {
@@ -741,6 +799,19 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.emitSessionEnd(reason);
     }
   }
+}
+
+function readGazeCoordinates(
+  output: Record<string, unknown>,
+): GazeCoordinates | null {
+  const x = output.x;
+  const y = output.y;
+
+  if (typeof x !== "number" || typeof y !== "number") {
+    return null;
+  }
+
+  return { x, y };
 }
 
 export function createRealtimeManager(

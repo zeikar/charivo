@@ -358,17 +358,20 @@ describe("Live2DRenderer", () => {
     renderer.updateRealtimeLipSyncRms(0.75);
     renderer.playExpression("happy");
     renderer.playMotionByGroup("Tap", 0);
+    renderer.lookAt({ x: 0.5, y: -0.5 });
 
     expect(model.setRealtimeLipSync).not.toHaveBeenCalled();
     expect(model.updateRealtimeLipSyncRms).not.toHaveBeenCalled();
     expect(model.setExpression).not.toHaveBeenCalled();
     expect(model.startMotion).not.toHaveBeenCalled();
+    expect(model.setDragging).not.toHaveBeenCalled();
 
     model.ready = true;
     renderer.setRealtimeLipSync(true);
     renderer.updateRealtimeLipSyncRms(0.75);
     renderer.playExpression("happy");
     renderer.playMotionByGroup("Tap", 0);
+    renderer.lookAt({ x: 4, y: -4 });
 
     expect(model.setRealtimeLipSync).toHaveBeenCalledWith(true);
     expect(model.updateRealtimeLipSyncRms).toHaveBeenCalledWith(0.75);
@@ -378,6 +381,7 @@ describe("Live2DRenderer", () => {
       0,
       LAppDefine.PriorityNormal,
     );
+    expect(model.setDragging).toHaveBeenCalledWith(1, -1);
   });
 
   it("maps mouse input into drag and tap interactions", async () => {

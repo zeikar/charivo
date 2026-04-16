@@ -12,16 +12,34 @@ export enum Emotion {
   SHY = "shy",
 }
 
+export interface MotionSelection {
+  group: string;
+  index?: number;
+}
+
+export interface GazeCoordinates {
+  x: number;
+  y: number;
+}
+
+export interface AvatarActionPreset {
+  expression?: string;
+  motion?: MotionSelection;
+}
+
+export interface AvatarControlCatalog {
+  expressions: string[];
+  motions: Record<string, number>;
+}
+
 /**
- * Mapping between emotion and Live2D model animations
+ * @deprecated `Emotion` is a compatibility shorthand.
+ * Prefer driving avatar state directly with expression, motion, and gaze.
  */
 export interface EmotionMapping {
   emotion: Emotion;
   expression?: string; // Live2D expression ID (e.g., "smile", "angry")
-  motion?: {
-    group: string; // Live2D motion group (e.g., "Idle", "TapBody")
-    index?: number; // Motion index within group
-  };
+  motion?: MotionSelection;
 }
 
 export interface Character {
@@ -37,8 +55,8 @@ export interface Character {
     volume?: number;
   };
   /**
-   * Custom emotion mappings for this character's Live2D model
-   * If not specified, default mappings will be used
+   * @deprecated `Emotion` is a compatibility shorthand.
+   * Use expression/motion/gaze as the primary avatar control surface.
    */
   emotionMappings?: EmotionMapping[];
 }
@@ -50,7 +68,8 @@ export interface Message {
   characterId?: string;
   type: "user" | "character" | "system";
   /**
-   * Parsed emotion from message content (if any)
+   * @deprecated `Emotion` is a compatibility shorthand.
+   * Use explicit avatar actions when possible.
    */
   emotion?: Emotion;
 }
@@ -219,6 +238,11 @@ export interface Renderer {
   loadModel?(modelPath: string): Promise<void>;
   setRealtimeLipSync?(enabled: boolean): void;
   updateRealtimeLipSyncRms?(rms: number): void;
+  playExpression?(expressionId: string): void;
+  playMotionByGroup?(group: string, index: number): void;
+  lookAt?(coords: GazeCoordinates): void;
+  getAvailableExpressions?(): string[];
+  getAvailableMotionGroups?(): Record<string, number>;
 }
 
 // Render 매니저 (세션 관리, 립싱크, 모션 제어)
@@ -359,6 +383,13 @@ export type EventMap = {
     error: Error;
     callId?: string;
   };
+  "realtime:expression": { expressionId: string };
+  "realtime:motion": { group: string; index: number };
+  "realtime:gaze": GazeCoordinates;
+  /**
+   * @deprecated `Emotion` is a compatibility shorthand.
+   * Prefer `realtime:expression` and `realtime:motion`.
+   */
   "realtime:emotion": { emotion: Emotion };
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };

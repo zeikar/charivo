@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
+import {
   Character,
   CharivoEventEmitter,
+  Emotion,
   RealtimeState,
   RealtimeToolRegistration,
 } from "@charivo/core";
 import {
   buildRealtimeSessionConfig,
+  createAvatarControlTools,
   createRealtimeManager,
   setEmotionRealtimeTool,
   setEmotionTool,
@@ -110,8 +112,68 @@ describe("realtime-core", () => {
     expect(config.tools).toBeUndefined();
   });
 
+  it("builds catalog-based avatar control tools", async () => {
+    const tools = createAvatarControlTools({
+      expressions: ["Smile"],
+      motions: {
+        Idle: 2,
+      },
+    });
+    const [expressionTool, motionTool, gazeTool] = tools;
+
+    expect(tools.map((tool) => tool.definition.name)).toEqual([
+      "setExpression",
+      "playMotion",
+      "lookAt",
+    ]);
+    expect(
+      expressionTool!.definition.parameters.properties.expressionId,
+    ).toMatchObject({
+      enum: ["Smile"],
+    });
+    expect(motionTool!.definition.parameters.properties.group).toMatchObject({
+      enum: ["Idle"],
+    });
+
+    await expect(
+      expressionTool!.handler(
+        { expressionId: "Missing" },
+        {
+          character: null,
+          state: {
+            connection: "idle",
+            session: { status: "idle", config: null },
+            response: { status: "idle", text: "" },
+            lastError: null,
+          },
+        },
+      ),
+    ).rejects.toThrow('setExpression requires a valid "expressionId"');
+
+    await expect(
+      gazeTool!.handler(
+        { x: 4, y: -4 },
+        {
+          character: null,
+          state: {
+            connection: "idle",
+            session: { status: "idle", config: null },
+            response: { status: "idle", text: "" },
+            lastError: null,
+          },
+        },
+      ),
+    ).resolves.toMatchObject({ x: 1, y: -1 });
+  });
+
   it("starts with registry tools and executes built-in and custom handlers", async () => {
     const stub = createRealtimeClientStub();
+    const avatarTools = createAvatarControlTools({
+      expressions: ["exp_happy"],
+      motions: {
+        TapBody: 2,
+      },
+    });
     const describeSceneTool: RealtimeToolRegistration = {
       definition: {
         type: "function",
@@ -129,7 +191,7 @@ describe("realtime-core", () => {
       })),
     };
     const manager = createRealtimeManager(stub.client, {
-      tools: [describeSceneTool],
+      tools: [...avatarTools, describeSceneTool],
     });
     const eventEmitter: CharivoEventEmitter = {
       emit: vi.fn(),
@@ -139,6 +201,13 @@ describe("realtime-core", () => {
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
+      emotionMappings: [
+        {
+          emotion: Emotion.HAPPY,
+          expression: "exp_happy",
+          motion: { group: "TapBody", index: 1 },
+        },
+      ],
     });
 
     await manager.startSession({
@@ -158,6 +227,9 @@ describe("realtime-core", () => {
 
     expect(manager.getRegisteredTools().map((tool) => tool.name)).toEqual([
       "setEmotion",
+      "setExpression",
+      "playMotion",
+      "lookAt",
       "describeScene",
     ]);
     expect(stub.client.connect).toHaveBeenCalledWith({
@@ -166,7 +238,13 @@ describe("realtime-core", () => {
       model: "gpt-realtime-mini",
       voice: "marin",
       instructions: expect.any(String),
-      tools: [setEmotionTool, describeSceneTool.definition],
+      tools: [
+        setEmotionTool,
+        avatarTools[0]!.definition,
+        avatarTools[1]!.definition,
+        avatarTools[2]!.definition,
+        describeSceneTool.definition,
+      ],
       toolChoice: "auto",
     });
 
@@ -186,6 +264,9 @@ describe("realtime-core", () => {
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(1, "call-1", {
       success: true,
       emotion: "happy",
+      expressionId: "exp_happy",
+      group: "TapBody",
+      index: 1,
     });
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(2, "call-2", {
       success: true,
@@ -205,6 +286,13 @@ describe("realtime-core", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:emotion", {
       emotion: "happy",
     });
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+      expressionId: "exp_happy",
+    });
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:motion", {
+      group: "TapBody",
+      index: 1,
+    });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:call", {
       name: "setEmotion",
       args: { emotion: "happy" },
@@ -218,6 +306,55 @@ describe("realtime-core", () => {
         responseStatus: "idle",
       },
       callId: "call-2",
+    });
+  });
+
+  it("emits canonical avatar action events for direct tools", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client, {
+      tools: createAvatarControlTools({
+        expressions: ["Smile"],
+        motions: {
+          Idle: 1,
+        },
+      }),
+    });
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setExpression",
+      args: { expressionId: "Smile" },
+      callId: "call-expression",
+    });
+    await stub.emit({
+      type: "tool.call",
+      name: "playMotion",
+      args: { group: "Idle", index: 0 },
+      callId: "call-motion",
+    });
+    await stub.emit({
+      type: "tool.call",
+      name: "lookAt",
+      args: { x: 0.4, y: -0.2 },
+      callId: "call-gaze",
+    });
+
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+      expressionId: "Smile",
+    });
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:motion", {
+      group: "Idle",
+      index: 0,
+    });
+    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:gaze", {
+      x: 0.4,
+      y: -0.2,
     });
   });
 

@@ -7,6 +7,7 @@ import { PageHeader } from "./components/PageHeader";
 import { ChatSettings } from "./components/chat/ChatSettings";
 import { MessageBubbles } from "./components/chat/MessageBubbles";
 import { ControlPanel } from "./components/chat/ControlPanel";
+import { AvatarDebugPanel } from "./components/chat/AvatarDebugPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import { useRealtimeMode } from "./hooks/useRealtimeMode";
@@ -44,6 +45,7 @@ export default function Home() {
     handleStopRecording,
     playExpression,
     playMotion,
+    playGaze,
     getAvailableExpressions,
     getAvailableMotionGroups,
   } = useCharivoChat({ canvasContainerRef });
@@ -109,9 +111,12 @@ export default function Home() {
             <ControlPanel
               onPlayExpression={playExpression}
               onPlayMotion={playMotion}
+              onLookAt={playGaze}
               getAvailableExpressions={getAvailableExpressions}
               getAvailableMotionGroups={getAvailableMotionGroups}
             />
+
+            <AvatarDebugPanel />
           </div>
 
           {/* Chat Input Area */}

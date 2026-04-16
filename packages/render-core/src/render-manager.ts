@@ -1,10 +1,13 @@
 import {
-  Renderer,
-  Message,
-  Character,
-  RenderManager as IRenderManager,
-  Emotion,
-  CharivoEventBus,
+  type AvatarActionPreset,
+  type Character,
+  type Emotion,
+  type GazeCoordinates,
+  type Message,
+  type MotionSelection,
+  type Renderer,
+  type RenderManager as IRenderManager,
+  type CharivoEventBus,
 } from "@charivo/core";
 import { RealTimeLipSync } from "./lipsync";
 import {
@@ -13,6 +16,12 @@ import {
   type MouseTrackingCleanup,
   type MouseTrackingMode,
 } from "./mouse-tracking";
+
+const EXPLICIT_ACTION_HOLD_MS = 1_200;
+const EXPRESSION_DEBOUNCE_MS = 300;
+const MOTION_DEBOUNCE_MS = 1_000;
+
+type ActionSource = "explicit" | "compat";
 
 /**
  * Render Manager - 렌더링 세션의 상태 관리를 담당하는 클래스
@@ -35,23 +44,28 @@ export interface RenderManagerOptions {
 }
 
 export class RenderManager implements IRenderManager {
-  private renderer: Renderer;
+  private readonly lipSync = new RealTimeLipSync();
+  private readonly renderer: Renderer;
   private character: Character | null = null;
-  private lipSync = new RealTimeLipSync();
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
-  private options?: RenderManagerOptions;
+  private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
+  private explicitActionUntil = 0;
+  private mouseTrackingSuspendedUntil = 0;
+  private lastExpression?: { expressionId: string; at: number };
+  private lastMotion?: { group: string; index: number; at: number };
 
-  constructor(renderer: Renderer, options?: RenderManagerOptions) {
+  constructor(
+    renderer: Renderer,
+    private options?: RenderManagerOptions,
+  ) {
     this.renderer = renderer;
-    this.options = options;
   }
 
   /**
    * 이벤트 버스 연결
    */
   setEventBus(eventBus: CharivoEventBus): void {
-    // TTS audio events
     eventBus.on("tts:audio:start", (data) => {
       this.startRealtimeLipSync(data.audioElement);
     });
@@ -64,7 +78,24 @@ export class RenderManager implements IRenderManager {
       this.updateLipSync(data.rms);
     });
 
-    // Realtime emotion events
+    eventBus.on("realtime:expression", (data) => {
+      this.applyExpression(data.expressionId, "explicit");
+    });
+
+    eventBus.on("realtime:motion", (data) => {
+      this.applyMotion(
+        {
+          group: data.group,
+          index: data.index,
+        },
+        "explicit",
+      );
+    });
+
+    eventBus.on("realtime:gaze", (data) => {
+      this.applyGaze(data, "explicit");
+    });
+
     eventBus.on("realtime:emotion", (data) => {
       this.handleRealtimeEmotion(data.emotion);
     });
@@ -92,28 +123,29 @@ export class RenderManager implements IRenderManager {
   async initialize(): Promise<void> {
     await this.renderer.initialize();
 
-    // MouseTrackable 렌더러인 경우 마우스 추적 설정
     if (this.isMouseTrackable(this.renderer) && this.options?.canvas) {
+      const mouseTrackableRenderer = this.renderer;
       this.cleanupMouseTracking = setupMouseTracking({
         canvas: this.options.canvas,
         mode: this.options.mouseTracking ?? "canvas",
-        target: this.renderer,
+        target: {
+          updateViewWithMouse: (coords) => {
+            if (this.isMouseTrackingSuspended()) {
+              return;
+            }
+
+            mouseTrackableRenderer.updateViewWithMouse(coords);
+          },
+          handleMouseTap: (coords) => {
+            if (this.isMouseTrackingSuspended()) {
+              return;
+            }
+
+            mouseTrackableRenderer.handleMouseTap(coords);
+          },
+        },
       });
     }
-  }
-
-  /**
-   * 렌더러가 MouseTrackable인지 확인
-   */
-  private isMouseTrackable(
-    renderer: Renderer,
-  ): renderer is Renderer & MouseTrackable {
-    return (
-      "updateViewWithMouse" in renderer &&
-      typeof renderer.updateViewWithMouse === "function" &&
-      "handleMouseTap" in renderer &&
-      typeof renderer.handleMouseTap === "function"
-    );
   }
 
   /**
@@ -129,21 +161,13 @@ export class RenderManager implements IRenderManager {
    * 메시지 렌더링
    */
   async render(message: Message, character?: Character): Promise<void> {
-    // Character message일 때 감정 기반 애니메이션 재생
-    if (
-      message.type === "character" &&
-      message.emotion &&
-      (character || this.character)
-    ) {
-      const targetCharacter = character || this.character!;
-      this.playEmotionAnimation(message.emotion, targetCharacter);
+    const targetCharacter = character || this.character || undefined;
+
+    if (message.type === "character" && message.emotion && targetCharacter) {
+      this.applyEmotionCompat(message.emotion, targetCharacter);
     }
 
-    // 렌더러에 전달
-    const targetCharacter = character || this.character || undefined;
     await this.renderer.render(message, targetCharacter);
-
-    // 콜백 호출
     this.messageCallback?.(message, targetCharacter);
   }
 
@@ -153,6 +177,11 @@ export class RenderManager implements IRenderManager {
   async destroy(): Promise<void> {
     this.cleanupMouseTracking?.();
     this.cleanupMouseTracking = undefined;
+
+    if (this.resumeMouseTrackingTimer) {
+      clearTimeout(this.resumeMouseTrackingTimer);
+      this.resumeMouseTrackingTimer = undefined;
+    }
 
     this.lipSync.cleanup();
     await this.renderer.destroy();
@@ -198,41 +227,148 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * Realtime emotion 처리 (tool call로부터)
+   * Compat emotion 처리 (tool call로부터)
    */
   private handleRealtimeEmotion(emotion: Emotion): void {
     if (!this.character) {
       return;
     }
 
-    this.playEmotionAnimation(emotion, this.character);
+    this.applyEmotionCompat(emotion, this.character);
   }
 
-  /**
-   * 감정 기반 애니메이션 재생
-   * Character에 커스텀 매핑이 있는 경우에만 재생
-   */
-  private playEmotionAnimation(emotion: Emotion, character: Character): void {
-    // Find mapping for this emotion
-    const mapping = character.emotionMappings?.find(
-      (m) => m.emotion === emotion,
-    );
-
-    if (!mapping) {
-      // 매핑이 없으면 아무것도 안 함
+  private applyEmotionCompat(emotion: Emotion, character: Character): void {
+    if (Date.now() < this.explicitActionUntil) {
       return;
     }
 
-    // Play expression if available
-    if (mapping.expression && this.hasExpressionControl(this.renderer)) {
-      this.renderer.playExpression(mapping.expression);
+    const preset = resolveEmotionPreset(character, emotion);
+    if (!preset) {
+      return;
     }
 
-    // Play motion if available
-    if (mapping.motion && this.hasMotionControl(this.renderer)) {
-      const { group, index = 0 } = mapping.motion;
-      this.renderer.playMotionByGroup(group, index);
+    this.applyAvatarPreset(preset, "compat");
+  }
+
+  private applyAvatarPreset(
+    preset: AvatarActionPreset,
+    source: ActionSource,
+  ): void {
+    if (preset.expression) {
+      this.applyExpression(preset.expression, source);
     }
+
+    if (preset.motion) {
+      this.applyMotion(preset.motion, source);
+    }
+  }
+
+  private applyExpression(expressionId: string, source: ActionSource): boolean {
+    if (!this.hasExpressionControl(this.renderer)) {
+      return false;
+    }
+
+    if (
+      this.hasExpressionCatalog(this.renderer) &&
+      !this.renderer.getAvailableExpressions().includes(expressionId)
+    ) {
+      return false;
+    }
+
+    const now = Date.now();
+    if (
+      this.lastExpression?.expressionId === expressionId &&
+      now - this.lastExpression.at < EXPRESSION_DEBOUNCE_MS
+    ) {
+      return false;
+    }
+
+    this.renderer.playExpression(expressionId);
+    this.lastExpression = { expressionId, at: now };
+    this.markExplicitAction(source);
+    return true;
+  }
+
+  private applyMotion(motion: MotionSelection, source: ActionSource): boolean {
+    if (!this.hasMotionControl(this.renderer)) {
+      return false;
+    }
+
+    const index = motion.index ?? 0;
+
+    if (this.hasMotionCatalog(this.renderer)) {
+      const motionGroups = this.renderer.getAvailableMotionGroups();
+      const count = motionGroups[motion.group];
+
+      if (typeof count !== "number" || index < 0 || index >= count) {
+        return false;
+      }
+    }
+
+    const now = Date.now();
+    if (
+      this.lastMotion?.group === motion.group &&
+      this.lastMotion.index === index &&
+      now - this.lastMotion.at < MOTION_DEBOUNCE_MS
+    ) {
+      return false;
+    }
+
+    this.renderer.playMotionByGroup(motion.group, index);
+    this.lastMotion = { group: motion.group, index, at: now };
+    this.markExplicitAction(source);
+    return true;
+  }
+
+  private applyGaze(coords: GazeCoordinates, source: ActionSource): boolean {
+    if (!this.hasGazeControl(this.renderer)) {
+      return false;
+    }
+
+    this.renderer.lookAt(coords);
+
+    if (source === "explicit") {
+      this.markExplicitAction(source);
+      this.suspendMouseTracking(EXPLICIT_ACTION_HOLD_MS);
+    }
+
+    return true;
+  }
+
+  private markExplicitAction(source: ActionSource): void {
+    if (source !== "explicit") {
+      return;
+    }
+
+    this.explicitActionUntil = Date.now() + EXPLICIT_ACTION_HOLD_MS;
+  }
+
+  private suspendMouseTracking(durationMs: number): void {
+    this.mouseTrackingSuspendedUntil = Date.now() + durationMs;
+
+    if (this.resumeMouseTrackingTimer) {
+      clearTimeout(this.resumeMouseTrackingTimer);
+    }
+
+    this.resumeMouseTrackingTimer = setTimeout(() => {
+      this.mouseTrackingSuspendedUntil = 0;
+      this.resumeMouseTrackingTimer = undefined;
+    }, durationMs);
+  }
+
+  private isMouseTrackingSuspended(): boolean {
+    return Date.now() < this.mouseTrackingSuspendedUntil;
+  }
+
+  private isMouseTrackable(
+    renderer: Renderer,
+  ): renderer is Renderer & MouseTrackable {
+    return (
+      "updateViewWithMouse" in renderer &&
+      typeof renderer.updateViewWithMouse === "function" &&
+      "handleMouseTap" in renderer &&
+      typeof renderer.handleMouseTap === "function"
+    );
   }
 
   private hasExpressionControl(
@@ -244,6 +380,15 @@ export class RenderManager implements IRenderManager {
     );
   }
 
+  private hasExpressionCatalog(
+    renderer: Renderer,
+  ): renderer is Renderer & { getAvailableExpressions(): string[] } {
+    return (
+      "getAvailableExpressions" in renderer &&
+      typeof renderer.getAvailableExpressions === "function"
+    );
+  }
+
   private hasMotionControl(renderer: Renderer): renderer is Renderer & {
     playMotionByGroup(group: string, index: number): void;
   } {
@@ -252,6 +397,39 @@ export class RenderManager implements IRenderManager {
       typeof renderer.playMotionByGroup === "function"
     );
   }
+
+  private hasMotionCatalog(renderer: Renderer): renderer is Renderer & {
+    getAvailableMotionGroups(): Record<string, number>;
+  } {
+    return (
+      "getAvailableMotionGroups" in renderer &&
+      typeof renderer.getAvailableMotionGroups === "function"
+    );
+  }
+
+  private hasGazeControl(
+    renderer: Renderer,
+  ): renderer is Renderer & { lookAt(coords: GazeCoordinates): void } {
+    return "lookAt" in renderer && typeof renderer.lookAt === "function";
+  }
+}
+
+function resolveEmotionPreset(
+  character: Character,
+  emotion: Emotion,
+): AvatarActionPreset | null {
+  const mapping = character.emotionMappings?.find(
+    (item) => item.emotion === emotion,
+  );
+
+  if (!mapping) {
+    return null;
+  }
+
+  return {
+    ...(mapping.expression ? { expression: mapping.expression } : {}),
+    ...(mapping.motion ? { motion: mapping.motion } : {}),
+  };
 }
 
 /**

@@ -8,8 +8,10 @@ import {
   type MutableRefObject,
 } from "react";
 import {
+  type AvatarControlCatalog,
   Charivo,
   type Character,
+  type GazeCoordinates,
   type LLMClient,
   type Message,
   type RenderManager,
@@ -27,6 +29,7 @@ import type {
   TTSPlayerType,
 } from "../types/chat";
 import { useLive2D } from "./useLive2D";
+import { syncAvatarControlTools } from "../lib/avatar-tools";
 import { useCharacterStore } from "../stores/useCharacterStore";
 import { useChatStore } from "../stores/useChatStore";
 import {
@@ -38,6 +41,7 @@ import {
 type Live2DRendererHandle = {
   playExpression(expressionId: string): void;
   playMotionByGroup(group: string, index: number): void;
+  lookAt(coords: GazeCoordinates): void;
   getAvailableExpressions(): string[];
   getAvailableMotionGroups(): Record<string, number>;
 };
@@ -54,7 +58,75 @@ const REALTIME_UI_DEBUG = process.env.NODE_ENV !== "production";
 
 function logRealtimeUi(...args: unknown[]): void {
   if (REALTIME_UI_DEBUG) {
-    console.debug("[realtime-ui]", ...args);
+    console.info("[realtime-ui]", ...args);
+  }
+}
+
+function logAvatarControl(...args: unknown[]): void {
+  if (REALTIME_UI_DEBUG) {
+    console.info("[avatar-control]", ...args);
+  }
+}
+
+function summarizeToolApplication(
+  name: string,
+  output: Record<string, unknown>,
+): Record<string, unknown> | null {
+  switch (name) {
+    case "setExpression":
+      return typeof output.expressionId === "string"
+        ? {
+            expression: output.expressionId,
+          }
+        : null;
+
+    case "playMotion":
+      return typeof output.group === "string" &&
+        typeof output.index === "number"
+        ? {
+            motion: {
+              group: output.group,
+              index: output.index,
+            },
+          }
+        : null;
+
+    case "lookAt":
+      return typeof output.x === "number" && typeof output.y === "number"
+        ? {
+            gaze: {
+              x: output.x,
+              y: output.y,
+            },
+          }
+        : null;
+
+    case "setEmotion": {
+      const appliedActions: Record<string, unknown> = {};
+
+      if (typeof output.emotion === "string") {
+        appliedActions.emotion = output.emotion;
+      }
+
+      if (typeof output.expressionId === "string") {
+        appliedActions.expression = output.expressionId;
+      }
+
+      if (
+        typeof output.group === "string" &&
+        typeof output.index === "number"
+      ) {
+        appliedActions.motion = {
+          group: output.group,
+          index: output.index,
+        };
+      }
+
+      return Object.keys(appliedActions).length > 0 ? appliedActions : null;
+    }
+
+    default:
+      return null;
   }
 }
 
@@ -77,6 +149,15 @@ async function stopRealtime(instance: Charivo | null): Promise<void> {
   } catch {
     // Ignore teardown errors during effect cleanup.
   }
+}
+
+function readAvatarCatalog(
+  renderer: Live2DRendererHandle | null,
+): AvatarControlCatalog {
+  return {
+    expressions: renderer?.getAvailableExpressions() ?? [],
+    motions: renderer?.getAvailableMotionGroups() ?? {},
+  };
 }
 
 export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
@@ -111,6 +192,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     resetRealtimeUiState,
     setRealtimeAssistantDraft,
     setRealtimeTurnStatus,
+    setAvatarCatalog,
+    setAvatarDebug,
+    resetAvatarDebug,
   } = useChatStore();
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
@@ -288,6 +372,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setIsConnected(false);
       setIsRealtimeMode(false);
       setRealtimeState(null);
+      setAvatarCatalog({ expressions: [], motions: {} });
+      resetAvatarDebug();
       resetRealtimeUiState();
 
       if (ttsManager) {
@@ -346,6 +432,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         await renderManager.loadModel?.(
           getLive2DModelPath(initialCharacter.id),
         );
+        const initialCatalog = readAvatarCatalog(renderer);
+        setAvatarCatalog(initialCatalog);
+        logAvatarControl("catalog.loaded", {
+          characterId: initialCharacter.id,
+          expressions: initialCatalog.expressions,
+          motions: initialCatalog.motions,
+        });
 
         if (disposed) {
           await teardown();
@@ -437,7 +530,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return;
           }
 
-          logRealtimeUi("state", state);
           setRealtimeState(state);
           setIsConnecting(state.connection === "connecting");
           setIsConnected(state.connection === "connected");
@@ -470,7 +562,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return;
           }
 
-          logRealtimeUi("assistant.delta", text);
           appendRealtimeAssistantDraft(text);
         });
 
@@ -497,6 +588,122 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           setRealtimeAssistantDraft(null);
         });
 
+        instance.on("realtime:tool:call", ({ name, args, callId }) => {
+          if (disposed) {
+            return;
+          }
+
+          setAvatarDebug({
+            lastToolCall: {
+              name,
+              callId,
+              args,
+              at: Date.now(),
+            },
+          });
+          logRealtimeUi("tool.call", {
+            name,
+            callId,
+            args,
+          });
+        });
+
+        instance.on("realtime:tool:result", ({ name, output, callId }) => {
+          if (disposed) {
+            return;
+          }
+
+          const appliedActions = summarizeToolApplication(
+            name,
+            output as Record<string, unknown>,
+          );
+          setAvatarDebug({
+            lastToolResult: {
+              name,
+              callId,
+              output: output as Record<string, unknown>,
+              appliedActions,
+              at: Date.now(),
+            },
+          });
+          logRealtimeUi("tool.result", {
+            name,
+            callId,
+            output,
+            appliedActions,
+          });
+        });
+
+        instance.on("realtime:tool:error", ({ name, error, callId }) => {
+          if (disposed) {
+            return;
+          }
+
+          logRealtimeUi("tool.error", {
+            name,
+            callId,
+            message: error.message,
+          });
+        });
+
+        instance.on("realtime:expression", ({ expressionId }) => {
+          if (disposed) {
+            return;
+          }
+
+          setAvatarDebug({
+            lastExpression: {
+              expressionId,
+              at: Date.now(),
+            },
+          });
+          logAvatarControl("expression", { expressionId });
+        });
+
+        instance.on("realtime:motion", ({ group, index }) => {
+          if (disposed) {
+            return;
+          }
+
+          setAvatarDebug({
+            lastMotion: {
+              group,
+              index,
+              at: Date.now(),
+            },
+          });
+          logAvatarControl("motion", { group, index });
+        });
+
+        instance.on("realtime:gaze", ({ x, y }) => {
+          if (disposed) {
+            return;
+          }
+
+          setAvatarDebug({
+            lastGaze: {
+              x,
+              y,
+              at: Date.now(),
+            },
+          });
+          logAvatarControl("gaze", { x, y });
+        });
+
+        instance.on("realtime:emotion", ({ emotion }) => {
+          if (disposed) {
+            return;
+          }
+
+          setAvatarDebug({
+            lastEmotionCompat: {
+              emotion,
+              at: Date.now(),
+            },
+          });
+          logAvatarControl("emotion.compat", { emotion });
+        });
+
         instance.on("realtime:error", ({ error }) => {
           if (disposed) {
             return;
@@ -515,6 +722,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         clearMessages();
         setRealtimeError(null);
         setRealtimeState(null);
+        resetAvatarDebug();
         resetRealtimeUiState();
         setCharivo(instance);
       } catch (error) {
@@ -559,6 +767,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     resetRealtimeUiState,
     setRealtimeAssistantDraft,
     setRealtimeTurnStatus,
+    setAvatarCatalog,
+    setAvatarDebug,
+    resetAvatarDebug,
     setSttError,
   ]);
 
@@ -577,12 +788,20 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       try {
         clearMessages();
         resetRealtimeUiState();
+        resetAvatarDebug();
         setRealtimeError(null);
         charivo.clearHistory();
         charivo.setCharacter(character);
         await renderManagerRef.current?.loadModel?.(
           getLive2DModelPath(character.id),
         );
+        const nextCatalog = readAvatarCatalog(rendererRef.current);
+        setAvatarCatalog(nextCatalog);
+        logAvatarControl("catalog.loaded", {
+          characterId: character.id,
+          expressions: nextCatalog.expressions,
+          motions: nextCatalog.motions,
+        });
 
         if (cancelled) {
           return;
@@ -593,6 +812,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         if (isRealtimeMode) {
           const realtimeManager = charivo.getRealtimeManager();
           if (realtimeManager?.getState().session.status === "active") {
+            logAvatarControl("catalog.sync", {
+              characterId: character.id,
+              expressions: nextCatalog.expressions,
+              motions: nextCatalog.motions,
+            });
+            syncAvatarControlTools(realtimeManager, nextCatalog);
             await realtimeManager.updateSession();
           }
         }
@@ -622,6 +847,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     isRealtimeMode,
     resetRealtimeUiState,
     setRealtimeError,
+    setAvatarCatalog,
+    resetAvatarDebug,
   ]);
 
   const handleSend = useCallback(async () => {
@@ -668,6 +895,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
   const playMotion = useCallback((group: string, index: number) => {
     rendererRef.current?.playMotionByGroup(group, index);
+  }, []);
+
+  const playGaze = useCallback((coords: GazeCoordinates) => {
+    rendererRef.current?.lookAt(coords);
   }, []);
 
   const getAvailableExpressions = useCallback((): string[] => {
@@ -719,6 +950,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     handleStopRecording,
     playExpression,
     playMotion,
+    playGaze,
     getAvailableExpressions,
     getAvailableMotionGroups,
   };

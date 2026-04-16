@@ -90,6 +90,9 @@ Important event names include:
 - `realtime:tool:call`
 - `realtime:tool:result`
 - `realtime:tool:error`
-- `realtime:emotion`
+- `realtime:expression`
+- `realtime:motion`
+- `realtime:gaze`
+- `realtime:emotion` (deprecated compatibility event)
 - `realtime:text:delta`
 - `realtime:error`

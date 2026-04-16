@@ -1,4 +1,9 @@
-import { Renderer, Message, Character } from "@charivo/core";
+import {
+  type Character,
+  type GazeCoordinates,
+  type Message,
+  type Renderer,
+} from "@charivo/core";
 import {
   type MouseCoordinates,
   type MouseTrackable,
@@ -120,6 +125,12 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
     if (this.model.hasMotion(group, index)) {
       this.model.startMotion(group, index, LAppDefine.PriorityNormal);
     }
+  }
+
+  lookAt(coords: GazeCoordinates): void {
+    if (!this.model?.isReady()) return;
+
+    this.model.setDragging(clamp(coords.x, -1, 1), clamp(coords.y, -1, 1));
   }
 
   async destroy(): Promise<void> {
@@ -289,4 +300,8 @@ export function createLive2DRenderer(
   options?: Live2DRendererOptions,
 ): Live2DRenderer {
   return new Live2DRenderer(options);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
