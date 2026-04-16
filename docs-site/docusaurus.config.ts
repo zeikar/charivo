@@ -4,7 +4,7 @@ import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
   title: "Charivo",
-  tagline: "Modular Live2D AI character framework",
+  tagline: "Build Live2D AI characters that talk, react, and look at you",
   favicon: "img/favicon.ico",
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future

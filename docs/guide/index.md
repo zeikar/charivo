@@ -6,8 +6,10 @@ sidebar_position: 1
 
 # Guide Index
 
-Charivo is a modular TypeScript framework for Live2D AI characters with LLM,
-TTS, STT, realtime voice, and rendering split into focused packages.
+Build Live2D AI characters that talk, react, and look at you.
+
+Charivo is a modular TypeScript framework for voice, expression, motion, gaze,
+and real-time conversation — split into focused packages.
 
 These guides are for integrators building an app on top of Charivo. Use them
 to choose the right packages, understand the layering, and get to a working

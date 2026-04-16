@@ -20,7 +20,7 @@ This is the default rendering path in the repo.
 ## What Each Package Does
 
 - `@charivo/render-live2d` draws the Live2D model and exposes renderer methods
-- `@charivo/render-core` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, compatibility emotion mappings, and lip-sync updates
+- `@charivo/render-core` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, and lip-sync updates
 
 Most apps use both together.
 

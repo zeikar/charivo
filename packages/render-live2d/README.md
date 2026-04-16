@@ -42,7 +42,7 @@ The renderer exposes:
 - `lookAt({ x, y })`
 
 When used through `@charivo/render-core`, realtime lip sync, mouse tracking,
-gaze, and compatibility emotion-to-action translation are handled for you.
+and gaze are handled for you.
 
 ## License Note
 

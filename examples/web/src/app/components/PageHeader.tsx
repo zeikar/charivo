@@ -7,36 +7,36 @@ export function PageHeader() {
           Charivo
         </h1>
         <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-          Interactive AI Character Framework
+          Live2D AI Characters That Come Alive
         </p>
       </div>
 
       {/* Description */}
       <div className="mb-3 space-y-1">
         <p className="text-gray-500 dark:text-gray-500 text-xs max-w-2xl mx-auto leading-relaxed">
-          Experience interactive{" "}
+          Real-time voice conversations with{" "}
           <span className="font-semibold text-blue-600 dark:text-blue-400">
-            Live2D character conversations
+            Live2D characters
           </span>{" "}
-          with{" "}
+          — AI controls{" "}
           <span className="font-semibold text-purple-600 dark:text-purple-400">
-            AI-powered dialogue
-          </span>
-          ,{" "}
-          <span className="font-semibold text-pink-600 dark:text-pink-400">
-            automatic lip-sync animation
+            expression, motion, gaze
           </span>
           , and{" "}
+          <span className="font-semibold text-pink-600 dark:text-pink-400">
+            lip-sync
+          </span>{" "}
+          so the character{" "}
           <span className="font-semibold text-green-600 dark:text-green-400">
-            real-time voice chat
+            feels alive
           </span>
         </p>
         <p className="text-gray-400 dark:text-gray-600 text-xs max-w-2xl mx-auto leading-relaxed">
-          🎭 <span className="font-semibold">AI Emotions:</span> Dynamic facial
-          expressions (<span className="text-purple-500">Natori</span> has full
-          emotion system) • 💋{" "}
-          <span className="font-semibold">Auto Lip-Sync:</span> Natural mouth
-          movements synced to voice • 🌐{" "}
+          🎭 <span className="font-semibold">Avatar Control:</span> Expression,
+          motion, and gaze driven by AI tools (
+          <span className="text-purple-500">Natori</span> has full expression
+          support) • 💋 <span className="font-semibold">Auto Lip-Sync:</span>{" "}
+          Natural mouth movements synced to voice • 🌐{" "}
           <span className="font-semibold">WebRTC Voice:</span> Low-latency
           conversations powered by OpenAI Realtime API
         </p>
