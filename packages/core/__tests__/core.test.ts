@@ -5,7 +5,12 @@ import type {
   CharivoEventEmitter,
   LLMClient,
   Message,
+  RealtimeManager,
+  RealtimeState,
   RenderManager,
+  RealtimeTool,
+  RealtimeToolRegistration,
+  STTManager,
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
@@ -31,6 +36,41 @@ class StubTTSManager implements TTSManager {
   isSupported = vi.fn(() => true);
   setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
   voice: string | undefined;
+}
+
+class StubSTTManager implements STTManager {
+  start = vi.fn(async () => undefined);
+  stop = vi.fn(async () => "");
+  isRecording = vi.fn(() => false);
+  setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
+}
+
+class StubRealtimeManager implements RealtimeManager {
+  setCharacter = vi.fn((_character: Character) => undefined);
+  getState = vi.fn(
+    (): RealtimeState => ({
+      connection: "idle",
+      session: {
+        status: "idle",
+        config: null,
+      },
+      response: {
+        status: "idle",
+        text: "",
+      },
+      lastError: null,
+    }),
+  );
+  startSession = vi.fn(async () => undefined);
+  updateSession = vi.fn(async () => undefined);
+  stopSession = vi.fn(async () => undefined);
+  sendMessage = vi.fn(async (_text: string) => undefined);
+  sendAudioChunk = vi.fn(async (_audio: ArrayBuffer) => undefined);
+  interrupt = vi.fn(async () => undefined);
+  registerTool = vi.fn((_tool: RealtimeToolRegistration) => undefined);
+  unregisterTool = vi.fn((_name: string) => undefined);
+  getRegisteredTools = vi.fn((): RealtimeTool[] => []);
+  setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
 }
 
 describe("EventBus", () => {
@@ -163,5 +203,79 @@ describe("Charivo", () => {
     await expect(charivo.userSay("Hello")).resolves.toBeUndefined();
 
     expect(messageSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates character and event wiring across attached managers", () => {
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
+    const sttManager = new StubSTTManager();
+    const realtimeManager = new StubRealtimeManager();
+    const charivo = new Charivo();
+    const customListener = vi.fn();
+
+    charivo.setCharacter(character);
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
+    charivo.attachSTT(sttManager);
+    charivo.attachRealtime(realtimeManager);
+
+    expect(renderManager.setCharacter).toHaveBeenCalledWith(character);
+    expect(renderManager.setEventBus).toHaveBeenCalledTimes(1);
+    expect(ttsManager.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(sttManager.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(realtimeManager.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(realtimeManager.setCharacter).toHaveBeenCalledWith(character);
+    expect(charivo.getSTTManager()).toBe(sttManager);
+    expect(charivo.getRealtimeManager()).toBe(realtimeManager);
+    expect(charivo.isRealtimeModeEnabled()).toBe(true);
+
+    charivo.on("realtime:text:delta", customListener);
+    charivo.emit("realtime:text:delta", { text: "partial" });
+    expect(customListener).toHaveBeenCalledWith({ text: "partial" });
+
+    charivo.off("realtime:text:delta", customListener);
+    charivo.emit("realtime:text:delta", { text: "ignored" });
+    expect(customListener).toHaveBeenCalledTimes(1);
+
+    charivo.detachTTS();
+    charivo.detachSTT();
+    charivo.detachRealtime();
+
+    expect(charivo.getSTTManager()).toBeUndefined();
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.isRealtimeModeEnabled()).toBe(false);
+  });
+
+  it("emits tts:error when synthesis fails and skips detached tts", async () => {
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
+    const client = new ResolvingClient("Still here.");
+    const llmManager = createLLMManager(client);
+    const charivo = new Charivo();
+    const ttsErrorListener = vi.fn();
+
+    ttsManager.speak.mockRejectedValueOnce(new Error("tts failed"));
+
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
+    charivo.attachLLM(llmManager);
+    charivo.setCharacter(character);
+    charivo.on("tts:error", ttsErrorListener);
+
+    await charivo.userSay("Hello");
+
+    expect(ttsErrorListener).toHaveBeenCalledTimes(1);
+    expect(ttsErrorListener.mock.calls[0]?.[0]).toMatchObject({
+      error: expect.objectContaining({
+        message: "tts failed",
+      }),
+    });
+
+    ttsManager.speak.mockClear();
+    charivo.detachTTS();
+
+    await charivo.userSay("Hello again");
+
+    expect(ttsManager.speak).not.toHaveBeenCalled();
   });
 });
