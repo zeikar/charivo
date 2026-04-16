@@ -1,5 +1,11 @@
 # @charivo/core
 
+## 0.7.0
+
+### Minor Changes
+
+- c2e1cb8: Add canonical avatar control support with expression, motion, and gaze events/tools, and remove the legacy emotion-based avatar control surface.
+
 ## 0.6.0
 
 ### Minor Changes

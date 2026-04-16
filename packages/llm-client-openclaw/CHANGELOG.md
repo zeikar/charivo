@@ -1,5 +1,13 @@
 # @charivo/llm-client-openclaw
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [c2e1cb8]
+  - @charivo/core@0.7.0
+  - @charivo/llm-provider-openclaw@0.0.8
+
 ## 0.0.7
 
 ### Patch Changes
