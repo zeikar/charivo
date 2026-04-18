@@ -7,7 +7,11 @@ export default defineConfig({
     globals: true,
     environment: "node",
     setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
-    exclude: [...configDefaults.exclude, "tests/live-realtime/**"],
+    exclude: [
+      ...configDefaults.exclude,
+      "tests/live-realtime/**",
+      "tests/webrtc-smoke/**",
+    ],
     coverage: {
       provider: "v8",
       all: true,

@@ -44,6 +44,10 @@ export default defineConfig({
         server.middlewares.use(
           "/api/realtime",
           async (request: IncomingMessage, response: ServerResponse, next) => {
+            // This route is intentionally local to the WebRTC harness so the
+            // smoke test can validate realtime packages without depending on
+            // examples/web. The live-bootstrap suite covers the examples/web
+            // route contract separately.
             if (request.method !== "POST") {
               next();
               return;

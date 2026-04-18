@@ -1,44 +1,14 @@
-import {
-  Charivo,
-  type Character,
-  type EventMap,
-  type RealtimeState,
-} from "@charivo/core";
+import { Charivo, type Character, type EventMap } from "@charivo/core";
 import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
 import {
   SET_EXPRESSION_TOOL_NAME,
   createAvatarControlTools,
   createRealtimeManager,
 } from "@charivo/realtime-core";
-
-type HarnessEvent = {
-  type: string;
-  payload: unknown;
-  at: number;
-};
-
-type HarnessSnapshot = {
-  sessionStatus: RealtimeState["session"]["status"];
-  connection: RealtimeState["connection"];
-  assistantStatus: RealtimeState["response"]["status"];
-  assistantText: string;
-  lastError: string | null;
-  toolCalls: Array<{ name: string; callId?: string }>;
-  avatarEvents: Array<
-    | { type: "expression"; expressionId: string }
-    | { type: "motion"; group: string; index: number }
-    | { type: "gaze"; x: number; y: number }
-  >;
-  events: HarnessEvent[];
-};
+import type { HarnessSnapshot, SmokeHarnessApi } from "../harness-types";
 
 type SmokeWindow = Window & {
-  __charivoSmoke?: {
-    startSession: () => Promise<void>;
-    sendPrompt: (text?: string) => Promise<void>;
-    stopSession: () => Promise<void>;
-    getSnapshot: () => HarnessSnapshot;
-  };
+  __charivoSmoke?: SmokeHarnessApi;
 };
 
 const TEST_CHARACTER: Character = {
@@ -47,6 +17,7 @@ const TEST_CHARACTER: Character = {
   personality: "Gentle, attentive, and expressive in small moments.",
 };
 
+// Keep the smoke deterministic by exposing only setExpression.
 const TEST_TOOLS = createAvatarControlTools({
   expressions: ["Smile"],
   motions: {},
@@ -119,8 +90,7 @@ for (const eventName of subscriptions) {
       case "realtime:session:start":
       case "realtime:session:end":
       case "realtime:state": {
-        const realtimeState =
-          eventName === "realtime:state" ? payload.state : payload.state;
+        const realtimeState = payload.state;
         state.sessionStatus = realtimeState.session.status;
         state.connection = realtimeState.connection;
         state.assistantStatus = realtimeState.response.status;

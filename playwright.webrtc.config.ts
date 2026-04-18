@@ -36,7 +36,7 @@ export default defineConfig({
     command:
       "pnpm exec vite --config tests/webrtc-smoke/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort",
     url: baseURL,
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 });

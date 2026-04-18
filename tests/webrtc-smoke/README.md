@@ -24,6 +24,10 @@ What it proves:
 - the realtime manager receives a real tool call and emits a canonical avatar
   event
 
+This harness intentionally provides its own minimal `/api/realtime`
+implementation. It does not validate the `examples/web` route. That route is
+covered separately by the live bootstrap suite in `tests/live-realtime/`.
+
 What it does not prove:
 
 - microphone UX quality
