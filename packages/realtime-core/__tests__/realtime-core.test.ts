@@ -105,7 +105,22 @@ describe("realtime-core", () => {
     expect(config.transport).toBe("webrtc");
     expect(config.model).toBe("gpt-realtime-mini");
     expect(config.voice).toBe("alloy");
-    expect(config.instructions).toContain("Hiyori");
+    expect(config.instructions).toMatch(/^You are Hiyori\./);
+    expect(config.instructions).toContain(
+      "Stay fully in character during the conversation.",
+    );
+    expect(config.instructions).toContain(
+      "Never break character. Never refer to yourself as an AI, model, or assistant.",
+    );
+    expect(config.instructions).toContain(
+      'Use "setExpression" only when the emotional beat clearly shifts',
+    );
+    expect(config.instructions).toContain(
+      "Many turns should use no avatar tool at all.",
+    );
+    expect(config.instructions).toContain(
+      "Do not narrate your facial expressions, motions, or gaze.",
+    );
     expect(config.tools).toBeUndefined();
   });
 
@@ -128,9 +143,18 @@ describe("realtime-core", () => {
     ).toMatchObject({
       enum: ["Smile"],
     });
+    expect(expressionTool!.definition.description).toContain(
+      "Usually keep the same expression for a few turns.",
+    );
     expect(motionTool!.definition.parameters.properties.group).toMatchObject({
       enum: ["Idle"],
     });
+    expect(motionTool!.definition.description).toContain(
+      "Usually use at most one motion in a reply.",
+    );
+    expect(gazeTool!.definition.description).toContain(
+      "Prefer this when a lightweight reaction is enough.",
+    );
 
     await expect(
       expressionTool!.handler(

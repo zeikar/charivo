@@ -1,15 +1,15 @@
 import {
   type AvatarControlCatalog,
-  type Character,
   type GazeCoordinates,
   type MotionSelection,
-  type RealtimeSessionConfig,
   type RealtimeToolRegistration,
 } from "@charivo/core";
+import {
+  LOOK_AT_TOOL_DESCRIPTION,
+  PLAY_MOTION_TOOL_DESCRIPTION,
+  SET_EXPRESSION_TOOL_DESCRIPTION,
+} from "./instructions";
 
-const DEFAULT_PROVIDER = "openai";
-const DEFAULT_MODEL = "gpt-realtime-mini";
-const DEFAULT_VOICE = "marin";
 const MIN_GAZE = -1;
 const MAX_GAZE = 1;
 
@@ -42,8 +42,7 @@ export function createAvatarControlTools(
       definition: {
         type: "function",
         name: SET_EXPRESSION_TOOL_NAME,
-        description:
-          "Set the avatar expression directly using a valid expression ID from the loaded Live2D model.",
+        description: SET_EXPRESSION_TOOL_DESCRIPTION,
         parameters: {
           type: "object",
           properties: {
@@ -81,8 +80,7 @@ export function createAvatarControlTools(
       definition: {
         type: "function",
         name: PLAY_MOTION_TOOL_NAME,
-        description:
-          "Play a Live2D motion using a valid motion group from the loaded model.",
+        description: PLAY_MOTION_TOOL_DESCRIPTION,
         parameters: {
           type: "object",
           properties: {
@@ -136,8 +134,7 @@ export function createAvatarControlTools(
     definition: {
       type: "function",
       name: LOOK_AT_TOOL_NAME,
-      description:
-        "Move the avatar gaze using normalized coordinates in the range -1 to 1.",
+      description: LOOK_AT_TOOL_DESCRIPTION,
       parameters: {
         type: "object",
         properties: {
@@ -174,55 +171,6 @@ export function createAvatarControlTools(
   });
 
   return tools;
-}
-
-export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
-You are a realtime voice agent controlling a Live2D character.
-Respond naturally, stay in character, and keep replies concise enough for spoken delivery.
-Use avatar tools such as "setExpression", "playMotion", and "lookAt" to keep the character visually aligned with the conversation.
-Do not mention tool calls in the spoken response.
-`.trim();
-
-export interface BuildRealtimeSessionConfigOptions {
-  character?: Character | null;
-  baseConfig?: RealtimeSessionConfig;
-}
-
-export function buildRealtimeSessionConfig({
-  character,
-  baseConfig,
-}: BuildRealtimeSessionConfigOptions = {}): RealtimeSessionConfig {
-  return {
-    provider: baseConfig?.provider ?? DEFAULT_PROVIDER,
-    transport: baseConfig?.transport ?? "webrtc",
-    model: baseConfig?.model ?? DEFAULT_MODEL,
-    voice: baseConfig?.voice ?? character?.voice?.voiceId ?? DEFAULT_VOICE,
-    instructions:
-      baseConfig?.instructions ?? buildCharacterInstructions(character),
-    temperature: baseConfig?.temperature,
-    maxTokens: baseConfig?.maxTokens,
-    tools: baseConfig?.tools,
-    toolChoice: baseConfig?.toolChoice ?? "auto",
-  };
-}
-
-function buildCharacterInstructions(character?: Character | null): string {
-  if (!character) {
-    return DEFAULT_REALTIME_AGENT_INSTRUCTIONS;
-  }
-
-  const lines = [DEFAULT_REALTIME_AGENT_INSTRUCTIONS];
-  lines.push(`Character name: ${character.name}.`);
-
-  if (character.description) {
-    lines.push(`Character description: ${character.description}.`);
-  }
-
-  if (character.personality) {
-    lines.push(`Character personality: ${character.personality}.`);
-  }
-
-  return lines.join("\n");
 }
 
 function clamp(value: number, min: number, max: number): number {

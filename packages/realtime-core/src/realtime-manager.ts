@@ -10,8 +10,8 @@ import type {
   RealtimeToolRegistration,
 } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
+import { buildRealtimeSessionConfig } from "./instructions";
 import {
-  buildRealtimeSessionConfig,
   LOOK_AT_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
   SET_EXPRESSION_TOOL_NAME,
