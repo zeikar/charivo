@@ -5,7 +5,11 @@ import {
   createAvatarControlTools,
   createRealtimeManager,
 } from "@charivo/realtime-core";
-import type { HarnessSnapshot, SmokeHarnessApi } from "../harness-types";
+import type {
+  HarnessMode,
+  HarnessSnapshot,
+  SmokeHarnessApi,
+} from "../harness-types";
 
 type SmokeWindow = Window & {
   __charivoSmoke?: SmokeHarnessApi;
@@ -17,13 +21,24 @@ const TEST_CHARACTER: Character = {
   personality: "Gentle, attentive, and expressive in small moments.",
 };
 
-// Keep the smoke deterministic by exposing only setExpression.
-const TEST_TOOLS = createAvatarControlTools({
-  expressions: ["Smile"],
-  motions: {},
-}).filter((tool) => tool.definition.name === SET_EXPRESSION_TOOL_NAME);
+const HARNESS_MODE = resolveHarnessMode();
 
-const TEST_INSTRUCTIONS = [
+const AVATAR_CATALOG = {
+  expressions: ["Smile"],
+  motions: {
+    // Non-empty motion group so the playMotion tool schema registers a usable enum.
+    Emphasis: 3,
+  },
+} as const;
+
+const ALL_TEST_TOOLS = createAvatarControlTools(AVATAR_CATALOG);
+
+// Keep the smoke deterministic by exposing only setExpression.
+const SMOKE_TEST_TOOLS = ALL_TEST_TOOLS.filter(
+  (tool) => tool.definition.name === SET_EXPRESSION_TOOL_NAME,
+);
+
+const SMOKE_TEST_INSTRUCTIONS = [
   "You are Hiyori.",
   "Stay fully in character.",
   'When the user asks you to smile, call setExpression exactly once with expressionId "Smile".',
@@ -32,12 +47,19 @@ const TEST_INSTRUCTIONS = [
   "Reply in one short sentence.",
 ].join(" ");
 
+const ACTIVE_TOOLS =
+  HARNESS_MODE === "default-prompt-eval" ? ALL_TEST_TOOLS : SMOKE_TEST_TOOLS;
+
 const state: HarnessSnapshot = {
+  mode: HARNESS_MODE,
   sessionStatus: "idle",
   connection: "idle",
   assistantStatus: "idle",
+  assistantCompletions: 0,
   assistantText: "",
   lastError: null,
+  sessionInstructions: null,
+  registeredTools: ACTIVE_TOOLS.map((tool) => tool.definition.name),
   toolCalls: [],
   avatarEvents: [],
   events: [],
@@ -48,7 +70,7 @@ const realtimeClient = createRemoteRealtimeClient({
   apiEndpoint: "/api/realtime",
 });
 const realtimeManager = createRealtimeManager(realtimeClient, {
-  tools: TEST_TOOLS,
+  tools: ACTIVE_TOOLS,
 });
 
 charivo.attachRealtime(realtimeManager);
@@ -94,6 +116,8 @@ for (const eventName of subscriptions) {
         state.sessionStatus = realtimeState.session.status;
         state.connection = realtimeState.connection;
         state.assistantStatus = realtimeState.response.status;
+        state.sessionInstructions =
+          realtimeState.session.config?.instructions ?? null;
         if (realtimeState.response.text) {
           state.assistantText = realtimeState.response.text;
         }
@@ -111,6 +135,7 @@ for (const eventName of subscriptions) {
 
       case "realtime:assistant:done":
         state.assistantStatus = "completed";
+        state.assistantCompletions += 1;
         state.assistantText = payload.text;
         break;
 
@@ -169,17 +194,28 @@ async function startSession(): Promise<void> {
   render();
 
   try {
-    await realtimeManager.startSession({
-      provider: "openai",
-      toolChoice: "auto",
-      instructions: TEST_INSTRUCTIONS,
-    });
+    await realtimeManager.startSession(buildSessionConfigForMode(HARNESS_MODE));
   } catch (error) {
     state.lastError =
       error instanceof Error ? error.message : String(error ?? "Unknown error");
     render();
     throw error;
   }
+}
+
+function buildSessionConfigForMode(mode: HarnessMode) {
+  if (mode === "default-prompt-eval") {
+    return {
+      provider: "openai" as const,
+      toolChoice: "auto" as const,
+    };
+  }
+
+  return {
+    provider: "openai" as const,
+    toolChoice: "auto" as const,
+    instructions: SMOKE_TEST_INSTRUCTIONS,
+  };
 }
 
 async function stopSession(): Promise<void> {
@@ -238,6 +274,12 @@ function requiredElement<T extends HTMLElement>(id: string): T {
   }
 
   return element as T;
+}
+
+function resolveHarnessMode(): HarnessMode {
+  const mode = new URL(window.location.href).searchParams.get("mode");
+
+  return mode === "default-prompt-eval" ? mode : "smoke";
 }
 
 const smokeWindow = window as SmokeWindow;

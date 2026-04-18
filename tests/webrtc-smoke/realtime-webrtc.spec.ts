@@ -1,5 +1,12 @@
-import { expect, test, type Page } from "@playwright/test";
-import type { HarnessSnapshot, SmokeHarnessApi } from "./harness-types";
+import { expect, test } from "@playwright/test";
+import {
+  getSnapshot,
+  stopSession,
+  waitForAssistantCompletion,
+  waitForConnected,
+  waitForNoHarnessError,
+  waitForToolAndAvatarActivity,
+} from "./spec-helpers";
 
 const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
@@ -24,104 +31,15 @@ test.describe("realtime WebRTC smoke harness", () => {
 
     await connectButton.click();
 
-    await page.waitForFunction(
-      () => {
-        const smoke = (
-          window as Window & {
-            __charivoSmoke?: SmokeHarnessApi;
-          }
-        ).__charivoSmoke;
-
-        if (!smoke) {
-          return false;
-        }
-
-        const snapshot = smoke.getSnapshot();
-        return (
-          snapshot.connection === "connected" &&
-          snapshot.sessionStatus === "active"
-        );
-      },
-      undefined,
-      {
-        timeout: 60_000,
-      },
-    );
-    await page.waitForFunction(
-      () => {
-        const smoke = (
-          window as Window & {
-            __charivoSmoke?: SmokeHarnessApi;
-          }
-        ).__charivoSmoke;
-
-        return smoke?.getSnapshot().lastError === null;
-      },
-      undefined,
-      {
-        timeout: 5_000,
-      },
-    );
+    await waitForConnected(page);
+    await waitForNoHarnessError(page);
 
     await sendButton.click();
 
-    await page.waitForFunction(
-      () => {
-        const smoke = (
-          window as Window & {
-            __charivoSmoke?: SmokeHarnessApi;
-          }
-        ).__charivoSmoke;
+    await waitForAssistantCompletion(page, 1);
+    await waitForNoHarnessError(page);
 
-        if (!smoke) {
-          return false;
-        }
-
-        const snapshot = smoke.getSnapshot();
-        return (
-          snapshot.assistantStatus === "completed" &&
-          snapshot.assistantText.trim().length > 0
-        );
-      },
-      undefined,
-      {
-        timeout: 60_000,
-      },
-    );
-    await page.waitForFunction(
-      () => {
-        const smoke = (
-          window as Window & {
-            __charivoSmoke?: SmokeHarnessApi;
-          }
-        ).__charivoSmoke;
-
-        return smoke?.getSnapshot().lastError === null;
-      },
-      undefined,
-      {
-        timeout: 5_000,
-      },
-    );
-
-    await page.waitForFunction(() => {
-      const smoke = (
-        window as Window & {
-          __charivoSmoke?: SmokeHarnessApi;
-        }
-      ).__charivoSmoke;
-
-      if (!smoke) {
-        return false;
-      }
-
-      const snapshot = smoke.getSnapshot();
-      return (
-        snapshot.toolCalls.length > 0 &&
-        snapshot.avatarEvents.length > 0 &&
-        snapshot.assistantText.trim().length > 0
-      );
-    });
+    await waitForToolAndAvatarActivity(page);
 
     const snapshot = await getSnapshot(page);
 
@@ -134,62 +52,3 @@ test.describe("realtime WebRTC smoke harness", () => {
     expect(snapshot.assistantText.trim().length).toBeGreaterThan(0);
   });
 });
-
-async function getSnapshot(page: Page): Promise<HarnessSnapshot> {
-  return page.evaluate(() => {
-    const smoke = (
-      window as Window & {
-        __charivoSmoke?: SmokeHarnessApi;
-      }
-    ).__charivoSmoke;
-
-    if (!smoke) {
-      throw new Error("Smoke harness state is not available");
-    }
-
-    return smoke.getSnapshot();
-  });
-}
-
-async function stopSession(page: Page): Promise<void> {
-  if (page.isClosed()) {
-    return;
-  }
-
-  try {
-    await page.evaluate(() => {
-      const smoke = (
-        window as Window & {
-          __charivoSmoke?: SmokeHarnessApi;
-        }
-      ).__charivoSmoke;
-
-      if (!smoke) {
-        return;
-      }
-
-      void smoke.stopSession();
-    });
-
-    await page.waitForFunction(
-      () => {
-        const smoke = (
-          window as Window & {
-            __charivoSmoke?: SmokeHarnessApi;
-          }
-        ).__charivoSmoke;
-
-        if (!smoke) {
-          return true;
-        }
-
-        const snapshot = smoke.getSnapshot();
-        return snapshot.sessionStatus === "idle";
-      },
-      undefined,
-      { timeout: 5_000 },
-    );
-  } catch {
-    // Best-effort cleanup for live sessions.
-  }
-}

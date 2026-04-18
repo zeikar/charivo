@@ -1,5 +1,7 @@
 import type { RealtimeState } from "@charivo/core";
 
+export type HarnessMode = "smoke" | "default-prompt-eval";
+
 export type HarnessEvent = {
   type: string;
   payload: unknown;
@@ -7,11 +9,15 @@ export type HarnessEvent = {
 };
 
 export type HarnessSnapshot = {
+  mode: HarnessMode;
   sessionStatus: RealtimeState["session"]["status"];
   connection: RealtimeState["connection"];
   assistantStatus: RealtimeState["response"]["status"];
+  assistantCompletions: number;
   assistantText: string;
   lastError: string | null;
+  sessionInstructions: string | null;
+  registeredTools: string[];
   toolCalls: Array<{ name: string; callId?: string }>;
   avatarEvents: Array<
     | { type: "expression"; expressionId: string }
