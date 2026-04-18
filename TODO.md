@@ -1,0 +1,84 @@
+# Execution Backlog
+
+This file is the shared execution backlog for active work across agents and
+sessions.
+Use it for short-horizon implementation priorities and handoff context, not for
+long-term product planning.
+
+## How To Use
+
+- Keep `roadmap.md` as the phase and milestone document.
+- Keep this file focused on the next concrete work items.
+- Prefer short outcome-driven entries over implementation logs.
+- If an item grows beyond a few bullets, move the detail into an issue, PR, or
+  dedicated design doc.
+- Remove completed items or move them into a short `Recently Done` section.
+
+## Now
+
+- [P0] Define a baseline measurement pass for `examples/web`
+  Outcome: capture response start latency, interruption recovery, and lip-sync
+  stability for the current realtime stack.
+  Notes: this closes the remaining Phase 0 ambiguity and sets the floor for
+  later evaluation.
+
+- [P0] Clean up realtime transcript UX
+  Outcome: define and implement a clearer model for assistant drafts, final
+  utterances, and interruption artifacts.
+  Notes: this is the most immediate product-facing gap after avatar control.
+
+- [P1] Tune avatar action prompting and tool usage
+  Outcome: make motion and gaze usage feel intentional instead of
+  expression-heavy.
+  Notes: validate against the current `examples/web` demo before adding new
+  primitives.
+
+- [P1] Decide whether `setIdleMode` is a real primitive
+  Outcome: make an explicit keep/remove decision for idle control.
+  Notes: if idle stays implicit, document where renderer- or state-driven idle
+  behavior should live.
+
+## Next
+
+- [P1] Validate current avatar action behavior against the Amadeus target
+  Outcome: identify where the demo still feels generic instead of characterful.
+  Notes: use the current canonical `expression`, `motion`, and `gaze` path as
+  the baseline.
+
+- [P1] Define reconnect and session-refresh UX expectations
+  Outcome: decide what state should survive reconnects and where refresh cost is
+  acceptable.
+  Notes: this should feed directly into Phase 2 transcript and session work.
+
+- [P1] Decide whether non-realtime responses should drive avatar actions
+  Outcome: either keep avatar actions realtime-only or define a separate
+  explicit contract for turn-based paths.
+  Notes: do not revive the old emotion-tag approach.
+
+## Later
+
+- [P2] Design the memory schema and promotion rules
+  Outcome: define short-term, medium-term, and long-term memory boundaries.
+
+- [P2] Design the Amadeus persona and state model
+  Outcome: define relationship-driven tone, situational modes, and response
+  behavior.
+
+- [P2] Define the evaluation set and operating thresholds
+  Outcome: establish repeatable checks for latency, interruption recovery,
+  memory precision, and persona consistency.
+
+## Open Questions
+
+- Is idle control an explicit primitive or should it remain renderer-managed?
+- Should non-realtime avatar actions exist at all?
+- What is the first concrete Amadeus persona acceptance test?
+
+## Recently Done
+
+- Canonical realtime avatar control now uses `expression`, `motion`, and `gaze`
+  instead of the old emotion shorthand.
+- `examples/web` already exposes realtime avatar debug visibility for tool
+  calls and applied actions.
+- Repo-wide `pnpm verify` passes without lint noise from generated `docs-site`
+  output.

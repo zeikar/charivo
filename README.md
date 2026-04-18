@@ -15,6 +15,7 @@ Documentation:
 
 - [https://zeikar.github.io/charivo/](https://zeikar.github.io/charivo/)
 - [ROADMAP.md](./ROADMAP.md): Amadeus-oriented product and technical roadmap
+- [TODO.md](./TODO.md): active execution backlog for the next implementation work
 
 ## Quick Start
 

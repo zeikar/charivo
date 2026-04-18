@@ -1,6 +1,7 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
+Updated: 2026-04-18
 
 ## Goal
 
@@ -27,13 +28,18 @@ This roadmap assumes the current Charivo architecture stays intact.
 - Prefer adapters and feature expansion over large architectural redesigns
 - Assume realtime input transcription is handled by the OpenAI Agents SDK; standalone STT (`@charivo/stt-*`) is not on the Amadeus path until proven necessary
 
+Execution backlog for the next concrete work lives in [`TODO.md`](./TODO.md).
+This file should stay focused on phase status, major open questions, and
+product-level direction.
+
 ## What Already Exists
 
 The repository already has most of the foundation needed for an Amadeus prototype.
 
 - `@charivo/realtime-client-openai-agents` provides an OpenAI Agents SDK based realtime transport
 - `@charivo/realtime-core` already has typed session config, a tool registry, and reconnect-based `updateSession(...)`
-- `@charivo/render-core` already bridges realtime emotion and lip-sync events into the renderer
+- `@charivo/realtime-core` already exposes canonical avatar control tools for expression, motion, and gaze
+- `@charivo/render-core` already bridges realtime avatar action and lip-sync events into the renderer
 - `@charivo/render-live2d` already exposes expression, motion, lip-sync, and mouse tracking primitives
 - `examples/web` is already the fastest place to validate the full realtime voice path in a real app
 
@@ -106,6 +112,14 @@ Done when:
 
 The goal is to move from "a character that speaks" to "a character that acts."
 
+Status:
+
+- framework-side avatar control foundation is now in place in Charivo
+- canonical realtime avatar primitives are `expression`, `motion`, and `gaze`
+- the legacy `emotion` compatibility layer has been removed rather than retained
+- `examples/web` already demonstrates realtime expression, motion, gaze, and debug visibility
+- remaining work is now mostly product-side behavior tuning and future follow-up items, not basic framework plumbing
+
 Priority:
 
 1. expand the realtime tool and event surface
@@ -114,12 +128,21 @@ Priority:
 
 Work items:
 
-- add `setExpression`, `playMotion`, `lookAt`, and `setIdleMode`
+Completed in Charivo foundation:
+
+- add `setExpression`, `playMotion`, and `lookAt` as the canonical realtime avatar actions
 - extend the built-in realtime tool concept to avatar action control
 - keep the mapping between tools/events and renderer capabilities loose rather than renderer-specific
-- preserve the event split: `realtime-core` keeps emitting via `setEventEmitter(...)`, `render-core` keeps consuming via `setEventBus(...)`; new actions must not collapse the two contracts
+- preserve the event split: `realtime-core` keeps emitting via `setEventEmitter(...)`, `render-core` keeps consuming via `setEventBus(...)`
 - add basic rate limiting or debounce rules to avoid motion/expression spam
-- document a future follow-up for turn-based avatar action delivery instead of reviving emotion tags
+- remove the old `emotion` shorthand path instead of carrying it forward as a long-term control surface
+
+Still open for this phase or immediate follow-up:
+
+- decide whether `setIdleMode` is actually needed as a first-class primitive or whether idle should remain renderer/state driven
+- tune prompting and tool descriptions so the agent uses motion and gaze naturally rather than overusing expressions
+- define whether non-realtime responses should ever drive avatar actions, and if so through what explicit contract
+- validate the current avatar action UX against the actual Amadeus target instead of only the framework demo
 
 Recommended package scope:
 
@@ -133,6 +156,11 @@ Done when:
 - one live session can drive expression, motion, and gaze changes
 - avatar reactions stay aligned with the spoken/text response
 - noisy over-animation is reduced
+
+Current read:
+
+- the framework portion is substantially done
+- Amadeus-specific polish for when and why actions are used is still open
 
 Follow-up after Phase 1:
 
@@ -248,17 +276,39 @@ Done when:
 - regressions can be detected
 - there is a minimum bar for deciding whether public release is responsible
 
+## How To Use This Roadmap
+
+This file should be treated as a phase and milestone document, not as a
+day-to-day task list.
+
+Use it to track:
+
+- what has been completed at the phase level
+- what remains open at the product level
+- which risks or design questions block the next phase
+
+Do not use it to track:
+
+- small implementation chores
+- cleanup-only commits
+- line-by-line engineering TODOs
+
+For day-to-day execution, use issues, PRs, or a separate working checklist.
+The roadmap should stay readable as a high-level progress document.
+For shared agent and session handoff, use [`TODO.md`](./TODO.md).
+
 ## Package-Level Map
 
 ### `examples/web`
 
 This should be the first place to experiment.
 It is the right environment for validating the Amadeus app UX quickly.
+It is the most likely place for richer event support, session update
+capability, and transcript refinement work.
 
 ### `@charivo/realtime-client-openai-agents`
 
 This is the key boundary between the OpenAI Agents SDK and the Charivo transport contract.
-It is the most likely place for richer event support, session update capability, and transcript refinement work.
 
 ### `@charivo/realtime-core`
 
@@ -279,16 +329,6 @@ If gaze control, idle behavior, or motion blending become important, this packag
 
 Memory storage, user profiles, session archives, and privacy policy should start outside core.
 That work is closer to productization than to framework design.
-
-## Immediate Next Steps
-
-The most reasonable sequence from here is:
-
-1. build an "Amadeus spike mode" on top of `examples/web`
-2. define the non-emotion avatar action requirements concretely
-3. write the Phase 1 tool and event design before coding it
-4. implement the smallest useful version of expression, motion, and gaze support
-5. keep memory experimental at the app layer before trying to generalize it into core
 
 ## Things To Avoid
 
