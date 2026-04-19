@@ -40,7 +40,7 @@ Run this from the repository root before publishing public packages.
 
 ## Packaging
 
-- Verify every publishable package has aligned `main`, `module`, `types`, and `exports`.
+- Verify root-entry packages have aligned `main`, `module`, `types`, and `exports`, and keep subpath-only packages on `exports` only.
 - Keep publishable packages dual-format by default, and only keep a package ESM-only when it is browser-only or there is a clear technical reason.
 - Review `npm pack --dry-run` output through `pnpm pack:check`.
 - Check that runtime dependencies are still necessary.

@@ -29,14 +29,25 @@ for (const dirent of packageDirs) {
 
   const declaredEntryFields = ["main", "module", "types"];
   const declaredFiles = [];
+  const hasRootExport = hasPackageRootExport(packageJson.exports);
 
-  for (const field of declaredEntryFields) {
-    const value = packageJson[field];
-    if (typeof value !== "string" || value.length === 0) {
-      failures.push(`${packageJson.name}: missing "${field}" field`);
-      continue;
+  if (hasRootExport) {
+    for (const field of declaredEntryFields) {
+      const value = packageJson[field];
+      if (typeof value !== "string" || value.length === 0) {
+        failures.push(`${packageJson.name}: missing "${field}" field`);
+        continue;
+      }
+      declaredFiles.push(value);
     }
-    declaredFiles.push(value);
+  } else {
+    for (const field of declaredEntryFields) {
+      if (field in packageJson) {
+        failures.push(
+          `${packageJson.name}: subpath-only package must not declare "${field}" field`,
+        );
+      }
+    }
   }
 
   if (!packageJson.exports || typeof packageJson.exports !== "object") {
@@ -98,6 +109,15 @@ function collectExportFiles(value) {
   }
 
   return Object.values(value).flatMap((entry) => collectExportFiles(entry));
+}
+
+function hasPackageRootExport(exportsField) {
+  return Boolean(
+    exportsField &&
+      typeof exportsField === "object" &&
+      !Array.isArray(exportsField) &&
+      "." in exportsField,
+  );
 }
 
 function stripLeadingDotSlash(value) {
