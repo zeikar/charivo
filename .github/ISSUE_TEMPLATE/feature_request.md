@@ -27,9 +27,13 @@ Have you considered any alternative solutions or features?
 ## 📦 Which Package?
 Which Charivo package would this feature belong to?
 - [ ] @charivo/core
-- [ ] @charivo/adapter-llm-*
-- [ ] @charivo/adapter-tts-*
-- [ ] @charivo/render-*
+- [ ] @charivo/llm
+- [ ] @charivo/tts
+- [ ] @charivo/stt
+- [ ] @charivo/realtime
+- [ ] @charivo/render
+- [ ] @charivo/render-live2d
+- [ ] @charivo/server
 - [ ] New package
 - [ ] Other (please specify)
 

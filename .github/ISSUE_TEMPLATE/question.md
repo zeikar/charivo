@@ -26,9 +26,13 @@ What have you already tried? Which documentation have you checked?
 Which Charivo packages are you using?
 
 - [ ] @charivo/core
-- [ ] @charivo/adapter-llm-openai
-- [ ] @charivo/adapter-tts-web
+- [ ] @charivo/llm
+- [ ] @charivo/tts
+- [ ] @charivo/stt
+- [ ] @charivo/realtime
+- [ ] @charivo/render
 - [ ] @charivo/render-live2d
+- [ ] @charivo/server
 - [ ] Other (please specify)
 
 ## 🔧 Environment

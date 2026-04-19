@@ -1,4 +1,4 @@
-# @charivo/stt-core
+# @charivo/stt
 
 ## 0.2.0
 

@@ -1,4 +1,4 @@
-# @charivo/tts-core
+# @charivo/tts
 
 ## 0.2.0
 

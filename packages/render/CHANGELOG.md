@@ -1,4 +1,4 @@
-# @charivo/render-core
+# @charivo/render
 
 ## 0.2.0
 

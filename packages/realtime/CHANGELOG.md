@@ -1,4 +1,4 @@
-# @charivo/realtime-core
+# @charivo/realtime
 
 ## 0.2.0
 

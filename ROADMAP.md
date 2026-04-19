@@ -22,11 +22,11 @@ This is not just a voice chatbot. The target is a persistent conversational char
 
 This roadmap assumes the current Charivo architecture stays intact.
 
-- Keep the current layering: `@charivo/core -> *-core -> browser client/player/transcriber/renderer -> provider`
+- Keep the current layering: `@charivo/core -> modality root packages -> browser subpath adapters -> server providers`
 - Keep the current event split: `RenderManager.setEventBus(...)` and realtime/TTS/STT managers using `setEventEmitter(...)`
 - Let OpenAI handle agent/runtime concerns while Charivo handles character state, rendering, and orchestration
 - Prefer adapters and feature expansion over large architectural redesigns
-- Assume realtime input transcription is handled by the OpenAI Agents SDK; standalone STT (`@charivo/stt-*`) is not on the Amadeus path until proven necessary
+- Assume realtime input transcription is handled by the OpenAI Agents SDK; standalone STT (`@charivo/stt`) is not on the Amadeus path until proven necessary
 
 Execution backlog for the next concrete work lives in [`TODO.md`](./TODO.md).
 This file should stay focused on phase status, major open questions, and
@@ -36,10 +36,10 @@ product-level direction.
 
 The repository already has most of the foundation needed for an Amadeus prototype.
 
-- `@charivo/realtime-client-openai-agents` provides an OpenAI Agents SDK based realtime transport
-- `@charivo/realtime-core` already has typed session config, a tool registry, and reconnect-based `updateSession(...)`
-- `@charivo/realtime-core` already exposes canonical avatar control tools for expression, motion, and gaze
-- `@charivo/render-core` already bridges realtime avatar action and lip-sync events into the renderer
+- `@charivo/realtime/openai-agents` provides an OpenAI Agents SDK based realtime transport
+- `@charivo/realtime` already has typed session config, a tool registry, and reconnect-based `updateSession(...)`
+- `@charivo/realtime` already exposes canonical avatar control tools for expression, motion, and gaze
+- `@charivo/render` already bridges realtime avatar action and lip-sync events into the renderer
 - `@charivo/render-live2d` already exposes expression, motion, lip-sync, and mouse tracking primitives
 - `examples/web` is already the fastest place to validate the full realtime voice path in a real app
 
@@ -133,7 +133,7 @@ Completed in Charivo foundation:
 - add `setExpression`, `playMotion`, and `lookAt` as the canonical realtime avatar actions
 - extend the built-in realtime tool concept to avatar action control
 - keep the mapping between tools/events and renderer capabilities loose rather than renderer-specific
-- preserve the event split: `realtime-core` keeps emitting via `setEventEmitter(...)`, `render-core` keeps consuming via `setEventBus(...)`
+- preserve the event split: `@charivo/realtime` keeps emitting via `setEventEmitter(...)`, `@charivo/render` keeps consuming via `setEventBus(...)`
 - add basic rate limiting or debounce rules to avoid motion/expression spam
 - remove the old `emotion` shorthand path instead of carrying it forward as a long-term control surface
 
@@ -147,8 +147,8 @@ Still open for this phase or immediate follow-up:
 Recommended package scope:
 
 - `@charivo/core`
-- `@charivo/realtime-core`
-- `@charivo/render-core`
+- `@charivo/realtime`
+- `@charivo/render`
 - `@charivo/render-live2d`
 
 Done when:
@@ -181,8 +181,8 @@ Work items:
 
 Recommended work areas:
 
-- `@charivo/realtime-core`
-- `@charivo/realtime-client-openai-agents`
+- `@charivo/realtime`
+- `@charivo/realtime/openai-agents`
 - app-level store and UI
 
 Done when:
@@ -306,16 +306,16 @@ It is the right environment for validating the Amadeus app UX quickly.
 It is the most likely place for richer event support, session update
 capability, and transcript refinement work.
 
-### `@charivo/realtime-client-openai-agents`
+### `@charivo/realtime/openai-agents`
 
 This is the key boundary between the OpenAI Agents SDK and the Charivo transport contract.
 
-### `@charivo/realtime-core`
+### `@charivo/realtime`
 
 This should remain the center of the tool registry, session state, transcript normalization, and future memory integration hooks.
 Most Amadeus-specific framework expansion will likely begin here.
 
-### `@charivo/render-core`
+### `@charivo/render`
 
 This is the right place to interpret realtime avatar actions and bridge them into renderer primitives.
 It will likely own the next step beyond emotion-only rendering behavior.

@@ -1,4 +1,4 @@
-# @charivo/llm-core
+# @charivo/llm
 
 ## 0.2.0
 
