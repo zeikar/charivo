@@ -149,7 +149,6 @@ examples/
   web/
 docs/
   guide/
-  adr/
   history/
   images/
 scripts/
@@ -158,7 +157,6 @@ scripts/
 - `packages/`: publishable library packages
 - `examples/web/`: reference app
 - `docs/guide/`: user-facing integration guides
-- `docs/adr/`: design decisions and policy
 - `docs/history/`: upgrade notes and implementation history
 - `scripts/`: repo tooling
 
@@ -166,7 +164,6 @@ scripts/
 
 - root `README.md`: project overview and top-level entry points
 - `docs/guide/`: integration guides and package selection help
-- `docs/adr/`: architectural decisions
 - `docs/history/`: migrations and historical notes
 
 ## TypeScript Module Resolution

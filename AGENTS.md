@@ -11,7 +11,7 @@ Read [README.md](./README.md) first for the current architecture, package map, a
 - Allow ESM-oriented output only for browser-only packages or when there is a clear technical reason.
 - Use `.d.mts` only for ESM-only packages, and keep `.d.ts` for dual-format packages.
 - Do not normalize package outputs (`.mjs`, `.d.mts`, dual-format manifests) unless explicitly requested.
-- Keep docs aligned with actual behavior. If code changes public behavior, update the relevant README.
+- Keep docs aligned with actual behavior. If code changes public behavior or package usage, update the relevant README and any affected files under `docs/guide/` or demo docs such as `examples/web/README.md`.
 
 ## Validation
 
