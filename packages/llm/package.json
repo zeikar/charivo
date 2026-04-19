@@ -1,6 +1,6 @@
 {
   "name": "@charivo/llm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LLM manager and browser adapters for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
