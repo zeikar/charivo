@@ -1,10 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  LOOK_AT_TOOL_NAME,
-  PLAY_MOTION_TOOL_NAME,
-  SET_EXPRESSION_TOOL_NAME,
-} from "../../packages/realtime/src/index";
-import {
   getSnapshot,
   sendPrompt,
   stopSession,
@@ -12,6 +7,10 @@ import {
   waitForConnected,
   waitForNoHarnessError,
 } from "./spec-helpers";
+
+const SET_EXPRESSION_TOOL_NAME = "setExpression";
+const PLAY_MOTION_TOOL_NAME = "playMotion";
+const LOOK_AT_TOOL_NAME = "lookAt";
 
 const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
