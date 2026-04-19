@@ -5,10 +5,10 @@ without depending on `examples/web`.
 
 Covered chain:
 
-- `@charivo/realtime-client-remote`
-- `@charivo/realtime-client-openai-agents`
-- `@charivo/realtime-core`
-- `@charivo/realtime-provider-openai`
+- `@charivo/realtime/remote`
+- `@charivo/realtime/openai-agents`
+- `@charivo/realtime`
+- `@charivo/server/openai`
 
 Run it explicitly:
 
@@ -18,7 +18,7 @@ RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key \
   pnpm test:webrtc -- tests/webrtc-smoke/realtime-webrtc.spec.ts
 ```
 
-Default realtime-core prompt evaluation runs as a separate live suite on the
+Default realtime prompt evaluation runs as a separate live suite on the
 same harness:
 
 ```bash
@@ -41,7 +41,7 @@ covered separately by the live bootstrap suite in `tests/live-realtime/`.
 The `realtime-webrtc.spec.ts` suite uses a narrow deterministic harness mode to
 verify connection and avatar-event plumbing. The
 `realtime-default-prompt.spec.ts` suite uses the default
-`@charivo/realtime-core` instruction path and the full canonical avatar tool
+`@charivo/realtime` instruction path and the full canonical avatar tool
 surface to evaluate prompt-driven tool selection.
 
 `realtime-default-prompt.spec.ts` is an advisory evaluation, not a CI gate.

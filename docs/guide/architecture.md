@@ -16,17 +16,17 @@ The dependency flow is intentionally simple:
 ```text
 App
   -> @charivo/core
-  -> manager packages (*-core)
-  -> browser implementations (client/player/transcriber/renderer)
+  -> modality packages
+  -> browser implementations via subpath exports
   -> optional server providers behind API routes
 ```
 
 In practice:
 
 - `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
-- `*-core` packages own stateful feature logic
-- browser runtime packages implement clients, players, transcribers, and renderers
-- provider packages stay on the server and hold credentials
+- modality packages own stateful feature logic
+- browser runtime packages live on subpaths such as `@charivo/tts/remote` or `@charivo/realtime/openai`
+- server providers live on `@charivo/server/*` subpaths and hold credentials
 
 Lower layers should not take on orchestration concerns from higher layers.
 
@@ -35,15 +35,14 @@ Lower layers should not take on orchestration concerns from higher layers.
 ### Core
 
 - `@charivo/core`: orchestrator, shared contracts, event bus
-- `@charivo/shared`: lightweight shared utilities
 
 ### Manager Packages
 
-- `@charivo/llm-core`: conversation lifecycle and message orchestration
-- `@charivo/tts-core`: synthesis flow and lip-sync coordination
-- `@charivo/stt-core`: recording and transcription lifecycle
-- `@charivo/realtime-core`: realtime session state, tools, and reconnect-driven updates
-- `@charivo/render-core`: renderer lifecycle, mouse tracking, and visual bridge logic
+- `@charivo/llm`: conversation lifecycle and message orchestration
+- `@charivo/tts`: synthesis flow and lip-sync coordination
+- `@charivo/stt`: recording and transcription lifecycle
+- `@charivo/realtime`: realtime session state, tools, and reconnect-driven updates
+- `@charivo/render`: renderer lifecycle, mouse tracking, and visual bridge logic
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.
 
@@ -54,43 +53,40 @@ when you explicitly want local development shortcuts or zero-server behavior.
 
 ### LLM
 
-- `@charivo/llm-client-remote`
-- `@charivo/llm-client-openai`
-- `@charivo/llm-client-openclaw`
-- `@charivo/llm-client-stub`
+- `@charivo/llm/remote`
+- `@charivo/llm/openai`
+- `@charivo/llm/openclaw`
+- `@charivo/llm/stub`
 
 ### TTS
 
-- `@charivo/tts-player-remote`
-- `@charivo/tts-player-openai`
-- `@charivo/tts-player-web`
+- `@charivo/tts/remote`
+- `@charivo/tts/openai`
+- `@charivo/tts/web`
 
 ### STT
 
-- `@charivo/stt-transcriber-remote`
-- `@charivo/stt-transcriber-openai`
-- `@charivo/stt-transcriber-web`
+- `@charivo/stt/remote`
+- `@charivo/stt/openai`
+- `@charivo/stt/web`
 
 ### Realtime
 
-- `@charivo/realtime-client-remote`
-- `@charivo/realtime-client-openai-agents`
-- `@charivo/realtime-client-openai`
+- `@charivo/realtime/remote`
+- `@charivo/realtime/openai-agents`
+- `@charivo/realtime/openai`
 
 ### Rendering
 
 - `@charivo/render-live2d`
-- `@charivo/render-stub`
+- `@charivo/render/stub`
 
 ## Server Providers
 
 Provider packages belong behind your own API routes:
 
-- `@charivo/llm-provider-openai`
-- `@charivo/llm-provider-openclaw`
-- `@charivo/tts-provider-openai`
-- `@charivo/stt-provider-openai`
-- `@charivo/realtime-provider-openai`
+- `@charivo/server/openai`
+- `@charivo/server/openclaw`
 
 The default production shape is:
 
@@ -122,17 +118,17 @@ redesigned.
 
 For production browser apps:
 
-- LLM: `@charivo/llm-core` + `@charivo/llm-client-remote` + `@charivo/llm-provider-openai`
-- TTS: `@charivo/tts-core` + `@charivo/tts-player-remote` + `@charivo/tts-provider-openai`
-- STT: `@charivo/stt-core` + `@charivo/stt-transcriber-remote` + `@charivo/stt-provider-openai`
-- Realtime: `@charivo/realtime-core` + `@charivo/realtime-client-remote` + `@charivo/realtime-provider-openai`
+- LLM: `@charivo/llm` + `@charivo/llm/remote` + `@charivo/server/openai`
+- TTS: `@charivo/tts` + `@charivo/tts/remote` + `@charivo/server/openai`
+- STT: `@charivo/stt` + `@charivo/stt/remote` + `@charivo/server/openai`
+- Realtime: `@charivo/realtime` + `@charivo/realtime/remote` + `@charivo/server/openai`
 
 Direct browser vendor packages are mainly for development, demos, and testing.
 
 Browser-native packages are a separate option:
 
-- `@charivo/tts-player-web`
-- `@charivo/stt-transcriber-web`
+- `@charivo/tts/web`
+- `@charivo/stt/web`
 
 Use them when you want browser-only speech features and can accept browser
 support differences.
@@ -142,12 +138,13 @@ support differences.
 ```text
 packages/
   core/
-  shared/
-  llm-*/
-  tts-*/
-  stt-*/
-  realtime-*/
-  render-*/
+  llm/
+  tts/
+  stt/
+  realtime/
+  render/
+  render-live2d/
+  server/
 examples/
   web/
 docs/
@@ -171,6 +168,15 @@ scripts/
 - `docs/guide/`: integration guides and package selection help
 - `docs/adr/`: architectural decisions
 - `docs/history/`: migrations and historical notes
+
+## TypeScript Module Resolution
+
+Charivo's public subpath imports require a module resolution mode that honors
+package exports. Use one of:
+
+- `moduleResolution: "bundler"`
+- `moduleResolution: "node16"`
+- `moduleResolution: "nodenext"`
 
 ## Related Guides
 

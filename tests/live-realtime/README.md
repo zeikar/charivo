@@ -12,7 +12,7 @@ RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key pnpm test:live-bootstrap
 
 What this suite validates:
 
-- the live bootstrap contract against `@charivo/realtime-provider-openai`
+- the live bootstrap contract against `@charivo/server/openai`
 - the local realtime manager tool pipeline up to canonical avatar events
 
 What it does not validate:

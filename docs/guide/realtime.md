@@ -11,10 +11,10 @@ streaming assistant output, or tool-enabled voice workflows.
 ## Recommended Stack
 
 ```text
-@charivo/realtime-core
-@charivo/realtime-client-remote
+@charivo/realtime
+@charivo/realtime/remote
 your /api/realtime route
-@charivo/realtime-provider-openai
+@charivo/server/openai
 ```
 
 This is the current production-oriented browser path. The browser calls your
@@ -28,8 +28,8 @@ import {
   createAvatarControlTools,
   createRealtimeManager,
   type RealtimeToolRegistration,
-} from "@charivo/realtime-core";
-import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
+} from "@charivo/realtime";
+import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
 const avatarTools = createAvatarControlTools({
@@ -70,7 +70,7 @@ await manager.startSession({
 });
 ```
 
-## Why `realtime-client-remote` Is The Default
+## Why `@charivo/realtime/remote` Is The Default
 
 - it is the recommended production path
 - it works through your own server route
@@ -83,23 +83,23 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 
 ### Remote
 
-- `@charivo/realtime-client-remote`
+- `@charivo/realtime/remote`
 - best default for production browser apps
 - adapter-aware and server-mediated
 
 ### OpenAI Agents SDK Transport
 
-- `@charivo/realtime-client-openai-agents`
+- `@charivo/realtime/openai-agents`
 - current OpenAI Agents SDK transport client and adapter
 - useful when you need to own the underlying browser client directly
 
 ### Legacy Low-Level OpenAI Transport
 
-- `@charivo/realtime-client-openai`
+- `@charivo/realtime/openai`
 - older low-level OpenAI WebRTC path
 - mainly useful for legacy compatibility and debugging
 
-## What `realtime-core` Owns
+## What `@charivo/realtime` Owns
 
 - session state
 - tool registry
@@ -119,7 +119,7 @@ back into core.
 
 ## Provider Route
 
-The server route typically uses `@charivo/realtime-provider-openai`:
+The server route typically uses `@charivo/server/openai`:
 
 ```ts
 const provider = createOpenAIRealtimeProvider({
@@ -145,7 +145,4 @@ const bootstrap = await provider.createSession({
 
 ## References
 
-- [realtime-core README](https://github.com/zeikar/charivo/blob/main/packages/realtime-core/README.md)
-- [realtime-client-remote README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-remote/README.md)
-- [realtime-client-openai-agents README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-openai-agents/README.md)
-- [realtime-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/realtime-provider-openai/README.md)
+- [Realtime Package README](https://github.com/zeikar/charivo/blob/main/packages/realtime/README.md)

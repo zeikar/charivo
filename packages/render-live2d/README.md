@@ -3,19 +3,19 @@
 Live2D Cubism renderer for Charivo.
 
 This package is the concrete browser renderer for Live2D models. In most apps
-you use it together with `@charivo/render-core`.
+you use it together with `@charivo/render`.
 
 ## Install
 
 ```bash
-pnpm add @charivo/render-live2d @charivo/render-core
+pnpm add @charivo/render-live2d @charivo/render
 ```
 
 ## Usage
 
 ```ts
 import { createLive2DRenderer } from "@charivo/render-live2d";
-import { createRenderManager } from "@charivo/render-core";
+import { createRenderManager } from "@charivo/render";
 
 const renderer = createLive2DRenderer({ canvas });
 const renderManager = createRenderManager(renderer, {
@@ -41,7 +41,7 @@ The renderer exposes:
 - `playMotionByGroup(group, index)`
 - `lookAt({ x, y })`
 
-When used through `@charivo/render-core`, realtime lip sync, mouse tracking,
+When used through `@charivo/render`, realtime lip sync, mouse tracking,
 and gaze are handled for you.
 
 ## License Note

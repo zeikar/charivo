@@ -4,10 +4,7 @@ import {
   type Message,
   type Renderer,
 } from "@charivo/core";
-import {
-  type MouseCoordinates,
-  type MouseTrackable,
-} from "@charivo/render-core";
+import { type MouseCoordinates, type MouseTrackable } from "@charivo/render";
 import { Option, CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
 import { CubismViewMatrix } from "@framework/math/cubismviewmatrix";

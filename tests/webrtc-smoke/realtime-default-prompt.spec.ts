@@ -3,7 +3,7 @@ import {
   LOOK_AT_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
   SET_EXPRESSION_TOOL_NAME,
-} from "../../packages/realtime-core/src/index";
+} from "../../packages/realtime/src/index";
 import {
   getSnapshot,
   sendPrompt,
@@ -26,7 +26,7 @@ test.describe("realtime default prompt evaluation", () => {
     await stopSession(page);
   });
 
-  test("uses the default realtime-core instructions and canonical tools", async ({
+  test("uses the default realtime instructions and canonical tools", async ({
     page,
   }) => {
     await page.goto("/?mode=default-prompt-eval");

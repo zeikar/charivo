@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const transcribe = vi.fn();
 
-vi.mock("@charivo/stt-provider-openai", () => ({
+vi.mock("@charivo/server/openai", () => ({
   createOpenAISTTProvider: vi.fn(() => ({
     transcribe,
   })),

@@ -1,10 +1,10 @@
 import { Charivo, type Character, type EventMap } from "@charivo/core";
-import { createRemoteRealtimeClient } from "@charivo/realtime-client-remote";
+import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import {
   SET_EXPRESSION_TOOL_NAME,
   createAvatarControlTools,
   createRealtimeManager,
-} from "@charivo/realtime-core";
+} from "@charivo/realtime";
 import type {
   HarnessMode,
   HarnessSnapshot,

@@ -5,18 +5,18 @@ sidebar_position: 8
 
 # STT
 
-Charivo's STT layer combines `@charivo/stt-core` with a concrete transcriber.
+Charivo's STT layer combines `@charivo/stt` with a concrete transcriber.
 
 For production browser apps, use the remote transcriber with a server route
-backed by `@charivo/stt-provider-openai`.
+backed by `@charivo/server/openai`.
 
 ## Recommended Stack
 
 ```text
-@charivo/stt-core
-@charivo/stt-transcriber-remote
+@charivo/stt
+@charivo/stt/remote
 your /api/stt route
-@charivo/stt-provider-openai
+@charivo/server/openai
 ```
 
 The browser records locally. The backend handles transcription.
@@ -24,8 +24,8 @@ The browser records locally. The backend handles transcription.
 ## Basic Setup
 
 ```ts
-import { createSTTManager } from "@charivo/stt-core";
-import { createRemoteSTTTranscriber } from "@charivo/stt-transcriber-remote";
+import { createSTTManager } from "@charivo/stt";
+import { createRemoteSTTTranscriber } from "@charivo/stt/remote";
 
 const sttManager = createSTTManager(
   createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" }),
@@ -45,24 +45,24 @@ charivo.attachSTT(sttManager);
 
 ### Remote
 
-- `@charivo/stt-transcriber-remote`
+- `@charivo/stt/remote`
 - records in the browser and sends audio to your route as multipart form data
 - best default for production browser apps
 
 ### Direct OpenAI
 
-- `@charivo/stt-transcriber-openai`
+- `@charivo/stt/openai`
 - useful for local development and testing
 - exposes credentials to the browser
 
 ### Browser-Native
 
-- `@charivo/stt-transcriber-web`
+- `@charivo/stt/web`
 - built on the Web Speech API
 - useful for prototypes and zero-server flows
 - browser support varies
 
-## What `stt-core` Owns
+## What `@charivo/stt` Owns
 
 - recording lifecycle
 - interaction with the transcriber implementation
@@ -73,7 +73,7 @@ event bus.
 
 ## Provider Route
 
-The remote transcriber usually pairs with `@charivo/stt-provider-openai` on the
+The remote transcriber usually pairs with `@charivo/server/openai` on the
 server:
 
 ```ts
@@ -89,13 +89,10 @@ const text = await provider.transcribe(audioBlob, {
 
 ## Alternatives
 
-- Use `stt-transcriber-web` when you want the fewest moving parts and browser support is good enough.
-- Use `stt-transcriber-openai` when you are testing direct vendor behavior.
+- Use `@charivo/stt/web` when you want the fewest moving parts and browser support is good enough.
+- Use `@charivo/stt/openai` when you are testing direct vendor behavior.
 - Move to [Realtime](./realtime.md) when you want continuous session-based voice interaction instead of turn-based transcription.
 
 ## References
 
-- [stt-core README](https://github.com/zeikar/charivo/blob/main/packages/stt-core/README.md)
-- [stt-transcriber-remote README](https://github.com/zeikar/charivo/blob/main/packages/stt-transcriber-remote/README.md)
-- [stt-transcriber-web README](https://github.com/zeikar/charivo/blob/main/packages/stt-transcriber-web/README.md)
-- [stt-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/stt-provider-openai/README.md)
+- [STT Package README](https://github.com/zeikar/charivo/blob/main/packages/stt/README.md)

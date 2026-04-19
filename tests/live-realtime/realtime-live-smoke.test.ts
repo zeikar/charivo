@@ -10,7 +10,6 @@ import {
   type RealtimeSessionRequest,
   type RealtimeTool,
 } from "@charivo/core";
-import { isRealtimeSessionBootstrap } from "@charivo/shared";
 import {
   LOOK_AT_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
@@ -19,7 +18,7 @@ import {
   createRealtimeManager,
   type RealtimeTransportClient,
   type RealtimeTransportEvent,
-} from "@charivo/realtime-core";
+} from "@charivo/realtime";
 import { POST } from "../../examples/web/src/app/api/realtime/route";
 
 const RUN_LIVE_REALTIME_TESTS = process.env.RUN_LIVE_REALTIME_TESTS === "1";
@@ -168,6 +167,37 @@ class LiveBootstrapSmokeClient implements RealtimeTransportClient {
 
     return null;
   }
+}
+
+function isRealtimeSessionBootstrap(
+  value: unknown,
+): value is RealtimeSessionBootstrap {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const bootstrap = value as Record<string, unknown>;
+  if (
+    typeof bootstrap.adapter !== "string" ||
+    typeof bootstrap.transport !== "string"
+  ) {
+    return false;
+  }
+
+  if (bootstrap.transport === "webrtc") {
+    return (
+      typeof bootstrap.answerSdp === "string" ||
+      typeof bootstrap.clientSecret === "string"
+    );
+  }
+
+  if (bootstrap.transport === "websocket") {
+    return (
+      typeof bootstrap.url === "string" && typeof bootstrap.token === "string"
+    );
+  }
+
+  return false;
 }
 
 liveDescribe("live realtime bootstrap and local manager plumbing", () => {

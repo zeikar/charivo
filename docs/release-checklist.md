@@ -27,9 +27,9 @@ Run this from the repository root before publishing public packages.
 
 ## Changeset Examples
 
-- Public package fix: a runtime bug fix in `@charivo/tts-core` should include a changeset.
+- Public package fix: a runtime bug fix in `@charivo/tts` should include a changeset.
 - Docs/demo-only change: README updates or `examples/web` UI copy changes should not include a changeset.
-- Multi-package contract change: a typed contract update that affects `@charivo/core` and `@charivo/realtime-core` can ship in one changeset covering both packages.
+- Multi-package contract change: a typed contract update that affects `@charivo/core` and `@charivo/realtime` can ship in one changeset covering both packages.
 
 ## Docs
 
@@ -41,7 +41,7 @@ Run this from the repository root before publishing public packages.
 ## Packaging
 
 - Verify every publishable package has aligned `main`, `module`, `types`, and `exports`.
-- Use [`docs/adr/0001-package-output-strategy.md`](./adr/0001-package-output-strategy.md) when deciding whether a package should stay dual-format or ESM-only.
+- Keep publishable packages dual-format by default, and only keep a package ESM-only when it is browser-only or there is a clear technical reason.
 - Review `npm pack --dry-run` output through `pnpm pack:check`.
 - Check that runtime dependencies are still necessary.
 

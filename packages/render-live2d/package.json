@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
-    "@charivo/render-core": "workspace:*"
+    "@charivo/render": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

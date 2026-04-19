@@ -13,7 +13,7 @@ browser-native. This page helps you choose the right one for each subsystem.
 For most browser apps, use:
 
 - `@charivo/core`
-- the relevant `*-core` manager packages
+- the relevant modality root packages
 - remote browser runtime packages
 - provider packages behind your API routes
 
@@ -37,10 +37,10 @@ Use remote packages by default.
 
 Examples:
 
-- `@charivo/llm-client-remote`
-- `@charivo/tts-player-remote`
-- `@charivo/stt-transcriber-remote`
-- `@charivo/realtime-client-remote`
+- `@charivo/llm/remote`
+- `@charivo/tts/remote`
+- `@charivo/stt/remote`
+- `@charivo/realtime/remote`
 
 Choose this path when:
 
@@ -55,12 +55,12 @@ environments.
 
 Examples:
 
-- `@charivo/llm-client-openai`
-- `@charivo/llm-client-openclaw`
-- `@charivo/tts-player-openai`
-- `@charivo/stt-transcriber-openai`
-- `@charivo/realtime-client-openai-agents`
-- `@charivo/realtime-client-openai`
+- `@charivo/llm/openai`
+- `@charivo/llm/openclaw`
+- `@charivo/tts/openai`
+- `@charivo/stt/openai`
+- `@charivo/realtime/openai-agents`
+- `@charivo/realtime/openai`
 
 Choose this path when:
 
@@ -74,8 +74,8 @@ Use browser-native speech packages when you want no backend for TTS or STT.
 
 Examples:
 
-- `@charivo/tts-player-web`
-- `@charivo/stt-transcriber-web`
+- `@charivo/tts/web`
+- `@charivo/stt/web`
 
 Choose this path when:
 
@@ -89,42 +89,42 @@ Choose this path when:
 
 ```text
 @charivo/core
-@charivo/llm-core
-@charivo/llm-client-remote
-@charivo/llm-provider-openai or @charivo/llm-provider-openclaw
+@charivo/llm
+@charivo/llm/remote
+@charivo/server/openai or @charivo/server/openclaw
 ```
 
 ### Text-to-speech with lip-sync events
 
 ```text
 @charivo/core
-@charivo/tts-core
-@charivo/tts-player-remote
-@charivo/tts-provider-openai
+@charivo/tts
+@charivo/tts/remote
+@charivo/server/openai
 ```
 
 ### Speech-to-text from the microphone
 
 ```text
 @charivo/core
-@charivo/stt-core
-@charivo/stt-transcriber-remote
-@charivo/stt-provider-openai
+@charivo/stt
+@charivo/stt/remote
+@charivo/server/openai
 ```
 
 ### Realtime voice sessions
 
 ```text
 @charivo/core
-@charivo/realtime-core
-@charivo/realtime-client-remote
-@charivo/realtime-provider-openai
+@charivo/realtime
+@charivo/realtime/remote
+@charivo/server/openai
 ```
 
 ### Live2D rendering
 
 ```text
-@charivo/render-core
+@charivo/render
 @charivo/render-live2d
 ```
 
@@ -133,7 +133,7 @@ Choose this path when:
 - For user-facing browser apps, start with remote packages.
 - For demos and local harnesses, browser-direct packages are acceptable.
 - For the fewest moving parts in speech features, browser-native TTS/STT may be enough.
-- For realtime today, prefer `@charivo/realtime-client-remote`, which can resolve the OpenAI Agents WebRTC adapter by default.
+- For realtime today, prefer `@charivo/realtime/remote`, which can resolve the OpenAI Agents WebRTC adapter by default.
 
 ## Related Guides
 

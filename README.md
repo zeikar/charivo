@@ -22,18 +22,18 @@ Documentation:
 ```bash
 pnpm add \
   @charivo/core \
-  @charivo/llm-core @charivo/llm-client-remote \
-  @charivo/tts-core @charivo/tts-player-remote \
-  @charivo/render-core @charivo/render-live2d
+  @charivo/llm \
+  @charivo/tts \
+  @charivo/render @charivo/render-live2d
 ```
 
 ```ts
 import { Charivo } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm-core";
-import { createRemoteLLMClient } from "@charivo/llm-client-remote";
-import { createTTSManager } from "@charivo/tts-core";
-import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
-import { createRenderManager } from "@charivo/render-core";
+import { createLLMManager } from "@charivo/llm";
+import { createRemoteLLMClient } from "@charivo/llm/remote";
+import { createTTSManager } from "@charivo/tts";
+import { createRemoteTTSPlayer } from "@charivo/tts/remote";
+import { createRenderManager } from "@charivo/render";
 import { createLive2DRenderer } from "@charivo/render-live2d";
 
 const canvas = document.querySelector("canvas")!;
@@ -72,38 +72,38 @@ For a complete app, see [`examples/web`](./examples/web).
 
 Use the remote/server-mediated path by default:
 
-- LLM: `@charivo/llm-client-remote` + a server route using a provider package such as `@charivo/llm-provider-openai` or `@charivo/llm-provider-openclaw`
-- TTS: `@charivo/tts-player-remote` + `@charivo/tts-provider-openai`
-- STT: `@charivo/stt-transcriber-remote` + `@charivo/stt-provider-openai`
-- Realtime: `@charivo/realtime-client-remote` + a server route using a provider package such as `@charivo/realtime-provider-openai`
+- LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/openclaw`
+- TTS: `@charivo/tts/remote` + `@charivo/server/openai`
+- STT: `@charivo/stt/remote` + `@charivo/server/openai`
+- Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai`
 
 Direct browser packages are for local development, demos, and testing only:
 
-- `@charivo/llm-client-openai`
-- `@charivo/llm-client-openclaw`
-- `@charivo/realtime-client-openai`
-- `@charivo/tts-player-openai`
-- `@charivo/stt-transcriber-openai`
+- `@charivo/llm/openai`
+- `@charivo/llm/openclaw`
+- `@charivo/realtime/openai`
+- `@charivo/tts/openai`
+- `@charivo/stt/openai`
 
 Browser-native packages are useful when you explicitly want no server dependency:
 
-- `@charivo/tts-player-web`
-- `@charivo/stt-transcriber-web`
+- `@charivo/tts/web`
+- `@charivo/stt/web`
 
 ## Architecture
 
 ```text
 App
   -> @charivo/core
-  -> manager packages (*-core)
-  -> browser implementations (client/player/transcriber/renderer)
+  -> modality packages (@charivo/llm, @charivo/tts, @charivo/stt, @charivo/realtime, @charivo/render)
+  -> browser implementations via subpath exports
   -> optional server providers behind API routes
 ```
 
 - `@charivo/core` owns shared domain types, the event bus, and the `Charivo` orchestrator.
-- `*-core` packages own stateful manager logic.
-- `*-client`, `*-player`, and `*-transcriber` packages run in the browser.
-- `*-provider` packages are the server-side implementations that hold credentials.
+- modality root packages own stateful manager logic.
+- browser adapters live on explicit subpaths such as `@charivo/llm/remote` and `@charivo/realtime/openai-agents`.
+- `@charivo/server/*` holds server-side providers and credentials.
 
 See the [Architecture guide](https://zeikar.github.io/charivo/architecture/) for
 event wiring, package roles, and detailed layering.
@@ -113,53 +113,58 @@ event wiring, package roles, and detailed layering.
 Core:
 
 - `@charivo/core`: orchestrator, event bus, domain types
-- `@charivo/shared`: small shared utilities
 
 LLM:
 
-- `@charivo/llm-core`: stateful conversation manager
-- `@charivo/llm-client-remote`: browser client for server API routes
-- `@charivo/llm-client-openai`: direct OpenAI browser client, dev/testing only
-- `@charivo/llm-client-openclaw`: direct OpenClaw browser client, dev/testing only
-- `@charivo/llm-client-stub`: canned responses for tests and demos
-- `@charivo/llm-provider-openai`: server-side OpenAI provider
-- `@charivo/llm-provider-openclaw`: server-side OpenClaw provider
+- `@charivo/llm`: stateful conversation manager
+- `@charivo/llm/remote`: browser client for server API routes
+- `@charivo/llm/openai`: direct OpenAI browser client, dev/testing only
+- `@charivo/llm/openclaw`: direct OpenClaw browser client, dev/testing only
+- `@charivo/llm/stub`: canned responses for tests and demos
+- `@charivo/server/openai`: server-side OpenAI provider exports
+- `@charivo/server/openclaw`: server-side OpenClaw provider exports
 
 TTS:
 
-- `@charivo/tts-core`: TTS session manager and lip-sync coordination
-- `@charivo/tts-player-remote`: browser player for server TTS routes
-- `@charivo/tts-player-openai`: direct OpenAI browser player, dev/testing only
-- `@charivo/tts-player-web`: Web Speech API player
-- `@charivo/tts-provider-openai`: server-side OpenAI TTS provider
+- `@charivo/tts`: TTS session manager and lip-sync coordination
+- `@charivo/tts/remote`: browser player for server TTS routes
+- `@charivo/tts/openai`: direct OpenAI browser player, dev/testing only
+- `@charivo/tts/web`: Web Speech API player
+- `@charivo/server/openai`: exports `createOpenAITTSProvider(...)`
 
 STT:
 
-- `@charivo/stt-core`: STT session manager and recording helper
-- `@charivo/stt-transcriber-remote`: browser transcriber for server STT routes
-- `@charivo/stt-transcriber-openai`: direct OpenAI browser transcriber, dev/testing only
-- `@charivo/stt-transcriber-web`: Web Speech API transcriber
-- `@charivo/stt-provider-openai`: server-side OpenAI STT provider
+- `@charivo/stt`: STT session manager and recording helper
+- `@charivo/stt/remote`: browser transcriber for server STT routes
+- `@charivo/stt/openai`: direct OpenAI browser transcriber, dev/testing only
+- `@charivo/stt/web`: Web Speech API transcriber
+- `@charivo/server/openai`: exports `createOpenAISTTProvider(...)`
 
 Realtime:
 
-- `@charivo/realtime-core`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
+- `@charivo/realtime`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
   Supports explicit `updateSession(...)` refresh via reconnect.
-- `@charivo/realtime-client-remote`: adapter-dispatched browser client for server realtime routes
-- `@charivo/realtime-client-openai-agents`: OpenAI Agents SDK realtime transport client and adapter
-- `@charivo/realtime-client-openai`: legacy low-level OpenAI realtime transport client and adapter
-- `@charivo/realtime-provider-openai`: server-side OpenAI realtime session provider
+- `@charivo/realtime/remote`: adapter-dispatched browser client for server realtime routes
+- `@charivo/realtime/openai-agents`: OpenAI Agents SDK realtime transport client and adapter
+- `@charivo/realtime/openai`: legacy low-level OpenAI realtime transport client and adapter
+- `@charivo/server/openai`: exports `createOpenAIRealtimeProvider(...)`
 
 Rendering:
 
-- `@charivo/render-core`: render manager, mouse tracking, lip-sync bridge
+- `@charivo/render`: render manager, mouse tracking, lip-sync bridge
 - `@charivo/render-live2d`: Live2D Cubism renderer
-- `@charivo/render-stub`: console renderer for tests and demos
+- `@charivo/render/stub`: console renderer for tests and demos
 
 ## Contributing
 
 See [`docs/release-checklist.md`](./docs/release-checklist.md) for validation
 commands, versioning rules, and release procedures.
+
+## TypeScript Note
+
+Subpath imports such as `@charivo/llm/remote` and `@charivo/server/openai`
+require a module resolution mode that understands package exports:
+`"bundler"`, `"node16"`, or `"nodenext"`.
 
 ## Live2D Note
 

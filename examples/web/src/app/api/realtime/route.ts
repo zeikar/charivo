@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createOpenAIRealtimeProvider,
   type OpenAIRealtimeProviderConfig,
-} from "@charivo/realtime-provider-openai";
+} from "@charivo/server/openai";
 import type { RealtimeSessionRequest } from "@charivo/core";
 
 export async function POST(request: NextRequest) {

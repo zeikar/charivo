@@ -7,19 +7,19 @@ sidebar_position: 6
 
 Charivo's LLM layer is built from two pieces:
 
-- `@charivo/llm-core` for conversation state
+- `@charivo/llm` for conversation state
 - an `LLMClient` implementation for transport
 
-For production browser apps, pair `llm-core` with `@charivo/llm-client-remote`
+For production browser apps, pair `@charivo/llm` with `@charivo/llm/remote`
 and a server route backed by a provider package.
 
 ## Recommended Stack
 
 ```text
-@charivo/llm-core
-@charivo/llm-client-remote
+@charivo/llm
+@charivo/llm/remote
 your /api/chat route
-@charivo/llm-provider-openai
+@charivo/server/openai
 ```
 
 This keeps the browser client simple and vendor credentials on the server.
@@ -28,8 +28,8 @@ This keeps the browser client simple and vendor credentials on the server.
 
 ```ts
 import { Charivo } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm-core";
-import { createRemoteLLMClient } from "@charivo/llm-client-remote";
+import { createLLMManager } from "@charivo/llm";
+import { createRemoteLLMClient } from "@charivo/llm/remote";
 
 const charivo = new Charivo();
 const llmManager = createLLMManager(
@@ -52,33 +52,33 @@ managers.
 
 ### Remote
 
-- `@charivo/llm-client-remote`
+- `@charivo/llm/remote`
 - best default for production browser apps
 - expects your route to receive `messages` and return `{ success, message }`
 
 ### Direct OpenAI
 
-- `@charivo/llm-client-openai`
+- `@charivo/llm/openai`
 - useful for local development and testing
 - exposes credentials to the browser
 
 ### Direct OpenClaw
 
-- `@charivo/llm-client-openclaw`
+- `@charivo/llm/openclaw`
 - useful when your app targets an OpenClaw deployment directly
 - best treated as a development or trusted-environment option unless browser access is intentional
 
 ### Stub
 
-- `@charivo/llm-client-stub`
+- `@charivo/llm/stub`
 - useful for UI work, deterministic demos, and tests
 
 ## Provider Choices
 
 Remote clients pair with provider packages on the server:
 
-- `@charivo/llm-provider-openai`
-- `@charivo/llm-provider-openclaw`
+- `@charivo/server/openai`
+- `@charivo/server/openclaw`
 
 Minimal OpenAI route shape:
 
@@ -91,7 +91,7 @@ const provider = createOpenAILLMProvider({
 const text = await provider.generateResponse(messages);
 ```
 
-## What `llm-core` Owns
+## What `@charivo/llm` Owns
 
 - message history
 - character-aware prompt building
@@ -108,7 +108,5 @@ conversation state.
 
 ## References
 
-- [llm-core README](https://github.com/zeikar/charivo/blob/main/packages/llm-core/README.md)
-- [llm-client-remote README](https://github.com/zeikar/charivo/blob/main/packages/llm-client-remote/README.md)
-- [llm-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/llm-provider-openai/README.md)
+- [LLM Package README](https://github.com/zeikar/charivo/blob/main/packages/llm/README.md)
 - [Examples Web](./examples-web.md)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
+import { createOpenAILLMProvider } from "@charivo/server/openai";
 
 function getOpenAIKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;

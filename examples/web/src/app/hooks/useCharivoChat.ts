@@ -20,8 +20,8 @@ import {
   type TTSManager,
   type TTSPlayer,
 } from "@charivo/core";
-import { createSTTManager } from "@charivo/stt-core";
-import { createTTSManager } from "@charivo/tts-core";
+import { createSTTManager } from "@charivo/stt";
+import { createTTSManager } from "@charivo/tts";
 
 import type {
   LLMClientType,
@@ -191,7 +191,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         switch (type) {
           case "remote": {
             const { createRemoteLLMClient } = await import(
-              "@charivo/llm-client-remote"
+              "@charivo/llm/remote"
             );
             return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
           }
@@ -201,13 +201,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               "API key is required for the direct OpenAI LLM client.",
             );
             const { createOpenAILLMClient } = await import(
-              "@charivo/llm-client-openai"
+              "@charivo/llm/openai"
             );
             return createOpenAILLMClient({ apiKey });
           }
           case "openclaw-remote": {
             const { createRemoteLLMClient } = await import(
-              "@charivo/llm-client-remote"
+              "@charivo/llm/remote"
             );
             return createRemoteLLMClient({ apiEndpoint: "/api/chat-openclaw" });
           }
@@ -217,15 +217,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               "Token is required for the direct OpenClaw client.",
             );
             const { createOpenClawLLMClient } = await import(
-              "@charivo/llm-client-openclaw"
+              "@charivo/llm/openclaw"
             );
             return createOpenClawLLMClient({ token });
           }
           case "stub":
           default: {
-            const { createStubLLMClient } = await import(
-              "@charivo/llm-client-stub"
-            );
+            const { createStubLLMClient } = await import("@charivo/llm/stub");
             return createStubLLMClient();
           }
         }
@@ -247,14 +245,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         switch (type) {
           case "remote": {
             const { createRemoteTTSPlayer } = await import(
-              "@charivo/tts-player-remote"
+              "@charivo/tts/remote"
             );
             return createRemoteTTSPlayer();
           }
           case "web": {
-            const { createWebTTSPlayer } = await import(
-              "@charivo/tts-player-web"
-            );
+            const { createWebTTSPlayer } = await import("@charivo/tts/web");
             return createWebTTSPlayer();
           }
           case "openai": {
@@ -263,7 +259,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               "API key is required for the direct OpenAI TTS client.",
             );
             const { createOpenAITTSPlayer } = await import(
-              "@charivo/tts-player-openai"
+              "@charivo/tts/openai"
             );
             return createOpenAITTSPlayer({ apiKey });
           }
@@ -289,13 +285,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         switch (type) {
           case "remote": {
             const { createRemoteSTTTranscriber } = await import(
-              "@charivo/stt-transcriber-remote"
+              "@charivo/stt/remote"
             );
             return createRemoteSTTTranscriber();
           }
           case "web": {
             const { createWebSTTTranscriber } = await import(
-              "@charivo/stt-transcriber-web"
+              "@charivo/stt/web"
             );
             return createWebSTTTranscriber();
           }
@@ -305,7 +301,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               "API key is required for the direct OpenAI STT client.",
             );
             const { createOpenAISTTTranscriber } = await import(
-              "@charivo/stt-transcriber-openai"
+              "@charivo/stt/openai"
             );
             return createOpenAISTTTranscriber({ apiKey });
           }
@@ -391,8 +387,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           { createLLMManager },
         ] = await Promise.all([
           import("@charivo/render-live2d"),
-          import("@charivo/render-core"),
-          import("@charivo/llm-core"),
+          import("@charivo/render"),
+          import("@charivo/llm"),
         ]);
 
         const renderer = new Live2DRenderer({ canvas });

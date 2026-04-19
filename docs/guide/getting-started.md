@@ -13,9 +13,9 @@ Start with:
 
 ```text
 @charivo/core
-@charivo/llm-core + @charivo/llm-client-remote
-@charivo/tts-core + @charivo/tts-player-remote
-@charivo/render-core + @charivo/render-live2d
+@charivo/llm + @charivo/llm/remote
+@charivo/tts + @charivo/tts/remote
+@charivo/render + @charivo/render-live2d
 server routes backed by provider packages
 ```
 
@@ -28,28 +28,27 @@ overall shape of the app.
 ```bash
 pnpm add \
   @charivo/core \
-  @charivo/llm-core @charivo/llm-client-remote \
-  @charivo/tts-core @charivo/tts-player-remote \
-  @charivo/render-core @charivo/render-live2d
+  @charivo/llm \
+  @charivo/tts \
+  @charivo/render @charivo/render-live2d
 ```
 
 For the server side:
 
 ```bash
 pnpm add \
-  @charivo/llm-provider-openai \
-  @charivo/tts-provider-openai
+  @charivo/server
 ```
 
 ## Minimal Browser Setup
 
 ```ts
 import { Charivo } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm-core";
-import { createRemoteLLMClient } from "@charivo/llm-client-remote";
-import { createTTSManager } from "@charivo/tts-core";
-import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
-import { createRenderManager } from "@charivo/render-core";
+import { createLLMManager } from "@charivo/llm";
+import { createRemoteLLMClient } from "@charivo/llm/remote";
+import { createTTSManager } from "@charivo/tts";
+import { createRemoteTTSPlayer } from "@charivo/tts/remote";
+import { createRenderManager } from "@charivo/render";
 import { createLive2DRenderer } from "@charivo/render-live2d";
 
 const canvas = document.querySelector("canvas")!;
@@ -90,7 +89,7 @@ Browser clients should call your own routes, not vendor APIs directly.
 LLM route:
 
 ```ts
-import { createOpenAILLMProvider } from "@charivo/llm-provider-openai";
+import { createOpenAILLMProvider } from "@charivo/server/openai";
 
 const provider = createOpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -103,7 +102,7 @@ const text = await provider.generateResponse(messages);
 TTS route:
 
 ```ts
-import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
+import { createOpenAITTSProvider } from "@charivo/server/openai";
 
 const provider = createOpenAITTSProvider({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -118,6 +117,12 @@ const audio = await provider.generateSpeech(text, {
 ```
 
 For a full Next.js example, see [Examples Web](./examples-web.md).
+
+## TypeScript Note
+
+If your app imports subpaths such as `@charivo/llm/remote`, use a TypeScript
+module resolution mode that supports package exports:
+`"bundler"`, `"node16"`, or `"nodenext"`.
 
 ## What You Get
 

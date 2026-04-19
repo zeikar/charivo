@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # Rendering
 
-Charivo's rendering layer is usually built from `@charivo/render-core` and
+Charivo's rendering layer is usually built from `@charivo/render` and
 `@charivo/render-live2d`.
 
 ## Recommended Stack
@@ -13,14 +13,14 @@ Charivo's rendering layer is usually built from `@charivo/render-core` and
 Use:
 
 - `@charivo/render-live2d` as the concrete renderer
-- `@charivo/render-core` as the stateful manager
+- `@charivo/render` as the stateful manager
 
 This is the default rendering path in the repo.
 
 ## What Each Package Does
 
 - `@charivo/render-live2d` draws the Live2D model and exposes renderer methods
-- `@charivo/render-core` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, and lip-sync updates
+- `@charivo/render` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, and lip-sync updates
 
 Most apps use both together.
 
@@ -28,7 +28,7 @@ Most apps use both together.
 
 ```ts
 import { createLive2DRenderer } from "@charivo/render-live2d";
-import { createRenderManager } from "@charivo/render-core";
+import { createRenderManager } from "@charivo/render";
 
 const renderer = createLive2DRenderer({ canvas });
 const renderManager = createRenderManager(renderer, {
@@ -46,7 +46,7 @@ Attach the manager to `Charivo` after initialization:
 charivo.attachRenderer(renderManager);
 ```
 
-## What `render-core` Adds
+## What `@charivo/render` Adds
 
 - character text rendering
 - `tts:audio:start` and `tts:audio:end`
@@ -79,16 +79,16 @@ The usual flow is:
 6. attach the manager to `Charivo`
 
 If the renderer exposes optional methods such as `playExpression`,
-`playMotionByGroup`, `lookAt`, or model catalog getters, `render-core` will use
+`playMotionByGroup`, `lookAt`, or model catalog getters, `@charivo/render` will use
 them automatically.
 
 ## Alternatives
 
-- Use `@charivo/render-stub` for tests or demos that do not need real rendering.
-- If you already have a custom renderer, keep using `render-core` and provide a `Renderer` implementation from `@charivo/core`.
+- Use `@charivo/render/stub` for tests or demos that do not need real rendering.
+- If you already have a custom renderer, keep using `@charivo/render` and provide a `Renderer` implementation from `@charivo/core`.
 
 ## References
 
-- [render-core README](https://github.com/zeikar/charivo/blob/main/packages/render-core/README.md)
+- [Render Package README](https://github.com/zeikar/charivo/blob/main/packages/render/README.md)
 - [render-live2d README](https://github.com/zeikar/charivo/blob/main/packages/render-live2d/README.md)
 - [Examples Web](./examples-web.md)

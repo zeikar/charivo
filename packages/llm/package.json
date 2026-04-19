@@ -1,0 +1,69 @@
+{
+  "name": "@charivo/llm",
+  "version": "0.1.0",
+  "description": "LLM manager and browser adapters for Charivo",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./remote": {
+      "types": "./dist/remote/index.d.ts",
+      "import": "./dist/remote/index.mjs",
+      "require": "./dist/remote/index.js"
+    },
+    "./openai": {
+      "types": "./dist/openai/index.d.ts",
+      "import": "./dist/openai/index.mjs",
+      "require": "./dist/openai/index.js"
+    },
+    "./openclaw": {
+      "types": "./dist/openclaw/index.d.ts",
+      "import": "./dist/openclaw/index.mjs",
+      "require": "./dist/openclaw/index.js"
+    },
+    "./stub": {
+      "types": "./dist/stub/index.d.ts",
+      "import": "./dist/stub/index.mjs",
+      "require": "./dist/stub/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@charivo/core": "workspace:*",
+    "openai": "^4.47.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/llm"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  }
+}

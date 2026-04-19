@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOpenAITTSProvider } from "@charivo/tts-provider-openai";
+import { createOpenAITTSProvider } from "@charivo/server/openai";
 
 function getOpenAIKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;

@@ -3,7 +3,7 @@ import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
 
 const createSession = vi.fn();
 
-vi.mock("@charivo/realtime-provider-openai", () => ({
+vi.mock("@charivo/server/openai", () => ({
   createOpenAIRealtimeProvider: vi.fn(() => ({
     createSession,
   })),

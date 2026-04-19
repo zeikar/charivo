@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createOpenClawLLMProvider } from "@charivo/llm-provider-openclaw";
+import { createOpenClawLLMProvider } from "@charivo/server/openclaw";
 
 export async function POST(request: NextRequest) {
   try {

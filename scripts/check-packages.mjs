@@ -39,10 +39,10 @@ for (const dirent of packageDirs) {
     declaredFiles.push(value);
   }
 
-  if (!packageJson.exports || !packageJson.exports["."]) {
-    failures.push(`${packageJson.name}: missing exports["."] field`);
+  if (!packageJson.exports || typeof packageJson.exports !== "object") {
+    failures.push(`${packageJson.name}: missing "exports" field`);
   } else {
-    declaredFiles.push(...collectExportFiles(packageJson.exports["."]));
+    declaredFiles.push(...collectExportFiles(packageJson.exports));
   }
 
   for (const relativeFile of new Set(declaredFiles.map(stripLeadingDotSlash))) {

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createOpenAIRealtimeProvider } from "../../packages/realtime-provider-openai/src/index";
+import { createOpenAIRealtimeProvider } from "../../packages/server/src/openai/index";
 import { workspaceAliases } from "../../test-aliases";
 import { defineConfig } from "vite";
 

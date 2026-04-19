@@ -5,25 +5,25 @@ sidebar_position: 7
 
 # TTS
 
-Charivo's TTS layer combines `@charivo/tts-core` with a concrete player.
+Charivo's TTS layer combines `@charivo/tts` with a concrete player.
 
 For production browser apps, use the remote player with a server route backed
-by `@charivo/tts-provider-openai`.
+by `@charivo/server/openai`.
 
 ## Recommended Stack
 
 ```text
-@charivo/tts-core
-@charivo/tts-player-remote
+@charivo/tts
+@charivo/tts/remote
 your /api/tts route
-@charivo/tts-provider-openai
+@charivo/server/openai
 ```
 
 ## Basic Setup
 
 ```ts
-import { createTTSManager } from "@charivo/tts-core";
-import { createRemoteTTSPlayer } from "@charivo/tts-player-remote";
+import { createTTSManager } from "@charivo/tts";
+import { createRemoteTTSPlayer } from "@charivo/tts/remote";
 
 const ttsManager = createTTSManager(
   createRemoteTTSPlayer({ apiEndpoint: "/api/tts" }),
@@ -42,24 +42,24 @@ charivo.attachTTS(ttsManager);
 
 ### Remote
 
-- `@charivo/tts-player-remote`
+- `@charivo/tts/remote`
 - production-oriented browser path
 - sends text and voice options to your own API route
 
 ### Direct OpenAI
 
-- `@charivo/tts-player-openai`
+- `@charivo/tts/openai`
 - useful for local development and testing
 - exposes credentials to the browser
 
 ### Browser-Native
 
-- `@charivo/tts-player-web`
+- `@charivo/tts/web`
 - built on the Web Speech API
 - useful for prototypes and zero-server flows
 - voice behavior depends on browser and OS support
 
-## What `tts-core` Owns
+## What `@charivo/tts` Owns
 
 - playback lifecycle
 - lip-sync event emission
@@ -71,7 +71,7 @@ subscribe to upstream Charivo events.
 
 ## Provider Route
 
-The remote player usually pairs with `@charivo/tts-provider-openai` on the
+The remote player usually pairs with `@charivo/server/openai` on the
 server:
 
 ```ts
@@ -89,13 +89,10 @@ const audio = await provider.generateSpeech(text, {
 
 ## Alternatives
 
-- Use `tts-player-web` when you want no backend and browser variability is acceptable.
-- Use `tts-player-openai` when you are debugging OpenAI TTS behavior directly.
+- Use `@charivo/tts/web` when you want no backend and browser variability is acceptable.
+- Use `@charivo/tts/openai` when you are debugging OpenAI TTS behavior directly.
 - Skip TTS when text chat is enough for the current experience.
 
 ## References
 
-- [tts-core README](https://github.com/zeikar/charivo/blob/main/packages/tts-core/README.md)
-- [tts-player-remote README](https://github.com/zeikar/charivo/blob/main/packages/tts-player-remote/README.md)
-- [tts-player-web README](https://github.com/zeikar/charivo/blob/main/packages/tts-player-web/README.md)
-- [tts-provider-openai README](https://github.com/zeikar/charivo/blob/main/packages/tts-provider-openai/README.md)
+- [TTS Package README](https://github.com/zeikar/charivo/blob/main/packages/tts/README.md)

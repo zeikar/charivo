@@ -3,11 +3,11 @@
 This is the reference Next.js app for the Charivo workspace. It exercises the
 current architecture as it is actually shipped:
 
-- Live2D rendering through `@charivo/render-live2d` and `@charivo/render-core`
+- Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - LLM chat through remote, direct, OpenClaw proxy, and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
-- Realtime voice sessions through `@charivo/realtime-client-remote` and `/api/realtime`
+- Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
   using the OpenAI Agents WebRTC adapter by default
 
 ## Environment
@@ -44,17 +44,17 @@ Then open `http://localhost:3000`.
 The demo ships these routes:
 
 - `POST /api/chat`
-  Uses `@charivo/llm-provider-openai` with model `gpt-4.1-nano`
+  Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
-  Uses `@charivo/llm-provider-openclaw`
+  Uses `@charivo/server/openclaw`
 - `POST /api/tts`
-  Uses `@charivo/tts-provider-openai` with default voice `marin` and model `gpt-4o-mini-tts`
+  Uses `@charivo/server/openai` with default voice `marin` and model `gpt-4o-mini-tts`
 - `POST /api/stt`
-  Uses `@charivo/stt-provider-openai` with model `whisper-1`
+  Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
 - `POST /api/realtime`
-  Uses `@charivo/realtime-provider-openai` to create a realtime session
-  bootstrap for `@charivo/realtime-client-remote`
+  Uses `@charivo/server/openai` to create a realtime session
+  bootstrap for `@charivo/realtime/remote`
 
 There is no `GET /api/tts` route in the current demo.
 

@@ -12,11 +12,11 @@ as the current integration example, not just a demo.
 
 The app exercises the current package stack:
 
-- Live2D rendering through `@charivo/render-live2d` and `@charivo/render-core`
+- Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - LLM chat through remote, direct, OpenClaw proxy, and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
-- realtime voice sessions through `@charivo/realtime-client-remote` and `/api/realtime`
+- realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
 
 ## Lifecycle Split
 
@@ -32,15 +32,15 @@ This keeps renderer lifecycle separate from conversation and session lifecycle.
 The current reference app ships:
 
 - `POST /api/chat`
-  Uses `@charivo/llm-provider-openai` with model `gpt-4.1-nano`
+  Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
-  Uses `@charivo/llm-provider-openclaw`
+  Uses `@charivo/server/openclaw`
 - `POST /api/tts`
-  Uses `@charivo/tts-provider-openai` with default voice `marin` and model `gpt-4o-mini-tts`
+  Uses `@charivo/server/openai` with default voice `marin` and model `gpt-4o-mini-tts`
 - `POST /api/stt`
-  Uses `@charivo/stt-provider-openai` with model `whisper-1`
+  Uses `@charivo/server/openai` with model `whisper-1`
 - `POST /api/realtime`
-  Uses `@charivo/realtime-provider-openai` to create a realtime session bootstrap
+  Uses `@charivo/server/openai` to create a realtime session bootstrap
 
 ## Runtime Modes
 

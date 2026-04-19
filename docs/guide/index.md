@@ -71,7 +71,7 @@ If you are new to the repo, read in this order:
 - [Getting Started](./getting-started.md): minimal production-oriented setup
 - [Architecture](./architecture.md): package boundaries, layering, and event wiring
 - [Choosing Packages](./choosing-packages.md): remote vs browser-direct vs browser-native
-- [Rendering](./rendering.md): `render-core` and `render-live2d`
+- [Rendering](./rendering.md): `@charivo/render` and `@charivo/render-live2d`
 - [LLM](./llm.md): conversation manager and client choices
 - [TTS](./tts.md): speech playback and lip-sync wiring
 - [STT](./stt.md): microphone recording and transcription paths
@@ -87,5 +87,5 @@ Use package READMEs for package-local details such as exports, request
 contracts, and provider-specific config:
 
 - [core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md)
-- [realtime-client-openai-agents README](https://github.com/zeikar/charivo/blob/main/packages/realtime-client-openai-agents/README.md)
+- [realtime README](https://github.com/zeikar/charivo/blob/main/packages/realtime/README.md)
 - other package docs under [`packages/`](https://github.com/zeikar/charivo/tree/main/packages)

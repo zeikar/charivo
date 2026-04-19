@@ -15,7 +15,7 @@ import type {
   TTSOptions,
 } from "@charivo/core";
 import { Charivo, EventBus } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm-core";
+import { createLLMManager } from "@charivo/llm";
 
 class StubRenderManager implements RenderManager {
   initialize = vi.fn(async () => undefined);

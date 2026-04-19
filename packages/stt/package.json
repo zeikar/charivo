@@ -1,0 +1,73 @@
+{
+  "name": "@charivo/stt",
+  "version": "0.1.0",
+  "description": "STT manager and browser adapters for Charivo",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./remote": {
+      "types": "./dist/remote/index.d.ts",
+      "import": "./dist/remote/index.mjs",
+      "require": "./dist/remote/index.js"
+    },
+    "./openai": {
+      "types": "./dist/openai/index.d.ts",
+      "import": "./dist/openai/index.mjs",
+      "require": "./dist/openai/index.js"
+    },
+    "./web": {
+      "types": "./dist/web/index.d.ts",
+      "import": "./dist/web/index.mjs",
+      "require": "./dist/web/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "charivo",
+    "stt",
+    "speech-to-text",
+    "audio",
+    "transcription"
+  ],
+  "dependencies": {
+    "@charivo/core": "workspace:*",
+    "openai": "^4.47.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {},
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/stt"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  }
+}
