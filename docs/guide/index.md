@@ -22,18 +22,18 @@ For most browser apps, the default stack looks like this:
 ```text
 browser app
   -> @charivo/core
-  -> manager package
+  -> modality root package
   -> remote browser runtime package
   -> your API route
-  -> provider package
+  -> server provider package
 ```
 
 That means:
 
 - `@charivo/core` orchestrates the app
-- `*-core` packages own feature state
+- modality root packages such as `@charivo/llm`, `@charivo/tts`, and `@charivo/realtime` own feature state
 - remote browser packages talk to your server
-- provider packages keep credentials on the server
+- server provider packages such as `@charivo/server/openai` keep credentials on the server
 
 ## Reading Order
 

@@ -15,7 +15,7 @@ For most browser apps, use:
 - `@charivo/core`
 - the relevant modality root packages
 - remote browser runtime packages
-- provider packages behind your API routes
+- server provider packages behind your API routes
 
 Choose browser-direct or browser-native packages only when you explicitly want
 their tradeoffs.
@@ -24,7 +24,7 @@ their tradeoffs.
 
 | Need | Pick | Why |
 | --- | --- | --- |
-| Production browser app | Remote browser package + provider package | Keeps credentials on the server |
+| Production browser app | Remote browser package + server provider package | Keeps credentials on the server |
 | Local development against vendor APIs | Browser-direct vendor package | Faster setup, but browser secrets are exposed |
 | Zero-server browser speech | Browser-native web package | No backend needed, but browser support varies |
 | Deterministic demo or UI work | Stub client where available | No model dependency |

@@ -93,10 +93,10 @@ The default production shape is:
 ```text
 browser app
   -> @charivo/core
-  -> manager package
+  -> modality root package
   -> remote browser runtime package
   -> your API route
-  -> provider package
+  -> server provider package
 ```
 
 ## Event Wiring

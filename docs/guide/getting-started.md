@@ -16,7 +16,7 @@ Start with:
 @charivo/llm + @charivo/llm/remote
 @charivo/tts + @charivo/tts/remote
 @charivo/render + @charivo/render-live2d
-server routes backed by provider packages
+server routes backed by @charivo/server/* providers
 ```
 
 This is the default browser setup across the repo. It keeps vendor credentials
