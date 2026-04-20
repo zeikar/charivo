@@ -267,6 +267,18 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   }
 
   private finalizeAssistantResponse(output: string): void {
+    // Tool-using user turns arrive as two agent_end events: the first after
+    // the tool call (no new text this sub-cycle) and the second after the
+    // post-tool reply (the real content). Skip the first one so consumers
+    // see one completion per user turn instead of two, and keep tracking
+    // live so the follow-up sub-cycle does not re-emit
+    // assistant.response.started. Without this guard the first agent_end
+    // would fall back to getLatestAssistantText(), which can return the
+    // previous turn's message.
+    if (!this.assistant.text && !output.trim()) {
+      return;
+    }
+
     const finalText =
       this.getLatestAssistantText() || output || this.assistant.text;
 

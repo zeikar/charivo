@@ -245,6 +245,95 @@ describe("OpenAIRealtimeAgentsClient", () => {
     });
   });
 
+  it("emits a single completion per user turn even when tool calls split it", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const events: RealtimeTransportEvent[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    // Seed history with a previous turn's final assistant message so that
+    // getLatestAssistantText would return stale text if we emitted on the
+    // tool-only sub-cycle.
+    sdkState.session?.emit("history_updated", [
+      {
+        itemId: "item-prev",
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_audio",
+            transcript: "Previous turn reply",
+          },
+        ],
+      },
+    ]);
+
+    // Sub-cycle 1: agent starts, tool gets called, no text deltas, agent_end
+    // fires with empty output. This should not emit completion.
+    sdkState.session?.emit("agent_start", {}, {});
+    sdkState.session?.emit("agent_end", {}, {}, "");
+
+    // Sub-cycle 2: post-tool reply streams in and then agent_end fires.
+    sdkState.transport?.emit("audio_transcript_delta", {
+      itemId: "item-new",
+      responseId: "resp-new",
+      delta: "Hel",
+    });
+    sdkState.session?.emit("history_updated", [
+      {
+        itemId: "item-prev",
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_audio",
+            transcript: "Previous turn reply",
+          },
+        ],
+      },
+      {
+        itemId: "item-new",
+        type: "message",
+        role: "assistant",
+        content: [
+          {
+            type: "output_audio",
+            transcript: "Hello",
+          },
+        ],
+      },
+    ]);
+    sdkState.session?.emit("agent_end", {}, {}, "Hello");
+
+    const starts = events.filter(
+      (event) => event.type === "assistant.response.started",
+    );
+    const completions = events.filter(
+      (event) => event.type === "assistant.response.completed",
+    );
+
+    expect(starts).toHaveLength(1);
+    expect(completions).toHaveLength(1);
+    expect(completions[0]).toEqual({
+      type: "assistant.response.completed",
+      text: "Hello",
+    });
+  });
+
   it("maps user transcript and audio lifecycle events", async () => {
     globalThis.fetch = vi.fn(async () =>
       Response.json({

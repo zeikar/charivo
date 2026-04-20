@@ -263,6 +263,16 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
           this.resetResponseTracking();
           return;
         }
+
+        // Tool-using turns fire response.done twice per user message: once
+        // after the tool call (no text this cycle) and once after the
+        // follow-up reply. Skip the first one so consumers see a single
+        // completion per user turn. Keeping tracking live means the
+        // follow-up cycle does not re-emit assistant.response.started.
+        if (!this.assistantText) {
+          return;
+        }
+
         this.emitEvent({
           type: "assistant.response.completed",
           text: this.assistantText,

@@ -397,6 +397,94 @@ describe("OpenAIRealtimeClient", () => {
     });
   });
 
+  it("emits a single completion per user turn even when tool calls split it", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+
+    const peer = MockPeerConnection.instances[0]!;
+
+    // Sub-cycle 1: tool call + response.done with no accumulated text.
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.function_call_arguments.done",
+          call_id: "call-1",
+          name: "setExpression",
+          arguments: JSON.stringify({ expressionId: "Smile" }),
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.done",
+        }),
+      }),
+    );
+
+    // Sub-cycle 2: post-tool audio transcript streams in, then response.done.
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.audio_transcript.delta",
+          delta: "Hello there",
+        }),
+      }),
+    );
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "response.done",
+        }),
+      }),
+    );
+
+    const starts = events.filter(
+      (event) => event.type === "assistant.response.started",
+    );
+    const completions = events.filter(
+      (event) => event.type === "assistant.response.completed",
+    );
+
+    expect(starts).toHaveLength(1);
+    expect(completions).toHaveLength(1);
+    expect(completions[0]).toEqual({
+      type: "assistant.response.completed",
+      text: "Hello there",
+    });
+  });
+
   it("swallows late completion events after interrupt", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],
