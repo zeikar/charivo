@@ -91,6 +91,7 @@ describe("realtime-core", () => {
     const character: Character = {
       id: "char-1",
       name: "Hiyori",
+      description: "A thoughtful and gentle character with a calm demeanor",
       personality: "Cheerful and helpful assistant",
       voice: {
         voiceId: "alloy",
@@ -108,6 +109,9 @@ describe("realtime-core", () => {
     expect(config.instructions).toMatch(/^You are Hiyori\./);
     expect(config.instructions).toContain(
       "Stay fully in character during the conversation.",
+    );
+    expect(config.instructions).toContain(
+      "A thoughtful and gentle character with a calm demeanor.",
     );
     expect(config.instructions).toContain(
       "Never break character. Never refer to yourself as an AI, model, or assistant.",

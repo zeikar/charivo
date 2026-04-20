@@ -64,6 +64,37 @@ await manager.updateSession({
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
 
+## Instruction Layering
+
+`@charivo/realtime` keeps its default instructions generic: spoken-output
+constraints, tool-use restraint, stage-direction suppression, and basic
+in-character behavior.
+
+`buildRealtimeSessionConfig({ character, baseConfig? })` already folds in:
+
+- character identity (`You are ...`)
+- `character.description`
+- `character.personality`
+- the generic realtime defaults
+
+If your app needs stronger product-specific acting guidance, append it in the
+app layer instead of expanding the library default prompt:
+
+```ts
+const base = buildRealtimeSessionConfig({ character });
+
+await manager.startSession({
+  provider: "openai",
+  instructions: [
+    base.instructions,
+    "Keep replies short and natural for this product.",
+  ].join("\n"),
+});
+```
+
+Prefer building on top of `buildRealtimeSessionConfig(...)` rather than
+replacing the instructions from scratch.
+
 ## Avatar Control Tools
 
 Use `createAvatarControlTools(...)` to build canonical avatar tools from the

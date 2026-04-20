@@ -29,6 +29,7 @@ import type {
   TTSPlayerType,
 } from "../types/chat";
 import { useLive2D } from "./useLive2D";
+import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import { syncAvatarControlTools } from "../lib/avatar-tools";
 import { useCharacterStore } from "../stores/useCharacterStore";
 import { useChatStore } from "../stores/useChatStore";
@@ -776,7 +777,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               motions: nextCatalog.motions,
             });
             syncAvatarControlTools(realtimeManager, nextCatalog);
-            await realtimeManager.updateSession();
+            await realtimeManager.updateSession({
+              instructions: buildDemoRealtimeInstructions(character),
+            });
           }
         }
       } catch (error) {

@@ -70,6 +70,27 @@ await manager.startSession({
 });
 ```
 
+If you need stronger product-specific acting guidance, append it in the app
+layer on top of the library-generated base instead of making
+`@charivo/realtime` own product persona rules:
+
+```ts
+import { buildRealtimeSessionConfig } from "@charivo/realtime";
+
+const base = buildRealtimeSessionConfig({ character });
+
+await manager.startSession({
+  provider: "openai",
+  instructions: [
+    base.instructions,
+    "Keep replies short and natural for this product.",
+  ].join("\n"),
+});
+```
+
+`buildRealtimeSessionConfig(...)` already includes character identity,
+`description`, `personality`, and the generic realtime/tooling rules.
+
 ## Why `@charivo/realtime/remote` Is The Default
 
 - it is the recommended production path

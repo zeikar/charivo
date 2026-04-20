@@ -3,6 +3,7 @@ import { createRealtimeManager } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
+import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -64,6 +65,9 @@ export function useRealtimeMode() {
 
       await realtimeManager.startSession({
         provider: "openai",
+        instructions: buildDemoRealtimeInstructions(
+          charivo.getCurrentCharacter(),
+        ),
       });
 
       setIsRealtimeMode(true);
