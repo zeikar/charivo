@@ -1,6 +1,6 @@
 import type { RealtimeState } from "@charivo/core";
 
-export type HarnessMode = "smoke" | "default-prompt-eval";
+export type HarnessMode = "smoke" | "default-prompt-eval" | "voice";
 
 export type HarnessEvent = {
   type: string;
@@ -24,6 +24,11 @@ export type HarnessSnapshot = {
     | { type: "motion"; group: string; index: number }
     | { type: "gaze"; x: number; y: number }
   >;
+  voiceLatency: {
+    sessionStartAt: number | null;
+    firstAssistantEventAt: number | null;
+    deltaMs: number | null;
+  };
   events: HarnessEvent[];
 };
 

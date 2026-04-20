@@ -62,6 +62,15 @@ test.describe("realtime default prompt evaluation", () => {
     const expressionEvents = afterExpression.avatarEvents.slice(
       initialSnapshot.avatarEvents.length,
     );
+    console.log(
+      `[default-prompt-eval] turn 1 (expression) response: ${JSON.stringify(afterExpression.assistantText)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 1 tool calls: ${JSON.stringify(expressionCalls)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 1 avatar events: ${JSON.stringify(expressionEvents)}`,
+    );
 
     expect(
       expressionCalls.some((call) => call.name === SET_EXPRESSION_TOOL_NAME),
@@ -72,7 +81,7 @@ test.describe("realtime default prompt evaluation", () => {
 
     await sendPrompt(
       page,
-      "Give me a brief reply with a noticeable body motion for emphasis.",
+      "Share one short fact about the ocean and add a noticeable body motion for emphasis.",
     );
     await waitForAssistantCompletion(
       page,
@@ -86,6 +95,15 @@ test.describe("realtime default prompt evaluation", () => {
     );
     const motionEvents = afterMotion.avatarEvents.slice(
       afterExpression.avatarEvents.length,
+    );
+    console.log(
+      `[default-prompt-eval] turn 2 (motion) response: ${JSON.stringify(afterMotion.assistantText)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 2 tool calls: ${JSON.stringify(motionCalls)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 2 avatar events: ${JSON.stringify(motionEvents)}`,
     );
 
     expect(
@@ -108,6 +126,15 @@ test.describe("realtime default prompt evaluation", () => {
     let gazeEvents = afterGaze.avatarEvents.slice(
       afterMotion.avatarEvents.length,
     );
+    console.log(
+      `[default-prompt-eval] turn 3 (gaze) response: ${JSON.stringify(afterGaze.assistantText)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 3 tool calls: ${JSON.stringify(gazeCalls)}`,
+    );
+    console.log(
+      `[default-prompt-eval] turn 3 avatar events: ${JSON.stringify(gazeEvents)}`,
+    );
 
     if (
       !gazeCalls.some((call) => call.name === LOOK_AT_TOOL_NAME) ||
@@ -127,6 +154,15 @@ test.describe("realtime default prompt evaluation", () => {
       gazeCalls = afterGaze.toolCalls.slice(afterMotion.toolCalls.length);
       gazeEvents = afterGaze.avatarEvents.slice(
         afterMotion.avatarEvents.length,
+      );
+      console.log(
+        `[default-prompt-eval] turn 3 retry (gaze fallback) response: ${JSON.stringify(afterGaze.assistantText)}`,
+      );
+      console.log(
+        `[default-prompt-eval] turn 3 retry tool calls: ${JSON.stringify(gazeCalls)}`,
+      );
+      console.log(
+        `[default-prompt-eval] turn 3 retry avatar events: ${JSON.stringify(gazeEvents)}`,
       );
     }
 

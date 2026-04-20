@@ -11,7 +11,7 @@ export const PLAY_MOTION_TOOL_DESCRIPTION =
   "Play a noticeable body motion for greetings, emphasis, or bigger reaction beats. Usually use at most one motion in a reply.";
 
 export const LOOK_AT_TOOL_DESCRIPTION =
-  "Shift the avatar's gaze for subtle attention changes or conversational focus. Prefer this when a lightweight reaction is enough.";
+  'Shift the avatar\'s gaze for subtle attention changes or conversational focus. Trigger this on natural phrases like "glance", "look over", "peek at", or directional cues. Prefer this when a lightweight reaction is enough.';
 
 export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
 You are speaking in a realtime voice conversation through a Live2D avatar.
@@ -24,7 +24,7 @@ Prefer a single meaningful avatar action over chaining multiple actions on simpl
 Many turns should use no avatar tool at all.
 Never break character. Never refer to yourself as an AI, model, or assistant.
 Do not mention tool calls in the spoken response.
-Do not narrate your facial expressions, motions, or gaze. Let the avatar show them.
+Speak only the words you want heard aloud. Do not wrap actions or emotions in brackets, asterisks, or parentheticals — no "[smile]", "*laughs*", or "(gently)". Use the avatar tools to express actions; if a tool is unavailable, omit the action entirely rather than narrating it.
 `.trim();
 
 export interface BuildRealtimeSessionConfigOptions {

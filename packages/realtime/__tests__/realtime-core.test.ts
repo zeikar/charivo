@@ -119,7 +119,7 @@ describe("realtime-core", () => {
       "Many turns should use no avatar tool at all.",
     );
     expect(config.instructions).toContain(
-      "Do not narrate your facial expressions, motions, or gaze.",
+      "Do not wrap actions or emotions in brackets, asterisks, or parentheticals",
     );
     expect(config.tools).toBeUndefined();
   });

@@ -48,7 +48,9 @@ const SMOKE_TEST_INSTRUCTIONS = [
 ].join(" ");
 
 const ACTIVE_TOOLS =
-  HARNESS_MODE === "default-prompt-eval" ? ALL_TEST_TOOLS : SMOKE_TEST_TOOLS;
+  HARNESS_MODE === "default-prompt-eval" || HARNESS_MODE === "voice"
+    ? ALL_TEST_TOOLS
+    : SMOKE_TEST_TOOLS;
 
 const state: HarnessSnapshot = {
   mode: HARNESS_MODE,
@@ -62,6 +64,11 @@ const state: HarnessSnapshot = {
   registeredTools: ACTIVE_TOOLS.map((tool) => tool.definition.name),
   toolCalls: [],
   avatarEvents: [],
+  voiceLatency: {
+    sessionStartAt: null,
+    firstAssistantEventAt: null,
+    deltaMs: null,
+  },
   events: [],
 };
 
@@ -121,12 +128,29 @@ for (const eventName of subscriptions) {
         if (realtimeState.response.text) {
           state.assistantText = realtimeState.response.text;
         }
+        if (
+          HARNESS_MODE === "voice" &&
+          eventName === "realtime:session:start" &&
+          state.voiceLatency.sessionStartAt === null
+        ) {
+          state.voiceLatency.sessionStartAt = Date.now();
+        }
         break;
       }
 
       case "realtime:assistant:start":
         state.assistantStatus = "responding";
         state.assistantText = "";
+        if (
+          HARNESS_MODE === "voice" &&
+          state.voiceLatency.firstAssistantEventAt === null &&
+          state.voiceLatency.sessionStartAt !== null
+        ) {
+          state.voiceLatency.firstAssistantEventAt = Date.now();
+          state.voiceLatency.deltaMs =
+            state.voiceLatency.firstAssistantEventAt -
+            state.voiceLatency.sessionStartAt;
+        }
         break;
 
       case "realtime:assistant:delta":
@@ -211,6 +235,15 @@ function buildSessionConfigForMode(mode: HarnessMode) {
     };
   }
 
+  if (mode === "voice") {
+    // Mirrors default-prompt-eval so the voice path exercises the full tool
+    // surface; the spec measures VAD-driven response start, not pure text.
+    return {
+      provider: "openai" as const,
+      toolChoice: "auto" as const,
+    };
+  }
+
   return {
     provider: "openai" as const,
     toolChoice: "auto" as const,
@@ -279,7 +312,11 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 function resolveHarnessMode(): HarnessMode {
   const mode = new URL(window.location.href).searchParams.get("mode");
 
-  return mode === "default-prompt-eval" ? mode : "smoke";
+  if (mode === "default-prompt-eval" || mode === "voice") {
+    return mode;
+  }
+
+  return "smoke";
 }
 
 const smokeWindow = window as SmokeWindow;

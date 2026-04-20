@@ -140,11 +140,13 @@ export function createAvatarControlTools(
         properties: {
           x: {
             type: "number",
-            description: "Normalized horizontal gaze target from -1 to 1.",
+            description:
+              "Normalized horizontal gaze target. -1 looks left, 0 is center, 1 looks right.",
           },
           y: {
             type: "number",
-            description: "Normalized vertical gaze target from -1 to 1.",
+            description:
+              "Normalized vertical gaze target. -1 looks down, 0 is center, 1 looks up.",
           },
         },
         required: ["x", "y"],

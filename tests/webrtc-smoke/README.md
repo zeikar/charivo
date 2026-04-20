@@ -53,6 +53,25 @@ run (connect + per-tool prompts, plus a gaze fallback turn when needed), so
 each run incurs meaningfully more OpenAI usage than `realtime-webrtc.spec.ts`,
 which drives a single turn.
 
+Voice latency baseline runs as a separate suite with its own Playwright
+config so the fake-audio flag only affects this run:
+
+```bash
+pnpm exec playwright install chromium
+RUN_LIVE_REALTIME_TESTS=1 RUN_LIVE_VOICE=1 OPENAI_API_KEY=your-key \
+  pnpm test:voice
+```
+
+`realtime-voice.spec.ts` feeds a canned WAV
+([fixtures/voice-smoke-input.wav](./fixtures/voice-smoke-input.wav)) into
+Chromium's fake microphone, lets server VAD endpoint the utterance, and
+records the delta from `realtime:session:start` to the first
+`realtime:assistant:start`. The measurement is written to stdout as a
+`[voice baseline]` line; bounds on it are sanity only. The WAV fixture is
+not committed by default — see [fixtures/README.md](./fixtures/README.md)
+for the regeneration command. The spec skips cleanly if the fixture is
+missing.
+
 What it does not prove:
 
 - microphone UX quality
