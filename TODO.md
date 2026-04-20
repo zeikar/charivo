@@ -25,9 +25,9 @@ long-term product planning.
   Tightening the latency signal requires surfacing
   `realtime:user:speech_stopped` when a clean number becomes necessary.
 
-- [P0] Clean up realtime transcript UX
+- [P0] Clean up realtime turn UX
   Outcome: define and implement a clearer model for assistant drafts, final
-  utterances, and interruption artifacts.
+  utterances, interruption artifacts, and reconnect-visible state.
   Notes: this is the most immediate product-facing gap after avatar control.
 
 - [P1] Tune avatar action prompting and tool usage
@@ -51,7 +51,7 @@ long-term product planning.
 - [P1] Define reconnect and session-refresh UX expectations
   Outcome: decide what state should survive reconnects and where refresh cost is
   acceptable.
-  Notes: this should feed directly into Phase 2 transcript and session work.
+  Notes: this should feed directly into Phase 2 turn UX and session work.
 
 - [P1] Decide whether non-realtime responses should drive avatar actions
   Outcome: either keep avatar actions realtime-only or define a separate

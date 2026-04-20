@@ -1,7 +1,7 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
-Updated: 2026-04-18
+Updated: 2026-04-20
 
 ## Goal
 
@@ -64,7 +64,7 @@ least:
 ### 2. Realtime conversation state is still shallow
 
 The current stack is good at session transport and streaming output, but weaker at product-level conversation handling.
-Transcript shape, interruption recovery, and session summaries need to be treated as part of the UX, not just transport details.
+Turn-state clarity, interruption recovery, reconnect behavior, and session summaries need to be treated as part of the UX, not just transport details.
 
 ### 3. There is no memory layer yet
 
@@ -173,11 +173,10 @@ Phase 2 is strictly about *within a single session*. Cross-session persistence b
 
 Work items:
 
-- shape realtime transcript data into a conversation log that is readable to users
-- distinguish assistant draft output, final utterances, and interruption artifacts
+- define how assistant live draft, final utterances, and interruption artifacts appear during a realtime turn
 - define what in-session state should survive a reconnect inside the same session
 - evaluate where `updateSession(...)` is acceptable and where reconnect cost hurts UX
-- keep the in-session transcript shape clean enough that Phase 3 can consume it as a summarization input
+- keep in-session turn data clean enough that Phase 3 can consume it as summarization input when needed
 
 Recommended work areas:
 
@@ -189,7 +188,7 @@ Done when:
 
 - users can naturally understand what was said during the session
 - reconnects and interruptions can be recovered without losing the overall interaction
-- long sessions do not collapse into transcript chaos
+- long sessions do not collapse into confusing partial drafts or stale turn state
 
 ### Phase 3. Introduce A Memory Layer
 
@@ -256,7 +255,7 @@ The goal is to move from a personal prototype to a system that can be used repea
 
 Work items:
 
-- measure latency, interruption recovery, transcript quality, and memory precision
+- measure latency, interruption recovery, turn clarity, and memory precision
 - create a persona consistency evaluation set
 - log tool misuse and motion spam
 - define data retention, deletion, and export behavior
@@ -304,7 +303,7 @@ For shared agent and session handoff, use [`TODO.md`](./TODO.md).
 This should be the first place to experiment.
 It is the right environment for validating the Amadeus app UX quickly.
 It is the most likely place for richer event support, session update
-capability, and transcript refinement work.
+capability, and turn-UX refinement work.
 
 ### `@charivo/realtime/openai-agents`
 
@@ -312,7 +311,7 @@ This is the key boundary between the OpenAI Agents SDK and the Charivo transport
 
 ### `@charivo/realtime`
 
-This should remain the center of the tool registry, session state, transcript normalization, and future memory integration hooks.
+This should remain the center of the tool registry, session state, normalized turn events, and future memory integration hooks.
 Most Amadeus-specific framework expansion will likely begin here.
 
 ### `@charivo/render`
