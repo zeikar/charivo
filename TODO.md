@@ -33,8 +33,13 @@ long-term product planning.
 - [P1] Tune avatar action prompting and tool usage
   Outcome: make motion and gaze usage feel intentional instead of
   expression-heavy.
-  Notes: validate against the current `examples/web` demo before adding new
-  primitives.
+  Notes: default realtime prompting now biases lightweight reactions toward
+  `lookAt`, keeps `setExpression` from soaking up every polite beat, and uses
+  stricter wording against spoken tool-name / parenthetical action leakage.
+  `examples/web` also has an app-layer realtime instruction composition point
+  instead of pushing product-specific acting guidance into `@charivo/realtime`.
+  Remaining work is mostly manual evaluation against the actual Amadeus target
+  before adding new primitives.
 
 - [P1] Decide whether `setIdleMode` is a real primitive
   Outcome: make an explicit keep/remove decision for idle control.
@@ -89,8 +94,13 @@ long-term product planning.
   empty text at the tool boundary, then again with the real reply). Consumers
   now see one start/done pair per user turn.
 - Tightened the default realtime agent instructions and `lookAt` tool
-  description to suppress bracketed stage directions (`[smile]`, `*laughs*`)
-  and treat natural directional phrases as gaze triggers.
+  description to suppress spoken tool/action leakage, bias lightweight
+  reactions toward gaze, and treat natural directional phrases as gaze
+  triggers. Live default-prompt evaluation still exercises `expression`,
+  `motion`, and `gaze` successfully after the prompt changes.
+- Added an app-layer realtime instruction composition helper in `examples/web`
+  so product-specific acting guidance can be appended on top of the generic
+  library defaults without expanding the `@charivo/realtime` public contract.
 - Canonical realtime avatar control now uses `expression`, `motion`, and `gaze`
   instead of the old emotion shorthand.
 - `examples/web` already exposes realtime avatar debug visibility for tool

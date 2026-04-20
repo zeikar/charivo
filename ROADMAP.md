@@ -118,6 +118,11 @@ Status:
 - canonical realtime avatar primitives are `expression`, `motion`, and `gaze`
 - the legacy `emotion` compatibility layer has been removed rather than retained
 - `examples/web` already demonstrates realtime expression, motion, gaze, and debug visibility
+- generic realtime prompting now keeps product-specific acting guidance in the
+  app layer rather than growing the library default prompt
+- recent prompt tuning keeps `expression`, `motion`, and `gaze` active in live
+  evaluation while pushing lightweight reactions toward gaze and reducing
+  spoken tool/action leakage
 - remaining work is now mostly product-side behavior tuning and future follow-up items, not basic framework plumbing
 
 Priority:
@@ -140,7 +145,7 @@ Completed in Charivo foundation:
 Still open for this phase or immediate follow-up:
 
 - decide whether `setIdleMode` is actually needed as a first-class primitive or whether idle should remain renderer/state driven
-- tune prompting and tool descriptions so the agent uses motion and gaze naturally rather than overusing expressions
+- keep tuning prompting and tool descriptions against the actual Amadeus target instead of only the framework demo
 - define whether non-realtime responses should ever drive avatar actions, and if so through what explicit contract
 - validate the current avatar action UX against the actual Amadeus target instead of only the framework demo
 

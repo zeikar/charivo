@@ -117,13 +117,16 @@ describe("realtime-core", () => {
       "Never break character. Never refer to yourself as an AI, model, or assistant.",
     );
     expect(config.instructions).toContain(
-      'Use "setExpression" only when the emotional beat clearly shifts',
+      'Use "setExpression" when the emotional beat clearly shifts, especially when the expression should linger across the reply.',
+    );
+    expect(config.instructions).toContain(
+      'Do not use "setExpression" for every friendly, polite, or mildly positive reply.',
     );
     expect(config.instructions).toContain(
       "Many turns should use no avatar tool at all.",
     );
     expect(config.instructions).toContain(
-      "Do not wrap actions or emotions in brackets, asterisks, or parentheticals",
+      "Never say tool names or tool arguments out loud.",
     );
     expect(config.tools).toBeUndefined();
   });
@@ -148,7 +151,7 @@ describe("realtime-core", () => {
       enum: ["Smile"],
     });
     expect(expressionTool!.definition.description).toContain(
-      "Usually keep the same expression for a few turns.",
+      "Do not use this for every polite or lightweight reaction.",
     );
     expect(motionTool!.definition.parameters.properties.group).toMatchObject({
       enum: ["Idle"],
@@ -157,7 +160,7 @@ describe("realtime-core", () => {
       "Usually use at most one motion in a reply.",
     );
     expect(gazeTool!.definition.description).toContain(
-      "Prefer this when a lightweight reaction is enough.",
+      'Prefer this before "setExpression" when a lightweight reaction is enough.',
     );
 
     await expect(
