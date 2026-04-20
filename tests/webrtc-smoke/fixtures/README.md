@@ -34,12 +34,14 @@ ffmpeg -y -i /tmp/speech.aiff \
 
 After regenerating, verify the actual speech duration (the `say` output may
 drift from ~2000 ms depending on voice selection). If it drifts materially,
-update `WAV_SPEECH_END_OFFSET_MS` in
-[`../realtime-voice.spec.ts`](../realtime-voice.spec.ts) accordingly.
+update the `WAV_LEADING_SILENCE_MS` / `WAV_SPEECH_MS` /
+`VAD_SILENCE_THRESHOLD_MS` constants at the top of
+[`../realtime-voice-baseline.spec.ts`](../realtime-voice-baseline.spec.ts)
+so the post-VAD latency estimate stays comparable across fixtures.
 
 ## Why this is kept out of the default webrtc smoke
 
 The existing `realtime-webrtc.spec.ts` suite uses `sendMessage(text)` and
-doesn't need audio input. The voice spec uses a separate Playwright config
-(`playwright.voice.config.ts`) so the `--use-file-for-fake-audio-capture` flag
-only affects the voice run.
+doesn't need audio input. The voice specs use a separate Playwright config
+(`playwright.voice.config.ts`) so the `--use-file-for-fake-audio-capture`
+flag only affects the voice run.

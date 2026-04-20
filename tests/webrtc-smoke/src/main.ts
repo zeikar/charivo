@@ -48,9 +48,11 @@ const SMOKE_TEST_INSTRUCTIONS = [
 ].join(" ");
 
 const ACTIVE_TOOLS =
-  HARNESS_MODE === "default-prompt-eval" || HARNESS_MODE === "voice"
+  HARNESS_MODE === "default-prompt-eval" || HARNESS_MODE === "voice-e2e"
     ? ALL_TEST_TOOLS
-    : SMOKE_TEST_TOOLS;
+    : HARNESS_MODE === "voice-baseline"
+      ? []
+      : SMOKE_TEST_TOOLS;
 
 const state: HarnessSnapshot = {
   mode: HARNESS_MODE,
@@ -129,7 +131,7 @@ for (const eventName of subscriptions) {
           state.assistantText = realtimeState.response.text;
         }
         if (
-          HARNESS_MODE === "voice" &&
+          (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
           eventName === "realtime:session:start" &&
           state.voiceLatency.sessionStartAt === null
         ) {
@@ -142,7 +144,7 @@ for (const eventName of subscriptions) {
         state.assistantStatus = "responding";
         state.assistantText = "";
         if (
-          HARNESS_MODE === "voice" &&
+          (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
           state.voiceLatency.firstAssistantEventAt === null &&
           state.voiceLatency.sessionStartAt !== null
         ) {
@@ -235,12 +237,21 @@ function buildSessionConfigForMode(mode: HarnessMode) {
     };
   }
 
-  if (mode === "voice") {
-    // Mirrors default-prompt-eval so the voice path exercises the full tool
-    // surface; the spec measures VAD-driven response start, not pure text.
+  if (mode === "voice-e2e") {
+    // Exercises the full voice path end-to-end including tool selection, so
+    // the e2e spec can assert on realistic tool calls and avatar events.
     return {
       provider: "openai" as const,
       toolChoice: "auto" as const,
+    };
+  }
+
+  if (mode === "voice-baseline") {
+    // No tools and no custom instructions — we want a clean audio/VAD/model
+    // latency signal without tool-selection variability contaminating it.
+    return {
+      provider: "openai" as const,
+      toolChoice: "none" as const,
     };
   }
 
@@ -312,7 +323,11 @@ function requiredElement<T extends HTMLElement>(id: string): T {
 function resolveHarnessMode(): HarnessMode {
   const mode = new URL(window.location.href).searchParams.get("mode");
 
-  if (mode === "default-prompt-eval" || mode === "voice") {
+  if (
+    mode === "default-prompt-eval" ||
+    mode === "voice-e2e" ||
+    mode === "voice-baseline"
+  ) {
     return mode;
   }
 

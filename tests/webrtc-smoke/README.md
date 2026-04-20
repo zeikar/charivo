@@ -53,8 +53,9 @@ run (connect + per-tool prompts, plus a gaze fallback turn when needed), so
 each run incurs meaningfully more OpenAI usage than `realtime-webrtc.spec.ts`,
 which drives a single turn.
 
-Voice latency baseline runs as a separate suite with its own Playwright
-config so the fake-audio flag only affects this run:
+The voice suite runs through its own Playwright config so the fake-audio
+flag only affects this run. Both voice specs share the same config and
+fixture; `pnpm test:voice` runs them together:
 
 ```bash
 pnpm exec playwright install chromium
@@ -62,15 +63,27 @@ RUN_LIVE_REALTIME_TESTS=1 RUN_LIVE_VOICE=1 OPENAI_API_KEY=your-key \
   pnpm test:voice
 ```
 
-`realtime-voice.spec.ts` feeds a canned WAV
+Both specs feed a canned WAV
 ([fixtures/voice-smoke-input.wav](./fixtures/voice-smoke-input.wav)) into
-Chromium's fake microphone, lets server VAD endpoint the utterance, and
-records the delta from `realtime:session:start` to the first
-`realtime:assistant:start`. The measurement is written to stdout as a
-`[voice baseline]` line; bounds on it are sanity only. The WAV fixture is
-not committed by default — see [fixtures/README.md](./fixtures/README.md)
-for the regeneration command. The spec skips cleanly if the fixture is
-missing.
+Chromium's fake microphone and let server VAD endpoint the utterance. They
+differ in what they measure:
+
+- `realtime-voice-e2e.spec.ts` — registers the full avatar tool surface
+  (`setExpression`, `playMotion`, `lookAt`) and logs the end-to-end
+  turnaround under `[voice e2e]`. The delta here includes tool-selection
+  overhead and is the realistic-voice counterpart to
+  `realtime-default-prompt.spec.ts`.
+- `realtime-voice-baseline.spec.ts` — registers no tools and uses the
+  default instructions so the delta trends with network + VAD + model
+  only. Logs raw delta and a post-VAD estimate under `[voice baseline]`,
+  computed by subtracting the fixture's known leading silence + speech
+  + VAD threshold from the raw number.
+
+The WAV fixture is not committed by default — see
+[fixtures/README.md](./fixtures/README.md) for the regeneration command.
+If the fixture is regenerated with a different voice/rate, update the
+timing constants at the top of `realtime-voice-baseline.spec.ts` to match.
+Both specs skip cleanly if the fixture is missing.
 
 What it does not prove:
 

@@ -9,16 +9,18 @@ import {
   waitForNoHarnessError,
 } from "./spec-helpers";
 
-// Voice latency baseline for Phase 0.
+// Voice end-to-end turnaround.
 //
-// T0 = realtime:session:start + known WAV offsets. The fixture structure is
-//   500ms leading silence + ~2000ms speech + 1500ms trailing silence.
-// T1 = realtime:assistant:start (first response-side signal).
+// Mirrors `realtime-default-prompt.spec.ts` but with a canned WAV feeding
+// Chromium's fake microphone in place of `sendMessage(text)`. Exercises the
+// full realistic voice path: server VAD endpoints the utterance, the agent
+// selects and runs avatar tools, and the first assistant response cycle
+// streams back.
 //
-// deltaMs floors at roughly 3000ms (2000ms speech + ~500ms server VAD silence
-// window + ~500ms playback-start drift after session:start). The interesting
-// part is run-to-run variance and any upward trend over time — not the
-// absolute value. Bounds here are sanity, not gates.
+// The `sessionStart → assistantStart` delta reported here is NOT a pure
+// latency baseline — it includes session setup, WAV playback drift, VAD
+// endpointing, model processing, AND tool selection overhead. For a tool-
+// free latency baseline use `realtime-voice-baseline.spec.ts`.
 
 const WAV_PATH = fileURLToPath(
   new URL("fixtures/voice-smoke-input.wav", import.meta.url),
@@ -29,24 +31,24 @@ const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const VOICE_ENABLED = process.env.RUN_LIVE_VOICE === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
-test.describe("realtime voice latency baseline", () => {
+test.describe("realtime voice e2e", () => {
   test.skip(
     !WAV_PRESENT,
     "voice-smoke-input.wav missing — see tests/webrtc-smoke/fixtures/README.md",
   );
   test.skip(
     !LIVE_ENABLED || !VOICE_ENABLED || !HAS_API_KEY,
-    "Set RUN_LIVE_REALTIME_TESTS=1 RUN_LIVE_VOICE=1 OPENAI_API_KEY=... to run voice baseline.",
+    "Set RUN_LIVE_REALTIME_TESTS=1 RUN_LIVE_VOICE=1 OPENAI_API_KEY=... to run voice suite.",
   );
 
   test.afterEach(async ({ page }) => {
     await stopSession(page);
   });
 
-  test("measures session-start to first assistant event with canned audio", async ({
+  test("drives a realistic voice turn through canned audio with tools", async ({
     page,
   }) => {
-    await page.goto("/?mode=voice");
+    await page.goto("/?mode=voice-e2e");
 
     await page.getByTestId("connect-button").click();
 
@@ -77,18 +79,18 @@ test.describe("realtime voice latency baseline", () => {
       snapshot.voiceLatency;
 
     console.log(
-      `[voice baseline] sessionStart→assistantStart: ${deltaMs}ms ` +
+      `[voice e2e] sessionStart→assistantStart: ${deltaMs}ms ` +
         `(sessionStartAt=${sessionStartAt}, firstAssistantEventAt=${firstAssistantEventAt}; ` +
-        `includes ~2000ms speech + ~500ms trailing silence before VAD endpoint + network + model)`,
+        `includes session setup + WAV playback + VAD + model + tool selection)`,
     );
     console.log(
-      `[voice baseline] assistant response: ${JSON.stringify(snapshot.assistantText)}`,
+      `[voice e2e] assistant response: ${JSON.stringify(snapshot.assistantText)}`,
     );
     console.log(
-      `[voice baseline] tool calls: ${JSON.stringify(snapshot.toolCalls)}`,
+      `[voice e2e] tool calls: ${JSON.stringify(snapshot.toolCalls)}`,
     );
     console.log(
-      `[voice baseline] avatar events: ${JSON.stringify(snapshot.avatarEvents)}`,
+      `[voice e2e] avatar events: ${JSON.stringify(snapshot.avatarEvents)}`,
     );
 
     expect(deltaMs).not.toBeNull();

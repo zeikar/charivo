@@ -8,7 +8,7 @@ const wavPath = fileURLToPath(
 
 export default defineConfig({
   testDir: "./tests/webrtc-smoke",
-  testMatch: ["**/realtime-voice.spec.ts"],
+  testMatch: ["**/realtime-voice-*.spec.ts"],
   timeout: 120_000,
   expect: {
     timeout: 30_000,

@@ -1,6 +1,10 @@
 import type { RealtimeState } from "@charivo/core";
 
-export type HarnessMode = "smoke" | "default-prompt-eval" | "voice";
+export type HarnessMode =
+  | "smoke"
+  | "default-prompt-eval"
+  | "voice-e2e"
+  | "voice-baseline";
 
 export type HarnessEvent = {
   type: string;
