@@ -19,8 +19,11 @@ long-term product planning.
 - [P0] Define a baseline measurement pass for `examples/web`
   Outcome: capture response start latency, interruption recovery, and lip-sync
   stability for the current realtime stack.
-  Notes: this closes the remaining Phase 0 ambiguity and sets the floor for
-  later evaluation.
+  Notes: approximate latency covered via the voice smoke suite — useful for
+  catastrophic-regression and variance trends, but still includes session→mic
+  drift. Interruption recovery and lip-sync remain manual observation.
+  Tightening the latency signal requires surfacing
+  `realtime:user:speech_stopped` when a clean number becomes necessary.
 
 - [P0] Clean up realtime transcript UX
   Outcome: define and implement a clearer model for assistant drafts, final
@@ -76,6 +79,18 @@ long-term product planning.
 
 ## Recently Done
 
+- Added a voice smoke suite (`tests/webrtc-smoke/realtime-voice-*.spec.ts`)
+  that feeds a canned WAV through Chromium's fake mic. `voice-e2e` drives the
+  full tool-enabled turn; `voice-baseline` strips tools for a cleaner latency
+  signal. Both share `playwright.voice.config.ts` so adding more voice specs
+  does not grow the script surface.
+- Fixed off-by-one completion events in both realtime adapters: tool-using
+  turns used to emit `assistant.response.completed` twice (once with stale or
+  empty text at the tool boundary, then again with the real reply). Consumers
+  now see one start/done pair per user turn.
+- Tightened the default realtime agent instructions and `lookAt` tool
+  description to suppress bracketed stage directions (`[smile]`, `*laughs*`)
+  and treat natural directional phrases as gaze triggers.
 - Canonical realtime avatar control now uses `expression`, `motion`, and `gaze`
   instead of the old emotion shorthand.
 - `examples/web` already exposes realtime avatar debug visibility for tool
