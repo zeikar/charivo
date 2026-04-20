@@ -75,15 +75,19 @@ differ in what they measure:
   `realtime-default-prompt.spec.ts`.
 - `realtime-voice-baseline.spec.ts` — registers no tools and uses the
   default instructions so the delta trends with network + VAD + model
-  only. Logs raw delta and a post-VAD estimate under `[voice baseline]`,
-  computed by subtracting the fixture's known leading silence + speech
-  + VAD threshold from the raw number.
+  rather than tool planning. Logs the raw delta plus a
+  "raw − known fixed cost" approximation under `[voice baseline]`
+  (subtracts the fixture's leading silence + speech + VAD threshold).
+  The approximation still carries session→mic-playback drift, so treat
+  it as a trend/variance signal, not an absolute post-VAD latency.
 
-The WAV fixture is not committed by default — see
-[fixtures/README.md](./fixtures/README.md) for the regeneration command.
-If the fixture is regenerated with a different voice/rate, update the
-timing constants at the top of `realtime-voice-baseline.spec.ts` to match.
-Both specs skip cleanly if the fixture is missing.
+The WAV fixture (`fixtures/voice-smoke-input.wav`) is checked into the
+repo so the suite runs without local setup. If you regenerate it with
+a different voice or rate, follow the command in
+[fixtures/README.md](./fixtures/README.md) and update the timing
+constants at the top of `realtime-voice-baseline.spec.ts` to match.
+Both specs skip cleanly if the fixture is missing (e.g. in a sparse
+checkout).
 
 What it does not prove:
 

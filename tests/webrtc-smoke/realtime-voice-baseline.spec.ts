@@ -12,18 +12,29 @@ import {
 // Tool-free voice latency baseline.
 //
 // Pairs with `realtime-voice-e2e.spec.ts`. The e2e spec exercises tools
-// (noisy for latency); this spec strips the tool surface and custom
-// instructions so the measured delta reflects only network + VAD + model.
+// (adds tool-selection variance to the number); this spec strips the
+// tool surface and custom instructions so the measured delta trends
+// with network + VAD + model rather than prompt/tool planning.
 //
 // ── Timing anchors ────────────────────────────────────────────────────
 // T0 = realtime:session:start (when the realtime manager reports the
-//   session as active in the browser)
+//   session as active in the browser). This is NOT the moment mic audio
+//   starts flowing to the server — that boundary isn't exposed at the
+//   event layer, so session→mic-playback drift (~100–300ms, variable
+//   per run) is baked into the raw delta below.
 // T1 = realtime:assistant:start (first response-side event from the model)
 //
-// The raw deltaMs from T0 to T1 includes known fixed cost from the WAV
-// fixture (leading silence + speech + VAD silence window). We subtract
-// that cost below to derive an "estimated post-VAD response latency"
-// that trends with model+network behavior rather than fixture length.
+// The raw deltaMs from T0 to T1 includes:
+//   1. session→mic-playback drift (unknown, left in the number)
+//   2. known fixed WAV + VAD cost (leading silence + speech duration +
+//      server VAD silence window — subtracted below as a coarse floor)
+//   3. network + model (what we actually care about)
+//
+// Subtracting (2) gives a rough-but-useful "raw minus known fixed cost"
+// number. It is an approximation, not a clean post-VAD measurement — run
+// it multiple times and trust variance/trend over absolutes. For a more
+// precise post-VAD signal, `realtime:user:speech_stopped` would need to
+// be surfaced at the event layer (future work).
 //
 // If the WAV is regenerated with different voice/rate, update the
 // constants below to match the new fixture. See
@@ -35,9 +46,11 @@ const WAV_SPEECH_MS = 2000;
 // OpenAI Realtime server VAD default silence threshold before endpointing.
 // https://platform.openai.com/docs/guides/realtime-vad
 const VAD_SILENCE_THRESHOLD_MS = 500;
-// Sum of "fixed" cost from WAV playback start to the moment VAD endpoints
-// the utterance. Anything beyond this floor is model + network latency.
-const WAV_SPEECH_END_OFFSET_MS =
+// Sum of the "fixed" cost we can subtract cleanly: WAV playback duration
+// from its start up through VAD endpointing. Does NOT include the
+// session→mic-playback drift at the beginning, so the remaining number
+// still carries that small variable component.
+const KNOWN_FIXED_COST_MS =
   WAV_LEADING_SILENCE_MS + WAV_SPEECH_MS + VAD_SILENCE_THRESHOLD_MS;
 
 const WAV_PATH = fileURLToPath(
@@ -94,15 +107,16 @@ test.describe("realtime voice latency baseline", () => {
     const snapshot = await getSnapshot(page);
     const { deltaMs } = snapshot.voiceLatency;
 
-    const postVadEstimateMs =
-      deltaMs !== null ? deltaMs - WAV_SPEECH_END_OFFSET_MS : null;
+    const rawMinusFixedCostMs =
+      deltaMs !== null ? deltaMs - KNOWN_FIXED_COST_MS : null;
 
     console.log(
       `[voice baseline] raw sessionStart→assistantStart: ${deltaMs}ms`,
     );
     console.log(
-      `[voice baseline] post-VAD response estimate: ${postVadEstimateMs}ms ` +
-        `(raw − ${WAV_SPEECH_END_OFFSET_MS}ms fixed WAV+VAD cost)`,
+      `[voice baseline] raw − known fixed cost: ${rawMinusFixedCostMs}ms ` +
+        `(subtracted ${KNOWN_FIXED_COST_MS}ms of WAV+VAD; ` +
+        `still includes session→mic-playback drift, so treat as approximate)`,
     );
     console.log(
       `[voice baseline] assistant response: ${JSON.stringify(snapshot.assistantText)}`,
