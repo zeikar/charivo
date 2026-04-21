@@ -1,52 +1,78 @@
+const FEATURES = [
+  {
+    icon: "🎭",
+    title: "Avatar Control",
+    description:
+      "Expression, motion, and gaze driven by AI tools — Natori has full expression support",
+  },
+  {
+    icon: "💋",
+    title: "Auto Lip-Sync",
+    description: "Natural mouth movements synced to voice in real time",
+  },
+  {
+    icon: "🌐",
+    title: "WebRTC Voice",
+    description: "Low-latency conversations powered by the OpenAI Realtime API",
+  },
+];
+
 export function PageHeader() {
   return (
-    <div className="text-center">
-      <div className="mb-1 md:mb-2">
-        <h1 className="text-xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-0.5 md:mb-1">
-          Charivo
-        </h1>
-        <p className="text-[11px] md:text-sm text-gray-600 dark:text-gray-400 font-medium">
-          Live2D AI Characters That Come Alive
-        </p>
-      </div>
+    <header className="text-center md:text-left">
+      {/* Brand */}
+      <h1 className="text-xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
+        Charivo
+      </h1>
+      <p className="mt-0.5 md:mt-1.5 text-[11px] md:text-base text-gray-700 dark:text-gray-300 font-medium">
+        Live2D AI Characters That Come Alive
+      </p>
 
-      <div className="hidden md:block mb-3 space-y-1">
-        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-2xl mx-auto leading-relaxed px-2 md:px-0">
-          Real-time voice conversations with{" "}
-          <span className="font-semibold text-blue-600 dark:text-blue-400">
-            Live2D characters
-          </span>{" "}
-          — AI controls{" "}
-          <span className="font-semibold text-purple-600 dark:text-purple-400">
-            expression, motion, gaze
-          </span>
-          , and{" "}
-          <span className="font-semibold text-pink-600 dark:text-pink-400">
-            lip-sync
-          </span>{" "}
-          so the character{" "}
-          <span className="font-semibold text-green-600 dark:text-green-400">
-            feels alive
-          </span>
-        </p>
-        <p className="text-gray-400 dark:text-gray-600 text-xs max-w-2xl mx-auto leading-relaxed">
-          🎭 <span className="font-semibold">Avatar Control:</span> Expression,
-          motion, and gaze driven by AI tools (
-          <span className="text-purple-500">Natori</span> has full expression
-          support) • 💋 <span className="font-semibold">Auto Lip-Sync:</span>{" "}
-          Natural mouth movements synced to voice • 🌐{" "}
-          <span className="font-semibold">WebRTC Voice:</span> Low-latency
-          conversations powered by OpenAI Realtime API
-        </p>
-      </div>
+      {/* Hero tagline — desktop only */}
+      <p className="hidden md:block mt-5 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
+        Real-time voice conversations with Live2D characters — AI controls
+        expression, motion, gaze, and lip-sync so the character{" "}
+        <span className="font-semibold text-blue-600 dark:text-blue-400">
+          feels alive
+        </span>
+        .
+      </p>
 
-      {/* Quick Links */}
-      <div className="flex justify-center items-center gap-2 flex-wrap">
+      {/* Features — desktop only */}
+      <section aria-labelledby="features-heading" className="hidden md:block">
+        <h2 id="features-heading" className="sr-only">
+          Features
+        </h2>
+        <ul className="flex flex-col gap-3 mt-4">
+          {FEATURES.map((feature) => (
+            <li key={feature.title} className="flex items-start gap-2.5">
+              <span className="text-base leading-none mt-0.5" aria-hidden>
+                {feature.icon}
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[13px] font-semibold text-gray-800 dark:text-gray-200">
+                  {feature.title}
+                </h3>
+                <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400">
+                  {feature.description}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* CTAs */}
+      <nav
+        aria-label="Project links"
+        className="mt-3 md:mt-6 flex items-center justify-center md:justify-start gap-2 flex-wrap"
+      >
         <a
           href="https://github.com/zeikar/charivo"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg transition-all font-medium text-xs"
+          aria-label="View Charivo on GitHub"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100 shadow-sm hover:shadow transition-all font-medium text-xs md:text-sm"
         >
           ⭐ GitHub
         </a>
@@ -54,11 +80,12 @@ export function PageHeader() {
           href="https://zeikar.github.io/charivo/"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all font-medium text-xs"
+          aria-label="Read the Charivo documentation"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 rounded-lg bg-white text-gray-800 border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700 shadow-sm hover:shadow transition-all font-medium text-xs md:text-sm"
         >
           📖 Documentation
         </a>
-      </div>
-    </div>
+      </nav>
+    </header>
   );
 }

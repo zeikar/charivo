@@ -77,16 +77,14 @@ export default function Home() {
 
   return (
     <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-white dark:bg-gray-900 flex flex-col">
-      {/* Header */}
-      <div className="flex-shrink-0 px-3 pt-3 pb-1 md:px-4 md:py-4">
-        <div className="container mx-auto max-w-7xl">
+      <div className="container mx-auto max-w-7xl flex-1 flex flex-col md:flex-row min-h-0 gap-2 md:gap-6 px-2 pt-3 pb-2 md:px-4 md:py-4 overflow-hidden">
+        {/* Header — top on mobile, sidebar on desktop */}
+        <aside className="flex-shrink-0 md:w-[280px] md:overflow-y-auto">
           <PageHeader />
-        </div>
-      </div>
+        </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-0 px-2 pb-2 md:px-4 md:pb-6 gap-2 md:gap-4 overflow-hidden">
-        <div className="container mx-auto max-w-7xl flex-1 flex flex-col gap-2 md:gap-4 min-h-0 overflow-hidden">
+        {/* Main: character + input */}
+        <main className="flex-1 flex flex-col gap-2 md:gap-4 min-h-0 overflow-hidden">
           {/* Character Area */}
           <div className="flex-1 min-h-0 relative">
             <Live2DPanel canvasContainerRef={canvasContainerRef} />
@@ -129,7 +127,7 @@ export default function Home() {
             onStopRecording={handleStopRecording}
             onToggleRealtimeMode={toggleRealtimeMode}
           />
-        </div>
+        </main>
       </div>
     </div>
   );
