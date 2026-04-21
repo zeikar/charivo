@@ -1,360 +1,289 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
-Updated: 2026-04-20
+Updated: 2026-04-21
 
-## Goal
+## Purpose
 
-Charivo is the framework. Amadeus is the first product built on top of it.
-This roadmap is about the Amadeus product, not about reshaping Charivo.
+Charivo is the framework. Amadeus is the first product target built on top of
+it.
 
-The goal is to build an Amadeus-like experience from `Steins;Gate 0` on top of Charivo.
+This file is the single planning document for that effort. It should stay
+short, phase-oriented, and readable. It is not a task dump.
 
-This is not just a voice chatbot. The target is a persistent conversational character that combines:
+## Product Goal
+
+Build an Amadeus-like experience on top of Charivo: a persistent conversational
+character that combines:
 
 - realtime voice conversation
-- Live2D-driven expressions, motion, and gaze
-- a stable character profile and relationship continuity
-- memory across sessions
-- response quality and operational stability over long-term use
+- Live2D-driven expression, motion, and gaze
+- stable character identity and relationship continuity
+- cross-session memory
+- enough evaluation discipline to improve safely over time
 
-## Assumptions
+This is not a framework-rewrite roadmap. The goal is to turn the existing
+Charivo foundation into a product that feels specific, consistent, and durable.
 
-This roadmap assumes the current Charivo architecture stays intact.
+## Constraints
 
-- Keep the current layering: `@charivo/core -> modality root packages -> browser subpath adapters -> server providers`
-- Keep the current event split: `RenderManager.setEventBus(...)` and realtime/TTS/STT managers using `setEventEmitter(...)`
-- Let OpenAI handle agent/runtime concerns while Charivo handles character state, rendering, and orchestration
-- Prefer adapters and feature expansion over large architectural redesigns
-- Assume realtime input transcription is handled by the OpenAI Agents SDK; standalone STT (`@charivo/stt`) is not on the Amadeus path until proven necessary
+- Keep the current layering:
+  `@charivo/core -> modality root packages -> browser adapters -> server providers`
+- Keep the current event split:
+  `RenderManager.setEventBus(...)` and realtime/TTS/STT managers using
+  `setEventEmitter(...)`
+- Prefer extending adapters and app behavior over redesigning the architecture
+- Keep Amadeus-specific memory, persona, and product logic outside
+  `@charivo/*` core packages until the shape is stable
+- Treat `examples/web` as the main product-validation surface
 
-Execution backlog for the next concrete work lives in [`TODO.md`](./TODO.md).
-This file should stay focused on phase status, major open questions, and
-product-level direction.
+## Current Read
 
-## What Already Exists
+The project is no longer at the "can this work?" stage.
 
-The repository already has most of the foundation needed for an Amadeus prototype.
+What already exists:
 
-- `@charivo/realtime/openai-agents` provides an OpenAI Agents SDK based realtime transport
-- `@charivo/realtime` already has typed session config, a tool registry, and reconnect-based `updateSession(...)`
-- `@charivo/realtime` already exposes canonical avatar control tools for expression, motion, and gaze
-- `@charivo/render` already bridges realtime avatar action and lip-sync events into the renderer
-- `@charivo/render-live2d` already exposes expression, motion, lip-sync, and mouse tracking primitives
-- `examples/web` is already the fastest place to validate the full realtime voice path in a real app
+- live realtime voice through the OpenAI Agents path
+- canonical avatar tools for expression, motion, and gaze
+- renderer wiring for avatar actions and lip-sync
+- reconnect-based `updateSession(...)`
+- live smoke coverage for WebRTC prompt evaluation and voice latency trends
+- app-layer instruction composition for product-specific acting guidance
 
-In practice, the project is already close to a "talking Live2D character."
-What is missing is the layer that makes it feel like Amadeus instead of a generic demo.
+What is still missing is product quality, not basic plumbing:
 
-## Core Gaps
+- clearer interruption and reconnect UX
+- a memory model and promotion rules
+- an explicit persona and relationship-state model
+- evaluation thresholds that are good enough to defend regressions
 
-There are five major gaps to close.
+## Phase Status
 
-### 1. Avatar control is still too narrow
+### Phase 0. Product Definition And Baseline
 
-Current realtime avatar control needs to be centered on canonical avatar
-actions rather than semantic shorthands. An Amadeus-like character needs at
-least:
-
-- `setExpression`
-- `playMotion`
-- `lookAt` or gaze targeting
-- `setIdleMode` or an equivalent idle-state switch
-
-### 2. Realtime conversation state is still shallow
-
-The current stack is good at session transport and streaming output, but weaker at product-level conversation handling.
-Turn-state clarity, interruption recovery, reconnect behavior, and session summaries need to be treated as part of the UX, not just transport details.
-
-### 3. There is no memory layer yet
-
-The defining feature of Amadeus is continuity.
-The current repo supports live interaction well, but long-term memory and recall still need to be designed separately.
-
-### 4. There is no character state model yet
-
-Amadeus should not always respond in the exact same tone.
-Relationship level, topic, time, emotional context, and conversational fatigue should all affect behavior.
-That requires more than a static persona prompt.
-
-### 5. There is no evaluation or operating baseline yet
-
-An Amadeus system has to hold up over time.
-Latency, interruption recovery, tool misuse, memory hallucination, and overactive motion/expression behavior all need measurable standards.
-
-## Phased Roadmap
-
-### Phase 0. Lock The Product Concept And Establish A Baseline
-
-The goal is to stop being abstract about the target.
-`examples/web` already runs a realtime voice path with a Live2D avatar, so this phase is about *measuring what already exists*, not building a new spike from scratch.
-
-Work items:
-
-- Write down a concrete product definition for this Amadeus project
-- Lock the first target platform to web
-- Decide the Live2D model strategy, voice direction, naming policy, and how directly the project should reference the source material
-- Use `examples/web` as the baseline harness and confirm the OpenAI Agents realtime path is the default
-- Measure baseline latency, interruption recovery, and lip-sync quality on the current build before changing anything
-
-Deliverables:
-
-- a short product concept doc
-- a baseline measurement note (latency / interruption / lip-sync) captured against the current `examples/web`
-- an initial checklist of acceptance thresholds to defend in later phases
-
-Done when:
-
-- baseline numbers exist for response start time, interruption recovery, and lip-sync stability
-- the team agrees those numbers are the floor that later phases must not regress
-
-### Phase 1. Expand Avatar Expressiveness
-
-The goal is to move from "a character that speaks" to "a character that acts."
+Goal:
+Lock the product target and establish a baseline for the current realtime
+stack.
 
 Status:
+Mostly complete.
 
-- framework-side avatar control foundation is now in place in Charivo
-- canonical realtime avatar primitives are `expression`, `motion`, and `gaze`
-- the legacy `emotion` compatibility layer has been removed rather than retained
-- `examples/web` already demonstrates realtime expression, motion, gaze, and debug visibility
-- generic realtime prompting now keeps product-specific acting guidance in the
-  app layer rather than growing the library default prompt
-- recent prompt tuning keeps `expression`, `motion`, and `gaze` active in live
-  evaluation while pushing lightweight reactions toward gaze and reducing
-  spoken tool/action leakage
-- remaining work is now mostly product-side behavior tuning and future follow-up items, not basic framework plumbing
+What is done:
 
-Priority:
+- the target product direction is clear enough to guide implementation
+- `examples/web` is established as the main validation surface
+- voice smoke tests provide a usable latency trend signal
+- the realtime stack is stable enough to treat as the baseline foundation
 
-1. expand the realtime tool and event surface
-2. expand how `render-core` interprets those events
-3. confirm which renderer primitives need to be exposed or refined
+What is still open:
 
-Work items:
+- interruption recovery and lip-sync still need a lightweight written baseline
+- acceptance thresholds should be written down explicitly instead of staying
+  implicit in recent work
 
-Completed in Charivo foundation:
+Exit criteria:
 
-- add `setExpression`, `playMotion`, and `lookAt` as the canonical realtime avatar actions
-- extend the built-in realtime tool concept to avatar action control
-- keep the mapping between tools/events and renderer capabilities loose rather than renderer-specific
-- preserve the event split: `@charivo/realtime` keeps emitting via `setEventEmitter(...)`, `@charivo/render` keeps consuming via `setEventBus(...)`
-- add basic rate limiting or debounce rules to avoid motion/expression spam
-- remove the old `emotion` shorthand path instead of carrying it forward as a long-term control surface
+- response-start baseline is recorded
+- interruption and lip-sync expectations are stated clearly enough to compare
+  future changes against them
 
-Still open for this phase or immediate follow-up:
+### Phase 1. Avatar Expressiveness
 
-- decide whether `setIdleMode` is actually needed as a first-class primitive or whether idle should remain renderer/state driven
-- keep tuning prompting and tool descriptions against the actual Amadeus target instead of only the framework demo
-- define whether non-realtime responses should ever drive avatar actions, and if so through what explicit contract
-- validate the current avatar action UX against the actual Amadeus target instead of only the framework demo
+Goal:
+Move from "a character that speaks" to "a character that acts."
 
-Recommended package scope:
+Status:
+Substantially complete at the framework level. Remaining work is product-side
+tuning.
 
-- `@charivo/core`
-- `@charivo/realtime`
-- `@charivo/render`
-- `@charivo/render-live2d`
+What is done:
 
-Done when:
+- canonical realtime avatar primitives are now `setExpression`, `playMotion`,
+  and `lookAt`
+- the old emotion shorthand path has been removed
+- default prompting is tuned away from expression spam and toward lighter gaze
+  reactions where appropriate
+- `examples/web` demonstrates live expression, motion, gaze, and avatar debug
+  visibility
 
-- one live session can drive expression, motion, and gaze changes
-- avatar reactions stay aligned with the spoken/text response
-- noisy over-animation is reduced
+What is still open:
 
-Current read:
+- validate whether the current action mix actually feels like Amadeus rather
+  than a generic demo
+- decide whether `setIdleMode` is a real primitive or should remain
+  renderer/state-driven
+- decide whether non-realtime paths should ever drive avatar actions again
 
-- the framework portion is substantially done
-- Amadeus-specific polish for when and why actions are used is still open
+Exit criteria:
 
-Follow-up after Phase 1:
+- live sessions can drive expression, motion, and gaze reliably
+- avatar actions align with the spoken response
+- over-animation is reduced to an acceptable level
 
-- design a separate turn-based avatar action contract or tag/tool-like pass if non-realtime responses should drive avatar actions again
+### Phase 2. Realtime Conversation UX
 
-### Phase 2. Solidify The Realtime Conversation UX
+Goal:
+Turn the realtime stack from a transport success into a coherent conversation
+experience within a single session.
 
-The goal is to turn realtime support from a technical feature into a sustainable conversation experience.
-Phase 2 is strictly about *within a single session*. Cross-session persistence belongs to Phase 3.
+Status:
+Current active phase.
 
-Work items:
+Why this is next:
 
-- define how assistant live draft, final utterances, and interruption artifacts appear during a realtime turn
-- define what in-session state should survive a reconnect inside the same session
-- evaluate where `updateSession(...)` is acceptable and where reconnect cost hurts UX
-- keep in-session turn data clean enough that Phase 3 can consume it as summarization input when needed
+- draft and final transcript handling has improved
+- reconnect refresh exists technically
+- interruption and reconnect behavior are still not expressed cleanly enough at
+  the product UX level
 
-Recommended work areas:
+Primary questions:
 
-- `@charivo/realtime`
-- `@charivo/realtime/openai-agents`
-- app-level store and UI
+- what should the user see during live draft, finalization, interruption, and
+  reconnect
+- what state should survive reconnect inside the same session
+- where is `updateSession(...)` acceptable, and where does reconnect cost hurt
+  the experience too much
 
-Done when:
+Exit criteria:
 
-- users can naturally understand what was said during the session
-- reconnects and interruptions can be recovered without losing the overall interaction
-- long sessions do not collapse into confusing partial drafts or stale turn state
+- partial drafts, final utterances, and interruption artifacts are clear to the
+  user
+- reconnect-visible state is intentional rather than incidental
+- long sessions do not accumulate stale or confusing turn state
 
-### Phase 3. Introduce A Memory Layer
+### Phase 3. Memory
 
-The goal is to create continuity across sessions.
+Goal:
+Create continuity across sessions.
 
-Memory should be split into at least three layers:
+Status:
+Not started.
 
-- short-term memory: recent turns and live session state
-- medium-term memory: user facts and conversation summaries that should persist for days
-- long-term memory: relationship changes, important events, preferences, boundaries, and recurring themes
+Required outputs:
 
-Work items:
+- a memory schema split at least into short-term, medium-term, and long-term
+  layers
+- promotion rules for summaries, facts, and relationship updates
+- retrieval rules for what gets injected back into future sessions
+- a correction/deletion path so bad memory can be repaired
 
-- define a memory schema first
-- define summary generation and memory handoff rules for long or ended sessions (the cross-session half of what Phase 2 deliberately left out)
-- extract summaries and candidate facts at the end of conversations
-- insert a validation step before promoting data into long-term memory
-- define retrieval rules for which memories are injected into the next session
-- store facts, guesses, and relationship state separately
-- define how memory accuracy will be measured (precision of facts written, rate of incorrect writes, recall of relevant memories) — this measurement methodology is itself a Phase 3 deliverable so Phase 5 does not have to reinvent it
+Implementation bias:
 
-Recommended implementation direction:
+- start in the app/server layer
+- avoid pushing unstable memory abstractions into core too early
+- do not let the agent write directly to long-term memory without filtering
 
-- start storage in the app/server layer and only introduce a core abstraction when the shape is stable
-- avoid letting the agent directly write everything into memory without a second filtering step
+Exit criteria:
 
-Done when:
+- the system can remember recent context and user facts across sessions
+- incorrect memories can be corrected
+- memory precision can be measured
 
-- the system can remember names, preferences, and recent context across sessions
-- incorrect memories can be corrected or deleted
-- false-memory accumulation is constrained
-- there is a documented method for measuring memory precision and incorrect-write rate
+### Phase 4. Persona And State Model
 
-### Phase 4. Build The Amadeus Persona And State Model
+Goal:
+Make the system feel specifically like Amadeus rather than like a memory-backed
+assistant.
 
-The goal is to make the system feel specifically like Amadeus, not just like a memory-enabled assistant.
+Status:
+Not started.
 
-Work items:
+Required outputs:
 
-- lock a baseline persona prompt
-- separate relationship stage, situational mode, and response tone into explicit state
-- vary expression intensity, question style, and recall behavior based on relationship state
-- define rules for prohibited topics, uncertainty handling, and emotional overreaction
-- add mode-transition tools or internal state transition rules if needed
+- a baseline persona definition
+- explicit relationship and situational state
+- tone and recall behavior that vary by state
+- rules for uncertainty, restraint, and prohibited overreaction
 
-Example states (illustrative only — the actual set should be defined at the start of Phase 4):
+Exit criteria:
 
-- `baseline`
-- `focused`
-- `gentle`
-- `concerned`
-- `reflective`
-- `low_energy`
+- the same topic can produce meaningfully different responses depending on
+  context and relationship state
+- character consistency does not depend only on a prompt paragraph
 
-Done when:
+### Phase 5. Evaluation And Readiness
 
-- the same question can produce meaningfully different tones depending on context and relationship state
-- character consistency no longer depends only on a few prompt paragraphs
-- tone drift over long conversations is reduced
+Goal:
+Define whether the system is reliable enough to iterate on confidently, and
+eventually safe enough to consider public release.
 
-### Phase 5. Evaluation, Operations, And Public Readiness
+Status:
+Not started.
 
-The goal is to move from a personal prototype to a system that can be used repeatedly with confidence.
+Required outputs:
 
-Work items:
+- repeatable evaluation scenarios for latency, interruption recovery, memory
+  precision, tool misuse, and persona consistency
+- a minimum operating bar for release decisions
+- explicit review of IP, asset licensing, and voice-similarity risk
 
-- measure latency, interruption recovery, turn clarity, and memory precision
-- create a persona consistency evaluation set
-- log tool misuse and motion spam
-- define data retention, deletion, and export behavior
-- review licensing and rights issues around assets, character likeness, and voice similarity before any public release
+Exit criteria:
 
-Operational checklist:
+- regressions are detectable
+- release decisions can be justified against explicit criteria
 
-- session failure rate
-- average response start time
-- interruption recovery success rate
-- incorrect memory write rate
-- collected examples of persona collapse
+## Immediate Focus
 
-Done when:
+The near-term priority is Phase 2, not new framework primitives.
 
-- there are repeatable evaluation scenarios
-- regressions can be detected
-- there is a minimum bar for deciding whether public release is responsible
+Current focus areas:
 
-## How To Use This Roadmap
+- define interruption-visible UX in `examples/web`
+- define reconnect/session-refresh expectations
+- close the gap between internal realtime state and what the user actually sees
+- keep Phase 0 baseline notes compact but explicit enough to anchor later work
 
-This file should be treated as a phase and milestone document, not as a
-day-to-day task list.
-
-Use it to track:
-
-- what has been completed at the phase level
-- what remains open at the product level
-- which risks or design questions block the next phase
-
-Do not use it to track:
-
-- small implementation chores
-- cleanup-only commits
-- line-by-line engineering TODOs
-
-For day-to-day execution, use issues, PRs, or a separate working checklist.
-The roadmap should stay readable as a high-level progress document.
-For shared agent and session handoff, use [`TODO.md`](./TODO.md).
-
-## Package-Level Map
+## Package Map
 
 ### `examples/web`
 
-This should be the first place to experiment.
-It is the right environment for validating the Amadeus app UX quickly.
-It is the most likely place for richer event support, session update
-capability, and turn-UX refinement work.
+Primary product-validation surface. This is where turn UX, reconnect behavior,
+memory experiments, and persona iteration should become visible first.
 
 ### `@charivo/realtime/openai-agents`
 
-This is the key boundary between the OpenAI Agents SDK and the Charivo transport contract.
+Transport boundary with the OpenAI Agents SDK. Keep transport concerns here.
 
 ### `@charivo/realtime`
 
-This should remain the center of the tool registry, session state, normalized turn events, and future memory integration hooks.
-Most Amadeus-specific framework expansion will likely begin here.
+Owns normalized realtime state, tool registry, session config, and future hooks
+that product work may depend on.
 
 ### `@charivo/render`
 
-This is the right place to interpret realtime avatar actions and bridge them into renderer primitives.
-It will likely own the next step beyond emotion-only rendering behavior.
+Bridges realtime avatar actions into renderer behavior.
 
 ### `@charivo/render-live2d`
 
-This determines the lower bound of avatar expressiveness.
-If gaze control, idle behavior, or motion blending become important, this package will need public-surface review.
+Defines the lower bound of expressiveness. If gaze, idle behavior, or motion
+layering need new public affordances, this is where they surface.
 
 ### App And Server Layers
 
-Memory storage, user profiles, session archives, and privacy policy should start outside core.
-That work is closer to productization than to framework design.
+Persona, memory storage, user profile logic, session archives, and privacy
+policy should start here, not in core packages.
 
-## Things To Avoid
+## Anti-Goals
 
-The following choices are likely mistakes at this stage:
-
-- redesigning Charivo into an Amadeus-specific architecture
-- putting Amadeus-specific code (persona, memory schema, character state) inside `@charivo/*` core packages — that work belongs in the Amadeus app/server layer
-- collapsing the event bus and event emitter contracts into one abstraction
-- overhauling transport internals before the memory problem is even defined
-- trying to solve character quality entirely with a single prompt
+- do not redesign Charivo into an Amadeus-specific architecture
+- do not collapse the event bus and event emitter contracts
+- do not put unstable persona or memory models into core packages prematurely
+- do not treat a single prompt as the full solution to character quality
+- do not confuse roadmap status with a line-by-line engineering backlog
 
 ## v1 Definition
 
-It is reasonable to call the project "Amadeus v1" once all of the following are true:
+It is reasonable to call the project "Amadeus v1" once all of the following are
+true:
 
-- realtime voice conversation meets or beats the Phase 0 baseline thresholds
-- expression, motion, and gaze reactions exist and pass the Phase 1 over-animation checks
-- basic user facts and recent context persist across sessions, with memory precision measured by the Phase 3 methodology and within an agreed bound
-- interruption and reconnect behavior do not regress against the Phase 0 baseline
-- character tone clears the persona consistency evaluation set defined in Phase 5 at an agreed pass rate
+- realtime voice conversation meets the baseline defended in Phase 0
+- expression, motion, and gaze behavior pass the Phase 1 quality bar
+- interruption and reconnect behavior meet the Phase 2 UX bar
+- cross-session memory works with measured precision from Phase 3
+- character tone clears the persona evaluation bar from Phase 5
 
 ## Note
 
-If this ever moves toward public release, IP, model asset licensing, and voice similarity risk need to be treated as first-class concerns from the beginning.
-The requirements for private experimentation and public distribution are not the same.
+If this project moves toward public release, IP, asset licensing, and
+voice-similarity risk must be treated as first-class product constraints from
+the beginning.
