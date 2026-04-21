@@ -148,9 +148,9 @@ export function ChatSettings({
   );
 
   return (
-    <div className="absolute top-4 right-4 z-20">
+    <div className="absolute top-3 right-3 md:top-4 md:right-4 z-20">
       <Menu>
-        <MenuButton className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-800 dark:text-white hover:bg-white dark:hover:bg-gray-800 transition-colors inline-flex items-center gap-2">
+        <MenuButton className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-2 md:px-4 md:py-2 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 text-xs md:text-sm font-medium text-gray-800 dark:text-white hover:bg-white dark:hover:bg-gray-800 transition-colors inline-flex items-center gap-2">
           <Cog6ToothIcon className="w-4 h-4" />
           Settings
         </MenuButton>
@@ -158,7 +158,7 @@ export function ChatSettings({
         <MenuItems
           anchor="bottom end"
           transition
-          className="mt-2 mr-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-72 focus:outline-none"
+          className="mt-2 mr-1 md:mr-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl w-[min(18rem,calc(100vw-1.5rem))] md:w-72 focus:outline-none"
         >
           <div className="max-h-[420px] overflow-y-auto">
             {/* LLM Settings */}

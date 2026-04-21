@@ -1,19 +1,17 @@
 export function PageHeader() {
   return (
     <div className="text-center">
-      {/* Main Title */}
-      <div className="mb-2">
-        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-1">
+      <div className="mb-1 md:mb-2">
+        <h1 className="text-xl md:text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-0.5 md:mb-1">
           Charivo
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+        <p className="text-[11px] md:text-sm text-gray-600 dark:text-gray-400 font-medium">
           Live2D AI Characters That Come Alive
         </p>
       </div>
 
-      {/* Description */}
-      <div className="mb-3 space-y-1">
-        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-2xl mx-auto leading-relaxed">
+      <div className="hidden md:block mb-3 space-y-1">
+        <p className="text-gray-500 dark:text-gray-500 text-xs max-w-2xl mx-auto leading-relaxed px-2 md:px-0">
           Real-time voice conversations with{" "}
           <span className="font-semibold text-blue-600 dark:text-blue-400">
             Live2D characters
@@ -43,7 +41,7 @@ export function PageHeader() {
       </div>
 
       {/* Quick Links */}
-      <div className="flex justify-center items-center gap-2">
+      <div className="flex justify-center items-center gap-2 flex-wrap">
         <a
           href="https://github.com/zeikar/charivo"
           target="_blank"

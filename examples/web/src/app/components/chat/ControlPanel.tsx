@@ -49,13 +49,13 @@ export function ControlPanel({
   }, [getAvailableExpressions, getAvailableMotionGroups]);
 
   return (
-    <div className="absolute bottom-4 left-4 z-20">
+    <div className="absolute bottom-4 left-3 md:left-4 z-20">
       <Menu>
         {({ open }) => (
           <>
             <MenuItems
               anchor={{ to: "top start", gap: "8px" }}
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl ring-1 ring-black/5 dark:ring-white/5 w-72 max-h-96 overflow-y-auto focus:outline-none z-50"
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/5 w-[min(19rem,calc(100vw-1.5rem))] md:w-72 max-h-[22rem] overflow-y-auto focus:outline-none z-50"
             >
               <div className="p-4 space-y-4">
                 {/* Expressions */}
@@ -135,7 +135,7 @@ export function ControlPanel({
               </div>
             </MenuItems>
 
-            <MenuButton className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-sm font-medium text-gray-800 dark:text-white hover:bg-white dark:hover:bg-gray-800 transition-all hover:shadow-xl inline-flex items-center gap-2">
+            <MenuButton className="bg-white/92 dark:bg-gray-800/92 backdrop-blur-sm px-3 py-2 md:px-4 md:py-2 rounded-full shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs md:text-sm font-medium text-gray-800 dark:text-white hover:bg-white dark:hover:bg-gray-800 transition-all hover:shadow-xl inline-flex items-center gap-2">
               <PlayIcon className="w-4 h-4" />
               Controls
               <ChevronDownIcon

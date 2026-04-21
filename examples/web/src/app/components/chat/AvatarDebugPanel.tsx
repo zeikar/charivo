@@ -20,7 +20,11 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function AvatarDebugPanel() {
+type AvatarDebugPanelProps = {
+  mobile?: boolean;
+};
+
+export function AvatarDebugPanel({ mobile = false }: AvatarDebugPanelProps) {
   const { avatarDebug, isRealtimeMode } = useChatStore();
 
   if (
@@ -35,7 +39,13 @@ export function AvatarDebugPanel() {
   }
 
   return (
-    <div className="absolute right-4 bottom-4 z-20 w-80 max-w-[calc(100%-2rem)] rounded-2xl bg-slate-950/85 text-slate-100 shadow-2xl ring-1 ring-white/10 backdrop-blur-sm">
+    <div
+      className={
+        mobile
+          ? "w-full rounded-2xl bg-slate-950/85 text-slate-100 ring-1 ring-white/10 backdrop-blur-sm"
+          : "hidden md:block absolute right-4 bottom-4 z-20 w-80 max-w-[calc(100%-2rem)] rounded-2xl bg-slate-950/85 text-slate-100 shadow-2xl ring-1 ring-white/10 backdrop-blur-sm"
+      }
+    >
       <div className="border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold tracking-wide">Avatar Debug</h3>
