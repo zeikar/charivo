@@ -168,6 +168,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     appendRealtimeAssistantDraft,
     resetRealtimeUiState,
     setRealtimeAssistantDraft,
+    setRealtimeInterruptedDraft,
+    moveRealtimeDraftToInterrupted,
     setRealtimeTurnStatus,
     setAvatarCatalog,
     setAvatarDebug,
@@ -179,6 +181,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const sttManagerRef = useRef<STTManager | null>(null);
   const currentCharacterRef = useRef(character);
   const syncedCharacterIdRef = useRef<string | null>(null);
+  const isRealtimeRefreshPendingRef = useRef(false);
 
   useEffect(() => {
     currentCharacterRef.current = character;
@@ -503,22 +506,56 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return;
           }
 
+          if (state.response.status === "interrupted") {
+            moveRealtimeDraftToInterrupted();
+          }
+
           setRealtimeState(state);
           setIsConnecting(state.connection === "connecting");
           setIsConnected(state.connection === "connected");
-          setRealtimeTurnStatus(getRealtimeTurnStatus(state));
+          setRealtimeTurnStatus(
+            getRealtimeTurnStatus(state, {
+              isRefreshing: isRealtimeRefreshPendingRef.current,
+            }),
+          );
 
-          if (shouldResetRealtimeUiState(state)) {
+          if (
+            shouldResetRealtimeUiState(state, {
+              isRefreshing: isRealtimeRefreshPendingRef.current,
+            })
+          ) {
             resetRealtimeUiState();
           }
         });
 
-        instance.on("realtime:session:end", () => {
+        instance.on("realtime:session:end", ({ reason }) => {
           if (disposed) {
             return;
           }
 
+          if (reason === "refresh") {
+            isRealtimeRefreshPendingRef.current = true;
+            setRealtimeAssistantDraft(null);
+            setRealtimeInterruptedDraft(null);
+            setRealtimeTurnStatus("reconnecting");
+            return;
+          }
+
+          isRealtimeRefreshPendingRef.current = false;
           resetRealtimeUiState();
+        });
+
+        instance.on("realtime:session:start", ({ reason }) => {
+          if (disposed) {
+            return;
+          }
+
+          if (reason === "refresh") {
+            isRealtimeRefreshPendingRef.current = false;
+            setRealtimeTurnStatus(
+              getRealtimeTurnStatus(useChatStore.getState().realtimeState),
+            );
+          }
         });
 
         instance.on("realtime:assistant:start", () => {
@@ -528,6 +565,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
           logRealtimeUi("assistant.start");
           setRealtimeAssistantDraft(null);
+          setRealtimeInterruptedDraft(null);
         });
 
         instance.on("realtime:assistant:delta", ({ text }) => {
@@ -559,6 +597,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           }
 
           setRealtimeAssistantDraft(null);
+          setRealtimeInterruptedDraft(null);
         });
 
         instance.on("realtime:tool:call", ({ name, args, callId }) => {
@@ -668,7 +707,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             return;
           }
 
+          isRealtimeRefreshPendingRef.current = false;
           setRealtimeError(error.message);
+          setRealtimeInterruptedDraft(null);
 
           // Read the latest realtime state at event time rather than relying on
           // a captured closure value from the effect setup.
@@ -681,6 +722,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         clearMessages();
         setRealtimeError(null);
         setRealtimeState(null);
+        isRealtimeRefreshPendingRef.current = false;
         resetAvatarDebug();
         resetRealtimeUiState();
         setCharivo(instance);
@@ -725,6 +767,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     appendRealtimeAssistantDraft,
     resetRealtimeUiState,
     setRealtimeAssistantDraft,
+    setRealtimeInterruptedDraft,
+    moveRealtimeDraftToInterrupted,
     setRealtimeTurnStatus,
     setAvatarCatalog,
     setAvatarDebug,
@@ -777,6 +821,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               motions: nextCatalog.motions,
             });
             syncAvatarControlTools(realtimeManager, nextCatalog);
+            // Pre-mark the UI before refresh lifecycle events land so the
+            // avatar switch does not briefly fall back to a stale ready state.
+            isRealtimeRefreshPendingRef.current = true;
+            setRealtimeAssistantDraft(null);
+            setRealtimeInterruptedDraft(null);
+            setRealtimeTurnStatus("reconnecting");
             await realtimeManager.updateSession({
               instructions: buildDemoRealtimeInstructions(character),
             });
@@ -787,6 +837,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           return;
         }
 
+        isRealtimeRefreshPendingRef.current = false;
         setRealtimeError(
           error instanceof Error
             ? error.message
@@ -807,6 +858,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     getLive2DModelPath,
     isRealtimeMode,
     resetRealtimeUiState,
+    setRealtimeAssistantDraft,
+    setRealtimeInterruptedDraft,
+    setRealtimeTurnStatus,
     setRealtimeError,
     setAvatarCatalog,
     resetAvatarDebug,

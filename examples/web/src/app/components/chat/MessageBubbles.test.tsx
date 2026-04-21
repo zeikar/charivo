@@ -10,6 +10,7 @@ describe("MessageBubbles", () => {
         messages={[]}
         isLoading
         realtimeAssistantDraft="Live draft"
+        realtimeInterruptedDraft={null}
       />,
     );
 
@@ -31,10 +32,26 @@ describe("MessageBubbles", () => {
         ]}
         isLoading
         realtimeAssistantDraft={null}
+        realtimeInterruptedDraft={null}
       />,
     );
 
     expect(html).toContain("Completed reply");
     expect(html).toContain("animate-bounce");
+  });
+
+  it("renders interrupted partial bubble without loading fallback", () => {
+    const html = renderToStaticMarkup(
+      <MessageBubbles
+        messages={[]}
+        isLoading
+        realtimeAssistantDraft={null}
+        realtimeInterruptedDraft="Partial answer"
+      />,
+    );
+
+    expect(html).toContain("Interrupted");
+    expect(html).toContain("Partial answer");
+    expect(html).not.toContain("animate-bounce");
   });
 });

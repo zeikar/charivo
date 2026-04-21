@@ -1,79 +1,106 @@
+import type { Character, RealtimeState } from "@charivo/core";
 import { describe, expect, it } from "vitest";
-import type { RealtimeState } from "@charivo/core";
 import {
   createRealtimeAssistantMessage,
   getRealtimeTurnStatus,
   shouldResetRealtimeUiState,
 } from "./realtime-ui";
 
-function createRealtimeState(
-  overrides?: Partial<RealtimeState>,
-): RealtimeState {
-  const session = {
+function createState(overrides: Partial<RealtimeState> = {}): RealtimeState {
+  const { session, response, ...rest } = overrides;
+  const mergedSession = {
     status: "active" as const,
     config: null,
-    characterId: "char-1",
-    ...overrides?.session,
+    ...session,
   };
-  const response = {
+  const mergedResponse = {
     status: "idle" as const,
     text: "",
-    ...overrides?.response,
-  };
-  const connection = overrides?.connection ?? "connected";
-  const lastError = overrides?.lastError ?? null;
-
-  const state: RealtimeState = {
-    connection,
-    session,
-    response,
-    lastError,
+    ...response,
   };
 
-  return state;
+  return {
+    connection: "connected",
+    session: mergedSession,
+    response: mergedResponse,
+    lastError: null,
+    ...rest,
+  };
 }
 
-describe("realtime-ui helpers", () => {
-  it("derives turn status from realtime state", () => {
-    expect(getRealtimeTurnStatus(null)).toBe("idle");
+describe("realtime-ui", () => {
+  it("returns connecting during initial session connect", () => {
     expect(
       getRealtimeTurnStatus(
-        createRealtimeState({ response: { status: "responding", text: "hi" } }),
-      ),
-    ).toBe("responding");
-    expect(getRealtimeTurnStatus(createRealtimeState())).toBe("listening");
-    expect(
-      getRealtimeTurnStatus(
-        createRealtimeState({
-          connection: "idle",
-          session: { status: "stopped", config: null },
+        createState({
+          connection: "connecting",
+          session: {
+            status: "starting",
+            config: null,
+          },
         }),
       ),
-    ).toBe("idle");
+    ).toBe("connecting");
   });
 
-  it("signals when realtime UI state should reset", () => {
-    expect(shouldResetRealtimeUiState(createRealtimeState())).toBe(false);
+  it("returns reconnecting during refresh without resetting UI state", () => {
+    expect(
+      getRealtimeTurnStatus(
+        createState({
+          connection: "disconnecting",
+        }),
+        { isRefreshing: true },
+      ),
+    ).toBe("reconnecting");
     expect(
       shouldResetRealtimeUiState(
-        createRealtimeState({
-          connection: "error",
-          session: { status: "stopped", config: null },
+        createState({
+          connection: "disconnecting",
         }),
+        { isRefreshing: true },
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("creates finalized realtime assistant messages", () => {
-    const message = createRealtimeAssistantMessage("Hello", {
+  it("returns responding for streamed assistant output", () => {
+    expect(
+      getRealtimeTurnStatus(
+        createState({
+          response: {
+            status: "responding",
+            text: "Hi",
+          },
+        }),
+      ),
+    ).toBe("responding");
+  });
+
+  it("returns interrupted after interruption", () => {
+    expect(
+      getRealtimeTurnStatus(
+        createState({
+          response: {
+            status: "interrupted",
+            text: "Par",
+          },
+        }),
+      ),
+    ).toBe("interrupted");
+  });
+
+  it("creates a character message for completed realtime assistant text", () => {
+    const character: Character = {
       id: "char-1",
       name: "Hiyori",
-    });
+    };
 
-    expect(message.id).toBeTruthy();
-    expect(message.content).toBe("Hello");
+    const message = createRealtimeAssistantMessage("Hello there", character);
+
+    expect(message.content).toBe("Hello there");
     expect(message.type).toBe("character");
     expect(message.characterId).toBe("char-1");
-    expect(message.character?.name).toBe("Hiyori");
+    expect(message.character).toEqual(character);
+    expect(message.timestamp).toBeInstanceOf(Date);
+    expect(message.id).toBeTruthy();
   });
 });

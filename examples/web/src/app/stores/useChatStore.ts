@@ -66,6 +66,9 @@ type ChatStore = {
   realtimeAssistantDraft: string | null;
   setRealtimeAssistantDraft: (draft: string | null) => void;
   appendRealtimeAssistantDraft: (chunk: string) => void;
+  realtimeInterruptedDraft: string | null;
+  setRealtimeInterruptedDraft: (draft: string | null) => void;
+  moveRealtimeDraftToInterrupted: () => void;
   realtimeTurnStatus: RealtimeTurnStatus;
   setRealtimeTurnStatus: (status: RealtimeTurnStatus) => void;
   avatarCatalog: AvatarControlCatalog;
@@ -161,6 +164,24 @@ export const useChatStore = create<ChatStore>((set) => ({
     set((state) => ({
       realtimeAssistantDraft: `${state.realtimeAssistantDraft ?? ""}${chunk}`,
     })),
+  realtimeInterruptedDraft: null,
+  setRealtimeInterruptedDraft: (realtimeInterruptedDraft) =>
+    set({ realtimeInterruptedDraft }),
+  moveRealtimeDraftToInterrupted: () =>
+    set((state) => {
+      const draft = state.realtimeAssistantDraft?.trim()
+        ? state.realtimeAssistantDraft
+        : null;
+
+      if (!draft) {
+        return {};
+      }
+
+      return {
+        realtimeAssistantDraft: null,
+        realtimeInterruptedDraft: draft,
+      };
+    }),
   realtimeTurnStatus: "idle",
   setRealtimeTurnStatus: (realtimeTurnStatus) => set({ realtimeTurnStatus }),
   avatarCatalog: { expressions: [], motions: {} },
@@ -177,6 +198,7 @@ export const useChatStore = create<ChatStore>((set) => ({
   resetRealtimeUiState: () =>
     set({
       realtimeAssistantDraft: null,
+      realtimeInterruptedDraft: null,
       realtimeTurnStatus: "idle",
     }),
 }));

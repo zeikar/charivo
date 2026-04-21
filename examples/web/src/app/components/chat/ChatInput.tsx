@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { PaperAirplaneIcon, MicrophoneIcon } from "@heroicons/react/24/outline";
 import { ArrowPathIcon } from "@heroicons/react/24/solid";
 import { useChatStore } from "../../stores/useChatStore";
+import { RealtimeStatusBadge } from "./RealtimeStatusBadge";
 
 type ChatInputProps = {
   onSend: () => void;
@@ -27,8 +28,8 @@ export function ChatInput({
     selectedSTTTranscriber,
     isRealtimeMode,
     isConnecting,
-    isConnected,
     realtimeError,
+    realtimeTurnStatus,
   } = useChatStore();
 
   const handleMicClick = () => {
@@ -90,16 +91,13 @@ export function ChatInput({
                   ? "🌐 Realtime ON"
                   : "🌐 Realtime OFF"}
             </button>
-            {isRealtimeMode && isConnected && (
-              <div className="mt-1 text-xs text-green-400 font-medium text-center">
-                ✓ Connected
-              </div>
-            )}
-            {realtimeError && (
-              <div className="mt-1 text-xs text-red-400 font-medium text-center">
-                ✗ Error
-              </div>
-            )}
+            <div className="text-center">
+              <RealtimeStatusBadge
+                visible={isRealtimeMode}
+                status={realtimeTurnStatus}
+                error={realtimeError}
+              />
+            </div>
           </div>
         )}
 

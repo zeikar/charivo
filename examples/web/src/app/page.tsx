@@ -35,6 +35,7 @@ export default function Home() {
     sttError,
     realtimeError,
     realtimeAssistantDraft,
+    realtimeInterruptedDraft,
   } = useChatStore();
 
   // Initialize hooks
@@ -106,6 +107,7 @@ export default function Home() {
               messages={messages}
               isLoading={isLoading && !isSpeaking}
               realtimeAssistantDraft={realtimeAssistantDraft}
+              realtimeInterruptedDraft={realtimeInterruptedDraft}
             />
 
             <ControlPanel

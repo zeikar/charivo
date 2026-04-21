@@ -5,16 +5,20 @@ type MessageBubblesProps = {
   messages: ChatMessage[];
   isLoading: boolean;
   realtimeAssistantDraft: string | null;
+  realtimeInterruptedDraft: string | null;
 };
 
 export function MessageBubbles({
   messages,
   isLoading,
   realtimeAssistantDraft,
+  realtimeInterruptedDraft,
 }: MessageBubblesProps) {
   const characterMessages = messages.filter((msg) => msg.type === "character");
   const visibleMessages = characterMessages.slice(-5);
   const showLiveDraft = Boolean(realtimeAssistantDraft?.trim());
+  const showInterruptedDraft =
+    !showLiveDraft && Boolean(realtimeInterruptedDraft?.trim());
 
   return (
     <div className="absolute top-20 left-6 md:left-8 z-10 space-y-3">
@@ -51,7 +55,22 @@ export function MessageBubbles({
         </div>
       )}
 
-      {!showLiveDraft && isLoading && (
+      {showInterruptedDraft && (
+        <div>
+          <div className="relative inline-block px-5 py-3 rounded-2xl shadow-md bg-amber-50/90 dark:bg-amber-950/40 text-gray-700 dark:text-amber-50 border border-amber-200 dark:border-amber-800/80 max-w-md opacity-85">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
+              Interrupted
+            </div>
+            <p className="text-sm">{realtimeInterruptedDraft}</p>
+            <div className="absolute top-[12px] -right-[10px]">
+              <div className="w-0 h-0 border-l-[10px] border-l-amber-200 dark:border-l-amber-800/80 border-t-[7px] border-t-transparent border-b-[7px] border-b-transparent" />
+              <div className="absolute top-0 left-0 w-0 h-0 border-l-[9px] border-l-amber-50/90 dark:border-l-amber-950/40 border-t-[7px] border-t-transparent border-b-[7px] border-b-transparent translate-x-[-1px]" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!showLiveDraft && !showInterruptedDraft && isLoading && (
         <div className="relative inline-block px-5 py-5 rounded-2xl shadow-md bg-white dark:bg-gray-700 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600">
           <div className="flex items-center space-x-1.5">
             <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" />

@@ -2,7 +2,13 @@ import type { Character, Message } from "@charivo/core";
 
 export type ChatMessage = Message & { character?: Character };
 
-export type RealtimeTurnStatus = "idle" | "listening" | "responding";
+export type RealtimeTurnStatus =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "responding"
+  | "interrupted"
+  | "reconnecting";
 
 export type TTSPlayerType = "remote" | "web" | "openai" | "none";
 

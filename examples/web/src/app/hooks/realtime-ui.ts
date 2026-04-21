@@ -1,15 +1,35 @@
 import type { Character, RealtimeState } from "@charivo/core";
 import type { ChatMessage, RealtimeTurnStatus } from "../types/chat";
 
+interface RealtimeUiStatusOptions {
+  isRefreshing?: boolean;
+}
+
 export function getRealtimeTurnStatus(
   state: RealtimeState | null,
+  options: RealtimeUiStatusOptions = {},
 ): RealtimeTurnStatus {
   if (!state) {
     return "idle";
   }
 
+  if (options.isRefreshing) {
+    return "reconnecting";
+  }
+
+  if (
+    state.connection === "connecting" ||
+    state.session.status === "starting"
+  ) {
+    return "connecting";
+  }
+
   if (state.connection !== "connected" || state.session.status !== "active") {
     return "idle";
+  }
+
+  if (state.response.status === "interrupted") {
+    return "interrupted";
   }
 
   if (state.response.status === "responding") {
@@ -21,8 +41,9 @@ export function getRealtimeTurnStatus(
 
 export function shouldResetRealtimeUiState(
   state: RealtimeState | null,
+  options: RealtimeUiStatusOptions = {},
 ): boolean {
-  return getRealtimeTurnStatus(state) === "idle";
+  return getRealtimeTurnStatus(state, options) === "idle";
 }
 
 export function createRealtimeAssistantMessage(

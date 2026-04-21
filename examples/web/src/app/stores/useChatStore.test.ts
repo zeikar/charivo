@@ -21,16 +21,31 @@ describe("useChatStore realtime UI state", () => {
     expect(useChatStore.getState().realtimeAssistantDraft).toBeNull();
   });
 
+  it("moves a live draft into the interrupted draft once", () => {
+    const state = useChatStore.getState();
+
+    state.appendRealtimeAssistantDraft("Partial reply");
+    state.moveRealtimeDraftToInterrupted();
+    state.moveRealtimeDraftToInterrupted();
+
+    expect(useChatStore.getState().realtimeAssistantDraft).toBeNull();
+    expect(useChatStore.getState().realtimeInterruptedDraft).toBe(
+      "Partial reply",
+    );
+  });
+
   it("stores and resets the realtime turn status", () => {
     const state = useChatStore.getState();
 
     state.setRealtimeTurnStatus("responding");
+    state.setRealtimeInterruptedDraft("Interrupted reply");
 
     expect(useChatStore.getState().realtimeTurnStatus).toBe("responding");
 
     state.resetRealtimeUiState();
 
     expect(useChatStore.getState().realtimeAssistantDraft).toBeNull();
+    expect(useChatStore.getState().realtimeInterruptedDraft).toBeNull();
     expect(useChatStore.getState().realtimeTurnStatus).toBe("idle");
   });
 });
