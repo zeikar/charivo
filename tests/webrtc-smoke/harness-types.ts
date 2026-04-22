@@ -1,4 +1,4 @@
-import type { RealtimeState } from "@charivo/core";
+import type { RealtimeSessionConfig, RealtimeState } from "@charivo/core";
 
 export type HarnessMode =
   | "smoke"
@@ -38,6 +38,7 @@ export type HarnessSnapshot = {
 
 export type SmokeHarnessApi = {
   startSession: () => Promise<void>;
+  updateSession: (config?: RealtimeSessionConfig) => Promise<void>;
   sendPrompt: (text?: string) => Promise<void>;
   stopSession: () => Promise<void>;
   getSnapshot: () => HarnessSnapshot;

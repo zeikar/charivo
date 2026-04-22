@@ -42,7 +42,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private refreshInFlight: Promise<void> | null = null;
   private hasQueuedRefresh = false;
   private stopRequestedDuringRefresh = false;
-  private emittedUserStopDuringRefresh = false;
   private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
   private state: RealtimeState = {
     connection: "idle",
@@ -186,12 +185,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
     this.stopRequestedDuringRefresh = false;
     this.hasQueuedRefresh = false;
-    this.emittedUserStopDuringRefresh = false;
     this.refreshInFlight = this.runRefreshLoop().finally(() => {
       this.refreshInFlight = null;
       this.hasQueuedRefresh = false;
       this.stopRequestedDuringRefresh = false;
-      this.emittedUserStopDuringRefresh = false;
     });
 
     return this.refreshInFlight;
@@ -210,11 +207,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
       if (this.state.session.status === "active") {
         await this.performStopSession();
-      } else if (
-        this.stopRequestedDuringRefresh &&
-        !this.emittedUserStopDuringRefresh
-      ) {
-        this.emitSessionEnd("user");
       }
 
       return;
@@ -620,6 +612,21 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.emitState();
   }
 
+  private commitPatchedSession(config: RealtimeSessionConfig): void {
+    this.state = {
+      ...this.state,
+      connection: "connected",
+      session: {
+        ...this.state.session,
+        status: "active",
+        config,
+        characterId: this.character?.id,
+      },
+      lastError: null,
+    };
+    this.emitState();
+  }
+
   private async performStopSession(): Promise<void> {
     this.isStoppingSession = true;
     this.state = {
@@ -649,53 +656,25 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   private async performSessionRefresh(): Promise<void> {
-    const previousState = this.getState();
     const sessionConfig = this.buildEffectiveSessionConfig();
 
     this.isRefreshingSession = true;
     this.state = {
       ...this.state,
-      connection: "disconnecting",
       lastError: null,
     };
     this.emitState();
 
     try {
-      await this.client.disconnect();
-
-      if (this.stopRequestedDuringRefresh) {
-        this.emittedUserStopDuringRefresh = true;
-        this.finalizeStoppedSession(true, "user");
-        return;
-      }
-
-      this.state = {
-        ...this.state,
-        connection: "connecting",
-        response: {
-          status: "idle",
-          text: "",
-        },
-      };
-      this.emitState();
-
-      await this.client.connect(sessionConfig);
-
-      if (this.stopRequestedDuringRefresh) {
-        await this.client.disconnect();
-        this.emittedUserStopDuringRefresh = true;
-        this.finalizeStoppedSession(true, "user");
-        return;
-      }
-
-      this.commitActiveSession(sessionConfig);
-      this.emitSessionEnd("refresh", previousState);
-      this.emitSessionStart("refresh");
+      await this.client.updateSession(sessionConfig);
+      this.commitPatchedSession(sessionConfig);
     } catch (error) {
-      this.finalizeFailedSession(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      throw error;
+      const refreshError =
+        error instanceof Error ? error : new Error(String(error));
+      if (this.state.lastError !== refreshError) {
+        this.applyError(refreshError, "connected");
+      }
+      throw refreshError;
     } finally {
       this.isRefreshingSession = false;
     }

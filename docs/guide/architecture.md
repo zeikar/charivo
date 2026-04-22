@@ -41,7 +41,7 @@ Lower layers should not take on orchestration concerns from higher layers.
 - `@charivo/llm`: conversation lifecycle and message orchestration
 - `@charivo/tts`: synthesis flow and lip-sync coordination
 - `@charivo/stt`: recording and transcription lifecycle
-- `@charivo/realtime`: realtime session state, tools, and reconnect-driven updates
+- `@charivo/realtime`: realtime session state, tools, and in-place session updates
 - `@charivo/render`: renderer lifecycle, mouse tracking, and visual bridge logic
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.

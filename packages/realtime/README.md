@@ -106,16 +106,18 @@ loaded Live2D model catalog:
 
 ## Session Refresh
 
-`updateSession(...)` refreshes the active provider session by reconnecting with
-the latest requested config, current character, and current tool registry.
+`updateSession(...)` patches the active provider session in place using the
+latest requested config, current character, and current tool registry.
 
 - inactive managers only cache the requested base config for the next
   `startSession(...)`
-- active managers reconnect instead of attempting a transport-level patch
-- refresh lifecycle events use `reason: "refresh"` on
-  `realtime:session:end/start`
-- refresh failures do not roll back to the previous live session
-- `state.session.config` is only replaced after the new connection succeeds
+- active managers keep the current connection open and issue a transport-level
+  session patch
+- successful patches update `realtime:state` only and do not emit synthetic
+  `realtime:session:end/start` refresh boundaries
+- patch failures keep the current live session and previous
+  `state.session.config` in place
+- `state.session.config` is only replaced after the patch succeeds
 - repeated `updateSession(...)` calls are coalesced to the latest config
 - `stopSession()` wins over an in-flight refresh and converges to a stopped
   session

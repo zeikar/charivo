@@ -36,6 +36,7 @@ function createRealtimeClientStub(options?: {
         await emitEvent({ type: "session.started" });
       }
     }),
+    updateSession: vi.fn(async () => undefined),
     disconnect: vi.fn(async () => {
       if (options?.emitSessionEndedOnDisconnect) {
         await emitEvent({ type: "session.ended" });
@@ -559,6 +560,7 @@ describe("realtime-core", () => {
     });
 
     expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.updateSession).not.toHaveBeenCalled();
     expect(stub.client.disconnect).not.toHaveBeenCalled();
 
     await manager.startSession();
@@ -586,14 +588,16 @@ describe("realtime-core", () => {
 
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
 
     await manager.updateSession({
       voice: "alloy",
     });
 
-    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
-    expect(stub.client.connect).toHaveBeenCalledWith(
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+    expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.updateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         voice: "alloy",
       }),
@@ -604,16 +608,14 @@ describe("realtime-core", () => {
       "realtime:state",
     ) as Array<{ state: RealtimeState }>;
     expect(statePayloads.map(({ state }) => state.connection)).toEqual([
-      "disconnecting",
-      "connecting",
+      "connected",
       "connected",
     ]);
     expect(
       statePayloads.every(({ state }) => state.session.status !== "stopped"),
     ).toBe(true);
     expect(statePayloads[0]?.state.session.config?.voice).toBe("marin");
-    expect(statePayloads[1]?.state.session.config?.voice).toBe("marin");
-    expect(statePayloads[2]?.state.session.config?.voice).toBe("alloy");
+    expect(statePayloads[1]?.state.session.config?.voice).toBe("alloy");
 
     const sessionBoundaryCalls = (
       eventEmitter.emit as ReturnType<typeof vi.fn>
@@ -621,30 +623,7 @@ describe("realtime-core", () => {
       ([name]) =>
         name === "realtime:session:end" || name === "realtime:session:start",
     );
-    expect(sessionBoundaryCalls.map(([name]) => name)).toEqual([
-      "realtime:session:end",
-      "realtime:session:start",
-    ]);
-    expect(sessionBoundaryCalls[0]?.[1]).toMatchObject({
-      reason: "refresh",
-      state: {
-        session: {
-          config: expect.objectContaining({
-            voice: "marin",
-          }),
-        },
-      },
-    });
-    expect(sessionBoundaryCalls[1]?.[1]).toMatchObject({
-      reason: "refresh",
-      state: {
-        session: {
-          config: expect.objectContaining({
-            voice: "alloy",
-          }),
-        },
-      },
-    });
+    expect(sessionBoundaryCalls).toHaveLength(0);
   });
 
   it("keeps setCharacter side-effect free until updateSession is called", async () => {
@@ -664,6 +643,7 @@ describe("realtime-core", () => {
     });
 
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
 
     manager.setCharacter({
@@ -676,12 +656,14 @@ describe("realtime-core", () => {
     });
 
     expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.updateSession).not.toHaveBeenCalled();
     expect(stub.client.disconnect).not.toHaveBeenCalled();
 
     await manager.updateSession();
 
-    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
-    expect(stub.client.connect).toHaveBeenCalledWith(
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+    expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.updateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "openai",
         voice: "alloy",
@@ -725,12 +707,13 @@ describe("realtime-core", () => {
     });
 
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
 
     manager.registerTool(toolB);
     await manager.updateSession();
 
-    expect(stub.client.connect).toHaveBeenLastCalledWith(
+    expect(stub.client.updateSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
         tools: expect.arrayContaining([
           expect.objectContaining({ name: "toolA" }),
@@ -740,12 +723,14 @@ describe("realtime-core", () => {
     );
 
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
 
     manager.unregisterTool("toolA");
     await manager.updateSession();
 
-    const refreshedConfig = vi.mocked(stub.client.connect).mock.calls[0]?.[0];
+    const refreshedConfig = vi.mocked(stub.client.updateSession).mock
+      .calls[0]?.[0];
     expect(refreshedConfig).toMatchObject({
       tools: expect.arrayContaining([
         expect.objectContaining({ name: "toolB" }),
@@ -756,13 +741,13 @@ describe("realtime-core", () => {
     ).toBe(false);
   });
 
-  it("stops cleanly on refresh failures and can be started again", async () => {
+  it("keeps the active session on refresh failures and can retry patching", async () => {
     const stub = createRealtimeClientStub();
-    let connectAttempts = 0;
+    let updateAttempts = 0;
 
-    vi.mocked(stub.client.connect).mockImplementation(async () => {
-      connectAttempts += 1;
-      if (connectAttempts === 2) {
+    vi.mocked(stub.client.updateSession).mockImplementation(async () => {
+      updateAttempts += 1;
+      if (updateAttempts === 1) {
         throw new Error("refresh failed");
       }
     });
@@ -781,36 +766,39 @@ describe("realtime-core", () => {
     ).rejects.toThrow("refresh failed");
 
     expect(manager.getState()).toMatchObject({
-      connection: "error",
+      connection: "connected",
       session: {
-        status: "stopped",
-        config: null,
+        status: "active",
+        config: expect.objectContaining({
+          voice: "marin",
+        }),
       },
       lastError: expect.objectContaining({
         message: "refresh failed",
       }),
     });
 
-    vi.mocked(stub.client.connect).mockImplementation(async () => undefined);
+    await manager.updateSession({
+      voice: "alloy",
+    });
 
-    await manager.startSession();
-
-    expect(stub.client.connect).toHaveBeenLastCalledWith(
+    expect(stub.client.updateSession).toHaveBeenLastCalledWith(
       expect.objectContaining({
         voice: "alloy",
       }),
     );
+    expect(manager.getState().session.config?.voice).toBe("alloy");
   });
 
   it("coalesces repeated session refresh requests to the latest config", async () => {
     const stub = createRealtimeClientStub();
-    const firstDisconnect = createDeferred<void>();
-    let disconnectCount = 0;
+    const firstUpdate = createDeferred<void>();
+    let updateCount = 0;
 
-    vi.mocked(stub.client.disconnect).mockImplementation(async () => {
-      disconnectCount += 1;
-      if (disconnectCount === 1) {
-        await firstDisconnect.promise;
+    vi.mocked(stub.client.updateSession).mockImplementation(async () => {
+      updateCount += 1;
+      if (updateCount === 1) {
+        await firstUpdate.promise;
       }
     });
 
@@ -822,8 +810,9 @@ describe("realtime-core", () => {
     });
 
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
-    disconnectCount = 0;
+    updateCount = 0;
 
     const firstRefresh = manager.updateSession({
       voice: "alloy",
@@ -834,15 +823,19 @@ describe("realtime-core", () => {
 
     expect(firstRefresh).toBe(secondRefresh);
 
-    firstDisconnect.resolve(undefined);
+    firstUpdate.resolve(undefined);
     await firstRefresh;
 
-    expect(stub.client.disconnect).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(stub.client.connect).mock.calls).toHaveLength(2);
-    expect(vi.mocked(stub.client.connect).mock.calls[0]?.[0]).toMatchObject({
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+    expect(vi.mocked(stub.client.updateSession).mock.calls).toHaveLength(2);
+    expect(
+      vi.mocked(stub.client.updateSession).mock.calls[0]?.[0],
+    ).toMatchObject({
       voice: "alloy",
     });
-    expect(vi.mocked(stub.client.connect).mock.calls[1]?.[0]).toMatchObject({
+    expect(
+      vi.mocked(stub.client.updateSession).mock.calls[1]?.[0],
+    ).toMatchObject({
       voice: "nova",
     });
     expect(manager.getState().session.config?.voice).toBe("nova");
@@ -850,13 +843,13 @@ describe("realtime-core", () => {
 
   it("cancels refresh and converges to stopped when stopSession wins", async () => {
     const stub = createRealtimeClientStub();
-    const disconnectGate = createDeferred<void>();
-    let disconnectCount = 0;
+    const updateGate = createDeferred<void>();
+    let updateCount = 0;
 
-    vi.mocked(stub.client.disconnect).mockImplementation(async () => {
-      disconnectCount += 1;
-      if (disconnectCount === 1) {
-        await disconnectGate.promise;
+    vi.mocked(stub.client.updateSession).mockImplementation(async () => {
+      updateCount += 1;
+      if (updateCount === 1) {
+        await updateGate.promise;
       }
     });
 
@@ -870,19 +863,22 @@ describe("realtime-core", () => {
     });
 
     vi.mocked(stub.client.connect).mockClear();
+    vi.mocked(stub.client.updateSession).mockClear();
     vi.mocked(stub.client.disconnect).mockClear();
     (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
-    disconnectCount = 0;
+    updateCount = 0;
 
     const refreshPromise = manager.updateSession({
       voice: "alloy",
     });
     const stopPromise = manager.stopSession();
 
-    disconnectGate.resolve(undefined);
+    updateGate.resolve(undefined);
     await Promise.all([refreshPromise, stopPromise]);
 
     expect(stub.client.connect).not.toHaveBeenCalled();
+    expect(stub.client.updateSession).toHaveBeenCalledTimes(1);
+    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
     expect(manager.getState().session.status).toBe("stopped");
     expect(manager.getState().connection).toBe("idle");
     expect(

@@ -43,6 +43,12 @@ export interface OpenAIRealtimeClientOptions {
   ) => Promise<RealtimeSessionBootstrap>;
 }
 
+interface PendingSessionUpdate {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 const DEBUG_EVENT_ALLOWLIST = new Set<string>([
   "session.created",
   "session.updated",
@@ -52,6 +58,7 @@ const DEBUG_EVENT_ALLOWLIST = new Set<string>([
   "conversation.item.input_audio_transcription.completed",
   "error",
 ]);
+const DEFAULT_SESSION_UPDATE_TIMEOUT_MS = 5_000;
 
 /**
  * OpenAI-specific realtime transport client.
@@ -72,6 +79,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private hasStartedAssistantResponse = false;
   private hasStartedAudioOutput = false;
   private assistantText = "";
+  private pendingSessionUpdate: PendingSessionUpdate | null = null;
   private eventCallbacks = new Set<(event: RealtimeTransportEvent) => void>();
 
   constructor(private options: OpenAIRealtimeClientOptions = {}) {}
@@ -147,6 +155,37 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   async disconnect(): Promise<void> {
     this.log("Disconnecting OpenAI Realtime WebRTC");
     this.cleanup();
+  }
+
+  async updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    const dc = this.requireOpenDataChannel();
+
+    if (this.pendingSessionUpdate) {
+      throw new Error("Realtime session update already in progress");
+    }
+
+    dc.send(
+      JSON.stringify({
+        type: "session.update",
+        session: toOpenAIRealtimeSessionUpdate(config),
+      }),
+    );
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.rejectPendingSessionUpdate(
+          new Error(
+            `Timed out waiting for session.updated after ${DEFAULT_SESSION_UPDATE_TIMEOUT_MS}ms`,
+          ),
+        );
+      }, DEFAULT_SESSION_UPDATE_TIMEOUT_MS);
+
+      this.pendingSessionUpdate = {
+        resolve,
+        reject,
+        timeoutId,
+      };
+    });
   }
 
   async sendText(text: string): Promise<void> {
@@ -229,7 +268,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     switch (event.type) {
       case "session.created":
+        return;
+
       case "session.updated":
+        this.resolvePendingSessionUpdate();
         return;
 
       case "response.audio.delta":
@@ -365,6 +407,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       case "error":
         this.isResponseInProgress = false;
         this.cancelInFlight = false;
+        this.rejectPendingSessionUpdate(
+          new Error(event.error?.message || "Unknown error"),
+        );
         this.emitEvent({
           type: "error",
           error: new Error(event.error?.message || "Unknown error"),
@@ -507,6 +552,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
   private cleanup(): void {
     this.stopLipSyncAnalysis();
+    this.rejectPendingSessionUpdate(
+      new Error("Realtime session ended before session update completed"),
+    );
 
     if (this.dc) {
       this.dc.close();
@@ -553,6 +601,26 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     return this.dc;
   }
 
+  private resolvePendingSessionUpdate(): void {
+    if (!this.pendingSessionUpdate) {
+      return;
+    }
+
+    clearTimeout(this.pendingSessionUpdate.timeoutId);
+    this.pendingSessionUpdate.resolve();
+    this.pendingSessionUpdate = null;
+  }
+
+  private rejectPendingSessionUpdate(error: Error): void {
+    if (!this.pendingSessionUpdate) {
+      return;
+    }
+
+    clearTimeout(this.pendingSessionUpdate.timeoutId);
+    this.pendingSessionUpdate.reject(error);
+    this.pendingSessionUpdate = null;
+  }
+
   private resetResponseTracking(): void {
     this.assistantText = "";
     this.hasStartedAssistantResponse = false;
@@ -584,4 +652,35 @@ export function createOpenAIRealtimeClient(
   options?: OpenAIRealtimeClientOptions,
 ): RealtimeTransportClient {
   return new OpenAIRealtimeClient(options);
+}
+
+function toOpenAIRealtimeSessionUpdate(
+  config?: RealtimeSessionConfig,
+): Record<string, unknown> {
+  const session: Record<string, unknown> = {
+    audio: {
+      output: {
+        voice: config?.voice ?? "marin",
+      },
+    },
+    tool_choice: config?.toolChoice ?? "auto",
+  };
+
+  if (config?.instructions) {
+    session.instructions = config.instructions;
+  }
+
+  if (config?.temperature !== undefined) {
+    session.temperature = config.temperature;
+  }
+
+  if (config?.maxTokens !== undefined) {
+    session.max_response_output_tokens = config.maxTokens;
+  }
+
+  if (config?.tools?.length) {
+    session.tools = config.tools;
+  }
+
+  return session;
 }

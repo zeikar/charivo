@@ -71,6 +71,10 @@ class MockRealtimeSession extends MockEmitter {
   options: Record<string, unknown>;
   history: unknown[] = [];
   connect = vi.fn(async (_options: Record<string, unknown>) => undefined);
+  updateAgent = vi.fn(async (agent: MockRealtimeAgent) => {
+    this.initialAgent = agent;
+    return agent;
+  });
   sendMessage = vi.fn((_text: string) => undefined);
   close = vi.fn(() => {
     sdkState.transport?.emit("connection_change", "disconnected");
@@ -188,6 +192,56 @@ describe("OpenAIRealtimeAgentsClient", () => {
       },
     });
     expect(events).toContainEqual({ type: "session.started" });
+  });
+
+  it("patches the active session in place", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    await client.updateSession({
+      provider: "openai",
+      voice: "alloy",
+      temperature: 0.2,
+      maxTokens: 200,
+      tools: [
+        {
+          type: "function",
+          name: "wave",
+          description: "Wave to the user.",
+          parameters: {
+            type: "object",
+            properties: {},
+          },
+        },
+      ],
+    });
+
+    expect(sdkState.session?.updateAgent).toHaveBeenCalledTimes(1);
+    expect(sdkState.session?.initialAgent.voice).toBe("alloy");
+    expect(sdkState.session?.initialAgent.tools).toHaveLength(1);
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        output: {
+          voice: "alloy",
+        },
+      },
+      temperature: 0.2,
+      maxResponseOutputTokens: 200,
+    });
   });
 
   it("normalizes assistant transcript deltas and final history text", async () => {

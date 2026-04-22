@@ -23,6 +23,7 @@ const agentsTransportClient = {
       callback({ type: "session.started" });
     }
   }),
+  updateSession: vi.fn(async (_config?: unknown) => undefined),
   disconnect: vi.fn(async () => undefined),
   sendText: vi.fn(async (_text: string) => undefined),
   sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
@@ -55,6 +56,7 @@ const legacyTransportClient = {
       callback({ type: "session.started" });
     }
   }),
+  updateSession: vi.fn(async (_config?: unknown) => undefined),
   disconnect: vi.fn(async () => undefined),
   sendText: vi.fn(async (_text: string) => undefined),
   sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
@@ -95,6 +97,7 @@ afterEach(() => {
   legacyTransportState.callbacks = [];
   agentsTransportClient.connect.mockClear();
   agentsTransportClient.disconnect.mockClear();
+  agentsTransportClient.updateSession.mockClear();
   agentsTransportClient.sendText.mockClear();
   agentsTransportClient.sendAudio.mockClear();
   agentsTransportClient.sendToolResult.mockClear();
@@ -102,6 +105,7 @@ afterEach(() => {
   agentsTransportClient.onEvent.mockClear();
   legacyTransportClient.connect.mockClear();
   legacyTransportClient.disconnect.mockClear();
+  legacyTransportClient.updateSession.mockClear();
   legacyTransportClient.sendText.mockClear();
   legacyTransportClient.sendAudio.mockClear();
   legacyTransportClient.sendToolResult.mockClear();
@@ -237,6 +241,39 @@ describe("RemoteRealtimeClient", () => {
         success: true,
       },
     );
+  });
+
+  it("forwards session updates to the active transport", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+            transport: "webrtc",
+            clientSecret: "client-secret",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+    });
+    await client.updateSession({
+      provider: "openai",
+      voice: "alloy",
+    });
+
+    expect(agentsTransportClient.updateSession).toHaveBeenCalledWith({
+      provider: "openai",
+      voice: "alloy",
+    });
   });
 
   it("can explicitly resolve the legacy adapter", async () => {

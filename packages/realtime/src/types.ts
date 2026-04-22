@@ -50,6 +50,9 @@ export interface RealtimeTransportClient {
   connect(
     config?: import("@charivo/core").RealtimeSessionConfig,
   ): Promise<void>;
+  updateSession(
+    config?: import("@charivo/core").RealtimeSessionConfig,
+  ): Promise<void>;
   disconnect(): Promise<void>;
   sendText(text: string): Promise<void>;
   sendAudio(audio: ArrayBuffer): Promise<void>;

@@ -100,6 +100,10 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
     }
   }
 
+  async updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    await this.getActiveTransportClient().updateSession(config);
+  }
+
   async disconnect(): Promise<void> {
     if (!this.transportClient) {
       return;

@@ -80,12 +80,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.audioElement.autoplay = true;
       this.audioElement.setAttribute("playsinline", "true");
 
-      const agent = new RealtimeAgent({
-        name: "charivo-realtime-agent",
-        instructions: resolveInstructions(config),
-        tools: this.createProxyTools(config?.tools),
-        voice: resolveVoice(config),
-      });
+      const agent = this.createAgent(config);
 
       this.transport = new OpenAIRealtimeWebRTC(
         this.createTransportOptions(this.audioElement),
@@ -135,6 +130,15 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.cleanup();
   }
 
+  async updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    if (!this.session) {
+      throw new Error("Realtime session not active");
+    }
+
+    this.session.options.config = toOpenAIRealtimeAgentsSessionConfig(config);
+    await this.session.updateAgent(this.createAgent(config));
+  }
+
   async sendText(text: string): Promise<void> {
     if (!this.session) {
       throw new Error("Realtime session not active");
@@ -175,6 +179,15 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
     this.eventCallbacks.add(callback);
+  }
+
+  private createAgent(config?: RealtimeSessionConfig): RealtimeAgent {
+    return new RealtimeAgent({
+      name: "charivo-realtime-agent",
+      instructions: resolveInstructions(config),
+      tools: this.createProxyTools(config?.tools),
+      voice: resolveVoice(config),
+    });
   }
 
   private bindSessionEvents(session: RealtimeSession): void {

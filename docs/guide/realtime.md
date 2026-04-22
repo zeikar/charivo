@@ -125,7 +125,7 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 - session state
 - tool registry
 - typed session config helpers
-- reconnect-driven `updateSession(...)`
+- in-place `updateSession(...)` session patching
 - relaying realtime output into the Charivo event stream
 
 Canonical avatar control is expression/motion/gaze-first:

@@ -29,6 +29,21 @@ export async function sendPrompt(page: Page, text: string): Promise<void> {
   }, text);
 }
 
+export async function updateSession(
+  page: Page,
+  config: Record<string, unknown>,
+): Promise<void> {
+  await page.evaluate((nextConfig: Record<string, unknown>) => {
+    const smoke = (window as SmokeWindow).__charivoSmoke;
+
+    if (!smoke) {
+      throw new Error("Smoke harness API is not available");
+    }
+
+    return smoke.updateSession(nextConfig);
+  }, config);
+}
+
 export async function stopSession(page: Page): Promise<void> {
   if (page.isClosed()) {
     return;
@@ -143,4 +158,27 @@ export async function waitForToolAndAvatarActivity(page: Page): Promise<void> {
       snapshot.assistantText.trim().length > 0
     );
   });
+}
+
+export async function waitForSessionInstructions(
+  page: Page,
+  expectedFragment: string,
+): Promise<void> {
+  await page.waitForFunction(
+    (fragment: string) => {
+      const smoke = (window as SmokeWindow).__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      return (
+        smoke.getSnapshot().sessionInstructions?.includes(fragment) ?? false
+      );
+    },
+    expectedFragment,
+    {
+      timeout: 30_000,
+    },
+  );
 }

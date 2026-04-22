@@ -16,7 +16,7 @@ export function resolveVoice(config?: RealtimeSessionConfig): string {
 export function toOpenAIRealtimeAgentsSessionConfig(
   config?: RealtimeSessionConfig,
 ): Record<string, unknown> {
-  return {
+  const sessionConfig: Record<string, unknown> = {
     model: config?.model ?? DEFAULT_MODEL,
     instructions: resolveInstructions(config),
     toolChoice: config?.toolChoice ?? "auto",
@@ -27,4 +27,14 @@ export function toOpenAIRealtimeAgentsSessionConfig(
       },
     },
   };
+
+  if (config?.temperature !== undefined) {
+    sessionConfig.temperature = config.temperature;
+  }
+
+  if (config?.maxTokens !== undefined) {
+    sessionConfig.maxResponseOutputTokens = config.maxTokens;
+  }
+
+  return sessionConfig;
 }

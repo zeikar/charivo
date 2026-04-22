@@ -272,6 +272,22 @@ async function stopSession(): Promise<void> {
   }
 }
 
+async function updateSession(
+  config?: Parameters<typeof realtimeManager.updateSession>[0],
+): Promise<void> {
+  state.lastError = null;
+  render();
+
+  try {
+    await realtimeManager.updateSession(config);
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+    throw error;
+  }
+}
+
 async function sendPrompt(text = messageInput.value): Promise<void> {
   state.lastError = null;
   render();
@@ -337,6 +353,7 @@ function resolveHarnessMode(): HarnessMode {
 const smokeWindow = window as SmokeWindow;
 smokeWindow.__charivoSmoke = {
   startSession,
+  updateSession,
   sendPrompt,
   stopSession,
   getSnapshot: () => structuredClone(state),
