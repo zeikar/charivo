@@ -135,6 +135,11 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       throw new Error("Realtime session not active");
     }
 
+    // `RealtimeSession.updateAgent(...)` is the only public session-level API
+    // that recomputes instructions / tools / voice and applies them without a
+    // reconnect. The SDK currently derives that patch from `options.config`
+    // plus agent fields, so keep `options.config` aligned here until it
+    // exposes a dedicated public config update path on `RealtimeSession`.
     this.session.options.config = toOpenAIRealtimeAgentsSessionConfig(config);
     await this.session.updateAgent(this.createAgent(config));
   }

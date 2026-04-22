@@ -667,6 +667,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
     try {
       await this.client.updateSession(sessionConfig);
+      if (this.stopRequestedDuringRefresh) {
+        return;
+      }
+
       this.commitPatchedSession(sessionConfig);
     } catch (error) {
       const refreshError =

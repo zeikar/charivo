@@ -790,6 +790,40 @@ describe("realtime-core", () => {
     expect(manager.getState().session.config?.voice).toBe("alloy");
   });
 
+  it("emits a single realtime:error when a session patch failure also arrives as a transport error event", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const refreshError = new Error("session patch rejected");
+    vi.mocked(stub.client.updateSession).mockImplementationOnce(async () => {
+      await stub.emit({
+        type: "error",
+        error: refreshError,
+      });
+      throw refreshError;
+    });
+
+    await expect(
+      manager.updateSession({
+        voice: "alloy",
+      }),
+    ).rejects.toThrow("session patch rejected");
+
+    const realtimeErrors = getEventPayloads(eventEmitter, "realtime:error");
+    expect(realtimeErrors).toEqual([
+      {
+        error: refreshError,
+      },
+    ]);
+  });
+
   it("coalesces repeated session refresh requests to the latest config", async () => {
     const stub = createRealtimeClientStub();
     const firstUpdate = createDeferred<void>();
@@ -881,6 +915,17 @@ describe("realtime-core", () => {
     expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
     expect(manager.getState().session.status).toBe("stopped");
     expect(manager.getState().connection).toBe("idle");
+    const statePayloads = getEventPayloads(
+      eventEmitter,
+      "realtime:state",
+    ) as Array<{ state: RealtimeState }>;
+    expect(
+      statePayloads.some(
+        ({ state }) =>
+          state.session.status === "active" &&
+          state.session.config?.voice === "alloy",
+      ),
+    ).toBe(false);
     expect(
       getEventPayloads(eventEmitter, "realtime:session:end"),
     ).toContainEqual(

@@ -2,7 +2,7 @@ import type { Character, RealtimeSessionConfig } from "@charivo/core";
 
 const DEFAULT_PROVIDER = "openai";
 const DEFAULT_MODEL = "gpt-realtime-mini";
-const DEFAULT_VOICE = "marin";
+export const DEFAULT_REALTIME_VOICE = "marin";
 
 export const SET_EXPRESSION_TOOL_DESCRIPTION =
   "Change the avatar's facial expression only when the emotional beat clearly shifts or should linger across the reply. Do not use this for every polite or lightweight reaction.";
@@ -41,7 +41,8 @@ export function buildRealtimeSessionConfig({
     provider: baseConfig?.provider ?? DEFAULT_PROVIDER,
     transport: baseConfig?.transport ?? "webrtc",
     model: baseConfig?.model ?? DEFAULT_MODEL,
-    voice: baseConfig?.voice ?? character?.voice?.voiceId ?? DEFAULT_VOICE,
+    voice:
+      baseConfig?.voice ?? character?.voice?.voiceId ?? DEFAULT_REALTIME_VOICE,
     instructions:
       baseConfig?.instructions ?? buildCharacterInstructions(character),
     temperature: baseConfig?.temperature,

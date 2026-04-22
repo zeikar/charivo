@@ -4,6 +4,7 @@ import type {
   RealtimeSessionRequest,
 } from "@charivo/core";
 import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import { DEFAULT_REALTIME_VOICE } from "../instructions";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   fetchWithTimeout,
@@ -13,6 +14,8 @@ import {
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 
 interface ServerError {
+  code?: string;
+  event_id?: string;
   message?: string;
 }
 
@@ -24,6 +27,7 @@ interface ServerEventItem {
 
 interface ServerEvent {
   type: string;
+  event_id?: string;
   delta?: string;
   text?: string;
   transcript?: string;
@@ -38,12 +42,14 @@ interface ServerEvent {
 export interface OpenAIRealtimeClientOptions {
   apiEndpoint?: string;
   debug?: boolean;
+  sessionUpdateTimeoutMs?: number;
   sessionBootstrap?: (
     request: RealtimeSessionRequest,
   ) => Promise<RealtimeSessionBootstrap>;
 }
 
 interface PendingSessionUpdate {
+  eventId: string;
   resolve: () => void;
   reject: (error: Error) => void;
   timeoutId: ReturnType<typeof setTimeout>;
@@ -79,6 +85,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private hasStartedAssistantResponse = false;
   private hasStartedAudioOutput = false;
   private assistantText = "";
+  private nextSessionUpdateId = 1;
   private pendingSessionUpdate: PendingSessionUpdate | null = null;
   private eventCallbacks = new Set<(event: RealtimeTransportEvent) => void>();
 
@@ -158,7 +165,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   async updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    if (this.isResponseInProgress) {
+      throw new Error(
+        "Cannot update the realtime session while a response is in progress. Call interrupt() first.",
+      );
+    }
+
     const dc = this.requireOpenDataChannel();
+    const eventId = `charivo-session-update-${this.nextSessionUpdateId++}`;
 
     if (this.pendingSessionUpdate) {
       throw new Error("Realtime session update already in progress");
@@ -167,6 +181,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     dc.send(
       JSON.stringify({
         type: "session.update",
+        event_id: eventId,
         session: toOpenAIRealtimeSessionUpdate(config),
       }),
     );
@@ -175,12 +190,13 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       const timeoutId = setTimeout(() => {
         this.rejectPendingSessionUpdate(
           new Error(
-            `Timed out waiting for session.updated after ${DEFAULT_SESSION_UPDATE_TIMEOUT_MS}ms`,
+            `Timed out waiting for session.updated after ${this.getSessionUpdateTimeoutMs()}ms`,
           ),
         );
-      }, DEFAULT_SESSION_UPDATE_TIMEOUT_MS);
+      }, this.getSessionUpdateTimeoutMs());
 
       this.pendingSessionUpdate = {
+        eventId,
         resolve,
         reject,
         timeoutId,
@@ -407,13 +423,17 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       case "error":
         this.isResponseInProgress = false;
         this.cancelInFlight = false;
-        this.rejectPendingSessionUpdate(
-          new Error(event.error?.message || "Unknown error"),
-        );
-        this.emitEvent({
-          type: "error",
-          error: new Error(event.error?.message || "Unknown error"),
-        });
+        {
+          const error = new Error(event.error?.message || "Unknown error");
+          if (this.isPendingSessionUpdateError(event)) {
+            this.rejectPendingSessionUpdate(error);
+          }
+
+          this.emitEvent({
+            type: "error",
+            error,
+          });
+        }
         return;
 
       default:
@@ -621,6 +641,21 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.pendingSessionUpdate = null;
   }
 
+  private isPendingSessionUpdateError(event: ServerEvent): boolean {
+    const pendingUpdate = this.pendingSessionUpdate;
+    if (!pendingUpdate) {
+      return false;
+    }
+
+    return event.error?.event_id === pendingUpdate.eventId;
+  }
+
+  private getSessionUpdateTimeoutMs(): number {
+    return (
+      this.options.sessionUpdateTimeoutMs ?? DEFAULT_SESSION_UPDATE_TIMEOUT_MS
+    );
+  }
+
   private resetResponseTracking(): void {
     this.assistantText = "";
     this.hasStartedAssistantResponse = false;
@@ -660,7 +695,7 @@ function toOpenAIRealtimeSessionUpdate(
   const session: Record<string, unknown> = {
     audio: {
       output: {
-        voice: config?.voice ?? "marin",
+        voice: config?.voice ?? DEFAULT_REALTIME_VOICE,
       },
     },
     tool_choice: config?.toolChoice ?? "auto",

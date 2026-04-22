@@ -283,6 +283,7 @@ describe("OpenAIRealtimeClient", () => {
     expect(peer.dataChannel.send).toHaveBeenLastCalledWith(
       JSON.stringify({
         type: "session.update",
+        event_id: "charivo-session-update-1",
         session: {
           audio: {
             output: {
@@ -314,6 +315,82 @@ describe("OpenAIRealtimeClient", () => {
     } as MessageEvent);
 
     await updatePromise;
+  });
+
+  it("ignores unrelated server errors while a session patch is pending", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "alloy",
+    });
+    const onRejected = vi.fn();
+
+    void updatePromise.catch(onRejected);
+
+    peer.dataChannel.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: {
+          message: "tool failed",
+          event_id: "different-event",
+        },
+      }),
+    } as MessageEvent);
+    await Promise.resolve();
+
+    expect(onRejected).not.toHaveBeenCalled();
+    expect(events).toContainEqual({
+      type: "error",
+      error: expect.objectContaining({
+        message: "tool failed",
+      }),
+    });
+
+    peer.dataChannel.onmessage?.({
+      data: JSON.stringify({
+        type: "session.updated",
+      }),
+    } as MessageEvent);
+
+    await updatePromise;
+    expect(onRejected).not.toHaveBeenCalled();
   });
 
   it("rejects session patches that never receive a session.updated ack", async () => {
@@ -362,6 +439,100 @@ describe("OpenAIRealtimeClient", () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     await expectation;
+  });
+
+  it("uses a custom session patch timeout when configured", async () => {
+    vi.useFakeTimers();
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+      sessionUpdateTimeoutMs: 1_234,
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "alloy",
+    });
+    const expectation = expect(updatePromise).rejects.toThrow(
+      "Timed out waiting for session.updated after 1234ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(1_234);
+
+    await expectation;
+  });
+
+  it("rejects session patches while an assistant response is in progress", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+    await client.sendText("hello");
+
+    await expect(
+      client.updateSession({
+        provider: "openai",
+        voice: "alloy",
+      }),
+    ).rejects.toThrow(
+      "Cannot update the realtime session while a response is in progress. Call interrupt() first.",
+    );
   });
 
   it("sends user messages, blocks duplicate sends, and supports interruption", async () => {

@@ -30,6 +30,9 @@ const sdkState = vi.hoisted(() => ({
 
 class MockRealtimeTransport extends MockEmitter {
   options: Record<string, unknown>;
+  updateSessionConfig = vi.fn(async (_config: Record<string, unknown>) => {
+    return undefined;
+  });
 
   constructor(options: Record<string, unknown>) {
     super();
@@ -73,6 +76,12 @@ class MockRealtimeSession extends MockEmitter {
   connect = vi.fn(async (_options: Record<string, unknown>) => undefined);
   updateAgent = vi.fn(async (agent: MockRealtimeAgent) => {
     this.initialAgent = agent;
+    await sdkState.transport?.updateSessionConfig({
+      ...(this.options.config as Record<string, unknown> | undefined),
+      instructions: agent.instructions,
+      voice: agent.voice,
+      tools: agent.tools,
+    });
     return agent;
   });
   sendMessage = vi.fn((_text: string) => undefined);
@@ -231,6 +240,24 @@ describe("OpenAIRealtimeAgentsClient", () => {
     });
 
     expect(sdkState.session?.updateAgent).toHaveBeenCalledTimes(1);
+    expect(sdkState.transport?.updateSessionConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.any(String),
+        voice: "alloy",
+        tools: [
+          expect.objectContaining({
+            name: "wave",
+          }),
+        ],
+        temperature: 0.2,
+        maxResponseOutputTokens: 200,
+        audio: {
+          output: {
+            voice: "alloy",
+          },
+        },
+      }),
+    );
     expect(sdkState.session?.initialAgent.voice).toBe("alloy");
     expect(sdkState.session?.initialAgent.tools).toHaveLength(1);
     expect(sdkState.session?.options.config).toMatchObject({
