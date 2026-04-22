@@ -33,6 +33,7 @@ class MockAudioContext {
       this.source as unknown as MediaElementAudioSourceNode,
   );
   resume = vi.fn(async () => undefined);
+  close = vi.fn(async () => undefined);
 
   constructor() {
     MockAudioContext.lastInstance = this;
@@ -90,6 +91,20 @@ describe("RealTimeLipSync", () => {
     expect(
       MockAudioContext.lastInstance?.analyser.disconnect,
     ).toHaveBeenCalled();
+    expect(MockAudioContext.lastInstance?.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("prepares audio contexts idempotently before connecting", async () => {
+    const lipSync = new RealTimeLipSync();
+    const audio = document.createElement("audio");
+
+    await lipSync.prepareAudio();
+    const firstInstance = MockAudioContext.lastInstance;
+    await lipSync.prepareAudio();
+    lipSync.connectToAudio(audio, vi.fn());
+
+    expect(MockAudioContext.lastInstance).toBe(firstInstance);
+    expect(firstInstance?.createMediaElementSource).toHaveBeenCalledWith(audio);
   });
 
   it("resumes a suspended audio context on play", () => {

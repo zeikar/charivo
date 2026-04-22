@@ -1,4 +1,5 @@
 import {
+  subscribeBrowserLifecycle,
   type Character,
   type GazeCoordinates,
   type Message,
@@ -43,6 +44,7 @@ export class RenderManager implements IRenderManager {
   private readonly lipSync = new RealTimeLipSync();
   private readonly renderer: Renderer;
   private character: Character | null = null;
+  private teardownBrowserLifecycle?: () => void;
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
@@ -109,6 +111,7 @@ export class RenderManager implements IRenderManager {
    * 렌더러 초기화
    */
   async initialize(): Promise<void> {
+    this.bindBrowserLifecycleEvents();
     await this.renderer.initialize();
 
     if (this.isMouseTrackable(this.renderer) && this.options?.canvas) {
@@ -136,6 +139,10 @@ export class RenderManager implements IRenderManager {
     }
   }
 
+  async prepareAudio(): Promise<void> {
+    await this.lipSync.prepareAudio();
+  }
+
   /**
    * 모델 로드 (렌더러가 지원하는 경우)
    */
@@ -159,6 +166,7 @@ export class RenderManager implements IRenderManager {
    * 정리
    */
   async destroy(): Promise<void> {
+    this.unbindBrowserLifecycleEvents();
     this.cleanupMouseTracking?.();
     this.cleanupMouseTracking = undefined;
 
@@ -209,6 +217,40 @@ export class RenderManager implements IRenderManager {
       this.renderer.updateRealtimeLipSyncRms(rms);
     }
   }
+
+  private bindBrowserLifecycleEvents(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: this.handleHidden,
+      onPageHide: this.handlePageHide,
+      onPageShow: this.handlePageShow,
+      onVisible: this.handleVisible,
+    });
+  }
+
+  private unbindBrowserLifecycleEvents(): void {
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+  }
+
+  private readonly handleHidden = (): void => {
+    this.lipSync.pause();
+  };
+
+  private readonly handleVisible = (): void => {
+    this.lipSync.resume();
+  };
+
+  private readonly handlePageHide = (): void => {
+    this.lipSync.pause();
+  };
+
+  private readonly handlePageShow = (): void => {
+    this.lipSync.resume();
+  };
 
   private applyExpression(expressionId: string): boolean {
     if (!this.hasExpressionControl(this.renderer)) {

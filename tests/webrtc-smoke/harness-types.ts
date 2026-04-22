@@ -38,6 +38,7 @@ export type HarnessSnapshot = {
 
 export type SmokeHarnessApi = {
   startSession: () => Promise<void>;
+  forceReconnectOutage: () => Promise<void>;
   updateSession: (config?: RealtimeSessionConfig) => Promise<void>;
   sendPrompt: (text?: string) => Promise<void>;
   stopSession: () => Promise<void>;

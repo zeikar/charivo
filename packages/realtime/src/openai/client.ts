@@ -1,10 +1,15 @@
 import type {
+  RealtimeReconnectCause,
   RealtimeSessionBootstrap,
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import {
+  OPENAI_REALTIME_ADAPTER,
+  subscribeBrowserLifecycle,
+} from "@charivo/core";
 import { DEFAULT_REALTIME_VOICE } from "../instructions";
+import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   fetchWithTimeout,
@@ -65,6 +70,7 @@ const DEBUG_EVENT_ALLOWLIST = new Set<string>([
   "error",
 ]);
 const DEFAULT_SESSION_UPDATE_TIMEOUT_MS = 5_000;
+const ICE_DISCONNECTED_DEBOUNCE_MS = 1_000;
 
 /**
  * OpenAI-specific realtime transport client.
@@ -77,7 +83,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private dc: RTCDataChannel | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private mediaStream: MediaStream | null = null;
+  private audioSender: RTCRtpSender | null = null;
   private audioContext: AudioContext | null = null;
+  private audioSource: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
   private lipSyncInterval: number | null = null;
   private isResponseInProgress = false;
@@ -87,17 +95,36 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private assistantText = "";
   private nextSessionUpdateId = 1;
   private pendingSessionUpdate: PendingSessionUpdate | null = null;
+  private currentSessionConfig?: RealtimeSessionConfig;
+  private connectionLossNotified = false;
+  private isExplicitDisconnect = false;
+  private isRecovering = false;
+  private isCleaningUp = false;
+  private teardownBrowserLifecycle?: () => void;
+  private pendingIceDisconnect: ReturnType<typeof setTimeout> | null = null;
   private eventCallbacks = new Set<(event: RealtimeTransportEvent) => void>();
 
   constructor(private options: OpenAIRealtimeClientOptions = {}) {}
 
   async connect(config?: RealtimeSessionConfig): Promise<void> {
     try {
+      if (this.isExplicitDisconnect && this.isRecovering) {
+        throw new Error("Realtime session disconnect requested");
+      }
+
       this.log("Starting OpenAI Realtime WebRTC connection");
 
+      this.isExplicitDisconnect = false;
+      this.isRecovering = false;
+      this.connectionLossNotified = false;
+      this.currentSessionConfig = config;
       this.pc = new RTCPeerConnection();
       this.audioElement = document.createElement("audio");
       this.audioElement.autoplay = true;
+      this.audioElement.setAttribute("playsinline", "true");
+      this.prepareAudioAnalysis();
+      this.bindConnectionEvents();
+      this.bindBrowserLifecycleEvents();
 
       this.pc.ontrack = (event) => {
         if (this.audioElement) {
@@ -107,11 +134,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       };
 
       try {
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
+        this.mediaStream = await acquireMicrophoneStream();
         const audioTrack = this.mediaStream.getTracks()[0];
-        this.pc.addTrack(audioTrack, this.mediaStream);
+        this.audioSender =
+          this.pc.addTrack(audioTrack, this.mediaStream) ?? this.audioSender;
+        this.bindDeviceChangeListener();
       } catch {
         throw new Error("Microphone access required for Realtime API");
       }
@@ -161,6 +188,8 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
   async disconnect(): Promise<void> {
     this.log("Disconnecting OpenAI Realtime WebRTC");
+    this.isExplicitDisconnect = true;
+    this.isRecovering = false;
     this.cleanup();
   }
 
@@ -202,9 +231,33 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         timeoutId,
       };
     });
+
+    this.currentSessionConfig = config;
+  }
+
+  async recover(config?: RealtimeSessionConfig): Promise<void> {
+    this.isRecovering = true;
+    this.connectionLossNotified = true;
+    this.currentSessionConfig = config;
+
+    try {
+      if (await this.tryIceRestartRecovery(config)) {
+        this.connectionLossNotified = false;
+        return;
+      }
+
+      await this.rebuildConnection(config);
+      this.connectionLossNotified = false;
+    } finally {
+      this.isRecovering = false;
+    }
   }
 
   async sendText(text: string): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     if (!this.dc || this.dc.readyState !== "open") {
       throw new Error("DataChannel not ready");
     }
@@ -235,6 +288,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   async sendAudio(_audio: ArrayBuffer): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     console.warn(
       "sendAudio is not needed with WebRTC - audio is automatically transmitted",
     );
@@ -244,6 +301,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     callId: string,
     output: Record<string, unknown>,
   ): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     const dc = this.requireOpenDataChannel();
 
     dc.send(
@@ -262,6 +323,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   async interrupt(): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     const dc = this.requireOpenDataChannel();
 
     if (!this.isResponseInProgress) {
@@ -509,22 +574,203 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     return bootstrap as RealtimeSessionBootstrap;
   }
 
-  private setupAudioAnalysis(stream: MediaStream): void {
+  private bindConnectionEvents(): void {
+    if (!this.pc) {
+      return;
+    }
+
+    this.pc.addEventListener("iceconnectionstatechange", () => {
+      const iceState = this.pc?.iceConnectionState;
+      if (iceState === "failed") {
+        this.clearPendingIceDisconnect();
+        this.emitConnectionLost("ice-failed");
+      } else if (iceState === "disconnected") {
+        this.scheduleIceDisconnectRecovery();
+      } else {
+        this.clearPendingIceDisconnect();
+      }
+    });
+
+    this.pc.addEventListener("connectionstatechange", () => {
+      const connectionState = this.pc?.connectionState;
+      if (connectionState === "failed" || connectionState === "closed") {
+        this.clearPendingIceDisconnect();
+        this.emitConnectionLost("connection-failed");
+      }
+    });
+  }
+
+  private bindBrowserLifecycleEvents(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: this.handleHidden,
+      onOnline: this.handleOnline,
+      onPageHide: this.handlePageHide,
+      onPageShow: this.handlePageShow,
+      onVisible: this.handleVisible,
+    });
+  }
+
+  private bindDeviceChangeListener(): void {
+    navigator.mediaDevices?.addEventListener?.(
+      "devicechange",
+      this.handleDeviceChange,
+    );
+  }
+
+  private unbindBrowserLifecycleEvents(): void {
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+    navigator.mediaDevices?.removeEventListener?.(
+      "devicechange",
+      this.handleDeviceChange,
+    );
+  }
+
+  private readonly handleOnline = (): void => {
+    this.emitConnectionLost("online");
+  };
+
+  private readonly handleHidden = (): void => {
+    this.pauseAudioAnalysis();
+  };
+
+  private readonly handleVisible = (): void => {
+    this.resumeAudioAnalysis();
+    this.emitConnectionLost("visibility");
+  };
+
+  private readonly handlePageHide = (): void => {
+    this.pauseAudioAnalysis();
+  };
+
+  private readonly handlePageShow = (event: PageTransitionEvent): void => {
+    this.resumeAudioAnalysis();
+    if (event.persisted) {
+      this.emitConnectionLost("pageshow");
+    }
+  };
+
+  private readonly handleDeviceChange = (): void => {
+    void this.refreshMicrophoneTrack();
+  };
+
+  private async refreshMicrophoneTrack(): Promise<void> {
+    if (!this.pc || this.isExplicitDisconnect) {
+      return;
+    }
+
     try {
-      const audioContextConstructor =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (!audioContextConstructor) {
-        throw new Error("AudioContext is not supported in this browser");
+      const nextStream = await acquireMicrophoneStream();
+      const nextTrack = nextStream.getAudioTracks()[0];
+      if (!nextTrack) {
+        throw new Error("Microphone access required for Realtime API");
       }
 
-      this.audioContext = new audioContextConstructor();
-      const source = this.audioContext.createMediaStreamSource(stream);
+      const sender =
+        this.audioSender ??
+        this.pc
+          .getSenders()
+          .find((candidate) => candidate.track?.kind === "audio") ??
+        null;
+      if (!sender) {
+        throw new Error("No outbound audio sender available");
+      }
+
+      await sender.replaceTrack(nextTrack);
+      this.audioSender = sender;
+      this.mediaStream?.getTracks().forEach((track) => track.stop());
+      this.mediaStream = nextStream;
+    } catch (error) {
+      this.emitEvent({
+        type: "error",
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
+  }
+
+  private emitConnectionLost(
+    cause: RealtimeReconnectCause,
+    error?: Error,
+  ): void {
+    if (
+      this.connectionLossNotified ||
+      this.isExplicitDisconnect ||
+      this.isCleaningUp ||
+      !this.pc ||
+      !this.dc ||
+      !this.needsRecovery(cause)
+    ) {
+      return;
+    }
+
+    this.connectionLossNotified = true;
+    this.isResponseInProgress = false;
+    this.cancelInFlight = false;
+    this.resetResponseTracking();
+    this.stopLipSyncAnalysis();
+    this.emitEvent({
+      type: "connection.lost",
+      cause,
+      error,
+    });
+  }
+
+  private needsRecovery(cause: RealtimeReconnectCause): boolean {
+    if (!this.pc || !this.dc) {
+      return false;
+    }
+
+    if (
+      cause === "visibility" ||
+      cause === "pageshow" ||
+      cause === "offline" ||
+      cause === "online"
+    ) {
+      return (
+        this.dc.readyState !== "open" ||
+        this.pc.connectionState === "failed" ||
+        this.pc.connectionState === "closed" ||
+        this.pc.iceConnectionState === "failed" ||
+        this.pc.iceConnectionState === "disconnected"
+      );
+    }
+
+    return true;
+  }
+
+  private prepareAudioAnalysis(): void {
+    if (this.audioContext) {
+      return;
+    }
+
+    const audioContextConstructor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!audioContextConstructor) {
+      return;
+    }
+
+    this.audioContext = new audioContextConstructor();
+  }
+
+  private setupAudioAnalysis(stream: MediaStream): void {
+    try {
+      this.prepareAudioAnalysis();
+      if (!this.audioContext) {
+        return;
+      }
+
+      this.audioSource?.disconnect();
+      this.audioSource = this.audioContext.createMediaStreamSource(stream);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.8;
-      source.connect(this.analyser);
+      this.audioSource.connect(this.analyser);
 
       this.startLipSyncAnalysis();
     } catch (error) {
@@ -570,7 +816,22 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.emitEvent({ type: "audio.lipsync", rms: 0 });
   }
 
+  private pauseAudioAnalysis(): void {
+    this.stopLipSyncAnalysis();
+  }
+
+  private resumeAudioAnalysis(): void {
+    if (!this.analyser || this.lipSyncInterval) {
+      return;
+    }
+
+    this.startLipSyncAnalysis();
+  }
+
   private cleanup(): void {
+    this.isCleaningUp = true;
+    this.unbindBrowserLifecycleEvents();
+    this.clearPendingIceDisconnect();
     this.stopLipSyncAnalysis();
     this.rejectPendingSessionUpdate(
       new Error("Realtime session ended before session update completed"),
@@ -601,9 +862,13 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       this.audioContext = null;
     }
 
+    this.audioSource = null;
+    this.audioSender = null;
     this.analyser = null;
     this.isResponseInProgress = false;
     this.cancelInFlight = false;
+    this.connectionLossNotified = false;
+    this.isCleaningUp = false;
     this.resetResponseTracking();
   }
 
@@ -614,11 +879,111 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   private requireOpenDataChannel(): RTCDataChannel {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     if (!this.dc || this.dc.readyState !== "open") {
       throw new Error("DataChannel not ready");
     }
 
     return this.dc;
+  }
+
+  private async tryIceRestartRecovery(
+    config?: RealtimeSessionConfig,
+  ): Promise<boolean> {
+    const pc = this.pc;
+    if (!pc || this.shouldRebuildConnection()) {
+      return false;
+    }
+
+    if (pc.iceConnectionState === "connected") {
+      return true;
+    }
+
+    if (pc.iceConnectionState === "disconnected") {
+      await delay(1_500);
+      if (pc.iceConnectionState !== "disconnected") {
+        return true;
+      }
+    }
+
+    if (
+      pc.iceConnectionState === "failed" ||
+      pc.connectionState === "failed" ||
+      pc.connectionState === "closed"
+    ) {
+      return false;
+    }
+
+    if (typeof pc.restartIce === "function") {
+      pc.restartIce();
+    }
+
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+
+    const bootstrap = await this.getSessionBootstrap({
+      transport: "webrtc",
+      session: config ?? this.currentSessionConfig ?? {},
+      sdpOffer: offer.sdp,
+    });
+
+    if (
+      bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
+      bootstrap.transport !== "webrtc" ||
+      !("answerSdp" in bootstrap)
+    ) {
+      throw new Error(
+        `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,
+      );
+    }
+
+    await pc.setRemoteDescription({
+      type: "answer",
+      sdp: bootstrap.answerSdp,
+    });
+    return true;
+  }
+
+  private shouldRebuildConnection(): boolean {
+    return (
+      !this.pc ||
+      !this.dc ||
+      this.dc.readyState === "closed" ||
+      this.pc.connectionState === "failed" ||
+      this.pc.connectionState === "closed" ||
+      this.pc.iceConnectionState === "failed"
+    );
+  }
+
+  private async rebuildConnection(
+    config?: RealtimeSessionConfig,
+  ): Promise<void> {
+    this.connectionLossNotified = true;
+    this.cleanup();
+    await this.connect(config ?? this.currentSessionConfig);
+  }
+
+  private scheduleIceDisconnectRecovery(): void {
+    if (this.pendingIceDisconnect) {
+      return;
+    }
+
+    this.pendingIceDisconnect = setTimeout(() => {
+      this.pendingIceDisconnect = null;
+      this.emitConnectionLost("ice-disconnected");
+    }, ICE_DISCONNECTED_DEBOUNCE_MS);
+  }
+
+  private clearPendingIceDisconnect(): void {
+    if (!this.pendingIceDisconnect) {
+      return;
+    }
+
+    clearTimeout(this.pendingIceDisconnect);
+    this.pendingIceDisconnect = null;
   }
 
   private resolvePendingSessionUpdate(): void {
@@ -718,4 +1083,10 @@ function toOpenAIRealtimeSessionUpdate(
   }
 
   return session;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

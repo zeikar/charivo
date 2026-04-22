@@ -10,23 +10,43 @@ export class RealTimeLipSync {
   private animationFrameId?: number;
   private onRmsUpdate?: (rms: number) => void;
 
+  public async prepareAudio(): Promise<void> {
+    if (this.audioContext) {
+      return;
+    }
+
+    const audioContextConstructor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!audioContextConstructor) {
+      throw new Error("AudioContext is not supported in this browser");
+    }
+
+    this.audioContext = new audioContextConstructor();
+  }
+
   public connectToAudio(
     audioElement: HTMLAudioElement,
     onRmsUpdate: (rms: number) => void,
   ): void {
-    this.cleanup();
+    this.stop();
+    this.resetNodes();
     this.onRmsUpdate = onRmsUpdate;
 
     try {
-      const audioContextConstructor =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (!audioContextConstructor) {
-        throw new Error("AudioContext is not supported in this browser");
+      if (!this.audioContext) {
+        void this.prepareAudio().catch((error) => {
+          console.error(
+            "RealTimeLipSync: Failed to set up audio analysis:",
+            error,
+          );
+        });
       }
 
-      this.audioContext = new audioContextConstructor();
+      if (!this.audioContext) {
+        return;
+      }
 
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
@@ -67,21 +87,35 @@ export class RealTimeLipSync {
     this.onRmsUpdate?.(0); // Reset mouth to closed position
   }
 
+  public pause(): void {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = undefined;
+    }
+    this.onRmsUpdate?.(0);
+  }
+
+  public resume(): void {
+    if (
+      !this.isActive ||
+      this.animationFrameId ||
+      !this.analyser ||
+      !this.dataArray
+    ) {
+      return;
+    }
+
+    this.startAnalysis();
+  }
+
   public cleanup(): void {
     this.stop();
+    this.resetNodes();
 
-    if (this.mediaElementSource) {
-      this.mediaElementSource.disconnect();
-      this.mediaElementSource = undefined;
+    if (this.audioContext) {
+      void this.audioContext.close();
+      this.audioContext = undefined;
     }
-
-    if (this.analyser) {
-      this.analyser.disconnect();
-      this.analyser = undefined;
-    }
-
-    // Note: Don't close audioContext as it may be used by other components
-    this.audioContext = undefined;
     this.dataArray = undefined;
     this.onRmsUpdate = undefined;
   }
@@ -111,5 +145,17 @@ export class RealTimeLipSync {
     this.onRmsUpdate?.(smoothedRms);
 
     this.animationFrameId = requestAnimationFrame(() => this.startAnalysis());
+  }
+
+  private resetNodes(): void {
+    if (this.mediaElementSource) {
+      this.mediaElementSource.disconnect();
+      this.mediaElementSource = undefined;
+    }
+
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = undefined;
+    }
   }
 }

@@ -3,12 +3,14 @@ import type {
   CharivoEventEmitter,
   GazeCoordinates,
   RealtimeManager as CoreRealtimeManager,
+  RealtimeReconnectCause,
   RealtimeSessionConfig,
   RealtimeSessionTransitionReason,
   RealtimeState,
   RealtimeTool,
   RealtimeToolRegistration,
 } from "@charivo/core";
+import { subscribeBrowserLifecycle } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
 import {
@@ -18,6 +20,16 @@ import {
 } from "./tools";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
+const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
+
+type WakeLockSentinelLike = {
+  release(): Promise<void>;
+  addEventListener?(
+    type: "release",
+    listener: () => void,
+    options?: AddEventListenerOptions,
+  ): void;
+};
 
 export interface RealtimeManagerOptions {
   defaultSessionConfig?: Omit<RealtimeSessionConfig, "tools">;
@@ -37,11 +49,16 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private character: Character | null = null;
   private isStoppingSession = false;
   private isRefreshingSession = false;
+  private isRecoveringConnection = false;
   private isAudioPlaybackActive = false;
   private sessionBaseConfig?: RealtimeSessionConfig;
   private refreshInFlight: Promise<void> | null = null;
+  private reconnectInFlight: Promise<void> | null = null;
   private hasQueuedRefresh = false;
   private stopRequestedDuringRefresh = false;
+  private reconnectToken = 0;
+  private wakeLockSentinel: WakeLockSentinelLike | null = null;
+  private teardownBrowserLifecycle?: () => void;
   private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
   private state: RealtimeState = {
     connection: "idle",
@@ -63,6 +80,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     for (const tool of options.tools ?? []) {
       this.registerTool(tool);
     }
+
+    this.installBrowserLifecycleListeners();
 
     this.client.onEvent((event) => {
       void this.handleClientEvent(event).catch((error) => {
@@ -135,7 +154,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     if (
       this.state.session.status === "active" ||
       this.state.session.status === "starting" ||
-      this.refreshInFlight
+      this.refreshInFlight ||
+      this.reconnectInFlight
     ) {
       throw new Error("Realtime session already active");
     }
@@ -157,11 +177,13 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: null,
     };
+    this.installBrowserLifecycleListeners();
     this.emitState();
 
     try {
       await this.client.connect(sessionConfig);
       this.commitActiveSession(sessionConfig);
+      void this.requestWakeLock();
       this.emitSessionStart("user");
     } catch (error) {
       this.finalizeFailedSession(
@@ -175,6 +197,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.sessionBaseConfig = this.resolveNextSessionBaseConfig(config);
 
     if (this.state.session.status !== "active") {
+      return Promise.resolve();
+    }
+
+    if (this.isRecoveringConnection) {
       return Promise.resolve();
     }
 
@@ -195,6 +221,17 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   async stopSession(): Promise<void> {
+    const reconnectInFlight = this.reconnectInFlight;
+    this.cancelReconnectLoop();
+
+    if (reconnectInFlight) {
+      try {
+        await reconnectInFlight;
+      } catch {
+        // Reconnect failure already updates manager state.
+      }
+    }
+
     if (this.refreshInFlight) {
       this.stopRequestedDuringRefresh = true;
       this.hasQueuedRefresh = false;
@@ -224,6 +261,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       throw new Error("Realtime session not active");
     }
 
+    if (this.state.connection !== "connected") {
+      throw new Error("Realtime session is reconnecting");
+    }
+
     await this.client.sendText(text);
   }
 
@@ -232,12 +273,20 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       throw new Error("Realtime session not active");
     }
 
+    if (this.state.connection !== "connected") {
+      throw new Error("Realtime session is reconnecting");
+    }
+
     await this.client.sendAudio(audio);
   }
 
   async interrupt(): Promise<void> {
     if (this.state.session.status !== "active") {
       throw new Error("Realtime session not active");
+    }
+
+    if (this.state.connection !== "connected") {
+      throw new Error("Realtime session is reconnecting");
     }
 
     await this.client.interrupt();
@@ -259,7 +308,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       case "session.started":
         if (
           this.state.connection === "connecting" ||
-          this.isRefreshingSession
+          this.isRefreshingSession ||
+          this.isRecoveringConnection
         ) {
           return;
         }
@@ -282,12 +332,17 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         if (
           this.isStoppingSession ||
           this.isRefreshingSession ||
+          this.isRecoveringConnection ||
           this.state.connection === "disconnecting"
         ) {
           return;
         }
 
         this.finalizeStoppedSession(true, "user");
+        return;
+
+      case "connection.lost":
+        this.beginReconnect(event.cause, event.error);
         return;
 
       case "user.transcript":
@@ -382,6 +437,17 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "error":
+        if (
+          this.isRecoveringConnection &&
+          this.state.connection === "connecting"
+        ) {
+          this.state = {
+            ...this.state,
+            lastError: event.error,
+          };
+          this.emitState();
+          return;
+        }
         this.applyError(event.error, this.state.connection);
         return;
     }
@@ -536,6 +602,140 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     });
   }
 
+  private beginReconnect(cause: RealtimeReconnectCause, error?: Error): void {
+    if (
+      this.state.session.status !== "active" ||
+      this.isStoppingSession ||
+      this.state.connection === "disconnecting" ||
+      this.isRecoveringConnection
+    ) {
+      return;
+    }
+
+    this.isRecoveringConnection = true;
+    this.reconnectToken += 1;
+    const reconnectToken = this.reconnectToken;
+
+    if (this.state.response.status === "responding") {
+      this.emitAudioEnd();
+      this.state = {
+        ...this.state,
+        connection: "connecting",
+        response: {
+          status: "interrupted",
+          text: this.state.response.text,
+        },
+        lastError: error ?? this.state.lastError,
+      };
+    } else {
+      this.state = {
+        ...this.state,
+        connection: "connecting",
+        lastError: error ?? this.state.lastError,
+      };
+    }
+
+    this.emitState();
+    this.reconnectInFlight = this.runReconnectLoop(reconnectToken, cause)
+      .catch((reconnectError) => {
+        this.finalizeFailedSession(reconnectError);
+      })
+      .finally(() => {
+        if (this.reconnectToken === reconnectToken) {
+          this.reconnectInFlight = null;
+          this.isRecoveringConnection = false;
+        }
+      });
+  }
+
+  private async runReconnectLoop(
+    reconnectToken: number,
+    cause: RealtimeReconnectCause,
+  ): Promise<void> {
+    const startedAt = Date.now();
+    let lastError = new Error("Realtime reconnect exhausted");
+
+    for (let index = 0; index < RECONNECT_DELAYS_MS.length; index += 1) {
+      const attempt = index + 1;
+      const delayMs = RECONNECT_DELAYS_MS[index]!;
+
+      this.eventEmitter?.emit("realtime:reconnect:attempt", {
+        attempt,
+        delayMs,
+        cause,
+      });
+
+      await delay(delayMs);
+      if (!this.isReconnectTokenActive(reconnectToken)) {
+        return;
+      }
+
+      const sessionConfig = this.buildEffectiveSessionConfig();
+
+      try {
+        await this.client.recover(sessionConfig);
+        if (!this.isReconnectTokenActive(reconnectToken)) {
+          return;
+        }
+
+        this.state = {
+          ...this.state,
+          connection: "connected",
+          session: {
+            ...this.state.session,
+            status: "active",
+            config: sessionConfig,
+            characterId: this.character?.id,
+          },
+          lastError: null,
+        };
+        this.emitState();
+        void this.requestWakeLock();
+        this.eventEmitter?.emit("realtime:reconnect:success", {
+          attempts: attempt,
+          totalMs: Date.now() - startedAt,
+          cause,
+        });
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.state = {
+          ...this.state,
+          connection: "connecting",
+          lastError,
+        };
+        this.emitState();
+      }
+    }
+
+    if (!this.isReconnectTokenActive(reconnectToken)) {
+      return;
+    }
+
+    this.eventEmitter?.emit("realtime:reconnect:exhausted", {
+      attempts: RECONNECT_DELAYS_MS.length,
+      totalMs: Date.now() - startedAt,
+      cause,
+      lastError,
+    });
+
+    throw lastError;
+  }
+
+  private cancelReconnectLoop(): void {
+    this.reconnectToken += 1;
+    this.isRecoveringConnection = false;
+    this.reconnectInFlight = null;
+  }
+
+  private isReconnectTokenActive(reconnectToken: number): boolean {
+    return (
+      this.reconnectToken === reconnectToken &&
+      this.state.session.status === "active" &&
+      !this.isStoppingSession
+    );
+  }
+
   private emitState(): void {
     this.eventEmitter?.emit("realtime:state", {
       state: this.getState(),
@@ -573,6 +773,78 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.isAudioPlaybackActive = false;
     this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
     this.eventEmitter?.emit("tts:audio:end", {});
+  }
+
+  private installBrowserLifecycleListeners(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: () => {
+        void this.releaseWakeLock();
+      },
+      onPageHide: () => {
+        void this.releaseWakeLock();
+      },
+      onPageShow: () => {
+        void this.requestWakeLock();
+      },
+      onVisible: () => {
+        void this.requestWakeLock();
+      },
+    });
+  }
+
+  private async requestWakeLock(): Promise<void> {
+    if (
+      this.state.session.status !== "active" ||
+      this.state.connection === "disconnecting" ||
+      typeof navigator === "undefined" ||
+      typeof document === "undefined" ||
+      document.visibilityState !== "visible" ||
+      !("wakeLock" in navigator)
+    ) {
+      return;
+    }
+
+    if (this.wakeLockSentinel) {
+      return;
+    }
+
+    const wakeLockApi = navigator as Navigator & {
+      wakeLock?: {
+        request(type: "screen"): Promise<WakeLockSentinelLike>;
+      };
+    };
+
+    try {
+      this.wakeLockSentinel = await wakeLockApi.wakeLock?.request("screen");
+      this.wakeLockSentinel?.addEventListener?.(
+        "release",
+        () => {
+          this.wakeLockSentinel = null;
+        },
+        { once: true },
+      );
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  private async releaseWakeLock(): Promise<void> {
+    if (!this.wakeLockSentinel) {
+      return;
+    }
+
+    const wakeLockSentinel = this.wakeLockSentinel;
+    this.wakeLockSentinel = null;
+
+    try {
+      await wakeLockSentinel.release();
+    } catch {
+      // Best-effort only.
+    }
   }
 
   private resolveNextSessionBaseConfig(
@@ -675,6 +947,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     } catch (error) {
       const refreshError =
         error instanceof Error ? error : new Error(String(error));
+      if (this.isRecoveringConnection) {
+        throw refreshError;
+      }
       if (this.state.lastError !== refreshError) {
         this.applyError(refreshError, "connected");
       }
@@ -705,6 +980,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   private finalizeFailedSession(error: Error): void {
+    this.cancelReconnectLoop();
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+    void this.releaseWakeLock();
     this.emitAudioEnd();
     this.state = {
       ...this.state,
@@ -728,6 +1007,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     emitSessionEnd: boolean,
     reason: RealtimeSessionTransitionReason,
   ): void {
+    this.cancelReconnectLoop();
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+    void this.releaseWakeLock();
     this.emitAudioEnd();
     this.state = {
       ...this.state,
@@ -843,4 +1126,10 @@ async function withTimeout<T>(
       clearTimeout(timeoutId);
     }
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

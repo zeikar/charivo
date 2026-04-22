@@ -1,9 +1,14 @@
 import type {
+  RealtimeReconnectCause,
   RealtimeSessionBootstrap,
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
+import {
+  OPENAI_REALTIME_AGENTS_ADAPTER,
+  subscribeBrowserLifecycle,
+} from "@charivo/core";
+import { acquireMicrophoneStream } from "../internal/microphone";
 import { isRecord } from "../internal/shared";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import {
@@ -49,14 +54,25 @@ const DEBUG_EVENT_ALLOWLIST = new Set([
 
 const TOOL_RESULT_TIMEOUT_MESSAGE =
   "Realtime session ended before tool result was returned";
+const ICE_DISCONNECTED_DEBOUNCE_MS = 1_000;
 
 export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;
   private transport: OpenAIRealtimeWebRTC | null = null;
   private audioElement: HTMLAudioElement | null = null;
+  private mediaStream: MediaStream | null = null;
+  private peerConnection: RTCPeerConnection | null = null;
+  private audioSender: RTCRtpSender | null = null;
   private connectionWasActive = false;
+  private connectionLossNotified = false;
+  private isExplicitDisconnect = false;
+  private isRecovering = false;
+  private isCleaningUp = false;
   private assistant: AssistantState = { text: "", started: false };
   private latestHistory: RealtimeItem[] = [];
+  private currentSessionConfig?: RealtimeSessionConfig;
+  private teardownBrowserLifecycle?: () => void;
+  private pendingIceDisconnect: ReturnType<typeof setTimeout> | null = null;
   private readonly eventCallbacks = new Set<
     (event: RealtimeTransportEvent) => void
   >();
@@ -74,16 +90,28 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
   async connect(config?: RealtimeSessionConfig): Promise<void> {
     try {
+      if (this.isExplicitDisconnect && this.isRecovering) {
+        throw new Error("Realtime session disconnect requested");
+      }
+
       this.log("Starting OpenAI Agents Realtime WebRTC connection");
 
+      this.isExplicitDisconnect = false;
+      this.isRecovering = false;
+      this.connectionLossNotified = false;
+      this.currentSessionConfig = config;
       this.audioElement = document.createElement("audio");
       this.audioElement.autoplay = true;
       this.audioElement.setAttribute("playsinline", "true");
+      this.mediaStream = await acquireMicrophoneStream();
+      this.bindBrowserLifecycleEvents();
+      this.bindDeviceChangeListener();
+      await this.lipSyncAnalyzer.prepareAudioContext();
 
       const agent = this.createAgent(config);
 
       this.transport = new OpenAIRealtimeWebRTC(
-        this.createTransportOptions(this.audioElement),
+        this.createTransportOptions(this.audioElement, this.mediaStream),
       );
 
       this.session = new RealtimeSession(agent, {
@@ -127,6 +155,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
   async disconnect(): Promise<void> {
     this.log("Disconnecting OpenAI Agents Realtime WebRTC");
+    this.isExplicitDisconnect = true;
+    this.isRecovering = false;
     this.cleanup();
   }
 
@@ -142,9 +172,31 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     // exposes a dedicated public config update path on `RealtimeSession`.
     this.session.options.config = toOpenAIRealtimeAgentsSessionConfig(config);
     await this.session.updateAgent(this.createAgent(config));
+    this.currentSessionConfig = config;
+  }
+
+  async recover(config?: RealtimeSessionConfig): Promise<void> {
+    this.isRecovering = true;
+    this.connectionLossNotified = true;
+    this.currentSessionConfig = config;
+
+    try {
+      this.cleanupPendingToolCalls(
+        new Error("Realtime session interrupted during reconnect"),
+      );
+      this.cleanup();
+      await this.connect(config ?? this.currentSessionConfig);
+      this.connectionLossNotified = false;
+    } finally {
+      this.isRecovering = false;
+    }
   }
 
   async sendText(text: string): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     if (!this.session) {
       throw new Error("Realtime session not active");
     }
@@ -154,6 +206,10 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   }
 
   async sendAudio(_audio: ArrayBuffer): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     console.warn(
       "sendAudio is not needed with WebRTC - audio is automatically transmitted",
     );
@@ -163,6 +219,10 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     callId: string,
     output: Record<string, unknown>,
   ): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     const pendingCall = this.pendingToolCalls.get(callId);
 
     if (!pendingCall) {
@@ -174,6 +234,10 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   }
 
   async interrupt(): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
     if (!this.session) {
       throw new Error("Realtime session not active");
     }
@@ -255,7 +319,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       if (status === "disconnected" && this.connectionWasActive) {
         this.cleanupPendingToolCalls();
         this.connectionWasActive = false;
-        this.emitEvent({ type: "session.ended" });
+        this.emitConnectionLost("connection-failed");
       }
     });
   }
@@ -407,10 +471,20 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
   private createTransportOptions(
     audioElement: HTMLAudioElement,
+    mediaStream: MediaStream,
   ): OpenAIRealtimeWebRTCOptions {
     return {
       audioElement,
+      mediaStream,
       changePeerConnection: async (peerConnection) => {
+        this.peerConnection = peerConnection;
+        this.audioSender =
+          typeof peerConnection.getSenders === "function"
+            ? (peerConnection
+                .getSenders()
+                .find((candidate) => candidate.track?.kind === "audio") ?? null)
+            : null;
+        this.bindPeerConnectionEvents(peerConnection);
         peerConnection.addEventListener("track", (event) => {
           const stream = event.streams[0];
           if (stream) {
@@ -422,7 +496,177 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     };
   }
 
+  private bindPeerConnectionEvents(peerConnection: RTCPeerConnection): void {
+    peerConnection.addEventListener("iceconnectionstatechange", () => {
+      const iceState = peerConnection.iceConnectionState;
+      if (iceState === "failed") {
+        this.clearPendingIceDisconnect();
+        this.emitConnectionLost("ice-failed");
+      } else if (iceState === "disconnected") {
+        this.scheduleIceDisconnectRecovery();
+      } else {
+        this.clearPendingIceDisconnect();
+      }
+    });
+
+    peerConnection.addEventListener("connectionstatechange", () => {
+      if (
+        peerConnection.connectionState === "failed" ||
+        peerConnection.connectionState === "closed"
+      ) {
+        this.clearPendingIceDisconnect();
+        this.emitConnectionLost("connection-failed");
+      }
+    });
+  }
+
+  private bindBrowserLifecycleEvents(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: this.handleHidden,
+      onOnline: this.handleOnline,
+      onPageHide: this.handlePageHide,
+      onPageShow: this.handlePageShow,
+      onVisible: this.handleVisible,
+    });
+  }
+
+  private bindDeviceChangeListener(): void {
+    navigator.mediaDevices?.addEventListener?.(
+      "devicechange",
+      this.handleDeviceChange,
+    );
+  }
+
+  private unbindBrowserLifecycleEvents(): void {
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+    navigator.mediaDevices?.removeEventListener?.(
+      "devicechange",
+      this.handleDeviceChange,
+    );
+  }
+
+  private readonly handleOnline = (): void => {
+    this.emitConnectionLost("online");
+  };
+
+  private readonly handleHidden = (): void => {
+    this.lipSyncAnalyzer.pause();
+  };
+
+  private readonly handleVisible = (): void => {
+    this.lipSyncAnalyzer.resume();
+    this.emitConnectionLost("visibility");
+  };
+
+  private readonly handlePageHide = (): void => {
+    this.lipSyncAnalyzer.pause();
+  };
+
+  private readonly handlePageShow = (event: PageTransitionEvent): void => {
+    this.lipSyncAnalyzer.resume();
+    if (event.persisted) {
+      this.emitConnectionLost("pageshow");
+    }
+  };
+
+  private readonly handleDeviceChange = (): void => {
+    void this.refreshMicrophoneTrack();
+  };
+
+  private async refreshMicrophoneTrack(): Promise<void> {
+    if (!this.peerConnection || this.isExplicitDisconnect) {
+      return;
+    }
+
+    try {
+      const nextStream = await acquireMicrophoneStream();
+      const nextTrack = nextStream.getAudioTracks()[0];
+      if (!nextTrack) {
+        throw new Error("Microphone access required for Realtime API");
+      }
+
+      const sender =
+        this.audioSender ??
+        (typeof this.peerConnection.getSenders === "function"
+          ? this.peerConnection
+              .getSenders()
+              .find((candidate) => candidate.track?.kind === "audio")
+          : null) ??
+        null;
+      if (!sender) {
+        throw new Error("No outbound audio sender available");
+      }
+
+      await sender.replaceTrack(nextTrack);
+      this.audioSender = sender;
+      this.mediaStream?.getTracks().forEach((track) => track.stop());
+      this.mediaStream = nextStream;
+    } catch (error) {
+      this.emitEvent({
+        type: "error",
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
+  }
+
+  private emitConnectionLost(
+    cause: RealtimeReconnectCause,
+    error?: Error,
+  ): void {
+    if (
+      this.connectionLossNotified ||
+      this.isExplicitDisconnect ||
+      this.isCleaningUp ||
+      !this.shouldRecover(cause)
+    ) {
+      return;
+    }
+
+    this.connectionLossNotified = true;
+    this.cleanupPendingToolCalls(
+      new Error("Realtime session interrupted during reconnect"),
+    );
+    this.resetAssistantTracking();
+    this.lipSyncAnalyzer.stopOutput();
+    this.emitEvent({
+      type: "connection.lost",
+      cause,
+      error,
+    });
+  }
+
+  private shouldRecover(cause: RealtimeReconnectCause): boolean {
+    if (!this.peerConnection) {
+      return false;
+    }
+
+    if (
+      cause === "visibility" ||
+      cause === "pageshow" ||
+      cause === "offline" ||
+      cause === "online"
+    ) {
+      return (
+        this.peerConnection.connectionState === "failed" ||
+        this.peerConnection.connectionState === "closed" ||
+        this.peerConnection.iceConnectionState === "failed" ||
+        this.peerConnection.iceConnectionState === "disconnected"
+      );
+    }
+
+    return true;
+  }
+
   private cleanup(error?: unknown): void {
+    this.connectionWasActive = false;
+    this.isCleaningUp = true;
+    this.clearPendingIceDisconnect();
+    this.unbindBrowserLifecycleEvents();
     this.cleanupPendingToolCalls(error);
     this.lipSyncAnalyzer.cleanup();
 
@@ -441,8 +685,37 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.audioElement = null;
     }
 
+    if (this.mediaStream) {
+      this.mediaStream.getTracks?.().forEach((track) => track.stop());
+      this.mediaStream = null;
+    }
+
+    this.peerConnection = null;
+    this.audioSender = null;
     this.latestHistory = [];
+    this.connectionLossNotified = false;
+    this.isCleaningUp = false;
     this.resetAssistantTracking();
+  }
+
+  private scheduleIceDisconnectRecovery(): void {
+    if (this.pendingIceDisconnect) {
+      return;
+    }
+
+    this.pendingIceDisconnect = setTimeout(() => {
+      this.pendingIceDisconnect = null;
+      this.emitConnectionLost("ice-disconnected");
+    }, ICE_DISCONNECTED_DEBOUNCE_MS);
+  }
+
+  private clearPendingIceDisconnect(): void {
+    if (!this.pendingIceDisconnect) {
+      return;
+    }
+
+    clearTimeout(this.pendingIceDisconnect);
+    this.pendingIceDisconnect = null;
   }
 
   private resetAssistantTracking(): void {

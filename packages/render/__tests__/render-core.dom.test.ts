@@ -35,6 +35,8 @@ class StubRenderer implements Renderer {
 
 describe("RenderManager", () => {
   let connectToAudioSpy: ReturnType<typeof vi.spyOn>;
+  let prepareAudioSpy: ReturnType<typeof vi.spyOn>;
+  let pauseSpy: ReturnType<typeof vi.spyOn>;
   let stopSpy: ReturnType<typeof vi.spyOn>;
   let cleanupSpy: ReturnType<typeof vi.spyOn>;
 
@@ -42,6 +44,12 @@ describe("RenderManager", () => {
     vi.useRealTimers();
     connectToAudioSpy = vi
       .spyOn(RealTimeLipSync.prototype, "connectToAudio")
+      .mockImplementation(() => undefined);
+    prepareAudioSpy = vi
+      .spyOn(RealTimeLipSync.prototype, "prepareAudio")
+      .mockResolvedValue(undefined);
+    pauseSpy = vi
+      .spyOn(RealTimeLipSync.prototype, "pause")
       .mockImplementation(() => undefined);
     stopSpy = vi
       .spyOn(RealTimeLipSync.prototype, "stop")
@@ -109,6 +117,30 @@ describe("RenderManager", () => {
     expect(renderer.playExpression).toHaveBeenCalledWith("exp_happy");
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     expect(renderer.lookAt).toHaveBeenCalledWith({ x: 0.25, y: -0.5 });
+  });
+
+  it("prepares audio on demand and pauses lip sync while hidden", async () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const originalVisibilityState = document.visibilityState;
+
+    await manager.initialize();
+    await manager.prepareAudio?.();
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(prepareAudioSpy).toHaveBeenCalledTimes(1);
+    expect(pauseSpy).toHaveBeenCalledTimes(2);
+    await manager.destroy();
+
+    Object.defineProperty(document, "visibilityState", {
+      value: originalVisibilityState,
+      configurable: true,
+    });
   });
 
   it("debounces repeated explicit expression and motion actions", async () => {

@@ -24,6 +24,7 @@ const agentsTransportClient = {
     }
   }),
   updateSession: vi.fn(async (_config?: unknown) => undefined),
+  recover: vi.fn(async (_config?: unknown) => undefined),
   disconnect: vi.fn(async () => undefined),
   sendText: vi.fn(async (_text: string) => undefined),
   sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
@@ -57,6 +58,7 @@ const legacyTransportClient = {
     }
   }),
   updateSession: vi.fn(async (_config?: unknown) => undefined),
+  recover: vi.fn(async (_config?: unknown) => undefined),
   disconnect: vi.fn(async () => undefined),
   sendText: vi.fn(async (_text: string) => undefined),
   sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
@@ -98,6 +100,7 @@ afterEach(() => {
   agentsTransportClient.connect.mockClear();
   agentsTransportClient.disconnect.mockClear();
   agentsTransportClient.updateSession.mockClear();
+  agentsTransportClient.recover.mockClear();
   agentsTransportClient.sendText.mockClear();
   agentsTransportClient.sendAudio.mockClear();
   agentsTransportClient.sendToolResult.mockClear();
@@ -106,6 +109,7 @@ afterEach(() => {
   legacyTransportClient.connect.mockClear();
   legacyTransportClient.disconnect.mockClear();
   legacyTransportClient.updateSession.mockClear();
+  legacyTransportClient.recover.mockClear();
   legacyTransportClient.sendText.mockClear();
   legacyTransportClient.sendAudio.mockClear();
   legacyTransportClient.sendToolResult.mockClear();
@@ -163,6 +167,35 @@ describe("RemoteRealtimeClient", () => {
       transport: "webrtc",
     });
     expect(listener).toHaveBeenCalledWith({ type: "session.started" });
+  });
+
+  it("forwards recover calls to the active transport", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+    await client.recover({
+      provider: "openai",
+      voice: "alloy",
+    });
+
+    expect(agentsTransportClient.recover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: "alloy",
+      }),
+    );
   });
 
   it("rejects unknown adapters from the resolver", async () => {

@@ -44,6 +44,18 @@ export async function updateSession(
   }, config);
 }
 
+export async function forceReconnectOutage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const smoke = (window as SmokeWindow).__charivoSmoke;
+
+    if (!smoke) {
+      throw new Error("Smoke harness API is not available");
+    }
+
+    return smoke.forceReconnectOutage();
+  });
+}
+
 export async function stopSession(page: Page): Promise<void> {
   if (page.isClosed()) {
     return;

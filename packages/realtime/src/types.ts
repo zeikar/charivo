@@ -1,9 +1,10 @@
-import type { RealtimeState } from "@charivo/core";
+import type { RealtimeReconnectCause, RealtimeState } from "@charivo/core";
 
 export type {
   Character,
   CharivoEventEmitter,
   RealtimeConnectionState,
+  RealtimeReconnectCause,
   RealtimeManager,
   RealtimeProvider,
   RealtimeResponseStatus,
@@ -24,6 +25,7 @@ export type {
 export type RealtimeTransportEvent =
   | { type: "session.started" }
   | { type: "session.ended" }
+  | { type: "connection.lost"; cause: RealtimeReconnectCause; error?: Error }
   | { type: "user.transcript"; text: string }
   | { type: "assistant.response.started" }
   | { type: "assistant.text.delta"; text: string }
@@ -51,6 +53,9 @@ export interface RealtimeTransportClient {
     config?: import("@charivo/core").RealtimeSessionConfig,
   ): Promise<void>;
   updateSession(
+    config?: import("@charivo/core").RealtimeSessionConfig,
+  ): Promise<void>;
+  recover(
     config?: import("@charivo/core").RealtimeSessionConfig,
   ): Promise<void>;
   disconnect(): Promise<void>;

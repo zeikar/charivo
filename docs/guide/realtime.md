@@ -61,6 +61,16 @@ const tools: RealtimeToolRegistration[] = [
 const manager = createRealtimeManager(client, { tools });
 ```
 
+If your app also renders lipsync locally, prepare audio from a user gesture
+before the first realtime session:
+
+```ts
+await renderManager.prepareAudio?.();
+await manager.startSession({
+  provider: "openai",
+});
+```
+
 Typical session start:
 
 ```ts
@@ -126,6 +136,7 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 - tool registry
 - typed session config helpers
 - in-place `updateSession(...)` session patching
+- reconnect orchestration and reconnect observability events
 - relaying realtime output into the Charivo event stream
 
 Canonical avatar control is expression/motion/gaze-first:
@@ -137,6 +148,20 @@ Canonical avatar control is expression/motion/gaze-first:
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
 bus. It emits realtime, tool, text, avatar action, and lip-sync related events
 back into core.
+
+## Reconnect Behavior
+
+When the browser transport drops temporarily, the manager keeps the realtime
+session active and attempts recovery with the latest effective config.
+
+- `state.session.status` stays `"active"` during recovery
+- `state.connection` switches back to `"connecting"` until recovery succeeds
+- successful reconnects do not emit synthetic `realtime:session:start/end`
+- `updateSession(...)` still updates the cached base config while reconnecting
+- `sendMessage(...)`, `sendAudioChunk(...)`, and `interrupt()` reject while the
+  connection is recovering
+- `realtime:reconnect:attempt`, `realtime:reconnect:success`, and
+  `realtime:reconnect:exhausted` are emitted for observability
 
 ## Provider Route
 

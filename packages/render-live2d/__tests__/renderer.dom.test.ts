@@ -339,6 +339,33 @@ describe("Live2DRenderer", () => {
     );
   });
 
+  it("rebuilds the host and reloads the last model after WebGL context restore", async () => {
+    const canvas = createCanvasFixture();
+    const renderer = new Live2DRenderer({ canvas });
+
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+
+    const lostEvent = new Event("webglcontextlost", {
+      cancelable: true,
+    });
+    const preventDefaultSpy = vi.spyOn(lostEvent, "preventDefault");
+
+    canvas.dispatchEvent(lostEvent);
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
+    expect(rendererMocks.MockHost.instances).toHaveLength(2);
+    expect(
+      rendererMocks.MockModel.instances[1]?.loadAssets,
+    ).toHaveBeenCalledWith(
+      "/models/hiyori.model3.json",
+      rendererMocks.MockHost.instances[1],
+    );
+  });
+
   it("exposes empty expression and motion data when no ready model exists", () => {
     const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
 

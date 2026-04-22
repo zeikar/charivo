@@ -10,6 +10,7 @@ import {
 
 export * from "./types";
 export * from "./bus";
+export * from "./browser-lifecycle";
 
 export class Charivo {
   private eventBus: EventBus;
@@ -223,6 +224,13 @@ export class Charivo {
    */
   getSTTManager(): STTManager | undefined {
     return this.sttManager;
+  }
+
+  /**
+   * Get the current render manager instance.
+   */
+  getRenderManager(): RenderManager | undefined {
+    return this.renderManager;
   }
 
   /**

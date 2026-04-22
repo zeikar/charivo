@@ -4,6 +4,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
+      "@charivo/core": ["../core/src/index.ts"],
+      "@charivo/render": ["../render/src/index.ts"],
       "@framework/*": ["CubismSdkForWeb-5-r.4/Framework/src/*"]
     },
     "strict": false,

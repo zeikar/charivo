@@ -15,6 +15,25 @@ type SmokeWindow = Window & {
   __charivoSmoke?: SmokeHarnessApi;
 };
 
+type RealtimeManagerDebug = {
+  client?: unknown;
+};
+
+type RemoteRealtimeClientDebug = {
+  transportClient?: unknown;
+};
+
+type AgentsTransportDebug = {
+  peerConnection?: RTCPeerConnection | null;
+  emitConnectionLost?: (cause: "connection-failed") => void;
+};
+
+type RawTransportDebug = {
+  pc?: RTCPeerConnection | null;
+  dc?: RTCDataChannel | null;
+  emitConnectionLost?: (cause: "connection-failed") => void;
+};
+
 const TEST_CHARACTER: Character = {
   id: "webrtc-smoke-hiyori",
   name: "Hiyori",
@@ -107,6 +126,9 @@ const subscriptions: Array<keyof EventMap> = [
   "realtime:tool:call",
   "realtime:tool:result",
   "realtime:tool:error",
+  "realtime:reconnect:attempt",
+  "realtime:reconnect:success",
+  "realtime:reconnect:exhausted",
   "realtime:expression",
   "realtime:motion",
   "realtime:gaze",
@@ -288,6 +310,31 @@ async function updateSession(
   }
 }
 
+async function forceReconnectOutage(): Promise<void> {
+  const transport = getActiveTransportClient();
+
+  if (!transport) {
+    throw new Error("Realtime transport not active");
+  }
+
+  if ("peerConnection" in transport) {
+    const agentsTransport = transport as AgentsTransportDebug;
+    agentsTransport.peerConnection?.close();
+    agentsTransport.emitConnectionLost?.("connection-failed");
+    return;
+  }
+
+  if ("pc" in transport) {
+    const rawTransport = transport as RawTransportDebug;
+    rawTransport.dc?.close();
+    rawTransport.pc?.close();
+    rawTransport.emitConnectionLost?.("connection-failed");
+    return;
+  }
+
+  throw new Error("Unsupported realtime transport for forced reconnect smoke");
+}
+
 async function sendPrompt(text = messageInput.value): Promise<void> {
   state.lastError = null;
   render();
@@ -350,8 +397,31 @@ function resolveHarnessMode(): HarnessMode {
   return "smoke";
 }
 
+function getActiveTransportClient():
+  | AgentsTransportDebug
+  | RawTransportDebug
+  | null {
+  const managerDebug = realtimeManager as typeof realtimeManager &
+    RealtimeManagerDebug;
+  const managerClient = managerDebug.client;
+
+  if (!managerClient || typeof managerClient !== "object") {
+    return null;
+  }
+
+  const remoteClient = managerClient as RemoteRealtimeClientDebug;
+  const transportClient = remoteClient.transportClient;
+
+  if (!transportClient || typeof transportClient !== "object") {
+    return null;
+  }
+
+  return transportClient as AgentsTransportDebug | RawTransportDebug;
+}
+
 const smokeWindow = window as SmokeWindow;
 smokeWindow.__charivoSmoke = {
+  forceReconnectOutage,
   startSession,
   updateSession,
   sendPrompt,

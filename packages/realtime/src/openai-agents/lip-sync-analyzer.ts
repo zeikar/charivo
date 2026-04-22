@@ -6,6 +6,7 @@ interface LipSyncAnalyzerOptions {
 export class LipSyncAnalyzer {
   private audioAnalysisStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
+  private audioSource: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
   private lipSyncInterval: number | null = null;
   private pendingAudioElementPoll: number | null = null;
@@ -13,6 +14,22 @@ export class LipSyncAnalyzer {
   private observedAudioElementListener: (() => void) | null = null;
 
   constructor(private options: LipSyncAnalyzerOptions) {}
+
+  async prepareAudioContext(): Promise<void> {
+    if (this.audioContext) {
+      return;
+    }
+
+    const audioContextConstructor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!audioContextConstructor) {
+      throw new Error("AudioContext is not supported in this browser");
+    }
+
+    this.audioContext = new audioContextConstructor();
+  }
 
   observeAudioElement(audioElement: HTMLAudioElement): void {
     this.detachObservedAudioElement();
@@ -40,20 +57,22 @@ export class LipSyncAnalyzer {
     this.audioAnalysisStream = stream;
 
     try {
-      const audioContextConstructor =
-        window.AudioContext ||
-        (window as Window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (!audioContextConstructor) {
-        throw new Error("AudioContext is not supported in this browser");
+      if (!this.audioContext) {
+        void this.prepareAudioContext().catch((error) => {
+          this.options.onError?.(error);
+        });
       }
 
-      this.audioContext = new audioContextConstructor();
-      const source = this.audioContext.createMediaStreamSource(stream);
+      if (!this.audioContext) {
+        return;
+      }
+
+      this.audioSource?.disconnect?.();
+      this.audioSource = this.audioContext.createMediaStreamSource(stream);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.8;
-      source.connect(this.analyser);
+      this.audioSource.connect(this.analyser);
 
       this.startLipSyncAnalysis();
     } catch (error) {
@@ -65,10 +84,25 @@ export class LipSyncAnalyzer {
     this.stopLipSyncAnalysis();
   }
 
+  pause(): void {
+    this.stopLipSyncAnalysis();
+  }
+
+  resume(): void {
+    if (!this.analyser || this.lipSyncInterval) {
+      return;
+    }
+
+    this.startLipSyncAnalysis();
+  }
+
   cleanup(): void {
     this.stopLipSyncAnalysis();
     this.stopAudioElementPolling();
     this.detachObservedAudioElement();
+
+    this.audioSource?.disconnect?.();
+    this.audioSource = null;
 
     if (this.audioContext) {
       void this.audioContext.close();

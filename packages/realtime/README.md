@@ -56,6 +56,11 @@ await manager.updateSession({
 });
 ```
 
+If the live transport drops temporarily, `RealtimeManager` now keeps the
+session active and drives reconnect attempts internally. During that window
+`state.session.status` stays `"active"` while `state.connection` moves back to
+`"connecting"`.
+
 ## Exports
 
 - `createRealtimeManager(client, options?)`
@@ -121,6 +126,24 @@ latest requested config, current character, and current tool registry.
 - repeated `updateSession(...)` calls are coalesced to the latest config
 - `stopSession()` wins over an in-flight refresh and converges to a stopped
   session
+
+## Reconnect Semantics
+
+Successful reconnects are treated as a continuation of the same live session.
+
+- successful recovery does not emit synthetic `realtime:session:end/start`
+- `updateSession(...)` still updates the cached base config while reconnecting
+- `sendMessage(...)`, `sendAudioChunk(...)`, `interrupt()`, and transport-level
+  tool results reject while `connection === "connecting"`
+- the next reconnect attempt always rebuilds from the latest effective config
+- in-flight assistant responses are marked as interrupted and are not resumed
+- old tool-call ids are not replayed after reconnect
+
+Observability events emitted by the manager:
+
+- `realtime:reconnect:attempt`
+- `realtime:reconnect:success`
+- `realtime:reconnect:exhausted`
 
 ## Tool Registry
 

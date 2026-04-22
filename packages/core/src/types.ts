@@ -124,6 +124,16 @@ export type RealtimeConnectionState =
   | "disconnecting"
   | "error";
 
+export type RealtimeReconnectCause =
+  | "ice-disconnected"
+  | "ice-failed"
+  | "connection-failed"
+  | "offline"
+  | "online"
+  | "visibility"
+  | "pagehide"
+  | "pageshow";
+
 export type RealtimeSessionStatus = "idle" | "starting" | "active" | "stopped";
 export type RealtimeSessionTransitionReason = "user" | "refresh";
 
@@ -213,6 +223,7 @@ export interface RenderManager {
   setCharacter(character: Character): void;
   render(message: Message, character?: Character): Promise<void>;
   setEventBus(eventBus: CharivoEventBus): void;
+  prepareAudio?(): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(
     callback: (message: Message, character?: Character) => void,
@@ -343,6 +354,22 @@ export type EventMap = {
     name: string;
     error: Error;
     callId?: string;
+  };
+  "realtime:reconnect:attempt": {
+    attempt: number;
+    delayMs: number;
+    cause: RealtimeReconnectCause;
+  };
+  "realtime:reconnect:success": {
+    attempts: number;
+    totalMs: number;
+    cause: RealtimeReconnectCause;
+  };
+  "realtime:reconnect:exhausted": {
+    attempts: number;
+    totalMs: number;
+    cause: RealtimeReconnectCause;
+    lastError: Error;
   };
   "realtime:expression": { expressionId: string };
   "realtime:motion": { group: string; index: number };

@@ -34,4 +34,8 @@ export class LAppGlManager {
     }
     return this.gl;
   }
+
+  public isContextLost(): boolean {
+    return Boolean(this.gl?.isContextLost?.());
+  }
 }

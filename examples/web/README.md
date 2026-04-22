@@ -90,4 +90,8 @@ The current lifecycle boundary is deliberate:
 - `useLive2D` owns canvas mount and unmount.
 - `useCharivoChat` owns Charivo setup, manager attachment, event subscription, and teardown.
 
+The demo also prepares render audio from the realtime connect click before it
+starts a WebRTC session. Keep that user-gesture path intact on iOS or the first
+realtime lipsync pass may stay silent.
+
 That split keeps renderer lifecycle separate from conversation/session lifecycle.

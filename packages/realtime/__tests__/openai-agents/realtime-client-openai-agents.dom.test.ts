@@ -26,6 +26,7 @@ const sdkState = vi.hoisted(() => ({
   session: null as MockRealtimeSession | null,
   transport: null as MockRealtimeTransport | null,
   audioElement: null as HTMLAudioElement | null,
+  peerConnection: null as MockPeerConnection | null,
 }));
 
 class MockRealtimeTransport extends MockEmitter {
@@ -39,6 +40,12 @@ class MockRealtimeTransport extends MockEmitter {
     this.options = options;
     sdkState.transport = this;
     sdkState.audioElement = options.audioElement as HTMLAudioElement;
+    const changePeerConnection = options.changePeerConnection as
+      | ((peerConnection: MockPeerConnection) => Promise<MockPeerConnection>)
+      | undefined;
+    const peerConnection = new MockPeerConnection();
+    sdkState.peerConnection = peerConnection;
+    void changePeerConnection?.(peerConnection);
   }
 
   close(): void {
@@ -119,7 +126,32 @@ class MockAudioContext {
   close = vi.fn(async () => undefined);
 }
 
-class MockMediaStream {}
+class MockMediaTrack {
+  stop = vi.fn(() => undefined);
+}
+
+class MockMediaStream {
+  getTracks(): MockMediaTrack[] {
+    return [new MockMediaTrack()];
+  }
+}
+
+class MockPeerConnection extends MockEmitter {
+  iceConnectionState: RTCIceConnectionState = "connected";
+  connectionState: RTCPeerConnectionState = "connected";
+  private sender = {
+    track: { kind: "audio" },
+    replaceTrack: vi.fn(async () => undefined),
+  } as unknown as RTCRtpSender;
+
+  getSenders(): RTCRtpSender[] {
+    return [this.sender];
+  }
+
+  addEventListener(event: string, callback: Listener): void {
+    this.on(event, callback);
+  }
+}
 
 vi.mock("@openai/agents-realtime", () => ({
   OpenAIRealtimeWebRTC: vi.fn((options) => new MockRealtimeTransport(options)),
@@ -133,11 +165,13 @@ vi.mock("@openai/agents-realtime", () => ({
 const originalFetch = globalThis.fetch;
 const originalAudioContext = window.AudioContext;
 const originalMediaStream = globalThis.MediaStream;
+const originalMediaDevices = navigator.mediaDevices;
 
 beforeEach(() => {
   sdkState.session = null;
   sdkState.transport = null;
   sdkState.audioElement = null;
+  sdkState.peerConnection = null;
   vi.useFakeTimers();
   Object.defineProperty(window, "AudioContext", {
     value: MockAudioContext,
@@ -145,6 +179,14 @@ beforeEach(() => {
   });
   Object.defineProperty(globalThis, "MediaStream", {
     value: MockMediaStream,
+    configurable: true,
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: {
+      getUserMedia: vi.fn(async () => new MockMediaStream()),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    },
     configurable: true,
   });
 });
@@ -157,6 +199,10 @@ afterEach(() => {
   });
   Object.defineProperty(globalThis, "MediaStream", {
     value: originalMediaStream,
+    configurable: true,
+  });
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: originalMediaDevices,
     configurable: true,
   });
   vi.useRealTimers();
@@ -189,6 +235,14 @@ describe("OpenAIRealtimeAgentsClient", () => {
     expect(sdkState.session?.connect).toHaveBeenCalledWith({
       apiKey: "client-secret",
       model: "gpt-realtime-mini",
+    });
+    expect(sdkState.transport?.options).toHaveProperty("mediaStream");
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
     });
     expect(sdkState.session?.sendMessage).toHaveBeenCalledWith("hello");
     expect(sdkState.session?.options.config).not.toHaveProperty("tools");
@@ -268,6 +322,36 @@ describe("OpenAIRealtimeAgentsClient", () => {
       },
       temperature: 0.2,
       maxResponseOutputTokens: 200,
+    });
+  });
+
+  it("labels online lifecycle recovery attempts with the online cause", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const events: RealtimeTransportEvent[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    sdkState.peerConnection!.connectionState = "failed";
+    window.dispatchEvent(new Event("online"));
+
+    expect(events).toContainEqual({
+      type: "connection.lost",
+      cause: "online",
+      error: undefined,
     });
   });
 

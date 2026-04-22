@@ -37,6 +37,7 @@ function createRealtimeClientStub(options?: {
       }
     }),
     updateSession: vi.fn(async () => undefined),
+    recover: vi.fn(async () => undefined),
     disconnect: vi.fn(async () => {
       if (options?.emitSessionEndedOnDisconnect) {
         await emitEvent({ type: "session.ended" });
@@ -933,5 +934,263 @@ describe("realtime-core", () => {
         reason: "user",
       }),
     );
+  });
+
+  it("reconnects active sessions without emitting synthetic session boundaries", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+    const recoverGate = createDeferred<void>();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.recover).mockImplementation(async () => {
+      await recoverGate.promise;
+    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+    });
+
+    expect(manager.getState()).toMatchObject({
+      connection: "connecting",
+      session: {
+        status: "active",
+        config: expect.objectContaining({
+          voice: "marin",
+        }),
+      },
+    });
+    await expect(manager.sendMessage("hello")).rejects.toThrow(
+      "Realtime session is reconnecting",
+    );
+
+    await vi.advanceTimersByTimeAsync(500);
+    recoverGate.resolve(undefined);
+    await vi.runAllTimersAsync();
+
+    expect(stub.client.recover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        voice: "marin",
+      }),
+    );
+    expect(manager.getState()).toMatchObject({
+      connection: "connected",
+      session: {
+        status: "active",
+        config: expect.objectContaining({
+          voice: "marin",
+        }),
+      },
+    });
+    expect(getEventPayloads(eventEmitter, "realtime:session:start")).toEqual(
+      [],
+    );
+    expect(getEventPayloads(eventEmitter, "realtime:session:end")).toEqual([]);
+    expect(
+      getEventPayloads(eventEmitter, "realtime:reconnect:attempt"),
+    ).toEqual([
+      {
+        attempt: 1,
+        delayMs: 500,
+        cause: "offline",
+      },
+    ]);
+    expect(
+      getEventPayloads(eventEmitter, "realtime:reconnect:success"),
+    ).toEqual([
+      expect.objectContaining({
+        attempts: 1,
+        cause: "offline",
+      }),
+    ]);
+  });
+
+  it("uses the latest cached session config for the next reconnect attempt", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const recoverCalls: Array<string | undefined> = [];
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.recover).mockImplementation(async (config) => {
+      recoverCalls.push(config?.voice);
+      if (recoverCalls.length === 1) {
+        throw new Error("still offline");
+      }
+    });
+
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.resolve();
+
+    await manager.updateSession({
+      voice: "alloy",
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+
+    expect(recoverCalls).toEqual(["marin", "alloy"]);
+    expect(manager.getState().session.config?.voice).toBe("alloy");
+  });
+
+  it("waits for an in-flight reconnect before stopping and stays stopped after recover resolves", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const recoverGate = createDeferred<void>();
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.recover).mockImplementation(async () => {
+      await recoverGate.promise;
+    });
+
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+    const stopPromise = manager.stopSession();
+
+    expect(stub.client.disconnect).not.toHaveBeenCalled();
+
+    recoverGate.resolve(undefined);
+    await stopPromise;
+
+    expect(stub.client.disconnect).toHaveBeenCalledTimes(1);
+    expect(manager.getState()).toMatchObject({
+      connection: "idle",
+      session: {
+        status: "stopped",
+        config: null,
+      },
+    });
+  });
+
+  it("emits reconnect exhausted and finalizes the session after five failed recover attempts", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    vi.mocked(stub.client.recover).mockImplementation(async () => {
+      throw new Error("recover failed");
+    });
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(stub.client.recover).toHaveBeenCalledTimes(5);
+    expect(
+      getEventPayloads(eventEmitter, "realtime:reconnect:exhausted"),
+    ).toEqual([
+      expect.objectContaining({
+        attempts: 5,
+        cause: "offline",
+        lastError: expect.objectContaining({
+          message: "recover failed",
+        }),
+      }),
+    ]);
+    expect(manager.getState()).toMatchObject({
+      connection: "error",
+      session: {
+        status: "stopped",
+      },
+      lastError: expect.objectContaining({
+        message: "recover failed",
+      }),
+    });
+  });
+
+  it("keeps interrupted response state through reconnect and resets on the next fresh turn", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    await stub.emit({
+      type: "assistant.response.started",
+    });
+    await stub.emit({
+      type: "assistant.text.delta",
+      text: "partial",
+    });
+
+    vi.mocked(stub.client.recover).mockResolvedValue(undefined);
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+    });
+
+    expect(manager.getState().response).toEqual({
+      status: "interrupted",
+      text: "partial",
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(manager.getState().response).toEqual({
+      status: "interrupted",
+      text: "partial",
+    });
+
+    await stub.emit({
+      type: "assistant.response.started",
+    });
+    await stub.emit({
+      type: "assistant.text.delta",
+      text: "fresh",
+    });
+    await stub.emit({
+      type: "assistant.response.completed",
+      text: "fresh",
+    });
+
+    expect(manager.getState().response).toEqual({
+      status: "completed",
+      text: "fresh",
+    });
   });
 });

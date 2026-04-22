@@ -26,7 +26,10 @@ class MockPeerConnection {
   static instances: MockPeerConnection[] = [];
 
   ontrack: ((event: RTCTrackEvent) => void) | null = null;
+  iceConnectionState: RTCIceConnectionState = "new";
+  connectionState: RTCPeerConnectionState = "new";
   dataChannel = new MockDataChannel();
+  private listeners = new Map<string, Set<() => void>>();
   createDataChannel = vi.fn(
     () => this.dataChannel as unknown as RTCDataChannel,
   );
@@ -37,7 +40,22 @@ class MockPeerConnection {
   setRemoteDescription = vi.fn(
     async (_desc: RTCSessionDescriptionInit) => undefined,
   );
-  addTrack = vi.fn(() => undefined);
+  addTrack = vi.fn(
+    () =>
+      ({
+        track: { kind: "audio" },
+        replaceTrack: vi.fn(async () => undefined),
+      }) as unknown as RTCRtpSender,
+  );
+  getSenders = vi.fn(() =>
+    [this.addTrack.mock.results[0]?.value].filter(Boolean),
+  );
+  addEventListener = vi.fn((event: string, listener: () => void) => {
+    const current = this.listeners.get(event) ?? new Set();
+    current.add(listener);
+    this.listeners.set(event, current);
+  });
+  restartIce = vi.fn(() => undefined);
   close = vi.fn(() => undefined);
 
   constructor() {
@@ -78,10 +96,11 @@ describe("OpenAIRealtimeClient", () => {
       getTracks: () => [localTrack],
     } as unknown as MediaStream;
     const remoteStream = {} as MediaStream;
+    const getUserMedia = vi.fn(async () => localStream);
 
     Object.defineProperty(navigator, "mediaDevices", {
       value: {
-        getUserMedia: vi.fn(async () => localStream),
+        getUserMedia,
       },
       configurable: true,
     });
@@ -120,6 +139,13 @@ describe("OpenAIRealtimeClient", () => {
 
     const peer = MockPeerConnection.instances[0]!;
     expect(peer.addTrack).toHaveBeenCalledWith(localTrack, localStream);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/realtime",
       expect.objectContaining({
@@ -131,6 +157,7 @@ describe("OpenAIRealtimeClient", () => {
       sdp: "answer-sdp",
     });
     expect(events).toContainEqual({ type: "session.started" });
+    expect(internals.audioElement?.getAttribute("playsinline")).toBe("true");
 
     peer.ontrack?.({ streams: [remoteStream] } as unknown as RTCTrackEvent);
     expect(internals.audioElement?.srcObject).toBe(remoteStream);
@@ -315,6 +342,90 @@ describe("OpenAIRealtimeClient", () => {
     } as MessageEvent);
 
     await updatePromise;
+  });
+
+  it("rebuilds the transport on recover when the peer connection has failed", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_ADAPTER,
+        transport: "webrtc",
+        answerSdp: "answer-sdp",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    peer.connectionState = "failed";
+
+    await client.recover({
+      provider: "openai",
+      voice: "alloy",
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(MockPeerConnection.instances).toHaveLength(2);
+  });
+
+  it("labels online lifecycle recovery attempts with the online cause", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_ADAPTER,
+        transport: "webrtc",
+        answerSdp: "answer-sdp",
+      }),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    peer.connectionState = "failed";
+
+    window.dispatchEvent(new Event("online"));
+
+    expect(events).toContainEqual({
+      type: "connection.lost",
+      cause: "online",
+      error: undefined,
+    });
   });
 
   it("ignores unrelated server errors while a session patch is pending", async () => {

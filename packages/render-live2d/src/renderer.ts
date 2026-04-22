@@ -1,4 +1,5 @@
 import {
+  subscribeBrowserLifecycle,
   type Character,
   type GazeCoordinates,
   type Message,
@@ -27,8 +28,13 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   private canvas?: HTMLCanvasElement;
   private host?: CubismModelHost;
   private model?: LAppModel;
+  private lastModelPath?: string;
   private teardownResize?: ResizeTeardown;
+  private teardownBrowserLifecycle?: () => void;
   private animationFrameId?: number;
+  private renderLoopPaused = false;
+  private recoveryPending = false;
+  private isRestoringContext = false;
   private deviceToScreen = new CubismMatrix44();
   private viewMatrix = new CubismViewMatrix();
 
@@ -45,6 +51,8 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
 
     this.host = new CubismModelHost(this.canvas);
     this.host.initialize();
+    this.bindCanvasLifecycle();
+    this.bindPageLifecycle();
 
     this.resizeCanvas();
     this.teardownResize = setupResponsiveResize(this.canvas, () =>
@@ -57,6 +65,7 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   async loadModel(modelPath: string): Promise<void> {
     if (!this.host) throw new Error("Live2D renderer is not initialized");
 
+    this.lastModelPath = modelPath;
     this.model?.release();
 
     const model = new LAppModel();
@@ -131,6 +140,8 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   }
 
   async destroy(): Promise<void> {
+    this.unbindCanvasLifecycle();
+    this.unbindPageLifecycle();
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = undefined;
@@ -160,6 +171,7 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   }
 
   private startRenderLoop(): void {
+    this.renderLoopPaused = false;
     const loop = () => {
       this.animationFrameId = requestAnimationFrame(loop);
       this.renderFrame();
@@ -169,7 +181,7 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   }
 
   private renderFrame(): void {
-    if (!this.host) return;
+    if (!this.host || this.renderLoopPaused || this.recoveryPending) return;
 
     const gl = this.host.getGlManager().getGl();
 
@@ -202,7 +214,7 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
   }
 
   private resizeCanvas(): void {
-    if (!this.canvas || !this.host) return;
+    if (!this.canvas || !this.host || this.recoveryPending) return;
 
     const parent = this.canvas.parentElement;
     const rect = parent?.getBoundingClientRect();
@@ -290,6 +302,113 @@ export class Live2DRenderer implements Renderer, MouseTrackable {
       viewX: this.viewMatrix.invertTransformX(screenX),
       viewY: this.viewMatrix.invertTransformY(screenY),
     };
+  }
+
+  private bindCanvasLifecycle(): void {
+    this.canvas?.addEventListener("webglcontextlost", this.handleContextLost);
+    this.canvas?.addEventListener(
+      "webglcontextrestored",
+      this.handleContextRestored,
+    );
+  }
+
+  private unbindCanvasLifecycle(): void {
+    this.canvas?.removeEventListener(
+      "webglcontextlost",
+      this.handleContextLost,
+    );
+    this.canvas?.removeEventListener(
+      "webglcontextrestored",
+      this.handleContextRestored,
+    );
+  }
+
+  private bindPageLifecycle(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: this.handleHidden,
+      onPageHide: this.handlePageHide,
+      onPageShow: this.handlePageShow,
+      onVisible: this.handleVisible,
+    });
+  }
+
+  private unbindPageLifecycle(): void {
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+  }
+
+  private readonly handleContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.recoveryPending = true;
+    this.pauseRenderLoop();
+  };
+
+  private readonly handleContextRestored = (): void => {
+    void this.restoreAfterContextLoss();
+  };
+
+  private readonly handleHidden = (): void => {
+    this.pauseRenderLoop();
+  };
+
+  private readonly handleVisible = (): void => {
+    this.resumeRenderLoop();
+  };
+
+  private readonly handlePageHide = (): void => {
+    this.pauseRenderLoop();
+  };
+
+  private readonly handlePageShow = (): void => {
+    this.resumeRenderLoop();
+  };
+
+  private pauseRenderLoop(): void {
+    this.renderLoopPaused = true;
+  }
+
+  private resumeRenderLoop(): void {
+    if (this.recoveryPending) {
+      return;
+    }
+
+    this.renderLoopPaused = false;
+  }
+
+  private async restoreAfterContextLoss(): Promise<void> {
+    if (!this.canvas || this.isRestoringContext) {
+      return;
+    }
+
+    this.isRestoringContext = true;
+    this.recoveryPending = true;
+
+    try {
+      this.model?.release();
+      this.model = undefined;
+      this.host?.dispose();
+
+      this.host = new CubismModelHost(this.canvas);
+      this.host.initialize();
+      this.resizeCanvas();
+
+      if (this.lastModelPath) {
+        const model = new LAppModel();
+        await model.loadAssets(this.lastModelPath, this.host);
+        await model.waitUntilReady();
+        this.model = model;
+      }
+
+      this.updateViewMatrices();
+      this.recoveryPending = false;
+      this.resumeRenderLoop();
+    } finally {
+      this.isRestoringContext = false;
+    }
   }
 }
 
