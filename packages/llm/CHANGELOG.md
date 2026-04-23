@@ -1,5 +1,23 @@
 # @charivo/llm
 
+## 0.3.0
+
+### Minor Changes
+
+- 7d6608f: Freeze the top-level Charivo API by adding symmetric `detachLLM()` /
+  `detachRenderer()` coverage plus `dispose()`, and normalize public failures to
+  typed `CharivoError` subclasses.
+
+  Breaking change: public throws now use typed errors from `@charivo/core`
+  instead of relying on generic `Error` strings. Consumers should switch from
+  `error.message.includes(...)` checks to `instanceof CharivoError` or
+  `error.code`.
+
+### Patch Changes
+
+- Updated dependencies [7d6608f]
+  - @charivo/core@0.9.0
+
 ## 0.2.1
 
 ### Patch Changes
