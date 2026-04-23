@@ -40,6 +40,9 @@
       "@charivo/realtime/remote": [
         "../../packages/realtime/src/remote/index.ts"
       ],
+      "@charivo/realtime-avatar": [
+        "../../packages/realtime-avatar/src/index.ts"
+      ],
       "@charivo/realtime": ["../../packages/realtime/src/index.ts"],
       "@charivo/render": ["../../packages/render/src/index.ts"],
       "@charivo/render-live2d": ["../../packages/render-live2d"],

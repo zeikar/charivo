@@ -87,6 +87,10 @@ export const workspaceAliases = [
     replacement: resolvePackage("packages/realtime/src/index.ts"),
   },
   {
+    find: "@charivo/realtime-avatar",
+    replacement: resolvePackage("packages/realtime-avatar/src/index.ts"),
+  },
+  {
     find: "@charivo/render-live2d",
     replacement: resolvePackage("packages/render-live2d/src/index.ts"),
   },

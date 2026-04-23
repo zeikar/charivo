@@ -25,10 +25,13 @@ remote adapter registry.
 
 ```ts
 import {
-  createAvatarControlTools,
   createRealtimeManager,
   type RealtimeToolRegistration,
 } from "@charivo/realtime";
+import {
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/realtime-avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
@@ -58,7 +61,10 @@ const tools: RealtimeToolRegistration[] = [
   },
 ];
 
-const manager = createRealtimeManager(client, { tools });
+const manager = createRealtimeManager(client, {
+  tools,
+  resultProjectors: [createAvatarResultProjector()],
+});
 ```
 
 If your app also renders lipsync locally, prepare audio from a user gesture
@@ -139,15 +145,13 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 - reconnect orchestration and reconnect observability events
 - relaying realtime output into the Charivo event stream
 
-Canonical avatar control is expression/motion/gaze-first:
-
-- `setExpression`
-- `playMotion`
-- `lookAt`
-
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
-bus. It emits realtime, tool, text, avatar action, and lip-sync related events
-back into core.
+bus. It emits realtime, tool, text, and lip-sync related events back into core.
+
+Avatar expression/motion/gaze tools are optional and now live in
+`@charivo/realtime-avatar`. Use a result projector when you want those tool
+results bridged back into `realtime:expression`, `realtime:motion`, and
+`realtime:gaze`.
 
 ## Reconnect Behavior
 

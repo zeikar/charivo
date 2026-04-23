@@ -152,6 +152,7 @@ Realtime:
 
 - `@charivo/realtime`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
   Supports explicit `updateSession(...)` session patching without a reconnect.
+- `@charivo/realtime-avatar`: optional avatar tool definitions and result projector bridge
 - `@charivo/realtime/remote`: adapter-dispatched browser client for server realtime routes
 - `@charivo/realtime/openai-agents`: OpenAI Agents SDK realtime transport client and adapter
 - `@charivo/realtime/openai`: legacy low-level OpenAI realtime transport client and adapter

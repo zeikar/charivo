@@ -1,7 +1,7 @@
 import type {
   Character,
   CharivoEventEmitter,
-  GazeCoordinates,
+  EventMap,
   RealtimeManager as CoreRealtimeManager,
   RealtimeReconnectCause,
   RealtimeSessionConfig,
@@ -9,6 +9,7 @@ import type {
   RealtimeState,
   RealtimeTool,
   RealtimeToolRegistration,
+  RealtimeUsageEvent,
 } from "@charivo/core";
 import {
   CharivoStateError,
@@ -17,11 +18,6 @@ import {
 } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
-import {
-  LOOK_AT_TOOL_NAME,
-  PLAY_MOTION_TOOL_NAME,
-  SET_EXPRESSION_TOOL_NAME,
-} from "./tools";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
@@ -39,7 +35,27 @@ export interface RealtimeManagerOptions {
   defaultSessionConfig?: Omit<RealtimeSessionConfig, "tools">;
   tools?: RealtimeToolRegistration[];
   defaultToolTimeoutMs?: number;
+  resultProjectors?: RealtimeToolResultProjector[];
+  logger?: RealtimeLogger;
 }
+
+export interface RealtimeLogger {
+  debug?(message: string, context?: Record<string, unknown>): void;
+  info?(message: string, context?: Record<string, unknown>): void;
+  warn?(message: string, context?: Record<string, unknown>): void;
+  error?(message: string, context?: Record<string, unknown>): void;
+}
+
+export interface RealtimeToolResultProjectorContext {
+  name: string;
+  output: Record<string, unknown>;
+  callId?: string;
+  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void;
+}
+
+export type RealtimeToolResultProjector = (
+  context: RealtimeToolResultProjectorContext,
+) => void;
 
 /**
  * Provider-agnostic realtime manager.
@@ -400,6 +416,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         }
 
         const text = event.text || this.state.response.text;
+        this.emitUsageEvent(event);
         this.state = {
           ...this.state,
           response: {
@@ -489,12 +506,20 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     }
 
     try {
+      this.log("debug", "Realtime tool execution started", {
+        name: event.name,
+        callId: event.callId,
+      });
       const output = await this.runToolHandler(tool, event);
       await this.client.sendToolResult(event.callId, output);
-      this.postProcessToolResult(event.name, output);
       this.eventEmitter?.emit("realtime:tool:result", {
         name: event.name,
         output,
+        callId: event.callId,
+      });
+      this.projectToolResult(event.name, output, event.callId);
+      this.log("info", "Realtime tool execution succeeded", {
+        name: event.name,
         callId: event.callId,
       });
     } catch (error) {
@@ -551,46 +576,39 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     }
   }
 
-  private postProcessToolResult(
+  private projectToolResult(
     name: string,
     output: Record<string, unknown>,
+    callId?: string,
   ): void {
-    switch (name) {
-      case SET_EXPRESSION_TOOL_NAME: {
-        const expressionId = output.expressionId;
-        if (typeof expressionId === "string") {
-          this.eventEmitter?.emit("realtime:expression", { expressionId });
-        }
-        return;
+    for (const projector of this.options.resultProjectors ?? []) {
+      try {
+        projector({
+          name,
+          output,
+          callId,
+          emit: (event, payload) => {
+            this.eventEmitter?.emit(event, payload);
+          },
+        });
+      } catch (error) {
+        const projectorError =
+          error instanceof Error ? error : new Error(String(error));
+        this.log("warn", "Realtime result projector failed", {
+          name,
+          callId,
+          error: projectorError.message,
+        });
       }
-
-      case PLAY_MOTION_TOOL_NAME: {
-        const group = output.group;
-        const index = output.index;
-        if (typeof group === "string" && Number.isInteger(index)) {
-          const motionIndex = index as number;
-          this.eventEmitter?.emit("realtime:motion", {
-            group,
-            index: motionIndex,
-          });
-        }
-        return;
-      }
-
-      case LOOK_AT_TOOL_NAME: {
-        const coords = readGazeCoordinates(output);
-        if (coords) {
-          this.eventEmitter?.emit("realtime:gaze", coords);
-        }
-        return;
-      }
-
-      default:
-        return;
     }
   }
 
   private emitToolError(name: string, error: Error, callId?: string): void {
+    this.log("warn", "Realtime tool execution failed", {
+      name,
+      callId,
+      error: error.message,
+    });
     this.eventEmitter?.emit("realtime:tool:error", {
       name,
       error,
@@ -649,6 +667,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     }
 
     this.emitState();
+    this.log("warn", "Realtime reconnect started", {
+      cause,
+      connection: this.state.connection,
+    });
     this.reconnectInFlight = this.runReconnectLoop(reconnectToken, cause)
       .catch((reconnectError) => {
         this.finalizeFailedSession(reconnectError);
@@ -673,6 +695,11 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       const delayMs = RECONNECT_DELAYS_MS[index]!;
 
       this.eventEmitter?.emit("realtime:reconnect:attempt", {
+        attempt,
+        delayMs,
+        cause,
+      });
+      this.log("info", "Realtime reconnect attempt", {
         attempt,
         delayMs,
         cause,
@@ -709,6 +736,11 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           totalMs: Date.now() - startedAt,
           cause,
         });
+        this.log("info", "Realtime reconnect succeeded", {
+          attempts: attempt,
+          totalMs: Date.now() - startedAt,
+          cause,
+        });
         return;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -730,6 +762,12 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       totalMs: Date.now() - startedAt,
       cause,
       lastError,
+    });
+    this.log("error", "Realtime reconnect exhausted", {
+      attempts: RECONNECT_DELAYS_MS.length,
+      totalMs: Date.now() - startedAt,
+      cause,
+      error: lastError.message,
     });
 
     throw lastError;
@@ -768,6 +806,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     };
     this.eventEmitter?.emit("realtime:error", { error: typedError });
     this.emitState();
+    this.log("error", "Realtime transport error surfaced", {
+      connection,
+      error: typedError.message,
+    });
   }
 
   private emitAudioStart(): void {
@@ -950,6 +992,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       lastError: null,
     };
     this.emitState();
+    this.log("debug", "Realtime session patch started", {
+      voice: sessionConfig.voice,
+      model: sessionConfig.model,
+    });
 
     try {
       await this.client.updateSession(sessionConfig);
@@ -958,6 +1004,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       }
 
       this.commitPatchedSession(sessionConfig);
+      this.log("info", "Realtime session patch succeeded", {
+        voice: sessionConfig.voice,
+        model: sessionConfig.model,
+      });
     } catch (error) {
       const refreshError =
         error instanceof Error ? error : new Error(String(error));
@@ -972,6 +1022,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       ) {
         this.applyError(typedRefreshError, "connected");
       }
+      this.log("error", "Realtime session patch failed", {
+        error: typedRefreshError.message,
+      });
 
       throw typedRefreshError;
     } finally {
@@ -983,6 +1036,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     reason: RealtimeSessionTransitionReason,
     state: RealtimeState = this.getState(),
   ): void {
+    this.log("info", "Realtime session started", {
+      reason,
+      connection: state.connection,
+    });
     this.eventEmitter?.emit("realtime:session:start", {
       state,
       reason,
@@ -993,6 +1050,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     reason: RealtimeSessionTransitionReason,
     state: RealtimeState = this.getState(),
   ): void {
+    this.log("info", "Realtime session ended", {
+      reason,
+      connection: state.connection,
+    });
     this.eventEmitter?.emit("realtime:session:end", {
       state,
       reason,
@@ -1021,6 +1082,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     };
     this.eventEmitter?.emit("realtime:error", { error });
     this.emitState();
+    this.log("error", "Realtime session failed", {
+      error: error.message,
+    });
   }
 
   private finalizeStoppedSession(
@@ -1052,19 +1116,37 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.emitSessionEnd(reason);
     }
   }
-}
 
-function readGazeCoordinates(
-  output: Record<string, unknown>,
-): GazeCoordinates | null {
-  const x = output.x;
-  const y = output.y;
+  private emitUsageEvent(
+    event: Extract<
+      RealtimeTransportEvent,
+      { type: "assistant.response.completed" }
+    >,
+  ): void {
+    if (!event.usage) {
+      return;
+    }
 
-  if (typeof x !== "number" || typeof y !== "number") {
-    return null;
+    const payload: RealtimeUsageEvent = {
+      usage: event.usage,
+      model: event.model,
+      responseId: event.responseId,
+    };
+
+    this.eventEmitter?.emit("realtime:usage", payload);
+    this.log("debug", "Realtime usage reported", {
+      model: event.model,
+      responseId: event.responseId,
+    });
   }
 
-  return { x, y };
+  private log(
+    level: keyof RealtimeLogger,
+    message: string,
+    context?: Record<string, unknown>,
+  ): void {
+    this.options.logger?.[level]?.(message, context);
+  }
 }
 
 export function createRealtimeManager(

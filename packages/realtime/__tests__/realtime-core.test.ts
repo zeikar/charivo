@@ -7,12 +7,16 @@ import {
   type RealtimeToolRegistration,
 } from "@charivo/core";
 import {
-  buildRealtimeSessionConfig,
-  createAvatarControlTools,
   createRealtimeManager,
+  type RealtimeLogger,
   type RealtimeTransportClient,
   type RealtimeTransportEvent,
 } from "@charivo/realtime";
+import { buildRealtimeSessionConfig } from "@charivo/realtime";
+import {
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/realtime-avatar";
 
 function createRealtimeClientStub(options?: {
   emitSessionStartedOnConnect?: boolean;
@@ -120,13 +124,13 @@ describe("realtime-core", () => {
       "Never break character. Never refer to yourself as an AI, model, or assistant.",
     );
     expect(config.instructions).toContain(
-      'Use "setExpression" when the emotional beat clearly shifts, especially when the expression should linger across the reply.',
+      "You are speaking in a realtime voice conversation.",
     );
     expect(config.instructions).toContain(
-      'Do not use "setExpression" for every friendly, polite, or mildly positive reply.',
+      "Respond naturally and keep replies concise enough for spoken delivery.",
     );
     expect(config.instructions).toContain(
-      "Many turns should use no avatar tool at all.",
+      "Use tools only when they add something meaningful to the moment.",
     );
     expect(config.instructions).toContain(
       "Never say tool names or tool arguments out loud.",
@@ -223,6 +227,7 @@ describe("realtime-core", () => {
     };
     const manager = createRealtimeManager(stub.client, {
       tools: [...avatarTools, describeSceneTool],
+      resultProjectors: [createAvatarResultProjector()],
     });
     const eventEmitter: CharivoEventEmitter = {
       emit: vi.fn(),
@@ -330,6 +335,7 @@ describe("realtime-core", () => {
           Idle: 1,
         },
       }),
+      resultProjectors: [createAvatarResultProjector()],
     });
     const eventEmitter = createEventEmitter();
 
@@ -368,6 +374,112 @@ describe("realtime-core", () => {
       x: 0.4,
       y: -0.2,
     });
+
+    const toolResultIndex = (
+      eventEmitter.emit as ReturnType<typeof vi.fn>
+    ).mock.calls.findIndex(
+      ([name, payload]) =>
+        name === "realtime:tool:result" &&
+        (payload as { callId?: string }).callId === "call-expression",
+    );
+    const projectedExpressionIndex = (
+      eventEmitter.emit as ReturnType<typeof vi.fn>
+    ).mock.calls.findIndex(([name]) => name === "realtime:expression");
+
+    expect(toolResultIndex).toBeGreaterThanOrEqual(0);
+    expect(projectedExpressionIndex).toBeGreaterThan(toolResultIndex);
+  });
+
+  it("does not emit avatar events without a result projector", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client, {
+      tools: createAvatarControlTools({
+        expressions: ["Smile"],
+        motions: {
+          Idle: 1,
+        },
+      }),
+    });
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setExpression",
+      args: { expressionId: "Smile" },
+      callId: "call-expression",
+    });
+
+    expect(getEventPayloads(eventEmitter, "realtime:expression")).toEqual([]);
+    expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
+      {
+        name: "setExpression",
+        output: {
+          success: true,
+          expressionId: "Smile",
+        },
+        callId: "call-expression",
+      },
+    ]);
+  });
+
+  it("isolates projector failures after tool results are sent", async () => {
+    const stub = createRealtimeClientStub();
+    const logger: RealtimeLogger = {
+      warn: vi.fn(),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: createAvatarControlTools({
+        expressions: ["Smile"],
+        motions: {
+          Idle: 1,
+        },
+      }),
+      resultProjectors: [
+        () => {
+          throw new Error("projector boom");
+        },
+      ],
+      logger,
+    });
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setExpression",
+      args: { expressionId: "Smile" },
+      callId: "call-projector",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledTimes(1);
+    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([]);
+    expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
+      {
+        name: "setExpression",
+        output: {
+          success: true,
+          expressionId: "Smile",
+        },
+        callId: "call-projector",
+      },
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Realtime result projector failed",
+      expect.objectContaining({
+        name: "setExpression",
+        callId: "call-projector",
+        error: "projector boom",
+      }),
+    );
   });
 
   it("normalizes tool failures and relays transport events", async () => {
@@ -478,6 +590,128 @@ describe("realtime-core", () => {
     });
     expect(manager.getState().response.text).toBe("hello");
     expect(manager.getState().lastError?.message).toBe("boom");
+  });
+
+  it("emits realtime usage events when transport usage is available", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+    const eventEmitter = createEventEmitter();
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "assistant.response.completed",
+      text: "hello",
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+      },
+      model: "gpt-realtime",
+      responseId: "resp_123",
+    });
+
+    expect(getEventPayloads(eventEmitter, "realtime:usage")).toEqual([
+      {
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+        },
+        model: "gpt-realtime",
+        responseId: "resp_123",
+      },
+    ]);
+  });
+
+  it("logs session, tool, reconnect, and error boundaries when a logger is configured", async () => {
+    vi.useFakeTimers();
+
+    const stub = createRealtimeClientStub({
+      emitSessionEndedOnDisconnect: true,
+    });
+    const logger: RealtimeLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: createAvatarControlTools({
+        expressions: ["Smile"],
+        motions: {
+          Idle: 1,
+        },
+      }),
+      resultProjectors: [createAvatarResultProjector()],
+      logger,
+    });
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setExpression",
+      args: { expressionId: "Smile" },
+      callId: "call-log-ok",
+    });
+    await stub.emit({
+      type: "tool.call",
+      name: "setExpression",
+      args: { expressionId: "Missing" },
+      callId: "call-log-fail",
+    });
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+      error: new Error("network"),
+    });
+    await vi.runAllTimersAsync();
+    await stub.emit({
+      type: "error",
+      error: new Error("transport boom"),
+    });
+    await manager.stopSession();
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime session started",
+      expect.objectContaining({ reason: "user" }),
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      "Realtime tool execution started",
+      expect.objectContaining({ name: "setExpression", callId: "call-log-ok" }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime tool execution succeeded",
+      expect.objectContaining({ name: "setExpression", callId: "call-log-ok" }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Realtime tool execution failed",
+      expect.objectContaining({
+        name: "setExpression",
+        callId: "call-log-fail",
+      }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime reconnect attempt",
+      expect.objectContaining({ attempt: 1, cause: "offline" }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime reconnect succeeded",
+      expect.objectContaining({ attempts: 1, cause: "offline" }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      "Realtime transport error surfaced",
+      expect.objectContaining({ error: "transport boom" }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime session ended",
+      expect.objectContaining({ reason: "user" }),
+    );
   });
 
   it("times out slow tools and supports unregistering before the next session", async () => {

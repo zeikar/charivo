@@ -45,6 +45,12 @@ interface AssistantState {
   started: boolean;
 }
 
+interface AssistantCompletionMetadata {
+  usage?: Record<string, unknown>;
+  model?: string;
+  responseId?: string;
+}
+
 export interface OpenAIRealtimeAgentsClientOptions
   extends RealtimeBootstrapLoaderOptions {
   debug?: boolean;
@@ -71,6 +77,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private isRecovering = false;
   private isCleaningUp = false;
   private assistant: AssistantState = { text: "", started: false };
+  private assistantCompletionMetadata: AssistantCompletionMetadata = {};
   private latestHistory: RealtimeItem[] = [];
   private currentSessionConfig?: RealtimeSessionConfig;
   private teardownTransportLifecycle?: () => void;
@@ -305,6 +312,22 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
           text: event.transcript,
         });
       }
+
+      if (event.type === "response.done" && isRecord(event.response)) {
+        this.assistantCompletionMetadata = {
+          usage: isRecord(event.response.usage)
+            ? event.response.usage
+            : undefined,
+          model:
+            typeof event.response.model === "string"
+              ? event.response.model
+              : undefined,
+          responseId:
+            typeof event.response.id === "string"
+              ? event.response.id
+              : undefined,
+        };
+      }
     });
   }
 
@@ -387,6 +410,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.emitEvent({
       type: "assistant.response.completed",
       text: finalText,
+      ...this.assistantCompletionMetadata,
     });
     this.resetAssistantTracking();
   }
@@ -681,6 +705,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       text: "",
       started: false,
     };
+    this.assistantCompletionMetadata = {};
   }
 
   private cleanupPendingToolCalls(error?: unknown): void {

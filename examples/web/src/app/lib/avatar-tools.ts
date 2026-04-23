@@ -6,7 +6,7 @@ import type {
 import {
   AVATAR_CONTROL_TOOL_NAMES,
   createAvatarControlTools,
-} from "@charivo/realtime";
+} from "@charivo/realtime-avatar";
 
 const describeCharacterProfileTool: RealtimeToolRegistration = {
   definition: {

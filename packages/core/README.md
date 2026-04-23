@@ -95,6 +95,7 @@ Important event names include:
 - `realtime:tool:call`
 - `realtime:tool:result`
 - `realtime:tool:error`
+- `realtime:usage`
 - `realtime:expression`
 - `realtime:motion`
 - `realtime:gaze`

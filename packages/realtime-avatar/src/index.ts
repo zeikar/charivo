@@ -1,17 +1,21 @@
-import {
-  type AvatarControlCatalog,
-  type GazeCoordinates,
-  type MotionSelection,
-  type RealtimeToolRegistration,
+import type {
+  AvatarControlCatalog,
+  GazeCoordinates,
+  RealtimeToolRegistration,
 } from "@charivo/core";
-import {
-  LOOK_AT_TOOL_DESCRIPTION,
-  PLAY_MOTION_TOOL_DESCRIPTION,
-  SET_EXPRESSION_TOOL_DESCRIPTION,
-} from "./instructions";
+import type { RealtimeToolResultProjector } from "@charivo/realtime";
 
 const MIN_GAZE = -1;
 const MAX_GAZE = 1;
+
+const SET_EXPRESSION_TOOL_DESCRIPTION =
+  "Change the avatar's facial expression only when the emotional beat clearly shifts or should linger across the reply. Do not use this for every polite or lightweight reaction.";
+
+const PLAY_MOTION_TOOL_DESCRIPTION =
+  "Play a noticeable body motion for greetings, emphasis, or bigger reaction beats. Prefer this over stacking multiple smaller actions when the moment needs one clear accent. Usually use at most one motion in a reply.";
+
+const LOOK_AT_TOOL_DESCRIPTION =
+  'Shift the avatar\'s gaze for subtle attention changes or conversational focus. Trigger this on natural phrases like "glance", "look over", "peek at", or directional cues. Prefer this before "setExpression" when a lightweight reaction is enough.';
 
 export const SET_EXPRESSION_TOOL_NAME = "setExpression";
 export const PLAY_MOTION_TOOL_NAME = "playMotion";
@@ -27,7 +31,10 @@ export interface ExpressionArgs {
   expressionId: string;
 }
 
-export type MotionArgs = MotionSelection;
+export interface MotionArgs {
+  group: string;
+  index: number;
+}
 
 export type LookAtArgs = GazeCoordinates;
 
@@ -48,7 +55,7 @@ export function createAvatarControlTools(
           properties: {
             expressionId: {
               type: "string",
-              description: "Expression ID from the loaded Live2D model.",
+              description: "Expression ID from the loaded avatar model.",
               enum: expressionValues,
             },
           },
@@ -86,7 +93,7 @@ export function createAvatarControlTools(
           properties: {
             group: {
               type: "string",
-              description: "Motion group from the loaded Live2D model.",
+              description: "Motion group from the loaded avatar model.",
               enum: motionGroups,
             },
             index: {
@@ -173,6 +180,49 @@ export function createAvatarControlTools(
   });
 
   return tools;
+}
+
+export function createAvatarResultProjector(): RealtimeToolResultProjector {
+  return ({ name, output, emit }) => {
+    switch (name) {
+      case SET_EXPRESSION_TOOL_NAME: {
+        const expressionId = output.expressionId;
+        if (typeof expressionId === "string") {
+          emit("realtime:expression", { expressionId });
+        }
+        return;
+      }
+
+      case PLAY_MOTION_TOOL_NAME: {
+        const group = output.group;
+        const index = output.index;
+        if (typeof group === "string" && Number.isInteger(index)) {
+          emit("realtime:motion", { group, index: index as number });
+        }
+        return;
+      }
+
+      case LOOK_AT_TOOL_NAME: {
+        const coords = readGazeCoordinates(output);
+        if (coords) {
+          emit("realtime:gaze", coords);
+        }
+      }
+    }
+  };
+}
+
+function readGazeCoordinates(
+  output: Record<string, unknown>,
+): GazeCoordinates | null {
+  const x = output.x;
+  const y = output.y;
+
+  if (typeof x !== "number" || typeof y !== "number") {
+    return null;
+  }
+
+  return { x, y };
 }
 
 function clamp(value: number, min: number, max: number): number {

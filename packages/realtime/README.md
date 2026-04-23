@@ -65,9 +65,10 @@ session active and drives reconnect attempts internally. During that window
 
 - `createRealtimeManager(client, options?)`
 - `buildRealtimeSessionConfig({ character, baseConfig? })`
-- `createAvatarControlTools(catalog)`
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
+- `RealtimeToolResultProjector`
+- `RealtimeLogger`
 
 ## Instruction Layering
 
@@ -100,14 +101,25 @@ await manager.startSession({
 Prefer building on top of `buildRealtimeSessionConfig(...)` rather than
 replacing the instructions from scratch.
 
-## Avatar Control Tools
+Avatar-specific realtime tools now live in `@charivo/realtime-avatar`.
 
-Use `createAvatarControlTools(...)` to build canonical avatar tools from the
-loaded Live2D model catalog:
+## Result Projectors And Logging
 
-- `setExpression`
-- `playMotion`
-- `lookAt`
+`RealtimeManager` stays renderer-neutral. If your app wants domain-specific
+events from tool outputs, pass `resultProjectors`:
+
+```ts
+import { createAvatarResultProjector } from "@charivo/realtime-avatar";
+
+const manager = createRealtimeManager(client, {
+  tools,
+  resultProjectors: [createAvatarResultProjector()],
+  logger: console,
+});
+```
+
+`resultProjectors` run after successful local tool execution and can emit
+additional app-level events such as `realtime:expression`.
 
 ## Session Refresh
 
@@ -194,9 +206,7 @@ When connected, the manager relays:
 - `realtime:tool:call`
 - `realtime:tool:result`
 - `realtime:tool:error`
-- `realtime:expression`
-- `realtime:motion`
-- `realtime:gaze`
+- `realtime:usage`
 - `realtime:text:delta`
 - `realtime:error`
 - `tts:lipsync:update`

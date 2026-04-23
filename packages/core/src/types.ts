@@ -174,6 +174,12 @@ export interface RealtimeToolRegistration {
   timeoutMs?: number;
 }
 
+export interface RealtimeUsageEvent {
+  usage: Record<string, unknown>;
+  model?: string;
+  responseId?: string;
+}
+
 export interface LLMAdapter {
   generateResponse(message: Message): Promise<string>;
   setCharacter(character: Character): void;
@@ -371,6 +377,7 @@ export type EventMap = {
     cause: RealtimeReconnectCause;
     lastError: Error;
   };
+  "realtime:usage": RealtimeUsageEvent;
   "realtime:expression": { expressionId: string };
   "realtime:motion": { group: string; index: number };
   "realtime:gaze": GazeCoordinates;

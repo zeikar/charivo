@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { createRealtimeManager } from "@charivo/realtime";
+import { createAvatarResultProjector } from "@charivo/realtime-avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
@@ -53,6 +54,7 @@ export function useRealtimeMode() {
 
       const realtimeManager = createRealtimeManager(realtimeClient, {
         tools: buildDemoRealtimeTools(avatarCatalog),
+        resultProjectors: [createAvatarResultProjector()],
       });
       logRealtimeMode("avatar-tools.registered", {
         expressions: avatarCatalog.expressions,

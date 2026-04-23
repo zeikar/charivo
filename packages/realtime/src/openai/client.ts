@@ -45,6 +45,11 @@ interface ServerEvent {
   arguments?: string;
   item?: ServerEventItem;
   error?: ServerError;
+  response?: {
+    id?: string;
+    model?: string;
+    usage?: Record<string, unknown>;
+  };
 }
 
 export interface OpenAIRealtimeClientOptions {
@@ -402,6 +407,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         this.emitEvent({
           type: "assistant.response.completed",
           text: this.assistantText,
+          usage: event.response?.usage,
+          model: event.response?.model,
+          responseId: event.response?.id,
         });
         this.resetResponseTracking();
         return;

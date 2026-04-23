@@ -3,6 +3,7 @@ import type { RealtimeReconnectCause, RealtimeState } from "@charivo/core";
 export type {
   Character,
   CharivoEventEmitter,
+  RealtimeUsageEvent,
   RealtimeConnectionState,
   RealtimeReconnectCause,
   RealtimeManager,
@@ -29,7 +30,13 @@ export type RealtimeTransportEvent =
   | { type: "user.transcript"; text: string }
   | { type: "assistant.response.started" }
   | { type: "assistant.text.delta"; text: string }
-  | { type: "assistant.response.completed"; text: string }
+  | {
+      type: "assistant.response.completed";
+      text: string;
+      usage?: Record<string, unknown>;
+      model?: string;
+      responseId?: string;
+    }
   | { type: "audio.output.started" }
   | { type: "audio.output.ended" }
   | { type: "audio.lipsync"; rms: number }
