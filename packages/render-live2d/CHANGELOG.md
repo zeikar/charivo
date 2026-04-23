@@ -1,5 +1,25 @@
 # @charivo/render-live2d
 
+## 0.2.2
+
+### Patch Changes
+
+- 42ea16b: Fix packaging regression where the declaration build emitted `renderer.d.ts`
+  under `dist/render-live2d/src/` instead of the `dist/src/` path declared in
+  `package.json`, breaking `pack:check` and leaving published type entries
+  unresolved.
+- 3aa84ad: Improve mobile realtime resilience by adding reconnect orchestration, reconnect
+  observability events, direct microphone ownership with safer browser
+  constraints, and iOS-friendly audio preparation hooks.
+
+  `@charivo/render-live2d` now handles WebGL context loss by rebuilding the host
+  and reloading the last model after restore. `@charivo/stt` now requests
+  browser-safe microphone constraints by default.
+
+- Updated dependencies [3aa84ad]
+  - @charivo/core@0.8.0
+  - @charivo/render@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes
