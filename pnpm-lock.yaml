@@ -108,6 +108,9 @@ importers:
       '@charivo/realtime':
         specifier: workspace:*
         version: link:../../packages/realtime
+      '@charivo/realtime-avatar':
+        specifier: workspace:*
+        version: link:../../packages/realtime-avatar
       '@charivo/render':
         specifier: workspace:*
         version: link:../../packages/render
@@ -209,6 +212,22 @@ importers:
       '@openai/agents-realtime':
         specifier: 0.8.5
         version: 0.8.5(zod@4.3.6)
+    devDependencies:
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.0(@swc/core@1.15.26)(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.2
+
+  packages/realtime-avatar:
+    dependencies:
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@charivo/realtime':
+        specifier: workspace:*
+        version: link:../realtime
     devDependencies:
       tsup:
         specifier: ^8.5.0
