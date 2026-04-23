@@ -23,7 +23,8 @@ export class OpenAISTTTranscriber implements STTTranscriber {
   private recordingOptions?: STTOptions;
 
   constructor(config: OpenAISTTTranscriberConfig) {
-    // Automatically set dangerouslyAllowBrowser to true for browser usage
+    // Intentional dev/test escape hatch: this direct browser transcriber
+    // exposes credentials. For production, see docs/guide/choosing-packages.md#remote.
     this.provider = createOpenAISTTProvider({
       ...config,
       dangerouslyAllowBrowser: true,

@@ -22,7 +22,8 @@ export class OpenAITTSPlayer implements TTSPlayer {
   private provider: OpenAITTSProvider;
 
   constructor(config: OpenAITTSPlayerConfig) {
-    // 브라우저에서 사용하기 위해 dangerouslyAllowBrowser를 자동으로 true로 설정
+    // Intentional dev/test escape hatch: this direct browser player exposes
+    // credentials. For production, see docs/guide/choosing-packages.md#remote.
     this.provider = createOpenAITTSProvider({
       ...config,
       dangerouslyAllowBrowser: true,

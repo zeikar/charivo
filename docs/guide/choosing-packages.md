@@ -25,7 +25,7 @@ their tradeoffs.
 | Need | Pick | Why |
 | --- | --- | --- |
 | Production browser app | Remote browser package + server provider package | Keeps credentials on the server |
-| Local development against vendor APIs | Browser-direct vendor package | Faster setup, but browser secrets are exposed |
+| Local development against vendor APIs | Browser-direct vendor package | Faster setup, but credentials bundle into shipped JavaScript |
 | Zero-server browser speech | Browser-native web package | No backend needed, but browser support varies |
 | Deterministic demo or UI work | Stub client where available | No model dependency |
 
@@ -50,8 +50,10 @@ Choose this path when:
 
 ### Browser-Direct
 
-Use browser-direct vendor packages for development, demos, or trusted
-environments.
+Use browser-direct vendor packages for development, demos, trusted
+environments, or quick provider checks that intentionally bypass your server.
+These packages expose provider credentials to the browser; production browser
+apps should prefer the remote/server-mediated path.
 
 Examples:
 
@@ -66,7 +68,7 @@ Choose this path when:
 
 - you want the shortest local setup
 - you are testing provider behavior directly
-- exposing credentials in the browser is acceptable
+- bundling provider credentials into shipped JavaScript is acceptable
 
 ### Browser-Native
 
