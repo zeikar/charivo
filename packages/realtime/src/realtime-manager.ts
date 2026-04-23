@@ -21,6 +21,7 @@ import { buildRealtimeSessionConfig } from "./instructions";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
+let nextFallbackSessionId = 1;
 
 type WakeLockSentinelLike = {
   release(): Promise<void>;
@@ -79,6 +80,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private reconnectToken = 0;
   private wakeLockSentinel: WakeLockSentinelLike | null = null;
   private teardownBrowserLifecycle?: () => void;
+  private sessionId?: string;
   private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
   private state: RealtimeState = {
     connection: "idle",
@@ -182,6 +184,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
     this.sessionBaseConfig = this.resolveNextSessionBaseConfig(config);
     const sessionConfig = this.buildEffectiveSessionConfig();
+    this.sessionId = createRealtimeSessionId();
 
     this.state = {
       ...this.state,
@@ -1085,6 +1088,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.log("error", "Realtime session failed", {
       error: error.message,
     });
+    this.sessionId = undefined;
   }
 
   private finalizeStoppedSession(
@@ -1115,6 +1119,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     if (emitSessionEnd) {
       this.emitSessionEnd(reason);
     }
+
+    this.sessionId = undefined;
   }
 
   private emitUsageEvent(
@@ -1131,6 +1137,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       usage: event.usage,
       model: event.model,
       responseId: event.responseId,
+      sessionId: this.sessionId,
     };
 
     this.eventEmitter?.emit("realtime:usage", payload);
@@ -1145,7 +1152,15 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     message: string,
     context?: Record<string, unknown>,
   ): void {
-    this.options.logger?.[level]?.(message, context);
+    const mergedContext =
+      this.sessionId === undefined
+        ? context
+        : {
+            ...context,
+            sessionId: this.sessionId,
+          };
+
+    this.options.logger?.[level]?.(message, mergedContext);
   }
 }
 
@@ -1190,6 +1205,15 @@ function mergeRealtimeState(
     },
     lastError: partial.lastError ?? current.lastError,
   };
+}
+
+function createRealtimeSessionId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  if (randomUuid) {
+    return randomUuid;
+  }
+
+  return `realtime-session-${Date.now()}-${nextFallbackSessionId++}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

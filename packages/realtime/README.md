@@ -82,6 +82,7 @@ in-character behavior.
 - `character.description`
 - `character.personality`
 - the generic realtime defaults
+- `character.voice.voiceId` when available
 
 If your app needs stronger product-specific acting guidance, append it in the
 app layer instead of expanding the library default prompt:
@@ -91,6 +92,7 @@ const base = buildRealtimeSessionConfig({ character });
 
 await manager.startSession({
   provider: "openai",
+  model: "gpt-realtime-mini",
   instructions: [
     base.instructions,
     "Keep replies short and natural for this product.",
@@ -98,8 +100,9 @@ await manager.startSession({
 });
 ```
 
-Prefer building on top of `buildRealtimeSessionConfig(...)` rather than
-replacing the instructions from scratch.
+`buildRealtimeSessionConfig(...)` does not fill provider-specific fields such
+as `provider` or `model`. Prefer building on top of it for instructions and
+character voice, then pass provider/model explicitly at `startSession(...)`.
 
 Avatar-specific realtime tools now live in `@charivo/realtime-avatar`.
 
@@ -120,6 +123,11 @@ const manager = createRealtimeManager(client, {
 
 `resultProjectors` run after successful local tool execution and can emit
 additional app-level events such as `realtime:expression`.
+
+When a logger is configured, `RealtimeManager` also injects a per-session
+`sessionId` into every log context. If the caller also supplies `sessionId` in
+its own logger context, the manager value wins. The same `sessionId` is
+included in `realtime:usage` payloads.
 
 ## Session Refresh
 

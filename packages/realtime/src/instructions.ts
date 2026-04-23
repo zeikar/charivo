@@ -1,9 +1,5 @@
 import type { Character, RealtimeSessionConfig } from "@charivo/core";
 
-const DEFAULT_PROVIDER = "openai";
-const DEFAULT_MODEL = "gpt-realtime-mini";
-export const DEFAULT_REALTIME_VOICE = "marin";
-
 export const DEFAULT_REALTIME_AGENT_INSTRUCTIONS = `
 You are speaking in a realtime voice conversation.
 Respond naturally and keep replies concise enough for spoken delivery.
@@ -25,11 +21,10 @@ export function buildRealtimeSessionConfig({
   baseConfig,
 }: BuildRealtimeSessionConfigOptions = {}): RealtimeSessionConfig {
   return {
-    provider: baseConfig?.provider ?? DEFAULT_PROVIDER,
     transport: baseConfig?.transport ?? "webrtc",
-    model: baseConfig?.model ?? DEFAULT_MODEL,
-    voice:
-      baseConfig?.voice ?? character?.voice?.voiceId ?? DEFAULT_REALTIME_VOICE,
+    provider: baseConfig?.provider,
+    model: baseConfig?.model,
+    voice: baseConfig?.voice ?? character?.voice?.voiceId,
     instructions:
       baseConfig?.instructions ?? buildCharacterInstructions(character),
     temperature: baseConfig?.temperature,

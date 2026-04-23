@@ -257,6 +257,37 @@ describe("OpenAIRealtimeAgentsClient", () => {
     expect(events).toContainEqual({ type: "session.started" });
   });
 
+  it("falls back to the OpenAI default model and voice when they are omitted", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+    });
+
+    expect(sdkState.session?.connect).toHaveBeenCalledWith({
+      apiKey: "client-secret",
+      model: "gpt-realtime-mini",
+    });
+    expect(sdkState.session?.options.config).toMatchObject({
+      model: "gpt-realtime-mini",
+      audio: {
+        output: {
+          voice: "marin",
+        },
+      },
+    });
+  });
+
   it("patches the active session in place", async () => {
     globalThis.fetch = vi.fn(async () =>
       Response.json({

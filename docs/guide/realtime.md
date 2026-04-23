@@ -74,6 +74,7 @@ before the first realtime session:
 await renderManager.prepareAudio?.();
 await manager.startSession({
   provider: "openai",
+  model: "gpt-realtime-mini",
 });
 ```
 
@@ -97,6 +98,7 @@ const base = buildRealtimeSessionConfig({ character });
 
 await manager.startSession({
   provider: "openai",
+  model: "gpt-realtime-mini",
   instructions: [
     base.instructions,
     "Keep replies short and natural for this product.",
@@ -105,7 +107,9 @@ await manager.startSession({
 ```
 
 `buildRealtimeSessionConfig(...)` already includes character identity,
-`description`, `personality`, and the generic realtime/tooling rules.
+`description`, `personality`, the generic realtime/tooling rules, and
+`character.voice.voiceId` when available. It does not supply provider/model
+defaults.
 
 ## Why `@charivo/realtime/remote` Is The Default
 

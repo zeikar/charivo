@@ -33,6 +33,7 @@ import {
   resolveVoice,
   toOpenAIRealtimeAgentsSessionConfig,
 } from "./session-config";
+import { DEFAULT_OPENAI_REALTIME_MODEL } from "../openai/defaults";
 import { createToolSchemaOptions } from "./tool-schema";
 
 interface PendingToolCall {
@@ -152,7 +153,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
       await this.session.connect({
         apiKey: bootstrap.clientSecret,
-        model: config?.model,
+        model: config?.model ?? DEFAULT_OPENAI_REALTIME_MODEL,
       });
 
       this.connectionWasActive = true;

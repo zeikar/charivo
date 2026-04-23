@@ -178,6 +178,7 @@ export interface RealtimeUsageEvent {
   usage: Record<string, unknown>;
   model?: string;
   responseId?: string;
+  sessionId?: string;
 }
 
 export interface LLMAdapter {

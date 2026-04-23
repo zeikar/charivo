@@ -344,6 +344,71 @@ describe("OpenAIRealtimeClient", () => {
     await updatePromise;
   });
 
+  it("falls back to the OpenAI default voice for empty session patches", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+    });
+
+    expect(peer.dataChannel.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        type: "session.update",
+        event_id: "charivo-session-update-1",
+        session: {
+          audio: {
+            output: {
+              voice: "marin",
+            },
+          },
+          tool_choice: "auto",
+        },
+      }),
+    );
+
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "session.updated",
+          event_id: "charivo-session-update-1",
+        }),
+      }),
+    );
+
+    await updatePromise;
+  });
+
   it("rebuilds the transport on recover when the peer connection has failed", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],

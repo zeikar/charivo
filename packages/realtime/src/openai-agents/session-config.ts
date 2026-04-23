@@ -1,23 +1,23 @@
 import type { RealtimeSessionConfig } from "@charivo/core";
-import { DEFAULT_REALTIME_VOICE } from "../instructions";
-
-export const DEFAULT_AGENT_INSTRUCTIONS =
-  "You are a realtime voice agent controlling a Live2D character.";
-export const DEFAULT_MODEL = "gpt-realtime-mini";
+import {
+  DEFAULT_OPENAI_REALTIME_AGENT_INSTRUCTIONS,
+  DEFAULT_OPENAI_REALTIME_MODEL,
+  DEFAULT_OPENAI_REALTIME_VOICE,
+} from "../openai/defaults";
 
 export function resolveInstructions(config?: RealtimeSessionConfig): string {
-  return config?.instructions ?? DEFAULT_AGENT_INSTRUCTIONS;
+  return config?.instructions ?? DEFAULT_OPENAI_REALTIME_AGENT_INSTRUCTIONS;
 }
 
 export function resolveVoice(config?: RealtimeSessionConfig): string {
-  return config?.voice ?? DEFAULT_REALTIME_VOICE;
+  return config?.voice ?? DEFAULT_OPENAI_REALTIME_VOICE;
 }
 
 export function toOpenAIRealtimeAgentsSessionConfig(
   config?: RealtimeSessionConfig,
 ): Record<string, unknown> {
   const sessionConfig: Record<string, unknown> = {
-    model: config?.model ?? DEFAULT_MODEL,
+    model: config?.model ?? DEFAULT_OPENAI_REALTIME_MODEL,
     instructions: resolveInstructions(config),
     toolChoice: config?.toolChoice ?? "auto",
     outputModalities: ["audio"],

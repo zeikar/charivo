@@ -109,10 +109,11 @@ describe("realtime-core", () => {
       character,
     });
 
-    expect(config.provider).toBe("openai");
+    expect(config.provider).toBeUndefined();
     expect(config.transport).toBe("webrtc");
-    expect(config.model).toBe("gpt-realtime-mini");
+    expect(config.model).toBeUndefined();
     expect(config.voice).toBe("alloy");
+    expect(config.toolChoice).toBe("auto");
     expect(config.instructions).toMatch(/^You are Hiyori\./);
     expect(config.instructions).toContain(
       "Stay fully in character during the conversation.",
@@ -136,6 +137,9 @@ describe("realtime-core", () => {
       "Never say tool names or tool arguments out loud.",
     );
     expect(config.tools).toBeUndefined();
+
+    const defaultConfig = buildRealtimeSessionConfig();
+    expect(defaultConfig.voice).toBeUndefined();
   });
 
   it("builds catalog-based avatar control tools", async () => {
@@ -621,6 +625,7 @@ describe("realtime-core", () => {
         },
         model: "gpt-realtime",
         responseId: "resp_123",
+        sessionId: expect.any(String),
       },
     ]);
   });
@@ -652,6 +657,16 @@ describe("realtime-core", () => {
       provider: "openai",
       voice: "marin",
     });
+    const firstSessionId = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        ([message]) => message === "Realtime session started",
+      )?.[1]?.sessionId;
+    expect(firstSessionId).toEqual(expect.any(String));
+
+    await manager.updateSession({
+      voice: "alloy",
+    });
 
     await stub.emit({
       type: "tool.call",
@@ -679,39 +694,162 @@ describe("realtime-core", () => {
 
     expect(logger.info).toHaveBeenCalledWith(
       "Realtime session started",
-      expect.objectContaining({ reason: "user" }),
+      expect.objectContaining({
+        reason: "user",
+        sessionId: firstSessionId,
+      }),
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      "Realtime session patch started",
+      expect.objectContaining({
+        voice: "alloy",
+        sessionId: firstSessionId,
+      }),
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      "Realtime session patch succeeded",
+      expect.objectContaining({
+        voice: "alloy",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.debug).toHaveBeenCalledWith(
       "Realtime tool execution started",
-      expect.objectContaining({ name: "setExpression", callId: "call-log-ok" }),
+      expect.objectContaining({
+        name: "setExpression",
+        callId: "call-log-ok",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.info).toHaveBeenCalledWith(
       "Realtime tool execution succeeded",
-      expect.objectContaining({ name: "setExpression", callId: "call-log-ok" }),
+      expect.objectContaining({
+        name: "setExpression",
+        callId: "call-log-ok",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.warn).toHaveBeenCalledWith(
       "Realtime tool execution failed",
       expect.objectContaining({
         name: "setExpression",
         callId: "call-log-fail",
+        sessionId: firstSessionId,
       }),
     );
     expect(logger.info).toHaveBeenCalledWith(
       "Realtime reconnect attempt",
-      expect.objectContaining({ attempt: 1, cause: "offline" }),
+      expect.objectContaining({
+        attempt: 1,
+        cause: "offline",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.info).toHaveBeenCalledWith(
       "Realtime reconnect succeeded",
-      expect.objectContaining({ attempts: 1, cause: "offline" }),
+      expect.objectContaining({
+        attempts: 1,
+        cause: "offline",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.error).toHaveBeenCalledWith(
       "Realtime transport error surfaced",
-      expect.objectContaining({ error: "transport boom" }),
+      expect.objectContaining({
+        error: "transport boom",
+        sessionId: firstSessionId,
+      }),
     );
     expect(logger.info).toHaveBeenCalledWith(
       "Realtime session ended",
-      expect.objectContaining({ reason: "user" }),
+      expect.objectContaining({
+        reason: "user",
+        sessionId: firstSessionId,
+      }),
     );
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "nova",
+    });
+
+    const secondSessionId = vi
+      .mocked(logger.info)
+      .mock.calls.filter(([message]) => message === "Realtime session started")
+      .slice(-1)[0]?.[1]?.sessionId;
+
+    expect(secondSessionId).toEqual(expect.any(String));
+    expect(secondSessionId).not.toBe(firstSessionId);
+  });
+
+  it("leaves provider and model undefined in active state when the caller does not specify them", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession();
+
+    expect(manager.getState().session.config).toMatchObject({
+      transport: "webrtc",
+      toolChoice: "auto",
+    });
+    expect(manager.getState().session.config?.provider).toBeUndefined();
+    expect(manager.getState().session.config?.model).toBeUndefined();
+  });
+
+  it("keeps the same sessionId across refreshes and rotates it after a restart", async () => {
+    const stub = createRealtimeClientStub();
+    const logger: RealtimeLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      logger,
+    });
+
+    await manager.startSession({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const initialSessionId = vi
+      .mocked(logger.info)
+      .mock.calls.find(
+        ([message]) => message === "Realtime session started",
+      )?.[1]?.sessionId;
+
+    await manager.updateSession({
+      voice: "alloy",
+    });
+
+    const refreshSessionIds = [
+      ...vi.mocked(logger.info).mock.calls,
+      ...vi.mocked(logger.debug).mock.calls,
+    ]
+      .filter(([message]) =>
+        [
+          "Realtime session started",
+          "Realtime session patch started",
+          "Realtime session patch succeeded",
+        ].includes(message),
+      )
+      .map(([, context]) => context?.sessionId);
+
+    expect(initialSessionId).toEqual(expect.any(String));
+    expect(new Set(refreshSessionIds)).toEqual(new Set([initialSessionId]));
+
+    await manager.stopSession();
+    await manager.startSession({
+      provider: "openai",
+      voice: "nova",
+    });
+
+    const restartedSessionId = vi
+      .mocked(logger.info)
+      .mock.calls.filter(([message]) => message === "Realtime session started")
+      .slice(-1)[0]?.[1]?.sessionId;
+
+    expect(restartedSessionId).toEqual(expect.any(String));
+    expect(restartedSessionId).not.toBe(initialSessionId);
   });
 
   it("times out slow tools and supports unregistering before the next session", async () => {

@@ -5,7 +5,6 @@ import type {
   RealtimeSessionRequest,
 } from "@charivo/core";
 import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
-import { DEFAULT_REALTIME_VOICE } from "../instructions";
 import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   bindTransportLifecycle,
@@ -20,6 +19,7 @@ import {
   isRecord,
 } from "../internal/shared";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
+import { DEFAULT_OPENAI_REALTIME_VOICE } from "./defaults";
 
 interface ServerError {
   code?: string;
@@ -1028,7 +1028,7 @@ function toOpenAIRealtimeSessionUpdate(
   const session: Record<string, unknown> = {
     audio: {
       output: {
-        voice: config?.voice ?? DEFAULT_REALTIME_VOICE,
+        voice: config?.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
       },
     },
     tool_choice: config?.toolChoice ?? "auto",
