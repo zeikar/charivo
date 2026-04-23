@@ -1,4 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  Charivo,
+  CharivoError,
+  CharivoProviderError,
+  CharivoTransportError,
+  EventBus,
+} from "@charivo/core";
 import type {
   Character,
   CharivoEventBus,
@@ -14,8 +21,8 @@ import type {
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
-import { Charivo, EventBus } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
+import { createRealtimeManager } from "@charivo/realtime";
 
 class StubRenderManager implements RenderManager {
   initialize = vi.fn(async () => undefined);
@@ -201,8 +208,9 @@ describe("Charivo", () => {
     charivo.on("message:sent", messageSpy);
 
     await expect(charivo.userSay("Hello")).resolves.toBeUndefined();
+    await expect(charivo.userSay("")).resolves.toBeUndefined();
 
-    expect(messageSpy).toHaveBeenCalledTimes(1);
+    expect(messageSpy).toHaveBeenCalledTimes(2);
   });
 
   it("propagates character and event wiring across attached managers", () => {
@@ -239,11 +247,15 @@ describe("Charivo", () => {
 
     charivo.detachTTS();
     charivo.detachSTT();
+    charivo.detachLLM();
+    charivo.detachRenderer();
     charivo.detachRealtime();
 
     expect(charivo.getSTTManager()).toBeUndefined();
     expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.getHistory()).toHaveLength(0);
     expect(charivo.isRealtimeModeEnabled()).toBe(false);
+    expect(renderManager.destroy).not.toHaveBeenCalled();
   });
 
   it("emits tts:error when synthesis fails and skips detached tts", async () => {
@@ -277,5 +289,158 @@ describe("Charivo", () => {
     await charivo.userSay("Hello again");
 
     expect(ttsManager.speak).not.toHaveBeenCalled();
+  });
+
+  it("wraps llm manager failures in typed provider errors", async () => {
+    const failingClient = {
+      call: vi.fn(async () => {
+        throw new Error("upstream failed");
+      }),
+    } satisfies LLMClient;
+    const llmManager = createLLMManager(failingClient);
+    const charivo = new Charivo();
+
+    charivo.attachLLM(llmManager);
+    charivo.setCharacter(character);
+
+    const run = charivo.userSay("Hello");
+
+    await expect(run).rejects.toBeInstanceOf(CharivoProviderError);
+    await expect(run).rejects.toBeInstanceOf(CharivoError);
+  });
+
+  it("surfaces typed realtime transport errors across packages", async () => {
+    const realtimeClient = {
+      connect: vi.fn(async () => {
+        throw new Error("socket closed");
+      }),
+      updateSession: vi.fn(async () => undefined),
+      recover: vi.fn(async () => undefined),
+      disconnect: vi.fn(async () => undefined),
+      sendText: vi.fn(async () => undefined),
+      sendAudio: vi.fn(async () => undefined),
+      sendToolResult: vi.fn(async () => undefined),
+      interrupt: vi.fn(async () => undefined),
+      onEvent: vi.fn((_callback: (event: unknown) => void) => undefined),
+    };
+
+    const manager = createRealtimeManager(
+      realtimeClient as Parameters<typeof createRealtimeManager>[0],
+    );
+
+    const run = manager.startSession();
+
+    await expect(run).rejects.toBeInstanceOf(CharivoTransportError);
+    await expect(run).rejects.toBeInstanceOf(CharivoError);
+  });
+
+  it("disposes managers in order, clears references, and stays idempotent", async () => {
+    const calls: string[] = [];
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
+    const sttManager = new StubSTTManager();
+    const realtimeManager = new StubRealtimeManager();
+    const client = new ResolvingClient("Bye");
+    const llmManager = createLLMManager(client);
+    const charivo = new Charivo();
+
+    realtimeManager.stopSession.mockImplementation(async () => {
+      calls.push("realtime");
+    });
+    ttsManager.stop.mockImplementation(async () => {
+      calls.push("tts");
+    });
+    sttManager.isRecording.mockReturnValue(true);
+    sttManager.stop.mockImplementation(async () => {
+      calls.push("stt");
+      return "";
+    });
+    renderManager.destroy.mockImplementation(async () => {
+      calls.push("render");
+    });
+
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
+    charivo.attachSTT(sttManager);
+    charivo.attachRealtime(realtimeManager);
+    charivo.attachLLM(llmManager);
+    charivo.setCharacter(character);
+    await charivo.userSay("Hello");
+
+    await charivo.dispose();
+    await charivo.dispose();
+
+    expect(calls).toEqual(["realtime", "tts", "stt", "render"]);
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.getSTTManager()).toBeUndefined();
+    expect(charivo.getCurrentCharacter()).toBeNull();
+    expect(charivo.isRealtimeModeEnabled()).toBe(false);
+  });
+
+  it("continues dispose cleanup and throws only the first typed failure", async () => {
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
+    const sttManager = new StubSTTManager();
+    const realtimeManager = new StubRealtimeManager();
+    const client = new ResolvingClient("Bye");
+    const llmManager = createLLMManager(client);
+    const charivo = new Charivo();
+
+    realtimeManager.stopSession.mockRejectedValueOnce(
+      new Error("realtime failed"),
+    );
+    ttsManager.stop.mockRejectedValueOnce(new Error("tts failed"));
+    sttManager.isRecording.mockReturnValue(true);
+    sttManager.stop.mockRejectedValueOnce(new Error("stt failed"));
+    renderManager.destroy.mockRejectedValueOnce(new Error("render failed"));
+
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
+    charivo.attachSTT(sttManager);
+    charivo.attachRealtime(realtimeManager);
+    charivo.attachLLM(llmManager);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: expect.objectContaining({
+        message: "realtime failed",
+      }),
+    });
+
+    expect(ttsManager.stop).toHaveBeenCalledTimes(1);
+    expect(sttManager.stop).toHaveBeenCalledTimes(1);
+    expect(renderManager.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues best-effort dispose when stt recording probe throws", async () => {
+    const calls: string[] = [];
+    const renderManager = new StubRenderManager();
+    const ttsManager = new StubTTSManager();
+    const sttManager = new StubSTTManager();
+    const charivo = new Charivo();
+
+    ttsManager.stop.mockImplementation(async () => {
+      calls.push("tts");
+    });
+    sttManager.isRecording.mockImplementation(() => {
+      throw new Error("recording state unavailable");
+    });
+    renderManager.destroy.mockImplementation(async () => {
+      calls.push("render");
+    });
+
+    charivo.attachRenderer(renderManager);
+    charivo.attachTTS(ttsManager);
+    charivo.attachSTT(sttManager);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: expect.objectContaining({
+        message: "recording state unavailable",
+      }),
+    });
+
+    expect(calls).toEqual(["tts", "render"]);
+    expect(charivo.getSTTManager()).toBeUndefined();
   });
 });

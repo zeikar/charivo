@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { LLMProvider } from "@charivo/core";
+import { CharivoStateError, LLMProvider, toCharivoError } from "@charivo/core";
 
 export interface OpenClawLLMConfig {
   token: string;
@@ -19,7 +19,7 @@ export class OpenClawLLMProvider implements LLMProvider {
 
   constructor(config: OpenClawLLMConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
-      throw new Error(
+      throw new CharivoStateError(
         "OpenClaw LLM provider is for server-side use only. Set dangerouslyAllowBrowser: true for testing",
       );
     }
@@ -56,9 +56,7 @@ export class OpenClawLLMProvider implements LLMProvider {
 
       return completion.choices[0]?.message?.content || "";
     } catch (error) {
-      throw new Error(
-        `OpenClaw LLM Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw toCharivoError("provider", error, "OpenClaw LLM request failed");
     }
   }
 }

@@ -43,7 +43,7 @@ pnpm add \
 ## Minimal Browser Setup
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { Charivo, CharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import { createTTSManager } from "@charivo/tts";
@@ -79,7 +79,16 @@ charivo.setCharacter({
   voice: { voiceId: "marin" },
 });
 
-await charivo.userSay("Hello");
+try {
+  await charivo.userSay("Hello");
+} catch (error) {
+  if (error instanceof CharivoError) {
+    console.error(error.code, error.message);
+  }
+  throw error;
+}
+
+await charivo.dispose();
 ```
 
 ## Minimal Server Routes
@@ -131,6 +140,11 @@ module resolution mode that supports package exports:
 - server-mediated TTS playback
 - Live2D rendering with mouse tracking
 - a clean path to add STT or realtime later
+
+## Error Handling
+
+Public Charivo APIs now throw typed errors from `@charivo/core`. Prefer
+`instanceof CharivoError` or `error.code` checks instead of parsing messages.
 
 ## Related Guides
 

@@ -10,7 +10,11 @@ import type {
   RealtimeTool,
   RealtimeToolRegistration,
 } from "@charivo/core";
-import { subscribeBrowserLifecycle } from "@charivo/core";
+import {
+  CharivoStateError,
+  subscribeBrowserLifecycle,
+  toCharivoError,
+} from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
 import {
@@ -157,7 +161,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.refreshInFlight ||
       this.reconnectInFlight
     ) {
-      throw new Error("Realtime session already active");
+      throw new CharivoStateError("Realtime session already active");
     }
 
     this.sessionBaseConfig = this.resolveNextSessionBaseConfig(config);
@@ -186,10 +190,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       void this.requestWakeLock();
       this.emitSessionStart("user");
     } catch (error) {
-      this.finalizeFailedSession(
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      throw error;
+      const typedError = toCharivoError("transport", error);
+      this.finalizeFailedSession(typedError);
+      throw typedError;
     }
   }
 
@@ -243,7 +246,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       }
 
       if (this.state.session.status === "active") {
-        await this.performStopSession();
+        await this.performStopSession().catch((error) => {
+          throw toCharivoError("transport", error);
+        });
       }
 
       return;
@@ -253,43 +258,51 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       return;
     }
 
-    await this.performStopSession();
+    await this.performStopSession().catch((error) => {
+      throw toCharivoError("transport", error);
+    });
   }
 
   async sendMessage(text: string): Promise<void> {
     if (this.state.session.status !== "active") {
-      throw new Error("Realtime session not active");
+      throw new CharivoStateError("Realtime session not active");
     }
 
     if (this.state.connection !== "connected") {
-      throw new Error("Realtime session is reconnecting");
+      throw new CharivoStateError("Realtime session is reconnecting");
     }
 
-    await this.client.sendText(text);
+    await this.client
+      .sendText(text)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async sendAudioChunk(audio: ArrayBuffer): Promise<void> {
     if (this.state.session.status !== "active") {
-      throw new Error("Realtime session not active");
+      throw new CharivoStateError("Realtime session not active");
     }
 
     if (this.state.connection !== "connected") {
-      throw new Error("Realtime session is reconnecting");
+      throw new CharivoStateError("Realtime session is reconnecting");
     }
 
-    await this.client.sendAudio(audio);
+    await this.client
+      .sendAudio(audio)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async interrupt(): Promise<void> {
     if (this.state.session.status !== "active") {
-      throw new Error("Realtime session not active");
+      throw new CharivoStateError("Realtime session not active");
     }
 
     if (this.state.connection !== "connected") {
-      throw new Error("Realtime session is reconnecting");
+      throw new CharivoStateError("Realtime session is reconnecting");
     }
 
-    await this.client.interrupt();
+    await this.client
+      .interrupt()
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
     this.state = {
       ...this.state,
       response: {
@@ -746,13 +759,14 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     error: Error,
     connection: RealtimeState["connection"],
   ): void {
+    const typedError = toCharivoError("transport", error);
     this.emitAudioEnd();
     this.state = {
       ...this.state,
       connection,
-      lastError: error,
+      lastError: typedError,
     };
-    this.eventEmitter?.emit("realtime:error", { error });
+    this.eventEmitter?.emit("realtime:error", { error: typedError });
     this.emitState();
   }
 
@@ -947,13 +961,19 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     } catch (error) {
       const refreshError =
         error instanceof Error ? error : new Error(String(error));
+      const typedRefreshError = toCharivoError("transport", refreshError);
       if (this.isRecoveringConnection) {
-        throw refreshError;
+        throw typedRefreshError;
       }
-      if (this.state.lastError !== refreshError) {
-        this.applyError(refreshError, "connected");
+
+      if (
+        this.state.lastError !== typedRefreshError &&
+        this.state.lastError?.cause !== refreshError
+      ) {
+        this.applyError(typedRefreshError, "connected");
       }
-      throw refreshError;
+
+      throw typedRefreshError;
     } finally {
       this.isRefreshingSession = false;
     }

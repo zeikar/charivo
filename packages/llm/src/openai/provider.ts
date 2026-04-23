@@ -1,5 +1,10 @@
 import OpenAI from "openai";
-import { LLMProvider } from "@charivo/core";
+import {
+  CharivoStateError,
+  CharivoTimeoutError,
+  LLMProvider,
+  toCharivoError,
+} from "@charivo/core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -19,7 +24,7 @@ export class OpenAILLMProvider implements LLMProvider {
 
   constructor(config: OpenAILLMConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
-      throw new Error(
+      throw new CharivoStateError(
         "OpenAI LLM provider is for server-side use only. Set dangerouslyAllowBrowser: true for testing",
       );
     }
@@ -55,9 +60,7 @@ export class OpenAILLMProvider implements LLMProvider {
 
       return completion.choices[0]?.message?.content || "";
     } catch (error) {
-      throw new Error(
-        `OpenAI LLM Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw toCharivoError("provider", error, "OpenAI LLM request failed");
     }
   }
 }
@@ -76,7 +79,7 @@ async function withTimeout<T>(
 
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(timeoutMessage)),
+      () => reject(new CharivoTimeoutError(timeoutMessage)),
       REQUEST_TIMEOUT_MS,
     );
   });

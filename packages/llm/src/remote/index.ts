@@ -1,4 +1,9 @@
-import type { LLMClient } from "@charivo/core";
+import {
+  CharivoProviderError,
+  CharivoTimeoutError,
+  CharivoTransportError,
+  type LLMClient,
+} from "@charivo/core";
 
 export interface RemoteLLMConfig {
   apiEndpoint?: string;
@@ -37,7 +42,7 @@ export class RemoteLLMClient implements LLMClient {
       const errorData = await response
         .json()
         .catch(() => ({ error: "Unknown error" }));
-      throw new Error(
+      throw new CharivoProviderError(
         `API call failed: ${errorData.error || response.statusText}`,
       );
     }
@@ -45,7 +50,9 @@ export class RemoteLLMClient implements LLMClient {
     const data = await response.json();
 
     if (!data.success) {
-      throw new Error(data.error || "Failed to generate response");
+      throw new CharivoProviderError(
+        data.error || "Failed to generate response",
+      );
     }
 
     return data.message || "";
@@ -73,9 +80,11 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
+      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
-    throw error;
+    throw new CharivoTransportError("LLM request failed", {
+      cause: error instanceof Error ? error : undefined,
+    });
   } finally {
     clearTimeout(timeoutId);
   }

@@ -1,5 +1,11 @@
 import OpenAI from "openai";
-import { TTSProvider, TTSOptions } from "@charivo/core";
+import {
+  CharivoStateError,
+  CharivoTimeoutError,
+  TTSProvider,
+  TTSOptions,
+  toCharivoError,
+} from "@charivo/core";
 
 type OpenAITTSModel = "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -25,7 +31,7 @@ export class OpenAITTSProvider implements TTSProvider {
 
   constructor(config: OpenAITTSConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
-      throw new Error(
+      throw new CharivoStateError(
         "OpenAI provider is for server-side use only. Set dangerouslyAllowBrowser: true for testing",
       );
     }
@@ -50,20 +56,24 @@ export class OpenAITTSProvider implements TTSProvider {
     text: string,
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
-    return withTimeout(
-      (async () => {
-        const response = await this.openai.audio.speech.create({
-          model: this.defaultModel,
-          voice: options?.voice || this.defaultVoice,
-          input: text,
-          speed: options?.rate || 1.0,
-          format: "wav",
-        } as Parameters<typeof this.openai.audio.speech.create>[0]);
+    try {
+      return await withTimeout(
+        (async () => {
+          const response = await this.openai.audio.speech.create({
+            model: this.defaultModel,
+            voice: options?.voice || this.defaultVoice,
+            input: text,
+            speed: options?.rate || 1.0,
+            format: "wav",
+          } as Parameters<typeof this.openai.audio.speech.create>[0]);
 
-        return await response.arrayBuffer();
-      })(),
-      `OpenAI TTS request timed out after ${REQUEST_TIMEOUT_MS}ms`,
-    );
+          return await response.arrayBuffer();
+        })(),
+        `OpenAI TTS request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      );
+    } catch (error) {
+      throw toCharivoError("provider", error, "OpenAI TTS request failed");
+    }
   }
 }
 
@@ -81,7 +91,7 @@ async function withTimeout<T>(
 
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(timeoutMessage)),
+      () => reject(new CharivoTimeoutError(timeoutMessage)),
       REQUEST_TIMEOUT_MS,
     );
   });

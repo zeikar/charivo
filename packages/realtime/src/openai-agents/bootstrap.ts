@@ -2,6 +2,7 @@ import type {
   RealtimeSessionBootstrap,
   RealtimeSessionRequest,
 } from "@charivo/core";
+import { CharivoProviderError, CharivoStateError } from "@charivo/core";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   fetchWithTimeout,
@@ -25,7 +26,7 @@ export async function getOpenAIRealtimeAgentsBootstrap(
 
   const apiEndpoint = options.apiEndpoint;
   if (!apiEndpoint) {
-    throw new Error(
+    throw new CharivoStateError(
       "OpenAI agents realtime client requires apiEndpoint or sessionBootstrap",
     );
   }
@@ -44,12 +45,16 @@ export async function getOpenAIRealtimeAgentsBootstrap(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to create Realtime session: ${errorText}`);
+    throw new CharivoProviderError(
+      `Failed to create Realtime session: ${errorText}`,
+    );
   }
 
   const bootstrap = (await response.json()) as unknown;
   if (!isRealtimeSessionBootstrap(bootstrap)) {
-    throw new Error("Invalid realtime session bootstrap response");
+    throw new CharivoProviderError(
+      "Invalid realtime session bootstrap response",
+    );
   }
 
   return bootstrap;

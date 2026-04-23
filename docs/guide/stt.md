@@ -24,21 +24,18 @@ The browser records locally. The backend handles transcription.
 ## Basic Setup
 
 ```ts
+import { Charivo } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
 import { createRemoteSTTTranscriber } from "@charivo/stt/remote";
 
-const sttManager = createSTTManager(
-  createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" }),
+const charivo = new Charivo();
+
+charivo.attachSTT(
+  createSTTManager(createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" })),
 );
 
-await sttManager.start({ language: "ko" });
-const text = await sttManager.stop();
-```
-
-Attach the manager to `Charivo`:
-
-```ts
-charivo.attachSTT(sttManager);
+await charivo.getSTTManager()?.start({ language: "ko" });
+const text = await charivo.getSTTManager()?.stop();
 ```
 
 ## Transcriber Choices

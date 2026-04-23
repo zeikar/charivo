@@ -32,11 +32,10 @@ import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 
 const charivo = new Charivo();
-const llmManager = createLLMManager(
-  createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
-);
 
-charivo.attachLLM(llmManager);
+charivo.attachLLM(
+  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+);
 charivo.setCharacter({
   id: "hiyori",
   name: "Hiyori",

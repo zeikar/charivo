@@ -27,7 +27,7 @@ pnpm add \
 ```
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { Charivo, CharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import { createTTSManager } from "@charivo/tts";
@@ -62,7 +62,16 @@ charivo.setCharacter({
   voice: { voiceId: "marin" },
 });
 
-await charivo.userSay("Hello");
+try {
+  await charivo.userSay("Hello");
+} catch (error) {
+  if (error instanceof CharivoError) {
+    console.error(error.code, error.message);
+  }
+  throw error;
+}
+
+await charivo.dispose();
 ```
 
 For a complete app, see [`examples/web`](./examples/web).

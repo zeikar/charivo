@@ -1,4 +1,10 @@
-import { TTSPlayer, TTSOptions } from "@charivo/core";
+import {
+  CharivoProviderError,
+  CharivoTimeoutError,
+  CharivoTransportError,
+  TTSPlayer,
+  TTSOptions,
+} from "@charivo/core";
 
 export interface RemoteTTSConfig {
   apiEndpoint?: string;
@@ -47,7 +53,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
     );
 
     if (!response.ok) {
-      throw new Error(`TTS API failed: ${response.statusText}`);
+      throw new CharivoProviderError(`TTS API failed: ${response.statusText}`);
     }
 
     return response.arrayBuffer();
@@ -76,7 +82,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
 
       audio.onerror = () => {
         URL.revokeObjectURL(audioUrl);
-        reject(new Error("Audio playback failed"));
+        reject(new CharivoTransportError("Audio playback failed"));
       };
 
       audio.play().catch(reject);
@@ -117,9 +123,11 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
+      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
-    throw error;
+    throw new CharivoTransportError("TTS request failed", {
+      cause: error instanceof Error ? error : undefined,
+    });
   } finally {
     clearTimeout(timeoutId);
   }

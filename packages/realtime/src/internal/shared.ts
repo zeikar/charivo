@@ -1,3 +1,5 @@
+import { CharivoTimeoutError, CharivoTransportError } from "@charivo/core";
+
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -63,9 +65,11 @@ export async function fetchWithTimeout(
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
+      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
-    throw error;
+    throw new CharivoTransportError("Realtime request failed", {
+      cause: error instanceof Error ? error : undefined,
+    });
   } finally {
     clearTimeout(timeoutId);
   }

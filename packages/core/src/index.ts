@@ -7,10 +7,12 @@ import {
   STTManager,
   LLMManager,
 } from "./types";
+import { toCharivoError, type CharivoError } from "./errors";
 
 export * from "./types";
 export * from "./bus";
 export * from "./browser-lifecycle";
+export * from "./errors";
 
 export class Charivo {
   private eventBus: EventBus;
@@ -93,6 +95,20 @@ export class Charivo {
   }
 
   /**
+   * Detach the LLM manager to disable chat completions.
+   */
+  detachLLM(): void {
+    this.llmManager = undefined;
+  }
+
+  /**
+   * Detach the render manager without destroying it.
+   */
+  detachRenderer(): void {
+    this.renderManager = undefined;
+  }
+
+  /**
    * Connects the TTS manager to the event bus for audio event emission.
    */
   private connectTTSManagerEventEmitter(manager: TTSManager): void {
@@ -146,12 +162,26 @@ export class Charivo {
 
     // Render user message
     if (this.renderManager) {
-      await this.renderManager.render(userMessage);
+      try {
+        await this.renderManager.render(userMessage);
+      } catch (error) {
+        throw toCharivoError("state", error, "Failed to render user message");
+      }
     }
 
     // Generate and render character response
     if (this.llmManager && this.character) {
-      const response = await this.llmManager.generateResponse(userMessage);
+      const response = await this.llmManager
+        .generateResponse(userMessage)
+        .catch((error) =>
+          Promise.reject(
+            toCharivoError(
+              "provider",
+              error,
+              "Failed to generate a character response",
+            ),
+          ),
+        );
 
       const characterMessage: Message = {
         id: Date.now().toString() + "_response",
@@ -168,7 +198,15 @@ export class Charivo {
       });
 
       if (this.renderManager) {
-        await this.renderManager.render(characterMessage, this.character);
+        try {
+          await this.renderManager.render(characterMessage, this.character);
+        } catch (error) {
+          throw toCharivoError(
+            "state",
+            error,
+            "Failed to render character response",
+          );
+        }
       }
 
       if (this.ttsManager) {
@@ -190,7 +228,8 @@ export class Charivo {
           await this.ttsManager.speak(response, ttsOptions);
           this.eventBus.emit("tts:end", { characterId: this.character.id });
         } catch (error) {
-          this.eventBus.emit("tts:error", { error: error as Error });
+          const typedError = toCharivoError("provider", error);
+          this.eventBus.emit("tts:error", { error: typedError });
         }
       }
     }
@@ -308,5 +347,75 @@ export class Charivo {
     data: import("./types").EventMap[K],
   ): void {
     this.eventBus.emit(event, data);
+  }
+
+  async dispose(): Promise<void> {
+    let firstError: CharivoError | null = null;
+
+    const recordError = (error: unknown, fallbackMessage: string): void => {
+      const typedError = toCharivoError("dispose", error, fallbackMessage);
+      if (!firstError) {
+        firstError = typedError;
+      }
+    };
+
+    if (this.realtimeManager) {
+      try {
+        await this.realtimeManager.stopSession();
+      } catch (error) {
+        recordError(error, "Failed to stop realtime session during dispose");
+      }
+    }
+
+    if (this.ttsManager) {
+      try {
+        await this.ttsManager.stop();
+      } catch (error) {
+        recordError(error, "Failed to stop TTS during dispose");
+      }
+    }
+
+    if (this.sttManager) {
+      try {
+        if (this.sttManager.isRecording()) {
+          await this.sttManager.stop();
+        }
+      } catch (error) {
+        recordError(error, "Failed to stop STT during dispose");
+      }
+    }
+
+    if (this.renderManager) {
+      try {
+        await this.renderManager.destroy();
+      } catch (error) {
+        recordError(error, "Failed to destroy renderer during dispose");
+      }
+    }
+
+    if (this.llmManager) {
+      try {
+        this.llmManager.clearHistory();
+      } catch (error) {
+        recordError(error, "Failed to clear LLM history during dispose");
+      }
+    }
+
+    this.detachRealtime();
+    this.detachTTS();
+    this.detachSTT();
+    this.detachLLM();
+    this.detachRenderer();
+    this.character = undefined;
+    this.isRealtimeMode = false;
+    this.eventBus.clear();
+
+    return this.finishDispose(firstError);
+  }
+
+  private finishDispose(firstError: CharivoError | null): void {
+    if (firstError) {
+      throw firstError;
+    }
   }
 }

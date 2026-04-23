@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CharivoTransportError } from "@charivo/core";
 import { RemoteLLMClient } from "@charivo/llm/remote";
 
 const originalFetch = globalThis.fetch;
@@ -99,7 +100,14 @@ describe("RemoteLLMClient", () => {
     }) as typeof fetch;
 
     const client = new RemoteLLMClient();
+    const request = client.call([]);
 
-    await expect(client.call([])).rejects.toThrow("network down");
+    await expect(request).rejects.toBeInstanceOf(CharivoTransportError);
+    await expect(request).rejects.toMatchObject({
+      message: "LLM request failed",
+      cause: expect.objectContaining({
+        message: "network down",
+      }),
+    });
   });
 });

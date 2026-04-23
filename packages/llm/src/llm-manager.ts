@@ -1,4 +1,4 @@
-import { LLMClient, Message, Character } from "@charivo/core";
+import { LLMClient, Message, Character, toCharivoError } from "@charivo/core";
 import { MessageHistoryManager } from "./message-history-manager";
 import { CharacterPromptBuilder } from "./character-prompt-builder";
 import { MessageConverter } from "./message-converter";
@@ -58,8 +58,12 @@ export class LLMManager {
    * 메시지 응답 생성
    */
   async generateResponse(message: Message): Promise<string> {
-    LLMValidators.validateCharacterSet(this.character);
-    LLMValidators.validateMessage(message);
+    try {
+      LLMValidators.validateCharacterSet(this.character);
+      LLMValidators.validateMessage(message);
+    } catch (error) {
+      throw toCharivoError("state", error);
+    }
 
     // 새 메시지를 히스토리에 추가
     this.historyManager.add(message);
@@ -85,7 +89,7 @@ export class LLMManager {
     } catch (error) {
       // 에러가 발생하면 마지막 메시지를 히스토리에서 제거
       this.historyManager.removeLast();
-      throw error;
+      throw toCharivoError("provider", error);
     }
   }
 

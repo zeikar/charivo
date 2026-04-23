@@ -4,6 +4,9 @@ import type {
   RealtimeSessionRequest,
 } from "@charivo/core";
 import {
+  CharivoProviderError,
+  CharivoStateError,
+  toCharivoError,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
@@ -71,41 +74,44 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
   }
 
   async connect(config?: RealtimeSessionConfig): Promise<void> {
-    const adapterId = this.resolveAdapterId(config);
-    const factory = this.adapters.get(adapterId);
-
-    if (!factory) {
-      throw new Error(
-        `No realtime adapter registered for "${adapterId}". Registered adapters: ${Array.from(this.adapters.keys()).join(", ") || "(none)"}`,
-      );
-    }
-
-    const transportClient = factory({
-      debug: this.config.debug,
-      requestBootstrap: (request) =>
-        this.requestBootstrap(request, { expectedAdapterId: adapterId }),
-    });
-
-    for (const callback of this.eventCallbacks) {
-      transportClient.onEvent(callback);
-    }
-
-    this.transportClient = transportClient;
-
     try {
+      const adapterId = this.resolveAdapterId(config);
+      const factory = this.adapters.get(adapterId);
+
+      if (!factory) {
+        throw new CharivoStateError(
+          `No realtime adapter registered for "${adapterId}". Registered adapters: ${Array.from(this.adapters.keys()).join(", ") || "(none)"}`,
+        );
+      }
+
+      const transportClient = factory({
+        debug: this.config.debug,
+        requestBootstrap: (request) =>
+          this.requestBootstrap(request, { expectedAdapterId: adapterId }),
+      });
+
+      for (const callback of this.eventCallbacks) {
+        transportClient.onEvent(callback);
+      }
+
+      this.transportClient = transportClient;
       await transportClient.connect(config);
     } catch (error) {
       this.transportClient = null;
-      throw error;
+      throw toCharivoError("transport", error);
     }
   }
 
   async updateSession(config?: RealtimeSessionConfig): Promise<void> {
-    await this.getActiveTransportClient().updateSession(config);
+    await this.getActiveTransportClient()
+      .updateSession(config)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async recover(config?: RealtimeSessionConfig): Promise<void> {
-    await this.getActiveTransportClient().recover(config);
+    await this.getActiveTransportClient()
+      .recover(config)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async disconnect(): Promise<void> {
@@ -115,26 +121,36 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
 
     const transportClient = this.transportClient;
     this.transportClient = null;
-    await transportClient.disconnect();
+    await transportClient
+      .disconnect()
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async sendText(text: string): Promise<void> {
-    await this.getActiveTransportClient().sendText(text);
+    await this.getActiveTransportClient()
+      .sendText(text)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async sendAudio(audio: ArrayBuffer): Promise<void> {
-    await this.getActiveTransportClient().sendAudio(audio);
+    await this.getActiveTransportClient()
+      .sendAudio(audio)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async sendToolResult(
     callId: string,
     output: Record<string, unknown>,
   ): Promise<void> {
-    await this.getActiveTransportClient().sendToolResult(callId, output);
+    await this.getActiveTransportClient()
+      .sendToolResult(callId, output)
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   async interrupt(): Promise<void> {
-    await this.getActiveTransportClient().interrupt();
+    await this.getActiveTransportClient()
+      .interrupt()
+      .catch((error) => Promise.reject(toCharivoError("transport", error)));
   }
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
@@ -144,7 +160,7 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
 
   private getActiveTransportClient(): RealtimeTransportClient {
     if (!this.transportClient) {
-      throw new Error("Realtime session not active");
+      throw new CharivoStateError("Realtime session not active");
     }
 
     return this.transportClient;
@@ -160,7 +176,7 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
       return OPENAI_REALTIME_AGENTS_ADAPTER;
     }
 
-    throw new Error(
+    throw new CharivoStateError(
       `No remote realtime adapter resolver for provider "${config?.provider ?? "(unspecified)"}" and transport "${transport}"`,
     );
   }
@@ -186,16 +202,20 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to create Realtime session: ${errorText}`);
+      throw new CharivoProviderError(
+        `Failed to create Realtime session: ${errorText}`,
+      );
     }
 
     const bootstrap = (await response.json()) as unknown;
     if (!isRealtimeSessionBootstrap(bootstrap)) {
-      throw new Error("Invalid realtime session bootstrap response");
+      throw new CharivoProviderError(
+        "Invalid realtime session bootstrap response",
+      );
     }
 
     if (bootstrap.adapter !== options.expectedAdapterId) {
-      throw new Error(
+      throw new CharivoProviderError(
         `Realtime session bootstrap adapter mismatch: expected ${options.expectedAdapterId}, received ${bootstrap.adapter}`,
       );
     }

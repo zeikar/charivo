@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CharivoTransportError } from "@charivo/core";
 
 const recorder = {
   start: vi.fn(async () => undefined),
@@ -84,7 +85,14 @@ describe("RemoteSTTTranscriber", () => {
 
     const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
     await transcriber.startRecording();
+    const request = transcriber.stopRecording();
 
-    await expect(transcriber.stopRecording()).rejects.toThrow("network down");
+    await expect(request).rejects.toBeInstanceOf(CharivoTransportError);
+    await expect(request).rejects.toMatchObject({
+      message: "STT request failed",
+      cause: expect.objectContaining({
+        message: "network down",
+      }),
+    });
   });
 });

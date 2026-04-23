@@ -3,6 +3,7 @@ import {
   STTTranscriber,
   STTOptions,
   STTManager,
+  toCharivoError,
 } from "@charivo/core";
 
 /**
@@ -37,8 +38,9 @@ export class STTManagerImpl implements STTManager {
     try {
       await this.sttTranscriber.startRecording(options);
     } catch (error) {
-      this.eventEmitter?.emit("stt:error", { error: error as Error });
-      throw error;
+      const typedError = toCharivoError("provider", error);
+      this.eventEmitter?.emit("stt:error", { error: typedError });
+      throw typedError;
     }
   }
 
@@ -51,8 +53,9 @@ export class STTManagerImpl implements STTManager {
       this.eventEmitter?.emit("stt:stop", { transcription });
       return transcription;
     } catch (error) {
-      this.eventEmitter?.emit("stt:error", { error: error as Error });
-      throw error;
+      const typedError = toCharivoError("provider", error);
+      this.eventEmitter?.emit("stt:error", { error: typedError });
+      throw typedError;
     }
   }
 

@@ -1,4 +1,10 @@
-import { STTTranscriber, STTOptions } from "@charivo/core";
+import {
+  CharivoProviderError,
+  CharivoTimeoutError,
+  CharivoTransportError,
+  STTTranscriber,
+  STTOptions,
+} from "@charivo/core";
 import { MediaRecorderHelper } from "../media-recorder-helper";
 
 export interface RemoteSTTConfig {
@@ -54,7 +60,7 @@ export class RemoteSTTTranscriber implements STTTranscriber {
     );
 
     if (!response.ok) {
-      throw new Error(`STT API failed: ${response.statusText}`);
+      throw new CharivoProviderError(`STT API failed: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -91,9 +97,11 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
+      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
-    throw error;
+    throw new CharivoTransportError("STT request failed", {
+      cause: error instanceof Error ? error : undefined,
+    });
   } finally {
     clearTimeout(timeoutId);
   }

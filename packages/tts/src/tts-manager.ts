@@ -4,6 +4,7 @@ import {
   TTSPlaybackMode,
   TTSOptions,
   TTSManager,
+  toCharivoError,
 } from "@charivo/core";
 import { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 import {
@@ -55,12 +56,18 @@ export class TTSManagerImpl implements TTSManager {
    * 텍스트 음성 변환 및 재생
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
-    await this.stop();
+    try {
+      await this.stop().catch((error) => {
+        throw toCharivoError("provider", error, "Failed to stop active TTS");
+      });
 
-    if (this.playbackMode === "web-speech") {
-      return this.handleWebSpeech(text, options);
-    } else {
-      return this.handleAudioSpeech(text, options);
+      if (this.playbackMode === "web-speech") {
+        return await this.handleWebSpeech(text, options);
+      } else {
+        return await this.handleAudioSpeech(text, options);
+      }
+    } catch (error) {
+      throw toCharivoError("provider", error, "Failed to speak text");
     }
   }
 
@@ -74,6 +81,7 @@ export class TTSManagerImpl implements TTSManager {
       await this.ttsPlayer.stop();
     } catch (error) {
       console.warn("⚠️ TTS Manager: Failed to stop player cleanly", error);
+      throw toCharivoError("provider", error, "Failed to stop TTS");
     }
 
     if (this.currentAudio) {
@@ -159,7 +167,12 @@ export class TTSManagerImpl implements TTSManager {
     text: string,
     options?: TTSOptions,
   ): Promise<void> {
-    const audioData = await this.ttsPlayer.generateAudio!(text, options);
+    const audioData = await this.ttsPlayer.generateAudio!(text, options).catch(
+      (error) =>
+        Promise.reject(
+          toCharivoError("provider", error, "Failed to generate TTS audio"),
+        ),
+    );
     const mimeType = getTTSAudioMimeType(this.ttsPlayer);
     const blob = new Blob([audioData], { type: mimeType });
     const audioUrl = URL.createObjectURL(blob);

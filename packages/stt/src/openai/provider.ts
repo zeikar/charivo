@@ -1,5 +1,11 @@
 import OpenAI from "openai";
-import { STTProvider, STTOptions } from "@charivo/core";
+import {
+  CharivoStateError,
+  CharivoTimeoutError,
+  STTProvider,
+  STTOptions,
+  toCharivoError,
+} from "@charivo/core";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -17,7 +23,7 @@ export class OpenAISTTProvider implements STTProvider {
 
   constructor(config: OpenAISTTConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
-      throw new Error(
+      throw new CharivoStateError(
         "OpenAI provider is for server-side use only. Set dangerouslyAllowBrowser: true for testing",
       );
     }
@@ -41,16 +47,20 @@ export class OpenAISTTProvider implements STTProvider {
       type: "audio/wav",
     });
 
-    const response = await withTimeout(
-      this.openai.audio.transcriptions.create({
-        file: audioFile,
-        model: this.defaultModel,
-        language: options?.language || this.defaultLanguage,
-      }),
-      `OpenAI STT request timed out after ${REQUEST_TIMEOUT_MS}ms`,
-    );
+    try {
+      const response = await withTimeout(
+        this.openai.audio.transcriptions.create({
+          file: audioFile,
+          model: this.defaultModel,
+          language: options?.language || this.defaultLanguage,
+        }),
+        `OpenAI STT request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      );
 
-    return response.text;
+      return response.text;
+    } catch (error) {
+      throw toCharivoError("provider", error, "OpenAI STT request failed");
+    }
   }
 }
 
@@ -68,7 +78,7 @@ async function withTimeout<T>(
 
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(timeoutMessage)),
+      () => reject(new CharivoTimeoutError(timeoutMessage)),
       REQUEST_TIMEOUT_MS,
     );
   });

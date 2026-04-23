@@ -42,8 +42,11 @@ The `Charivo` instance wires managers together:
 - `attachTTS(ttsManager)`
 - `attachSTT(sttManager)`
 - `attachRealtime(realtimeManager)`
+- `detachLLM()`
+- `detachRenderer()`
 - `setCharacter(character)`
 - `userSay(text)`
+- `dispose()`
 - `clearHistory()`
 - `getHistory()`
 - `on(event, listener)`
@@ -52,6 +55,19 @@ The `Charivo` instance wires managers together:
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` so the core can connect typed character, TTS, and
 realtime events without duck typing.
+
+## Errors
+
+Public methods throw typed errors exported from `@charivo/core`:
+
+- `CharivoStateError`
+- `CharivoTimeoutError`
+- `CharivoTransportError`
+- `CharivoProviderError`
+- `CharivoDisposeError`
+
+Prefer `instanceof CharivoError` or `error.code` checks over
+`error.message.includes(...)`.
 
 ## Events
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CharivoTransportError,
   type Character,
   type CharivoEventEmitter,
   type RealtimeState,
@@ -815,14 +816,15 @@ describe("realtime-core", () => {
       manager.updateSession({
         voice: "alloy",
       }),
-    ).rejects.toThrow("session patch rejected");
+    ).rejects.toBeInstanceOf(CharivoTransportError);
 
     const realtimeErrors = getEventPayloads(eventEmitter, "realtime:error");
-    expect(realtimeErrors).toEqual([
-      {
-        error: refreshError,
-      },
-    ]);
+    expect(realtimeErrors).toHaveLength(1);
+    expect(realtimeErrors[0]?.error).toBeInstanceOf(CharivoTransportError);
+    expect(realtimeErrors[0]?.error).toMatchObject({
+      message: "session patch rejected",
+      cause: refreshError,
+    });
   });
 
   it("coalesces repeated session refresh requests to the latest config", async () => {
