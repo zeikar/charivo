@@ -156,9 +156,24 @@ describe("OpenAIRealtimeProvider", () => {
     ).rejects.toThrow("only supports webrtc transport");
   });
 
-  it("falls back to the legacy bootstrap when adapter is omitted", async () => {
+  it("falls back to the legacy bootstrap and applies default model/voice when omitted", async () => {
     globalThis.fetch = vi.fn(
-      async () => new Response("answer-sdp"),
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const formData = init?.body as FormData;
+
+        expect(JSON.parse(String(formData.get("session")))).toEqual({
+          type: "realtime",
+          model: "gpt-realtime-mini",
+          audio: {
+            output: {
+              voice: "marin",
+            },
+          },
+          tool_choice: "auto",
+        });
+
+        return new Response("answer-sdp");
+      },
     ) as typeof fetch;
 
     const provider = new OpenAIRealtimeProvider({ apiKey: "key" });

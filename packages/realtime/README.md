@@ -103,6 +103,8 @@ await manager.startSession({
 `buildRealtimeSessionConfig(...)` does not fill provider-specific fields such
 as `provider` or `model`. Prefer building on top of it for instructions and
 character voice, then pass provider/model explicitly at `startSession(...)`.
+OpenAI transport packages and `@charivo/server/openai` keep their own
+OpenAI-specific fallbacks for omitted model or voice values.
 
 Avatar-specific realtime tools now live in `@charivo/realtime-avatar`.
 

@@ -12,6 +12,10 @@ import {
 const DEFAULT_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_CLIENT_SECRETS_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
+// Mirrors packages/realtime/src/openai/defaults.ts until the server/browser
+// OpenAI defaults consolidate under ROADMAP P0-ARCH-2.
+const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
+const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface OpenAIRealtimeProviderConfig {
@@ -157,10 +161,10 @@ function toOpenAIRealtimeSession(
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     type: "realtime",
-    model: session.model || "gpt-realtime-mini",
+    model: session.model ?? DEFAULT_OPENAI_REALTIME_MODEL,
     audio: {
       output: {
-        voice: session.voice || "marin",
+        voice: session.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
       },
     },
     tool_choice: session.toolChoice ?? "auto",

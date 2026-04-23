@@ -109,7 +109,8 @@ await manager.startSession({
 `buildRealtimeSessionConfig(...)` already includes character identity,
 `description`, `personality`, the generic realtime/tooling rules, and
 `character.voice.voiceId` when available. It does not supply provider/model
-defaults.
+defaults. OpenAI-specific model and voice fallbacks live in the OpenAI
+transport/provider packages, not in the provider-agnostic manager helper.
 
 ## Why `@charivo/realtime/remote` Is The Default
 
@@ -190,6 +191,11 @@ const bootstrap = await provider.createSession({
   },
 });
 ```
+
+If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
+provider applies its OpenAI-specific defaults before calling OpenAI. Apps can
+still pass those fields explicitly when they need deterministic provider
+configuration.
 
 ## Alternatives
 
