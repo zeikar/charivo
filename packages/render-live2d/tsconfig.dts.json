@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@framework/*": ["CubismSdkForWeb-5-r.4/Framework/src/*"]
+    }
+  },
   "include": [
     "src/renderer.ts",
     "src/utils/**/*.ts",
