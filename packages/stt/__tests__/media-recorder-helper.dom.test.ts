@@ -71,7 +71,13 @@ describe("MediaRecorderHelper", () => {
 
     await helper.start();
 
-    expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
     expect(MockMediaRecorder.lastInstance?.start).toHaveBeenCalledTimes(1);
     expect(helper.isRecording()).toBe(true);
 

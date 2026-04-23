@@ -4,12 +4,15 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import {
-  OPENAI_REALTIME_ADAPTER,
-  subscribeBrowserLifecycle,
-} from "@charivo/core";
+import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import { DEFAULT_REALTIME_VOICE } from "../instructions";
 import { acquireMicrophoneStream } from "../internal/microphone";
+import {
+  bindTransportLifecycle,
+  createIceDisconnectDebouncer,
+  DEFAULT_ICE_DISCONNECTED_DEBOUNCE_MS,
+  replaceMicrophoneTrack,
+} from "../internal/webrtc-lifecycle";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   fetchWithTimeout,
@@ -70,7 +73,6 @@ const DEBUG_EVENT_ALLOWLIST = new Set<string>([
   "error",
 ]);
 const DEFAULT_SESSION_UPDATE_TIMEOUT_MS = 5_000;
-const ICE_DISCONNECTED_DEBOUNCE_MS = 1_000;
 
 /**
  * OpenAI-specific realtime transport client.
@@ -100,8 +102,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private isExplicitDisconnect = false;
   private isRecovering = false;
   private isCleaningUp = false;
-  private teardownBrowserLifecycle?: () => void;
-  private pendingIceDisconnect: ReturnType<typeof setTimeout> | null = null;
+  private teardownTransportLifecycle?: () => void;
+  private readonly iceDisconnectDebouncer = createIceDisconnectDebouncer(() => {
+    this.emitConnectionLost("ice-disconnected");
+  }, DEFAULT_ICE_DISCONNECTED_DEBOUNCE_MS);
   private eventCallbacks = new Set<(event: RealtimeTransportEvent) => void>();
 
   constructor(private options: OpenAIRealtimeClientOptions = {}) {}
@@ -124,7 +128,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       this.audioElement.setAttribute("playsinline", "true");
       this.prepareAudioAnalysis();
       this.bindConnectionEvents();
-      this.bindBrowserLifecycleEvents();
+      this.bindTransportLifecycleEvents();
 
       this.pc.ontrack = (event) => {
         if (this.audioElement) {
@@ -138,7 +142,6 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         const audioTrack = this.mediaStream.getTracks()[0];
         this.audioSender =
           this.pc.addTrack(audioTrack, this.mediaStream) ?? this.audioSender;
-        this.bindDeviceChangeListener();
       } catch {
         throw new Error("Microphone access required for Realtime API");
       }
@@ -582,52 +585,42 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.pc.addEventListener("iceconnectionstatechange", () => {
       const iceState = this.pc?.iceConnectionState;
       if (iceState === "failed") {
-        this.clearPendingIceDisconnect();
+        this.iceDisconnectDebouncer.cancel();
         this.emitConnectionLost("ice-failed");
       } else if (iceState === "disconnected") {
-        this.scheduleIceDisconnectRecovery();
+        this.iceDisconnectDebouncer.schedule();
       } else {
-        this.clearPendingIceDisconnect();
+        this.iceDisconnectDebouncer.cancel();
       }
     });
 
     this.pc.addEventListener("connectionstatechange", () => {
       const connectionState = this.pc?.connectionState;
       if (connectionState === "failed" || connectionState === "closed") {
-        this.clearPendingIceDisconnect();
+        this.iceDisconnectDebouncer.cancel();
         this.emitConnectionLost("connection-failed");
       }
     });
   }
 
-  private bindBrowserLifecycleEvents(): void {
-    if (this.teardownBrowserLifecycle) {
+  private bindTransportLifecycleEvents(): void {
+    if (this.teardownTransportLifecycle) {
       return;
     }
 
-    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+    this.teardownTransportLifecycle = bindTransportLifecycle({
       onHidden: this.handleHidden,
       onOnline: this.handleOnline,
       onPageHide: this.handlePageHide,
       onPageShow: this.handlePageShow,
       onVisible: this.handleVisible,
+      onDeviceChange: this.handleDeviceChange,
     });
   }
 
-  private bindDeviceChangeListener(): void {
-    navigator.mediaDevices?.addEventListener?.(
-      "devicechange",
-      this.handleDeviceChange,
-    );
-  }
-
-  private unbindBrowserLifecycleEvents(): void {
-    this.teardownBrowserLifecycle?.();
-    this.teardownBrowserLifecycle = undefined;
-    navigator.mediaDevices?.removeEventListener?.(
-      "devicechange",
-      this.handleDeviceChange,
-    );
+  private unbindTransportLifecycleEvents(): void {
+    this.teardownTransportLifecycle?.();
+    this.teardownTransportLifecycle = undefined;
   }
 
   private readonly handleOnline = (): void => {
@@ -664,26 +657,13 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     }
 
     try {
-      const nextStream = await acquireMicrophoneStream();
-      const nextTrack = nextStream.getAudioTracks()[0];
-      if (!nextTrack) {
-        throw new Error("Microphone access required for Realtime API");
-      }
-
-      const sender =
-        this.audioSender ??
-        this.pc
-          .getSenders()
-          .find((candidate) => candidate.track?.kind === "audio") ??
-        null;
-      if (!sender) {
-        throw new Error("No outbound audio sender available");
-      }
-
-      await sender.replaceTrack(nextTrack);
-      this.audioSender = sender;
-      this.mediaStream?.getTracks().forEach((track) => track.stop());
-      this.mediaStream = nextStream;
+      const { audioSender, mediaStream } = await replaceMicrophoneTrack({
+        audioSender: this.audioSender,
+        mediaStream: this.mediaStream,
+        peerConnection: this.pc,
+      });
+      this.audioSender = audioSender;
+      this.mediaStream = mediaStream;
     } catch (error) {
       this.emitEvent({
         type: "error",
@@ -830,8 +810,8 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
   private cleanup(): void {
     this.isCleaningUp = true;
-    this.unbindBrowserLifecycleEvents();
-    this.clearPendingIceDisconnect();
+    this.unbindTransportLifecycleEvents();
+    this.iceDisconnectDebouncer.cancel();
     this.stopLipSyncAnalysis();
     this.rejectPendingSessionUpdate(
       new Error("Realtime session ended before session update completed"),
@@ -964,26 +944,6 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.connectionLossNotified = true;
     this.cleanup();
     await this.connect(config ?? this.currentSessionConfig);
-  }
-
-  private scheduleIceDisconnectRecovery(): void {
-    if (this.pendingIceDisconnect) {
-      return;
-    }
-
-    this.pendingIceDisconnect = setTimeout(() => {
-      this.pendingIceDisconnect = null;
-      this.emitConnectionLost("ice-disconnected");
-    }, ICE_DISCONNECTED_DEBOUNCE_MS);
-  }
-
-  private clearPendingIceDisconnect(): void {
-    if (!this.pendingIceDisconnect) {
-      return;
-    }
-
-    clearTimeout(this.pendingIceDisconnect);
-    this.pendingIceDisconnect = null;
   }
 
   private resolvePendingSessionUpdate(): void {
