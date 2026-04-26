@@ -1,5 +1,14 @@
 # @charivo/server
 
+## 0.2.4
+
+### Patch Changes
+
+- 9f069da: Keep OpenAI realtime provider default model and voice values behind named
+  provider-local constants while preserving the existing fallback behavior.
+- Updated dependencies [8826f2b]
+  - @charivo/core@0.11.0
+
 ## 0.2.3
 
 ### Patch Changes

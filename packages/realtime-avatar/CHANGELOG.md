@@ -1,5 +1,18 @@
 # @charivo/realtime-avatar
 
+## 0.3.0
+
+### Minor Changes
+
+- 9cef27f: Make generic realtime tool prompting more proactive, and add avatar-specific instruction helpers for expression, motion, and gaze behavior.
+
+### Patch Changes
+
+- Updated dependencies [9cef27f]
+- Updated dependencies [8826f2b]
+  - @charivo/realtime@0.7.0
+  - @charivo/core@0.11.0
+
 ## 0.2.0
 
 ### Minor Changes
