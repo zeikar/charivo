@@ -11,7 +11,7 @@ import {
 
 // Voice end-to-end turnaround.
 //
-// Mirrors `realtime-default-prompt.spec.ts` but with a canned WAV feeding
+// Mirrors `realtime-avatar-prompt.spec.ts` but with a canned WAV feeding
 // Chromium's fake microphone in place of `sendMessage(text)`. Exercises the
 // full realistic voice path: server VAD endpoints the utterance, the agent
 // selects and runs avatar tools, and the first assistant response cycle

@@ -14,7 +14,10 @@ import {
   LOOK_AT_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
   SET_EXPRESSION_TOOL_NAME,
+  createAvatarResultProjector,
   createAvatarControlTools,
+} from "@charivo/realtime-avatar";
+import {
   createRealtimeManager,
   type RealtimeTransportClient,
   type RealtimeTransportEvent,
@@ -205,6 +208,7 @@ liveDescribe("live realtime bootstrap and local manager plumbing", () => {
     const client = new LiveBootstrapSmokeClient();
     const realtimeManager = createRealtimeManager(client, {
       tools: createAvatarControlTools(SMOKE_CATALOG),
+      resultProjectors: [createAvatarResultProjector()],
     });
     const charivo = new Charivo();
     charivo.attachRealtime(realtimeManager);

@@ -131,8 +131,9 @@ describe("realtime-core", () => {
       "Respond naturally and keep replies concise enough for spoken delivery.",
     );
     expect(config.instructions).toContain(
-      "Use tools only when they add something meaningful to the moment.",
+      "Use available tools proactively when they make the conversation clearer or more present.",
     );
+    expect(config.instructions).not.toContain("setExpression");
     expect(config.instructions).toContain(
       "Never say tool names or tool arguments out loud.",
     );
@@ -161,17 +162,29 @@ describe("realtime-core", () => {
     ).toMatchObject({
       enum: ["Smile"],
     });
+    expect(
+      expressionTool!.definition.parameters.properties.expressionId.description,
+    ).toContain("available for your current model");
     expect(expressionTool!.definition.description).toContain(
-      "Do not use this for every polite or lightweight reaction.",
+      "Use this proactively for clear social, emotional, or situational cues",
+    );
+    expect(expressionTool!.definition.description).toContain(
+      "Warm greetings and happy-to-see-you moments should usually use a smile",
     );
     expect(motionTool!.definition.parameters.properties.group).toMatchObject({
       enum: ["Idle"],
     });
+    expect(
+      motionTool!.definition.parameters.properties.group.description,
+    ).toContain("available for your current model");
     expect(motionTool!.definition.description).toContain(
       "Usually use at most one motion in a reply.",
     );
     expect(gazeTool!.definition.description).toContain(
-      'Prefer this before "setExpression" when a lightweight reaction is enough.',
+      "Shift your gaze for attention changes or conversational focus.",
+    );
+    expect(gazeTool!.definition.description).toContain(
+      "Use this as the single avatar action when a gaze change is enough.",
     );
 
     await expect(

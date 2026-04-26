@@ -2,7 +2,12 @@ import { Charivo, type Character, type EventMap } from "@charivo/core";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import {
   SET_EXPRESSION_TOOL_NAME,
+  buildAvatarControlInstructions,
+  createAvatarResultProjector,
   createAvatarControlTools,
+} from "@charivo/realtime-avatar";
+import {
+  buildRealtimeSessionConfig,
   createRealtimeManager,
 } from "@charivo/realtime";
 import type {
@@ -67,7 +72,7 @@ const SMOKE_TEST_INSTRUCTIONS = [
 ].join(" ");
 
 const ACTIVE_TOOLS =
-  HARNESS_MODE === "default-prompt-eval" || HARNESS_MODE === "voice-e2e"
+  HARNESS_MODE === "avatar-prompt-eval" || HARNESS_MODE === "voice-e2e"
     ? ALL_TEST_TOOLS
     : HARNESS_MODE === "voice-baseline"
       ? []
@@ -99,6 +104,7 @@ const realtimeClient = createRemoteRealtimeClient({
 });
 const realtimeManager = createRealtimeManager(realtimeClient, {
   tools: ACTIVE_TOOLS,
+  resultProjectors: [createAvatarResultProjector()],
 });
 
 charivo.attachRealtime(realtimeManager);
@@ -252,10 +258,11 @@ async function startSession(): Promise<void> {
 }
 
 function buildSessionConfigForMode(mode: HarnessMode) {
-  if (mode === "default-prompt-eval") {
+  if (mode === "avatar-prompt-eval") {
     return {
       provider: "openai" as const,
       toolChoice: "auto" as const,
+      instructions: buildAvatarPromptEvalInstructions(),
     };
   }
 
@@ -265,6 +272,7 @@ function buildSessionConfigForMode(mode: HarnessMode) {
     return {
       provider: "openai" as const,
       toolChoice: "auto" as const,
+      instructions: buildAvatarPromptEvalInstructions(),
     };
   }
 
@@ -282,6 +290,17 @@ function buildSessionConfigForMode(mode: HarnessMode) {
     toolChoice: "auto" as const,
     instructions: SMOKE_TEST_INSTRUCTIONS,
   };
+}
+
+function buildAvatarPromptEvalInstructions(): string {
+  const baseInstructions = buildRealtimeSessionConfig({
+    character: TEST_CHARACTER,
+  }).instructions;
+
+  return [
+    baseInstructions,
+    buildAvatarControlInstructions(AVATAR_CATALOG),
+  ].join("\n");
 }
 
 async function stopSession(): Promise<void> {
@@ -387,7 +406,7 @@ function resolveHarnessMode(): HarnessMode {
   const mode = new URL(window.location.href).searchParams.get("mode");
 
   if (
-    mode === "default-prompt-eval" ||
+    mode === "avatar-prompt-eval" ||
     mode === "voice-e2e" ||
     mode === "voice-baseline"
   ) {

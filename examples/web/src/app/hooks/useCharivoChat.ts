@@ -828,7 +828,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             setRealtimeInterruptedDraft(null);
             setRealtimeTurnStatus("reconnecting");
             await realtimeManager.updateSession({
-              instructions: buildDemoRealtimeInstructions(character),
+              instructions: buildDemoRealtimeInstructions(
+                character,
+                nextCatalog,
+              ),
             });
           }
         }

@@ -21,7 +21,7 @@ Read [README.md](./README.md) first for the current architecture, package map, a
 - If you change a workspace package manifest, the workspace graph, or the lockfile, verify with `pnpm install --frozen-lockfile` before finishing.
 - Before handing off changes that should match CI behavior, run the same validation steps locally in CI order, such as `pnpm verify:ci`, `pnpm test:coverage`, and `pnpm pack:check`, executing them sequentially.
 - Do not run repo-wide validation commands in parallel. Execute `pnpm verify`, `pnpm build:web`, `pnpm pack:check`, and similar full-repo build/test commands sequentially because they share build outputs and can conflict with each other.
-- Never read the full output of long-running commands (`pnpm verify`, `pnpm build`, `pnpm build:web`, `pnpm pack:check`, `pnpm test`, etc.) — it wastes context. Pipe through `tail` to inspect only the end, e.g. `pnpm verify 2>&1 | tail -n 100` or `pnpm --filter @charivo/realtime test 2>&1 | tail -n 60`. On failure, re-run and pipe through `grep` for the error context; only expand the window when the tail is insufficient to diagnose the problem.
+- Never read the full output of long-running commands (`pnpm verify`, `pnpm build`, `pnpm build:web`, `pnpm pack:check`, `pnpm test`, etc.) — it wastes context. Default to discarding output and checking the exit code only, e.g. `pnpm verify > /dev/null 2>&1; echo $?`. When you need the run summary (test counts, coverage totals), use `tail -n 40`. On failure, re-run and pipe through `grep` for the error context, or expand to ~100 lines when needed.
 
 ## Versioning
 

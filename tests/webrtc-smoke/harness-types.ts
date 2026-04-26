@@ -2,7 +2,7 @@ import type { RealtimeSessionConfig, RealtimeState } from "@charivo/core";
 
 export type HarnessMode =
   | "smoke"
-  | "default-prompt-eval"
+  | "avatar-prompt-eval"
   | "voice-e2e"
   | "voice-baseline";
 

@@ -71,6 +71,7 @@ export function useRealtimeMode() {
         model: "gpt-realtime-mini",
         instructions: buildDemoRealtimeInstructions(
           charivo.getCurrentCharacter(),
+          avatarCatalog,
         ),
       });
 

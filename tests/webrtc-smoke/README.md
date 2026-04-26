@@ -18,13 +18,13 @@ RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key \
   pnpm test:webrtc -- tests/webrtc-smoke/realtime-webrtc.spec.ts
 ```
 
-Default realtime prompt evaluation runs as a separate live suite on the
+Avatar prompt evaluation runs as a separate live suite on the
 same harness:
 
 ```bash
 pnpm exec playwright install chromium
 RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key \
-  pnpm test:webrtc -- tests/webrtc-smoke/realtime-default-prompt.spec.ts
+  pnpm test:webrtc -- tests/webrtc-smoke/realtime-avatar-prompt.spec.ts
 ```
 
 What it proves:
@@ -40,15 +40,16 @@ covered separately by the live bootstrap suite in `tests/live-realtime/`.
 
 The `realtime-webrtc.spec.ts` suite uses a narrow deterministic harness mode to
 verify connection and avatar-event plumbing. The
-`realtime-default-prompt.spec.ts` suite uses the default
-`@charivo/realtime` instruction path and the full canonical avatar tool
-surface to evaluate prompt-driven tool selection.
+`realtime-avatar-prompt.spec.ts` suite uses the default `@charivo/realtime`
+instruction path plus the `@charivo/realtime-avatar` instruction addendum and
+the full canonical avatar tool surface to evaluate prompt-driven tool
+selection.
 
-`realtime-default-prompt.spec.ts` is an advisory evaluation, not a CI gate.
+`realtime-avatar-prompt.spec.ts` is an advisory evaluation, not a CI gate.
 Model outputs are nondeterministic, so treat failures as a signal to inspect
-the default instructions or the prompt, not as a blocking regression.
+the instructions or the prompt, not as a blocking regression.
 
-Cost note: `realtime-default-prompt.spec.ts` drives 3–4 live model turns per
+Cost note: `realtime-avatar-prompt.spec.ts` drives 3–4 live model turns per
 run (connect + per-tool prompts, plus a gaze fallback turn when needed), so
 each run incurs meaningfully more OpenAI usage than `realtime-webrtc.spec.ts`,
 which drives a single turn.
@@ -72,7 +73,7 @@ differ in what they measure:
   (`setExpression`, `playMotion`, `lookAt`) and logs the end-to-end
   turnaround under `[voice e2e]`. The delta here includes tool-selection
   overhead and is the realistic-voice counterpart to
-  `realtime-default-prompt.spec.ts`.
+  `realtime-avatar-prompt.spec.ts`.
 - `realtime-voice-baseline.spec.ts` — registers no tools and uses the
   default instructions so the delta trends with network + VAD + model
   rather than tool planning. Logs the raw delta plus a

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { EventMap } from "@charivo/core";
 import {
   AVATAR_CONTROL_TOOL_NAMES,
+  buildAvatarControlInstructions,
   createAvatarControlTools,
   createAvatarResultProjector,
 } from "@charivo/realtime-avatar";
@@ -23,6 +24,28 @@ const TOOL_CONTEXT = {
 };
 
 describe("realtime-avatar", () => {
+  it("builds avatar-specific realtime instructions only when avatar tools are in use", () => {
+    const instructions = buildAvatarControlInstructions({
+      expressions: ["Smile"],
+      motions: {
+        Idle: 2,
+      },
+    });
+
+    expect(instructions).toContain("Use avatar tools proactively");
+    expect(instructions).toContain(
+      "call setExpression with a fitting expression before your spoken reply",
+    );
+
+    const gazeOnlyInstructions = buildAvatarControlInstructions({
+      expressions: [],
+      motions: {},
+    });
+
+    expect(gazeOnlyInstructions).toContain("Use avatar tools proactively");
+    expect(gazeOnlyInstructions).not.toContain("setExpression");
+  });
+
   it("creates avatar control tools with the expected names and validation", async () => {
     const tools = createAvatarControlTools({
       expressions: ["Smile"],

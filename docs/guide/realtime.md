@@ -93,6 +93,7 @@ layer on top of the library-generated base instead of making
 
 ```ts
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
+import { buildAvatarControlInstructions } from "@charivo/realtime-avatar";
 
 const base = buildRealtimeSessionConfig({ character });
 
@@ -101,6 +102,7 @@ await manager.startSession({
   model: "gpt-realtime-mini",
   instructions: [
     base.instructions,
+    buildAvatarControlInstructions(avatarCatalog),
     "Keep replies short and natural for this product.",
   ].join("\n"),
 });

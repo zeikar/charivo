@@ -15,7 +15,7 @@ const LOOK_AT_TOOL_NAME = "lookAt";
 const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
-test.describe("realtime default prompt evaluation", () => {
+test.describe("realtime avatar prompt evaluation", () => {
   test.skip(
     !LIVE_ENABLED || !HAS_API_KEY,
     "Set RUN_LIVE_REALTIME_TESTS=1 and OPENAI_API_KEY to run live WebRTC prompt evaluation.",
@@ -25,10 +25,10 @@ test.describe("realtime default prompt evaluation", () => {
     await stopSession(page);
   });
 
-  test("uses the default realtime instructions and canonical tools", async ({
+  test("uses default realtime instructions with avatar addendum and canonical tools", async ({
     page,
   }) => {
-    await page.goto("/?mode=default-prompt-eval");
+    await page.goto("/?mode=avatar-prompt-eval");
 
     await page.getByTestId("connect-button").click();
 
@@ -37,7 +37,7 @@ test.describe("realtime default prompt evaluation", () => {
 
     const initialSnapshot = await getSnapshot(page);
 
-    expect(initialSnapshot.mode).toBe("default-prompt-eval");
+    expect(initialSnapshot.mode).toBe("avatar-prompt-eval");
     expect(initialSnapshot.registeredTools).toEqual([
       SET_EXPRESSION_TOOL_NAME,
       PLAY_MOTION_TOOL_NAME,
@@ -48,7 +48,10 @@ test.describe("realtime default prompt evaluation", () => {
       (initialSnapshot.sessionInstructions ?? "").trim().length,
     ).toBeGreaterThan(0);
 
-    await sendPrompt(page, "Please greet me briefly and smile once.");
+    await sendPrompt(
+      page,
+      "I just arrived and I'm happy to see you. Greet me warmly in one short sentence.",
+    );
     await waitForAssistantCompletion(
       page,
       initialSnapshot.assistantCompletions + 1,
@@ -63,13 +66,13 @@ test.describe("realtime default prompt evaluation", () => {
       initialSnapshot.avatarEvents.length,
     );
     console.log(
-      `[default-prompt-eval] turn 1 (expression) response: ${JSON.stringify(afterExpression.assistantText)}`,
+      `[avatar-prompt-eval] turn 1 (expression) response: ${JSON.stringify(afterExpression.assistantText)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 1 tool calls: ${JSON.stringify(expressionCalls)}`,
+      `[avatar-prompt-eval] turn 1 tool calls: ${JSON.stringify(expressionCalls)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 1 avatar events: ${JSON.stringify(expressionEvents)}`,
+      `[avatar-prompt-eval] turn 1 avatar events: ${JSON.stringify(expressionEvents)}`,
     );
 
     expect(
@@ -97,13 +100,13 @@ test.describe("realtime default prompt evaluation", () => {
       afterExpression.avatarEvents.length,
     );
     console.log(
-      `[default-prompt-eval] turn 2 (motion) response: ${JSON.stringify(afterMotion.assistantText)}`,
+      `[avatar-prompt-eval] turn 2 (motion) response: ${JSON.stringify(afterMotion.assistantText)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 2 tool calls: ${JSON.stringify(motionCalls)}`,
+      `[avatar-prompt-eval] turn 2 tool calls: ${JSON.stringify(motionCalls)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 2 avatar events: ${JSON.stringify(motionEvents)}`,
+      `[avatar-prompt-eval] turn 2 avatar events: ${JSON.stringify(motionEvents)}`,
     );
 
     expect(
@@ -127,13 +130,13 @@ test.describe("realtime default prompt evaluation", () => {
       afterMotion.avatarEvents.length,
     );
     console.log(
-      `[default-prompt-eval] turn 3 (gaze) response: ${JSON.stringify(afterGaze.assistantText)}`,
+      `[avatar-prompt-eval] turn 3 (gaze) response: ${JSON.stringify(afterGaze.assistantText)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 3 tool calls: ${JSON.stringify(gazeCalls)}`,
+      `[avatar-prompt-eval] turn 3 tool calls: ${JSON.stringify(gazeCalls)}`,
     );
     console.log(
-      `[default-prompt-eval] turn 3 avatar events: ${JSON.stringify(gazeEvents)}`,
+      `[avatar-prompt-eval] turn 3 avatar events: ${JSON.stringify(gazeEvents)}`,
     );
 
     if (
@@ -142,7 +145,7 @@ test.describe("realtime default prompt evaluation", () => {
     ) {
       await sendPrompt(
         page,
-        "Use only a subtle gaze shift to the right (x 1, y 0) as a lightweight reaction before you answer. Keep the reply to one short sentence.",
+        "Use a gaze shift to the right (x 1, y 0) before you answer. Keep the reply to one short sentence.",
       );
       await waitForAssistantCompletion(
         page,
@@ -156,13 +159,13 @@ test.describe("realtime default prompt evaluation", () => {
         afterMotion.avatarEvents.length,
       );
       console.log(
-        `[default-prompt-eval] turn 3 retry (gaze fallback) response: ${JSON.stringify(afterGaze.assistantText)}`,
+        `[avatar-prompt-eval] turn 3 retry (gaze fallback) response: ${JSON.stringify(afterGaze.assistantText)}`,
       );
       console.log(
-        `[default-prompt-eval] turn 3 retry tool calls: ${JSON.stringify(gazeCalls)}`,
+        `[avatar-prompt-eval] turn 3 retry tool calls: ${JSON.stringify(gazeCalls)}`,
       );
       console.log(
-        `[default-prompt-eval] turn 3 retry avatar events: ${JSON.stringify(gazeEvents)}`,
+        `[avatar-prompt-eval] turn 3 retry avatar events: ${JSON.stringify(gazeEvents)}`,
       );
     }
 

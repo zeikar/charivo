@@ -106,7 +106,9 @@ character voice, then pass provider/model explicitly at `startSession(...)`.
 OpenAI transport packages and `@charivo/server/openai` keep their own
 OpenAI-specific fallbacks for omitted model or voice values.
 
-Avatar-specific realtime tools now live in `@charivo/realtime-avatar`.
+Avatar-specific realtime tools and avatar-specific instruction addenda now live
+in `@charivo/realtime-avatar`. Append those instructions only in sessions that
+register avatar tools so `@charivo/realtime` stays tool-agnostic.
 
 ## Result Projectors And Logging
 
@@ -114,12 +116,29 @@ Avatar-specific realtime tools now live in `@charivo/realtime-avatar`.
 events from tool outputs, pass `resultProjectors`:
 
 ```ts
-import { createAvatarResultProjector } from "@charivo/realtime-avatar";
+import {
+  buildRealtimeSessionConfig,
+  createRealtimeManager,
+} from "@charivo/realtime";
+import {
+  buildAvatarControlInstructions,
+  createAvatarResultProjector,
+} from "@charivo/realtime-avatar";
+
+const base = buildRealtimeSessionConfig({ character });
 
 const manager = createRealtimeManager(client, {
   tools,
   resultProjectors: [createAvatarResultProjector()],
   logger: console,
+});
+
+await manager.startSession({
+  provider: "openai",
+  instructions: [
+    base.instructions,
+    buildAvatarControlInstructions(avatarCatalog),
+  ].join("\n"),
 });
 ```
 
