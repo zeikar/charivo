@@ -1,6 +1,6 @@
 {
   "name": "@charivo/tts",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "TTS manager and browser adapters for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

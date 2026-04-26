@@ -1,5 +1,31 @@
 # @charivo/realtime
 
+## 0.7.0
+
+### Minor Changes
+
+- 9cef27f: Make generic realtime tool prompting more proactive, and add avatar-specific instruction helpers for expression, motion, and gaze behavior.
+- 8826f2b: Make `@charivo/realtime` session-aware and drop library-owned OpenAI defaults.
+
+  Breaking changes:
+  - `buildRealtimeSessionConfig()` no longer fills `provider` or `model`. Pass
+    them explicitly on `startSession(...)` or rely on your transport client's
+    local defaults.
+  - `RealtimeState.session.config.provider` / `.model` may now be `undefined`
+    if the caller did not specify them.
+
+  Additive:
+  - new `sessionId` threaded through `RealtimeLogger` context and `realtime:usage`
+    payloads. Same id persists across `updateSession(...)` and reconnects within
+    the same session.
+  - logger contexts now include the active `sessionId`. If your logger already
+    sets a `sessionId` field, the manager overrides it.
+
+### Patch Changes
+
+- Updated dependencies [8826f2b]
+  - @charivo/core@0.11.0
+
 ## 0.6.0
 
 ### Minor Changes
