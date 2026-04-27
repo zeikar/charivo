@@ -27,6 +27,15 @@ RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key \
   pnpm test:webrtc -- tests/webrtc-smoke/realtime-avatar-prompt.spec.ts
 ```
 
+For repeated prompt evaluation, run sequentially so multiple live WebRTC
+sessions do not interfere with each other:
+
+```bash
+RUN_LIVE_REALTIME_TESTS=1 OPENAI_API_KEY=your-key \
+  pnpm exec playwright test -c playwright.webrtc.config.ts \
+  --repeat-each=5 --workers=1 tests/webrtc-smoke/realtime-avatar-prompt.spec.ts
+```
+
 What it proves:
 
 - the browser can establish a live realtime session through `/api/realtime`
@@ -49,10 +58,10 @@ selection.
 Model outputs are nondeterministic, so treat failures as a signal to inspect
 the instructions or the prompt, not as a blocking regression.
 
-Cost note: `realtime-avatar-prompt.spec.ts` drives 3–4 live model turns per
-run (connect + per-tool prompts, plus a gaze fallback turn when needed), so
-each run incurs meaningfully more OpenAI usage than `realtime-webrtc.spec.ts`,
-which drives a single turn.
+Cost note: `realtime-avatar-prompt.spec.ts` drives 4–5 live model turns per
+run (connect + per-tool prompts, an optional gaze fallback turn, and a final
+pairing probe), so each run incurs meaningfully more OpenAI usage than
+`realtime-webrtc.spec.ts`, which drives a single turn.
 
 The voice suite runs through its own Playwright config so the fake-audio
 flag only affects this run. Both voice specs share the same config and

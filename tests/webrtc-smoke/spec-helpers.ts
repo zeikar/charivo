@@ -3,6 +3,10 @@ import type { HarnessSnapshot, SmokeHarnessApi } from "./harness-types";
 
 type SmokeWindow = Window & {
   __charivoSmoke?: SmokeHarnessApi;
+  __charivoAssistantSettle?: {
+    signature: string;
+    since: number;
+  };
 };
 
 export async function getSnapshot(page: Page): Promise<HarnessSnapshot> {
@@ -151,6 +155,56 @@ export async function waitForAssistantCompletion(
     completedTurns,
     {
       timeout: 60_000,
+    },
+  );
+}
+
+export async function waitForAssistantSettled(
+  page: Page,
+  quietMs = 1_200,
+): Promise<void> {
+  await page.waitForFunction(
+    (expectedQuietMs: number) => {
+      const smokeWindow = window as SmokeWindow;
+      const smoke = smokeWindow.__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      const snapshot = smoke.getSnapshot();
+
+      if (
+        snapshot.lastError !== null ||
+        snapshot.assistantStatus !== "completed"
+      ) {
+        smokeWindow.__charivoAssistantSettle = undefined;
+        return false;
+      }
+
+      const signature = JSON.stringify([
+        snapshot.assistantCompletions,
+        snapshot.assistantText,
+        snapshot.toolCalls.length,
+        snapshot.avatarEvents.length,
+        snapshot.usageEvents.length,
+      ]);
+      const now = Date.now();
+      const settled = smokeWindow.__charivoAssistantSettle;
+
+      if (!settled || settled.signature !== signature) {
+        smokeWindow.__charivoAssistantSettle = {
+          signature,
+          since: now,
+        };
+        return false;
+      }
+
+      return now - settled.since >= expectedQuietMs;
+    },
+    quietMs,
+    {
+      timeout: 15_000,
     },
   );
 }

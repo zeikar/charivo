@@ -30,7 +30,7 @@ describe("buildDemoRealtimeInstructions", () => {
       "Keep replies short and natural for a live voice demo.",
     );
     expect(instructions).toContain(
-      "call setExpression with a fitting expression before your spoken reply",
+      "Use setExpression with a fitting expression before you speak",
     );
   });
 });

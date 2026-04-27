@@ -1,4 +1,8 @@
-import type { RealtimeSessionConfig, RealtimeState } from "@charivo/core";
+import type {
+  RealtimeSessionConfig,
+  RealtimeState,
+  RealtimeUsageEvent,
+} from "@charivo/core";
 
 export type HarnessMode =
   | "smoke"
@@ -23,6 +27,7 @@ export type HarnessSnapshot = {
   sessionInstructions: string | null;
   registeredTools: string[];
   toolCalls: Array<{ name: string; callId?: string }>;
+  usageEvents: RealtimeUsageEvent[];
   avatarEvents: Array<
     | { type: "expression"; expressionId: string }
     | { type: "motion"; group: string; index: number }

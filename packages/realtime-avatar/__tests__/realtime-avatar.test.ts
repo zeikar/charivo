@@ -32,18 +32,35 @@ describe("realtime-avatar", () => {
       },
     });
 
-    expect(instructions).toContain("Use avatar tools proactively");
     expect(instructions).toContain(
-      "call setExpression with a fitting expression before your spoken reply",
+      "Use avatar tools only when they make the moment feel present.",
     );
+    expect(instructions).toContain("Use lookAt when your attention shifts");
+    expect(instructions).toContain(
+      "Use setExpression with a fitting expression before you speak",
+    );
+    expect(instructions).toContain("Use playMotion for bigger beats");
+    expect(instructions).toContain(
+      "Richer beats can combine two avatar actions",
+    );
+    expect(instructions).not.toMatch(/\b(at most one|one action|single)\b/);
 
     const gazeOnlyInstructions = buildAvatarControlInstructions({
       expressions: [],
       motions: {},
     });
 
-    expect(gazeOnlyInstructions).toContain("Use avatar tools proactively");
+    expect(gazeOnlyInstructions).toContain(
+      "Use avatar tools only when they make the moment feel present.",
+    );
+    expect(gazeOnlyInstructions).toContain(
+      "Use lookAt when your attention shifts",
+    );
     expect(gazeOnlyInstructions).not.toContain("setExpression");
+    expect(gazeOnlyInstructions).not.toContain("playMotion");
+    expect(gazeOnlyInstructions).not.toContain(
+      "Richer beats can combine two avatar actions",
+    );
   });
 
   it("creates avatar control tools with the expected names and validation", async () => {

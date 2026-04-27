@@ -50,8 +50,10 @@ const HARNESS_MODE = resolveHarnessMode();
 const AVATAR_CATALOG = {
   expressions: ["Smile"],
   motions: {
-    // Non-empty motion group so the playMotion tool schema registers a usable enum.
     Emphasis: 3,
+    // Separate greeting-style motion group so pairing probes have a plausible
+    // expression + motion choice instead of only a generic emphasis motion.
+    Wave: 1,
   },
 } as const;
 
@@ -89,6 +91,7 @@ const state: HarnessSnapshot = {
   sessionInstructions: null,
   registeredTools: ACTIVE_TOOLS.map((tool) => tool.definition.name),
   toolCalls: [],
+  usageEvents: [],
   avatarEvents: [],
   voiceLatency: {
     sessionStartAt: null,
@@ -135,6 +138,7 @@ const subscriptions: Array<keyof EventMap> = [
   "realtime:reconnect:attempt",
   "realtime:reconnect:success",
   "realtime:reconnect:exhausted",
+  "realtime:usage",
   "realtime:expression",
   "realtime:motion",
   "realtime:gaze",
@@ -195,6 +199,10 @@ for (const eventName of subscriptions) {
 
       case "realtime:tool:call":
         state.toolCalls.push({ name: payload.name, callId: payload.callId });
+        break;
+
+      case "realtime:usage":
+        state.usageEvents.push(payload);
         break;
 
       case "realtime:expression":

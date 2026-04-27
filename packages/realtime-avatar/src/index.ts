@@ -9,13 +9,13 @@ const MIN_GAZE = -1;
 const MAX_GAZE = 1;
 
 const SET_EXPRESSION_TOOL_DESCRIPTION =
-  "Change your facial expression when the conversation moment should show on your face. Use this proactively for clear social, emotional, or situational cues such as greetings, gratitude, jokes, delight, surprise, concern, sympathy, embarrassment, frustration, tension, relief, or a warm change in tone. Warm greetings and happy-to-see-you moments should usually use a smile or similarly warm expression when available.";
+  "Change facial expression when emotion should show. Use proactively for greetings, gratitude, jokes, delight, surprise, concern, sympathy, embarrassment, frustration, tension, relief, or a warmer tone. Rich moments can pair setExpression with motion or gaze.";
 
 const PLAY_MOTION_TOOL_DESCRIPTION =
-  "Use a noticeable body motion for greetings, emphasis, or bigger reaction beats. Prefer this over stacking multiple smaller actions when the moment needs one clear accent. Usually use at most one motion in a reply.";
+  "Use a noticeable body motion for greetings, emphasis, or bigger reactions. Save this for moments that truly need body movement, and don't stack body motions in the same reply.";
 
 const LOOK_AT_TOOL_DESCRIPTION =
-  'Shift your gaze for attention changes or conversational focus. Trigger this on natural phrases like "glance", "look over", "peek at", or directional cues. Use this as the single avatar action when a gaze change is enough.';
+  'Shift gaze for attention changes or focus. Trigger this on phrases like "glance", "look over", "peek at", or directional cues. A gaze shift can stand alone or pair with another avatar action when both fit.';
 
 export const SET_EXPRESSION_TOOL_NAME = "setExpression";
 export const PLAY_MOTION_TOOL_NAME = "playMotion";
@@ -30,14 +30,28 @@ export const AVATAR_CONTROL_TOOL_NAMES = [
 export function buildAvatarControlInstructions(
   catalog: AvatarControlCatalog,
 ): string {
+  const hasExpressions = catalog.expressions.length > 0;
+  const hasMotions = Object.keys(catalog.motions).length > 0;
   const instructions = [
-    "Use avatar tools proactively when an expression, body motion, or gaze would make the conversation moment clearer or more present.",
-    "Prefer one well-timed avatar action over chaining multiple actions on simple replies.",
+    "Use avatar tools only when they make the moment feel present. Quiet exchanges can pass without an avatar action.",
+    "Use lookAt when your attention shifts or a small gaze reaction is enough.",
   ];
 
-  if (catalog.expressions.length > 0) {
+  if (hasExpressions) {
     instructions.push(
-      "For ordinary conversation cues like greetings, thanks, jokes, teasing, concern, reassurance, surprise, or sympathy, call setExpression with a fitting expression before your spoken reply when it is available, even if the user did not explicitly ask for a facial change.",
+      "React with your face when feelings come up: greetings, gratitude, jokes, teasing, concern, reassurance, surprise, or sympathy. Use setExpression with a fitting expression before you speak, even when the user did not ask for it.",
+    );
+  }
+
+  if (hasMotions) {
+    instructions.push(
+      "Use playMotion for bigger beats such as greetings, emphasis, or strong reactions. Don't stack body motions in one reply.",
+    );
+  }
+
+  if (hasExpressions && hasMotions) {
+    instructions.push(
+      "Richer beats can combine two avatar actions, such as setExpression plus playMotion, when both earn their place.",
     );
   }
 

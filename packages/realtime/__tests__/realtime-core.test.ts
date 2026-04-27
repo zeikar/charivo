@@ -133,9 +133,12 @@ describe("realtime-core", () => {
     expect(config.instructions).toContain(
       "Use available tools proactively when they make the conversation clearer or more present.",
     );
-    expect(config.instructions).not.toContain("setExpression");
+    expect(config.instructions).toContain("Let each tool call earn its place");
+    expect(config.instructions).not.toMatch(
+      /\b(Prefer one well-timed|at most one|single (avatar|tool) action)\b/,
+    );
     expect(config.instructions).toContain(
-      "Never say tool names or tool arguments out loud.",
+      "never mention tool calls, tool names, tool arguments",
     );
     expect(config.tools).toBeUndefined();
 
@@ -166,10 +169,10 @@ describe("realtime-core", () => {
       expressionTool!.definition.parameters.properties.expressionId.description,
     ).toContain("available for your current model");
     expect(expressionTool!.definition.description).toContain(
-      "Use this proactively for clear social, emotional, or situational cues",
+      "Use proactively for greetings",
     );
     expect(expressionTool!.definition.description).toContain(
-      "Warm greetings and happy-to-see-you moments should usually use a smile",
+      "pair setExpression with motion or gaze",
     );
     expect(motionTool!.definition.parameters.properties.group).toMatchObject({
       enum: ["Idle"],
@@ -178,13 +181,16 @@ describe("realtime-core", () => {
       motionTool!.definition.parameters.properties.group.description,
     ).toContain("available for your current model");
     expect(motionTool!.definition.description).toContain(
-      "Usually use at most one motion in a reply.",
+      "don't stack body motions in the same reply",
+    );
+    expect(motionTool!.definition.description).not.toMatch(
+      /\b(at most one|single)\b/,
     );
     expect(gazeTool!.definition.description).toContain(
-      "Shift your gaze for attention changes or conversational focus.",
+      "Shift gaze for attention changes or focus.",
     );
     expect(gazeTool!.definition.description).toContain(
-      "Use this as the single avatar action when a gaze change is enough.",
+      "pair with another avatar action when both fit",
     );
 
     await expect(
