@@ -2,7 +2,11 @@
 export { CharacterPromptBuilder } from "./character-prompt-builder";
 
 // Message utilities
-export { MessageHistoryManager } from "./message-history-manager";
+export {
+  MessageHistoryManager,
+  type AddMessageOptions,
+  type MessageHistoryManagerOptions,
+} from "./message-history-manager";
 export { MessageConverter } from "./message-converter";
 export { ResponseMessageBuilder } from "./response-message-builder";
 
@@ -10,4 +14,8 @@ export { ResponseMessageBuilder } from "./response-message-builder";
 export { LLMValidators } from "./validators";
 
 // LLM Management
-export { LLMManager, createLLMManager } from "./llm-manager";
+export {
+  LLMManager,
+  createLLMManager,
+  type LLMManagerOptions,
+} from "./llm-manager";

@@ -99,6 +99,19 @@ const text = await provider.generateResponse(messages);
 The client is replaceable. The manager remains the stable place for
 conversation state.
 
+## History Retention
+
+`LLMManager` keeps the latest 40 turns by default. A turn is one user message
+plus one character response, so `getHistory()` and LLM client calls are bounded
+to the latest 80 stored messages. This keeps long-running chat sessions from
+growing memory and context cost without additional app code.
+
+Override the limit with `createLLMManager(client, { maxHistoryTurns })`, or use
+`maxHistoryTurns: null` if your app needs the previous unbounded behavior.
+
+Realtime sessions maintain conversation state on the provider side and are not
+affected by `maxHistoryTurns`.
+
 ## Alternatives
 
 - Use OpenClaw when your backend or testing flow targets OpenClaw instead of OpenAI.

@@ -5,6 +5,12 @@ import { MessageConverter } from "./message-converter";
 import { LLMValidators } from "./validators";
 import { ResponseMessageBuilder } from "./response-message-builder";
 
+const DEFAULT_MAX_HISTORY_TURNS = 40;
+
+export interface LLMManagerOptions {
+  maxHistoryTurns?: number | null;
+}
+
 /**
  * LLM Manager - LLM 세션의 상태 관리를 담당하는 클래스
  *
@@ -16,10 +22,20 @@ import { ResponseMessageBuilder } from "./response-message-builder";
  * - 프롬프트 생성
  */
 export class LLMManager {
-  private historyManager = new MessageHistoryManager();
+  private readonly historyManager: MessageHistoryManager;
+  private readonly maxHistoryMessages?: number;
   private character: Character | null = null;
 
-  constructor(private llmClient: LLMClient) {}
+  constructor(
+    private llmClient: LLMClient,
+    options: LLMManagerOptions = {},
+  ) {
+    this.maxHistoryMessages = resolveMaxHistoryMessages(options);
+    this.historyManager = new MessageHistoryManager({
+      maxMessages: this.maxHistoryMessages,
+      pruneBatchSize: 2,
+    });
+  }
 
   /**
    * 캐릭터 설정
@@ -65,11 +81,13 @@ export class LLMManager {
       throw toCharivoError("state", error);
     }
 
-    // 새 메시지를 히스토리에 추가
-    this.historyManager.add(message);
+    // Defer pruning until the assistant message is appended. On failure we
+    // only removeLast() the in-flight user message, so older history must
+    // remain intact during the API call.
+    this.historyManager.add(message, { prune: false });
 
     // 히스토리 메시지 가져오기
-    const historyMessages = this.historyManager.getAll();
+    const historyMessages = this.getHistoryForApiCall();
 
     // LLM API 형식으로 변환 (시스템 프롬프트 포함)
     const apiMessages = this.prepareApiMessages(historyMessages);
@@ -83,7 +101,8 @@ export class LLMManager {
         assistantMessage,
         this.character!.id, // validateCharacterSet 후 character는 non-null 보장됨
       );
-      this.historyManager.add(responseMessage);
+      this.historyManager.add(responseMessage, { prune: false });
+      this.historyManager.pruneToMax();
 
       return assistantMessage;
     } catch (error) {
@@ -108,11 +127,42 @@ export class LLMManager {
     );
     return MessageConverter.combineWithSystemPrompt(systemPrompt, messages);
   }
+
+  private getHistoryForApiCall(): Message[] {
+    const historyMessages = this.historyManager.getRecent(
+      this.maxHistoryMessages,
+    );
+
+    if (historyMessages[0]?.type === "character") {
+      return historyMessages.slice(1);
+    }
+
+    return historyMessages;
+  }
 }
 
 /**
  * LLM Manager 생성 헬퍼 함수
  */
-export function createLLMManager(llmClient: LLMClient): LLMManager {
-  return new LLMManager(llmClient);
+export function createLLMManager(
+  llmClient: LLMClient,
+  options?: LLMManagerOptions,
+): LLMManager {
+  return new LLMManager(llmClient, options);
+}
+
+function resolveMaxHistoryMessages(
+  options: LLMManagerOptions,
+): number | undefined {
+  if (options.maxHistoryTurns === null) {
+    return undefined;
+  }
+
+  const maxHistoryTurns = options.maxHistoryTurns ?? DEFAULT_MAX_HISTORY_TURNS;
+
+  if (!Number.isInteger(maxHistoryTurns) || maxHistoryTurns <= 0) {
+    throw new TypeError("maxHistoryTurns must be a positive integer or null");
+  }
+
+  return maxHistoryTurns * 2;
 }

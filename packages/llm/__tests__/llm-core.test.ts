@@ -33,6 +33,13 @@ describe("CharacterPromptBuilder", () => {
 });
 
 describe("MessageHistoryManager", () => {
+  const buildMessage = (id: string): Message => ({
+    id,
+    content: id,
+    timestamp: new Date(),
+    type: "user",
+  });
+
   it("tracks messages in order", () => {
     const manager = new MessageHistoryManager();
     const first: Message = {
@@ -59,6 +66,68 @@ describe("MessageHistoryManager", () => {
 
     manager.clear();
     expect(manager.size()).toBe(0);
+  });
+
+  it("keeps existing unbounded behavior by default", () => {
+    const manager = new MessageHistoryManager();
+
+    for (let index = 1; index <= 5; index += 1) {
+      manager.add(buildMessage(String(index)));
+    }
+
+    expect(manager.getAll()).toHaveLength(5);
+    expect(manager.getAll().map((message) => message.id)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+    ]);
+  });
+
+  it("prunes old messages in FIFO order when a message limit is set", () => {
+    const manager = new MessageHistoryManager({ maxMessages: 3 });
+
+    for (let index = 1; index <= 5; index += 1) {
+      manager.add(buildMessage(String(index)));
+    }
+
+    expect(manager.getAll().map((message) => message.id)).toEqual([
+      "3",
+      "4",
+      "5",
+    ]);
+  });
+
+  it("respects pruneBatchSize when removing oldest messages", () => {
+    const manager = new MessageHistoryManager({
+      maxMessages: 4,
+      pruneBatchSize: 2,
+    });
+
+    for (let index = 1; index <= 5; index += 1) {
+      manager.add(buildMessage(String(index)));
+    }
+
+    expect(manager.getAll().map((message) => message.id)).toEqual([
+      "3",
+      "4",
+      "5",
+    ]);
+  });
+
+  it("rejects invalid getRecent limits", () => {
+    const manager = new MessageHistoryManager();
+
+    expect(() => manager.getRecent(0)).toThrow(
+      "maxMessages must be a positive integer",
+    );
+    expect(() => manager.getRecent(-1)).toThrow(
+      "maxMessages must be a positive integer",
+    );
+    expect(() => manager.getRecent(1.5)).toThrow(
+      "maxMessages must be a positive integer",
+    );
   });
 });
 
@@ -136,7 +205,7 @@ describe("LLMManager", () => {
   }
 
   const buildUserMessage = (content: string): Message => ({
-    id: "msg-1",
+    id: `msg-${content}`,
     content,
     timestamp: new Date("2024-01-01T00:00:00Z"),
     type: "user",
@@ -202,5 +271,156 @@ describe("LLMManager", () => {
 
     expect(manager.getHistory()).toHaveLength(0);
     consoleSpy.mockRestore();
+  });
+
+  it("limits default history to the latest 40 turns", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client);
+
+    manager.setCharacter(character);
+
+    for (let index = 1; index <= 41; index += 1) {
+      await manager.generateResponse(buildUserMessage(`turn-${index}`));
+    }
+
+    const history = manager.getHistory();
+    expect(history).toHaveLength(80);
+    expect(history[0]).toMatchObject({
+      type: "user",
+      content: "turn-2",
+    });
+    expect(history[history.length - 1]).toMatchObject({
+      type: "character",
+      content: "TURN-41",
+    });
+  });
+
+  it("keeps turn boundaries when pruning to one turn", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: 1 });
+
+    manager.setCharacter(character);
+
+    await manager.generateResponse(buildUserMessage("first"));
+    await manager.generateResponse(buildUserMessage("second"));
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "second",
+      "SECOND",
+    ]);
+    expect(manager.getHistory().map((message) => message.type)).toEqual([
+      "user",
+      "character",
+    ]);
+  });
+
+  it("sends a bounded API context without a leading character message", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: 1 });
+
+    manager.setCharacter(character);
+
+    await manager.generateResponse(buildUserMessage("first"));
+    await manager.generateResponse(buildUserMessage("second"));
+
+    const secondCallMessages = client.call.mock.calls[1]![0];
+    expect(secondCallMessages).toEqual([
+      {
+        role: "system",
+        content: expect.stringContaining("You are Hiyori"),
+      },
+      {
+        role: "user",
+        content: "second",
+      },
+    ]);
+  });
+
+  it("does not lose messages below the configured limit", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: 40 });
+
+    manager.setCharacter(character);
+
+    for (let index = 1; index <= 15; index += 1) {
+      await manager.generateResponse(buildUserMessage(`turn-${index}`));
+    }
+
+    expect(manager.getHistory()).toHaveLength(30);
+    expect(manager.getHistory()[0]).toMatchObject({
+      type: "user",
+      content: "turn-1",
+    });
+  });
+
+  it("rolls back only the in-flight user message when a bounded call fails", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: 1 });
+
+    manager.setCharacter(character);
+    await manager.generateResponse(buildUserMessage("first"));
+
+    const error = new Error("network");
+    client.call.mockRejectedValueOnce(error);
+
+    await expect(
+      manager.generateResponse(buildUserMessage("second")),
+    ).rejects.toThrowError(error);
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "first",
+      "FIRST",
+    ]);
+  });
+
+  it("keeps history bounded after a failed call is retried", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: 1 });
+
+    manager.setCharacter(character);
+    await manager.generateResponse(buildUserMessage("first"));
+
+    const error = new Error("network");
+    client.call.mockRejectedValueOnce(error);
+    await expect(
+      manager.generateResponse(buildUserMessage("second")),
+    ).rejects.toThrowError(error);
+
+    await manager.generateResponse(buildUserMessage("second"));
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "second",
+      "SECOND",
+    ]);
+  });
+
+  it("can opt out of bounded history", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client, { maxHistoryTurns: null });
+
+    manager.setCharacter(character);
+
+    for (let index = 1; index <= 41; index += 1) {
+      await manager.generateResponse(buildUserMessage(`turn-${index}`));
+    }
+
+    expect(manager.getHistory()).toHaveLength(82);
+  });
+
+  it("rejects invalid maxHistoryTurns values", () => {
+    const client = new MockClient();
+
+    expect(() => createLLMManager(client, { maxHistoryTurns: 0 })).toThrow(
+      "maxHistoryTurns must be a positive integer or null",
+    );
+    expect(() => createLLMManager(client, { maxHistoryTurns: -1 })).toThrow(
+      "maxHistoryTurns must be a positive integer or null",
+    );
+    expect(() => createLLMManager(client, { maxHistoryTurns: 1.5 })).toThrow(
+      "maxHistoryTurns must be a positive integer or null",
+    );
+    expect(() => createLLMManager(client, { maxHistoryTurns: NaN })).toThrow(
+      "maxHistoryTurns must be a positive integer or null",
+    );
   });
 });

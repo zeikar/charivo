@@ -35,10 +35,27 @@ const reply = await manager.generateResponse({
 });
 ```
 
+## History Retention
+
+`LLMManager` keeps the latest 40 turns by default. A turn is one user message
+plus one character response, so the stored conversation history is capped at 80
+messages. This bounds memory growth and the context sent to your LLM client.
+
+Pass `maxHistoryTurns` to change the limit:
+
+```ts
+const manager = createLLMManager(client, {
+  maxHistoryTurns: 20,
+});
+```
+
+Use `maxHistoryTurns: null` to opt out and keep unbounded history.
+
 ## Exports
 
 - `LLMManager`
-- `createLLMManager(client)`
+- `createLLMManager(client, options?)`
+- `LLMManagerOptions`
 - `CharacterPromptBuilder`
 - `MessageHistoryManager`
 - `MessageConverter`
