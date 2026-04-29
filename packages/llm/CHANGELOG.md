@@ -1,5 +1,12 @@
 # @charivo/llm
 
+## 0.4.0
+
+### Minor Changes
+
+- 2bd1689: Bound LLM manager history to the latest 40 turns by default. Existing consumers
+  that rely on unbounded history can opt out with `maxHistoryTurns: null`.
+
 ## 0.3.2
 
 ### Patch Changes

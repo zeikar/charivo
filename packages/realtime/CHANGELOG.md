@@ -1,5 +1,11 @@
 # @charivo/realtime
 
+## 0.7.2
+
+### Patch Changes
+
+- f773b55: Validate realtime custom tool arguments before invoking handlers.
+
 ## 0.7.1
 
 ### Patch Changes

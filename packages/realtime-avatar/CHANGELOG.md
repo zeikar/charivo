@@ -1,5 +1,12 @@
 # @charivo/realtime-avatar
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [f773b55]
+  - @charivo/realtime@0.7.2
+
 ## 0.3.1
 
 ### Patch Changes
