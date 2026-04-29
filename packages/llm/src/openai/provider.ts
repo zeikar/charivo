@@ -55,7 +55,7 @@ export class OpenAILLMProvider implements LLMProvider {
           temperature: this.temperature,
           max_tokens: this.maxTokens,
         }),
-        `request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+        `OpenAI LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
       );
 
       return completion.choices[0]?.message?.content || "";
