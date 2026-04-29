@@ -1,7 +1,6 @@
 import type {
   Character,
   CharivoEventEmitter,
-  EventMap,
   RealtimeManager as CoreRealtimeManager,
   RealtimeReconnectCause,
   RealtimeSessionConfig,
@@ -11,26 +10,30 @@ import type {
   RealtimeToolRegistration,
   RealtimeUsageEvent,
 } from "@charivo/core";
-import {
-  CharivoStateError,
-  subscribeBrowserLifecycle,
-  toCharivoError,
-} from "@charivo/core";
+import { CharivoStateError, toCharivoError } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
+import { RealtimeAudioOutput } from "./internal/audio-output";
+import { RealtimeBrowserLifecycle } from "./internal/browser-lifecycle";
+import {
+  createRealtimeSessionId,
+  mergeRealtimeState,
+  mergeSessionConfig,
+} from "./internal/manager-state";
+import { delay } from "./internal/timing";
+import { RealtimeToolRegistry } from "./internal/tool-registry";
+import {
+  executeRealtimeToolCall,
+  type RealtimeToolResultProjector,
+} from "./internal/tool-runner";
+
+export type {
+  RealtimeToolResultProjector,
+  RealtimeToolResultProjectorContext,
+} from "./internal/tool-runner";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
-let nextFallbackSessionId = 1;
-
-type WakeLockSentinelLike = {
-  release(): Promise<void>;
-  addEventListener?(
-    type: "release",
-    listener: () => void,
-    options?: AddEventListenerOptions,
-  ): void;
-};
 
 export interface RealtimeManagerOptions {
   defaultSessionConfig?: Omit<RealtimeSessionConfig, "tools">;
@@ -47,17 +50,6 @@ export interface RealtimeLogger {
   error?(message: string, context?: Record<string, unknown>): void;
 }
 
-export interface RealtimeToolResultProjectorContext {
-  name: string;
-  output: Record<string, unknown>;
-  callId?: string;
-  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void;
-}
-
-export type RealtimeToolResultProjector = (
-  context: RealtimeToolResultProjectorContext,
-) => void;
-
 /**
  * Provider-agnostic realtime manager.
  *
@@ -71,17 +63,20 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private isStoppingSession = false;
   private isRefreshingSession = false;
   private isRecoveringConnection = false;
-  private isAudioPlaybackActive = false;
   private sessionBaseConfig?: RealtimeSessionConfig;
   private refreshInFlight: Promise<void> | null = null;
   private reconnectInFlight: Promise<void> | null = null;
   private hasQueuedRefresh = false;
   private stopRequestedDuringRefresh = false;
   private reconnectToken = 0;
-  private wakeLockSentinel: WakeLockSentinelLike | null = null;
-  private teardownBrowserLifecycle?: () => void;
   private sessionId?: string;
-  private readonly toolRegistry = new Map<string, RealtimeToolRegistration>();
+  private readonly toolRegistry = new RealtimeToolRegistry();
+  private readonly audioOutput = new RealtimeAudioOutput((event, payload) => {
+    this.eventEmitter?.emit(event, payload);
+  });
+  private readonly browserLifecycle = new RealtimeBrowserLifecycle(
+    () => this.state,
+  );
   private state: RealtimeState = {
     connection: "idle",
     session: {
@@ -103,7 +98,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.registerTool(tool);
     }
 
-    this.installBrowserLifecycleListeners();
+    this.browserLifecycle.install();
 
     this.client.onEvent((event) => {
       void this.handleClientEvent(event).catch((error) => {
@@ -132,24 +127,15 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   registerTool(tool: RealtimeToolRegistration): void {
-    this.toolRegistry.set(tool.definition.name, tool);
+    this.toolRegistry.register(tool);
   }
 
   unregisterTool(name: string): void {
-    this.toolRegistry.delete(name);
+    this.toolRegistry.unregister(name);
   }
 
   getRegisteredTools(): RealtimeTool[] {
-    return Array.from(this.toolRegistry.values(), (tool) => ({
-      ...tool.definition,
-      parameters: {
-        ...tool.definition.parameters,
-        properties: { ...tool.definition.parameters.properties },
-        required: tool.definition.parameters.required
-          ? [...tool.definition.parameters.required]
-          : undefined,
-      },
-    }));
+    return this.toolRegistry.getDefinitions();
   }
 
   getState(): RealtimeState {
@@ -200,13 +186,13 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: null,
     };
-    this.installBrowserLifecycleListeners();
+    this.browserLifecycle.install();
     this.emitState();
 
     try {
       await this.client.connect(sessionConfig);
       this.commitActiveSession(sessionConfig);
-      void this.requestWakeLock();
+      void this.browserLifecycle.requestWakeLock();
       this.emitSessionStart("user");
     } catch (error) {
       const typedError = toCharivoError("transport", error);
@@ -329,7 +315,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         status: "interrupted",
       },
     };
-    this.emitAudioEnd();
+    this.audioOutput.end();
     this.emitState();
   }
 
@@ -433,16 +419,16 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       }
 
       case "audio.output.started":
-        this.emitAudioStart();
+        this.audioOutput.start();
         return;
 
       case "audio.output.ended":
-        this.emitAudioEnd();
+        this.audioOutput.end();
         return;
 
       case "audio.lipsync":
-        if (event.rms > 0.001 && !this.isAudioPlaybackActive) {
-          this.emitAudioStart();
+        if (event.rms > 0.001 && !this.audioOutput.isActive()) {
+          this.audioOutput.start();
         }
         this.eventEmitter?.emit("tts:lipsync:update", { rms: event.rms });
         return;
@@ -453,7 +439,22 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           args: event.args,
           callId: event.callId,
         });
-        await this.executeToolCall(event);
+        await executeRealtimeToolCall({
+          event,
+          tool: this.toolRegistry.get(event.name),
+          client: this.client,
+          character: this.character,
+          state: this.getState(),
+          defaultToolTimeoutMs:
+            this.options.defaultToolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
+          resultProjectors: this.options.resultProjectors,
+          emit: (eventName, payload) => {
+            this.eventEmitter?.emit(eventName, payload);
+          },
+          log: (level, message, context) => {
+            this.log(level, message, context);
+          },
+        });
         return;
 
       case "tool.result":
@@ -484,139 +485,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         this.applyError(event.error, this.state.connection);
         return;
     }
-  }
-
-  private async executeToolCall(
-    event: Extract<RealtimeTransportEvent, { type: "tool.call" }>,
-  ): Promise<void> {
-    const tool = this.toolRegistry.get(event.name);
-    if (!event.callId) {
-      this.emitToolError(
-        event.name,
-        new Error(`Tool "${event.name}" is missing a call ID`),
-        event.callId,
-      );
-      return;
-    }
-
-    if (!tool) {
-      await this.handleToolExecutionFailure(
-        event.name,
-        event.callId,
-        new Error(`No realtime tool registered for "${event.name}"`),
-      );
-      return;
-    }
-
-    try {
-      this.log("debug", "Realtime tool execution started", {
-        name: event.name,
-        callId: event.callId,
-      });
-      const output = await this.runToolHandler(tool, event);
-      await this.client.sendToolResult(event.callId, output);
-      this.eventEmitter?.emit("realtime:tool:result", {
-        name: event.name,
-        output,
-        callId: event.callId,
-      });
-      this.projectToolResult(event.name, output, event.callId);
-      this.log("info", "Realtime tool execution succeeded", {
-        name: event.name,
-        callId: event.callId,
-      });
-    } catch (error) {
-      await this.handleToolExecutionFailure(
-        event.name,
-        event.callId,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-    }
-  }
-
-  private async runToolHandler(
-    tool: RealtimeToolRegistration,
-    event: Extract<RealtimeTransportEvent, { type: "tool.call" }>,
-  ): Promise<Record<string, unknown>> {
-    const timeoutMs =
-      tool.timeoutMs ??
-      this.options.defaultToolTimeoutMs ??
-      DEFAULT_TOOL_TIMEOUT_MS;
-    const result = await withTimeout(
-      tool.handler(event.args, {
-        character: this.character,
-        state: this.getState(),
-        callId: event.callId,
-      }),
-      timeoutMs,
-      tool.definition.name,
-    );
-
-    if (!isRecord(result)) {
-      throw new Error(
-        `Realtime tool "${tool.definition.name}" must return an object`,
-      );
-    }
-
-    return result;
-  }
-
-  private async handleToolExecutionFailure(
-    name: string,
-    callId: string,
-    error: Error,
-  ): Promise<void> {
-    this.emitToolError(name, error, callId);
-
-    try {
-      await this.client.sendToolResult(callId, createFailureOutput(error));
-    } catch (sendError) {
-      this.emitToolError(
-        name,
-        sendError instanceof Error ? sendError : new Error(String(sendError)),
-        callId,
-      );
-    }
-  }
-
-  private projectToolResult(
-    name: string,
-    output: Record<string, unknown>,
-    callId?: string,
-  ): void {
-    for (const projector of this.options.resultProjectors ?? []) {
-      try {
-        projector({
-          name,
-          output,
-          callId,
-          emit: (event, payload) => {
-            this.eventEmitter?.emit(event, payload);
-          },
-        });
-      } catch (error) {
-        const projectorError =
-          error instanceof Error ? error : new Error(String(error));
-        this.log("warn", "Realtime result projector failed", {
-          name,
-          callId,
-          error: projectorError.message,
-        });
-      }
-    }
-  }
-
-  private emitToolError(name: string, error: Error, callId?: string): void {
-    this.log("warn", "Realtime tool execution failed", {
-      name,
-      callId,
-      error: error.message,
-    });
-    this.eventEmitter?.emit("realtime:tool:error", {
-      name,
-      error,
-      callId,
-    });
   }
 
   private ensureResponseStarted(): void {
@@ -651,7 +519,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     const reconnectToken = this.reconnectToken;
 
     if (this.state.response.status === "responding") {
-      this.emitAudioEnd();
+      this.audioOutput.end();
       this.state = {
         ...this.state,
         connection: "connecting",
@@ -733,7 +601,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           lastError: null,
         };
         this.emitState();
-        void this.requestWakeLock();
+        void this.browserLifecycle.requestWakeLock();
         this.eventEmitter?.emit("realtime:reconnect:success", {
           attempts: attempt,
           totalMs: Date.now() - startedAt,
@@ -801,7 +669,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     connection: RealtimeState["connection"],
   ): void {
     const typedError = toCharivoError("transport", error);
-    this.emitAudioEnd();
+    this.audioOutput.end();
     this.state = {
       ...this.state,
       connection,
@@ -813,97 +681,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       connection,
       error: typedError.message,
     });
-  }
-
-  private emitAudioStart(): void {
-    if (this.isAudioPlaybackActive) {
-      return;
-    }
-
-    this.isAudioPlaybackActive = true;
-    this.eventEmitter?.emit("tts:audio:start", {});
-  }
-
-  private emitAudioEnd(): void {
-    if (!this.isAudioPlaybackActive) {
-      return;
-    }
-
-    this.isAudioPlaybackActive = false;
-    this.eventEmitter?.emit("tts:lipsync:update", { rms: 0 });
-    this.eventEmitter?.emit("tts:audio:end", {});
-  }
-
-  private installBrowserLifecycleListeners(): void {
-    if (this.teardownBrowserLifecycle) {
-      return;
-    }
-
-    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
-      onHidden: () => {
-        void this.releaseWakeLock();
-      },
-      onPageHide: () => {
-        void this.releaseWakeLock();
-      },
-      onPageShow: () => {
-        void this.requestWakeLock();
-      },
-      onVisible: () => {
-        void this.requestWakeLock();
-      },
-    });
-  }
-
-  private async requestWakeLock(): Promise<void> {
-    if (
-      this.state.session.status !== "active" ||
-      this.state.connection === "disconnecting" ||
-      typeof navigator === "undefined" ||
-      typeof document === "undefined" ||
-      document.visibilityState !== "visible" ||
-      !("wakeLock" in navigator)
-    ) {
-      return;
-    }
-
-    if (this.wakeLockSentinel) {
-      return;
-    }
-
-    const wakeLockApi = navigator as Navigator & {
-      wakeLock?: {
-        request(type: "screen"): Promise<WakeLockSentinelLike>;
-      };
-    };
-
-    try {
-      this.wakeLockSentinel = await wakeLockApi.wakeLock?.request("screen");
-      this.wakeLockSentinel?.addEventListener?.(
-        "release",
-        () => {
-          this.wakeLockSentinel = null;
-        },
-        { once: true },
-      );
-    } catch {
-      // Best-effort only.
-    }
-  }
-
-  private async releaseWakeLock(): Promise<void> {
-    if (!this.wakeLockSentinel) {
-      return;
-    }
-
-    const wakeLockSentinel = this.wakeLockSentinel;
-    this.wakeLockSentinel = null;
-
-    try {
-      await wakeLockSentinel.release();
-    } catch {
-      // Best-effort only.
-    }
   }
 
   private resolveNextSessionBaseConfig(
@@ -1065,10 +842,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
   private finalizeFailedSession(error: Error): void {
     this.cancelReconnectLoop();
-    this.teardownBrowserLifecycle?.();
-    this.teardownBrowserLifecycle = undefined;
-    void this.releaseWakeLock();
-    this.emitAudioEnd();
+    this.browserLifecycle.dispose();
+    this.audioOutput.end();
     this.state = {
       ...this.state,
       connection: "error",
@@ -1096,10 +871,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     reason: RealtimeSessionTransitionReason,
   ): void {
     this.cancelReconnectLoop();
-    this.teardownBrowserLifecycle?.();
-    this.teardownBrowserLifecycle = undefined;
-    void this.releaseWakeLock();
-    this.emitAudioEnd();
+    this.browserLifecycle.dispose();
+    this.audioOutput.end();
     this.state = {
       ...this.state,
       connection: "idle",
@@ -1169,93 +942,4 @@ export function createRealtimeManager(
   options?: RealtimeManagerOptions,
 ): CoreRealtimeManager {
   return new RealtimeManagerImpl(client, options);
-}
-
-function mergeSessionConfig(
-  baseConfig?: Omit<RealtimeSessionConfig, "tools">,
-  overrideConfig?: RealtimeSessionConfig,
-): RealtimeSessionConfig | undefined {
-  if (!baseConfig && !overrideConfig) {
-    return undefined;
-  }
-
-  const { tools: _ignoredOverrideTools, ...overrideWithoutTools } =
-    overrideConfig ?? {};
-
-  return {
-    ...baseConfig,
-    ...overrideWithoutTools,
-  };
-}
-
-function mergeRealtimeState(
-  current: RealtimeState,
-  partial: Partial<RealtimeState>,
-): RealtimeState {
-  return {
-    connection: partial.connection ?? current.connection,
-    session: {
-      status: partial.session?.status ?? current.session.status,
-      config: partial.session?.config ?? current.session.config,
-      characterId: partial.session?.characterId ?? current.session.characterId,
-    },
-    response: {
-      status: partial.response?.status ?? current.response.status,
-      text: partial.response?.text ?? current.response.text,
-    },
-    lastError: partial.lastError ?? current.lastError,
-  };
-}
-
-function createRealtimeSessionId(): string {
-  const randomUuid = globalThis.crypto?.randomUUID?.();
-  if (randomUuid) {
-    return randomUuid;
-  }
-
-  return `realtime-session-${Date.now()}-${nextFallbackSessionId++}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function createFailureOutput(error: Error): Record<string, unknown> {
-  return {
-    success: false,
-    error: error.message,
-  };
-}
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  toolName: string,
-): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(
-            new Error(
-              `Realtime tool "${toolName}" timed out after ${timeoutMs}ms`,
-            ),
-          );
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
-    }
-  }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }

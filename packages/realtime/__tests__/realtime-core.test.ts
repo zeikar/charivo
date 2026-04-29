@@ -349,6 +349,135 @@ describe("realtime-core", () => {
     });
   });
 
+  it("validates custom tool args before invoking handlers", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const handler = vi.fn(async (args: Record<string, unknown>) => ({
+      success: true,
+      args,
+    }));
+    const tool: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "setMood",
+        description: "Set a mood with a repeat count.",
+        parameters: {
+          type: "object",
+          properties: {
+            mood: {
+              type: "string",
+              enum: ["happy", "calm"],
+            },
+            count: {
+              type: "integer",
+            },
+            enabled: {
+              type: "boolean",
+            },
+          },
+          required: ["mood", "count"],
+        },
+      },
+      handler,
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [tool],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setMood",
+      args: { mood: "happy" },
+      callId: "call-missing-required",
+    });
+    await stub.emit({
+      type: "tool.call",
+      name: "setMood",
+      args: { mood: "angry", count: 1 },
+      callId: "call-enum-mismatch",
+    });
+    await stub.emit({
+      type: "tool.call",
+      name: "setMood",
+      args: { mood: "calm", count: "1" },
+      callId: "call-type-mismatch",
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
+      1,
+      "call-missing-required",
+      {
+        success: false,
+        error:
+          'Realtime tool "setMood" arguments failed schema validation: missing required property "count"',
+      },
+    );
+    expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
+      2,
+      "call-enum-mismatch",
+      {
+        success: false,
+        error:
+          'Realtime tool "setMood" arguments failed schema validation: property "mood" must be one of "happy", "calm"',
+      },
+    );
+    expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
+      3,
+      "call-type-mismatch",
+      {
+        success: false,
+        error:
+          'Realtime tool "setMood" arguments failed schema validation: property "count" must be integer',
+      },
+    );
+    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([
+      {
+        name: "setMood",
+        error: expect.any(Error),
+        callId: "call-missing-required",
+      },
+      {
+        name: "setMood",
+        error: expect.any(Error),
+        callId: "call-enum-mismatch",
+      },
+      {
+        name: "setMood",
+        error: expect.any(Error),
+        callId: "call-type-mismatch",
+      },
+    ]);
+
+    await stub.emit({
+      type: "tool.call",
+      name: "setMood",
+      args: { mood: "calm", count: 2, enabled: true },
+      callId: "call-valid",
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      { mood: "calm", count: 2, enabled: true },
+      expect.objectContaining({
+        callId: "call-valid",
+      }),
+    );
+    expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
+      4,
+      "call-valid",
+      {
+        success: true,
+        args: { mood: "calm", count: 2, enabled: true },
+      },
+    );
+  });
+
   it("emits canonical avatar action events for direct tools", async () => {
     const stub = createRealtimeClientStub();
     const manager = createRealtimeManager(stub.client, {
@@ -570,7 +699,7 @@ describe("realtime-core", () => {
       {
         success: false,
         error:
-          'setExpression requires a valid "expressionId" from the model catalog',
+          'Realtime tool "setExpression" arguments failed schema validation: property "expressionId" must be one of "Smile"',
       },
     );
     expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(

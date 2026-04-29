@@ -191,6 +191,13 @@ Observability events emitted by the manager:
 `RealtimeManager` owns the tool registry. Definitions sent to the provider come
 from the registry, not from `defaultSessionConfig.tools`.
 
+Before invoking a local tool handler, the manager validates incoming tool
+arguments against the tool definition's `required`, `enum`, and basic JSON
+Schema `type` fields. Invalid arguments follow the normal tool failure path:
+`realtime:tool:error` is emitted and a `{ success: false, error }` result is
+sent back to the transport. Nested object/array schemas, `additionalProperties`,
+and union `type` arrays are not enforced.
+
 ```ts
 manager.registerTool({
   definition: {

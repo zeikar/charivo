@@ -155,6 +155,12 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
 bus. It emits realtime, tool, text, and lip-sync related events back into core.
 
+Local tool calls are checked against the registered tool definition before the
+handler runs. The built-in validator covers `required`, `enum`, and basic JSON
+Schema `type` fields; invalid arguments emit `realtime:tool:error` and return a
+failure tool result. Nested object/array schemas, `additionalProperties`, and
+union `type` arrays are not enforced.
+
 Avatar expression/motion/gaze tools are optional and now live in
 `@charivo/realtime-avatar`. Use a result projector when you want those tool
 results bridged back into `realtime:expression`, `realtime:motion`, and
