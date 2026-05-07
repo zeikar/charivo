@@ -13,7 +13,7 @@ const config: Config = {
   },
 
   // Set the production url of your site here
-  url: "https://zeikar.github.io",
+  url: "https://zeikar.dev",
   baseUrl: "/charivo/",
 
   // GitHub pages deployment config.
