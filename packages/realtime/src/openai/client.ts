@@ -1025,12 +1025,23 @@ export function createOpenAIRealtimeClient(
 function toOpenAIRealtimeSessionUpdate(
   config?: RealtimeSessionConfig,
 ): Record<string, unknown> {
-  const session: Record<string, unknown> = {
-    audio: {
-      output: {
-        voice: config?.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
-      },
+  const audio: Record<string, unknown> = {
+    output: {
+      voice: config?.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
     },
+  };
+
+  const transcription = config?.inputAudioTranscription;
+  if (transcription !== undefined) {
+    if (transcription.enabled === false) {
+      audio.input = { transcription: null };
+    } else if (transcription.model !== undefined) {
+      audio.input = { transcription: { model: transcription.model } };
+    }
+  }
+
+  const session: Record<string, unknown> = {
+    audio,
     tool_choice: config?.toolChoice ?? "auto",
   };
 

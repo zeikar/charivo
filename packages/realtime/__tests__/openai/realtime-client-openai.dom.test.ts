@@ -409,6 +409,188 @@ describe("OpenAIRealtimeClient", () => {
     await updatePromise;
   });
 
+  it("includes audio.input.transcription.model when inputAudioTranscription.model is set", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+    });
+
+    const sendPayload = peer.dataChannel.send.mock.calls.at(-1)?.[0] as string;
+    const parsed = JSON.parse(sendPayload) as Record<string, unknown>;
+    const session = parsed.session as Record<string, unknown>;
+    const audio = session.audio as Record<string, unknown>;
+    expect(audio.input).toEqual({
+      transcription: { model: "gpt-4o-mini-transcribe" },
+    });
+
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "session.updated",
+          event_id: "charivo-session-update-1",
+        }),
+      }),
+    );
+
+    await updatePromise;
+  });
+
+  it("disables input transcription by sending audio.input.transcription: null when enabled is false", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { enabled: false },
+    });
+
+    const sendPayload = peer.dataChannel.send.mock.calls.at(-1)?.[0] as string;
+    const parsed = JSON.parse(sendPayload) as Record<string, unknown>;
+    const session = parsed.session as Record<string, unknown>;
+    const audio = session.audio as Record<string, unknown>;
+    expect(audio.input).toEqual({ transcription: null });
+
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "session.updated",
+          event_id: "charivo-session-update-1",
+        }),
+      }),
+    );
+
+    await updatePromise;
+  });
+
+  it("input transcription enabled: false overrides model when both are supplied", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: {
+        enabled: false,
+        model: "gpt-4o-mini-transcribe",
+      },
+    });
+
+    const sendPayload = peer.dataChannel.send.mock.calls.at(-1)?.[0] as string;
+    const parsed = JSON.parse(sendPayload) as Record<string, unknown>;
+    const session = parsed.session as Record<string, unknown>;
+    const audio = session.audio as Record<string, unknown>;
+    expect(audio.input).toEqual({ transcription: null });
+
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "session.updated",
+          event_id: "charivo-session-update-1",
+        }),
+      }),
+    );
+
+    await updatePromise;
+  });
+
   it("rebuilds the transport on recover when the peer connection has failed", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],

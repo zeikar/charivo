@@ -84,6 +84,10 @@ export interface RealtimeSessionConfig {
   maxTokens?: number;
   tools?: RealtimeTool[];
   toolChoice?: RealtimeToolChoice;
+  inputAudioTranscription?: {
+    model?: string;
+    enabled?: boolean;
+  };
 }
 
 export interface RealtimeSessionRequest {

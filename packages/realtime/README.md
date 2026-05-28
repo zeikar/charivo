@@ -54,6 +54,16 @@ await manager.startSession({
 await manager.updateSession({
   voice: "alloy",
 });
+
+// Switch the user-transcription model (cost vs. quality), or disable it.
+await manager.updateSession({
+  inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+});
+
+// Disable user transcription entirely (no whisper-1 charge):
+await manager.updateSession({
+  inputAudioTranscription: { enabled: false },
+});
 ```
 
 If the live transport drops temporarily, `RealtimeManager` now keeps the

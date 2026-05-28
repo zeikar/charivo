@@ -87,6 +87,35 @@ await manager.startSession({
 });
 ```
 
+### Input Audio Transcription
+
+`RealtimeSessionConfig.inputAudioTranscription` controls how the provider
+transcribes the user's microphone input. Leave it unset to preserve the
+provider's current default; the field is fully optional and lands under
+`audio.input.transcription` on the wire (OpenAI Realtime GA shape).
+
+```ts
+// Cheaper transcription model.
+await manager.startSession({
+  provider: "openai",
+  inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+});
+
+// Higher-quality transcription model.
+await manager.updateSession({
+  inputAudioTranscription: { model: "gpt-4o-transcribe" },
+});
+
+// Skip user transcription entirely (useful when your UI never shows it).
+await manager.updateSession({
+  inputAudioTranscription: { enabled: false },
+});
+```
+
+Model strings pass through to OpenAI without local validation, so unknown
+values surface as upstream errors. Known options today include `whisper-1`
+(default), `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe`.
+
 If you need stronger product-specific acting guidance, append it in the app
 layer on top of the library-generated base instead of making
 `@charivo/realtime` own product persona rules:

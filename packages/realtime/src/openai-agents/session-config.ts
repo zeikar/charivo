@@ -16,16 +16,27 @@ export function resolveVoice(config?: RealtimeSessionConfig): string {
 export function toOpenAIRealtimeAgentsSessionConfig(
   config?: RealtimeSessionConfig,
 ): Record<string, unknown> {
+  const audio: Record<string, unknown> = {
+    output: {
+      voice: resolveVoice(config),
+    },
+  };
+
+  const transcription = config?.inputAudioTranscription;
+  if (transcription !== undefined) {
+    if (transcription.enabled === false) {
+      audio.input = { transcription: null };
+    } else if (transcription.model !== undefined) {
+      audio.input = { transcription: { model: transcription.model } };
+    }
+  }
+
   const sessionConfig: Record<string, unknown> = {
     model: config?.model ?? DEFAULT_OPENAI_REALTIME_MODEL,
     instructions: resolveInstructions(config),
     toolChoice: config?.toolChoice ?? "auto",
     outputModalities: ["audio"],
-    audio: {
-      output: {
-        voice: resolveVoice(config),
-      },
-    },
+    audio,
   };
 
   if (config?.temperature !== undefined) {

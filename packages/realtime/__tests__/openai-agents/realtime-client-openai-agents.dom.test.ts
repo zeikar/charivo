@@ -356,6 +356,109 @@ describe("OpenAIRealtimeAgentsClient", () => {
     });
   });
 
+  it("forwards inputAudioTranscription.model into audio.input.transcription on initial connect", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+    });
+
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        },
+      },
+    });
+  });
+
+  it("forwards inputAudioTranscription disable shape (null) into audio.input.transcription on initial connect", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { enabled: false },
+    });
+
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        input: {
+          transcription: null,
+        },
+      },
+    });
+  });
+
+  it("updates audio.input.transcription on patch when inputAudioTranscription changes", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    await client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { model: "gpt-4o-transcribe" },
+    });
+
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        input: {
+          transcription: { model: "gpt-4o-transcribe" },
+        },
+      },
+    });
+
+    await client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { enabled: false },
+    });
+
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        input: {
+          transcription: null,
+        },
+      },
+    });
+  });
+
   it("labels online lifecycle recovery attempts with the online cause", async () => {
     globalThis.fetch = vi.fn(async () =>
       Response.json({

@@ -159,14 +159,25 @@ function toRealtimeFormData(request: RealtimeSessionRequest): FormData {
 function toOpenAIRealtimeSession(
   session: RealtimeSessionConfig,
 ): Record<string, unknown> {
+  const audio: Record<string, unknown> = {
+    output: {
+      voice: session.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
+    },
+  };
+
+  const transcription = session.inputAudioTranscription;
+  if (transcription !== undefined) {
+    if (transcription.enabled === false) {
+      audio.input = { transcription: null };
+    } else if (transcription.model !== undefined) {
+      audio.input = { transcription: { model: transcription.model } };
+    }
+  }
+
   const payload: Record<string, unknown> = {
     type: "realtime",
     model: session.model ?? DEFAULT_OPENAI_REALTIME_MODEL,
-    audio: {
-      output: {
-        voice: session.voice ?? DEFAULT_OPENAI_REALTIME_VOICE,
-      },
-    },
+    audio,
     tool_choice: session.toolChoice ?? "auto",
   };
 

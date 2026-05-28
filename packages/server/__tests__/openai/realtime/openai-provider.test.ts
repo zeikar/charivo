@@ -77,6 +77,60 @@ describe("OpenAIRealtimeProvider", () => {
     });
   });
 
+  it("forwards inputAudioTranscription into audio.input.transcription on the WebRTC adapter", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const formData = init?.body as FormData;
+        const session = JSON.parse(String(formData.get("session"))) as Record<
+          string,
+          unknown
+        >;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        });
+
+        return new Response("answer-sdp");
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      transport: "webrtc",
+      sdpOffer: "offer-sdp",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+      },
+    });
+  });
+
+  it("emits audio.input.transcription: null on the WebRTC adapter when transcription is disabled", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const formData = init?.body as FormData;
+        const session = JSON.parse(String(formData.get("session"))) as Record<
+          string,
+          unknown
+        >;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({ transcription: null });
+
+        return new Response("answer-sdp");
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      transport: "webrtc",
+      sdpOffer: "offer-sdp",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { enabled: false },
+      },
+    });
+  });
+
   it("creates ephemeral client secret bootstraps for the agents adapter", async () => {
     globalThis.fetch = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -126,6 +180,58 @@ describe("OpenAIRealtimeProvider", () => {
       adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
       transport: "webrtc",
       clientSecret: "client-secret",
+    });
+  });
+
+  it("forwards inputAudioTranscription into session.audio.input.transcription on the agents adapter", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const session = body.session as Record<string, unknown>;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        });
+
+        return Response.json({
+          client_secret: { value: "client-secret" },
+        });
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+      transport: "webrtc",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+      },
+    });
+  });
+
+  it("emits session.audio.input.transcription: null on the agents adapter when transcription is disabled", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const session = body.session as Record<string, unknown>;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({ transcription: null });
+
+        return Response.json({
+          client_secret: { value: "client-secret" },
+        });
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+      transport: "webrtc",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { enabled: false },
+      },
     });
   });
 

@@ -29,6 +29,7 @@ export function buildRealtimeSessionConfig({
     maxTokens: baseConfig?.maxTokens,
     tools: baseConfig?.tools,
     toolChoice: baseConfig?.toolChoice ?? "auto",
+    inputAudioTranscription: baseConfig?.inputAudioTranscription,
   };
 }
 

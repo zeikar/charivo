@@ -1331,6 +1331,42 @@ describe("realtime-core", () => {
     });
   });
 
+  it("forwards inputAudioTranscription through both startSession and updateSession", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({
+      provider: "openai",
+      inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+    });
+
+    expect(stub.client.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+      }),
+    );
+
+    await manager.updateSession({
+      inputAudioTranscription: { model: "gpt-4o-transcribe" },
+    });
+
+    expect(stub.client.updateSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inputAudioTranscription: { model: "gpt-4o-transcribe" },
+      }),
+    );
+
+    await manager.updateSession({
+      inputAudioTranscription: { enabled: false },
+    });
+
+    expect(stub.client.updateSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        inputAudioTranscription: { enabled: false },
+      }),
+    );
+  });
+
   it("keeps the active session on refresh failures and can retry patching", async () => {
     const stub = createRealtimeClientStub();
     let updateAttempts = 0;
