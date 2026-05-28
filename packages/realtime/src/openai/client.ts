@@ -19,6 +19,7 @@ import {
   isRecord,
 } from "../internal/shared";
 import { delay } from "../internal/timing";
+import { LipSyncAnalyzer } from "../openai-agents/lip-sync-analyzer";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import { DEFAULT_OPENAI_REALTIME_VOICE } from "./defaults";
 
@@ -92,10 +93,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private audioElement: HTMLAudioElement | null = null;
   private mediaStream: MediaStream | null = null;
   private audioSender: RTCRtpSender | null = null;
-  private audioContext: AudioContext | null = null;
-  private audioSource: MediaStreamAudioSourceNode | null = null;
-  private analyser: AnalyserNode | null = null;
-  private lipSyncInterval: number | null = null;
+  private readonly lipSyncAnalyzer = new LipSyncAnalyzer({
+    onRms: (rms) => this.emitEvent({ type: "audio.lipsync", rms }),
+    onError: (error) => console.error("Failed to setup audio analysis:", error),
+  });
   private isResponseInProgress = false;
   private cancelInFlight = false;
   private hasStartedAssistantResponse = false;
@@ -132,7 +133,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       this.audioElement = document.createElement("audio");
       this.audioElement.autoplay = true;
       this.audioElement.setAttribute("playsinline", "true");
-      this.prepareAudioAnalysis();
+      void this.lipSyncAnalyzer.prepareAudioContext().catch(() => undefined);
       this.bindConnectionEvents();
       this.bindTransportLifecycleEvents();
 
@@ -140,7 +141,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         if (this.audioElement) {
           this.audioElement.srcObject = event.streams[0];
         }
-        this.setupAudioAnalysis(event.streams[0]);
+        this.lipSyncAnalyzer.attachStream(event.streams[0]);
       };
 
       try {
@@ -590,20 +591,20 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   };
 
   private readonly handleHidden = (): void => {
-    this.pauseAudioAnalysis();
+    this.lipSyncAnalyzer.pause();
   };
 
   private readonly handleVisible = (): void => {
-    this.resumeAudioAnalysis();
+    this.lipSyncAnalyzer.resume();
     this.emitConnectionLost("visibility");
   };
 
   private readonly handlePageHide = (): void => {
-    this.pauseAudioAnalysis();
+    this.lipSyncAnalyzer.pause();
   };
 
   private readonly handlePageShow = (event: PageTransitionEvent): void => {
-    this.resumeAudioAnalysis();
+    this.lipSyncAnalyzer.resume();
     if (event.persisted) {
       this.emitConnectionLost("pageshow");
     }
@@ -653,7 +654,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.isResponseInProgress = false;
     this.cancelInFlight = false;
     this.resetResponseTracking();
-    this.stopLipSyncAnalysis();
+    this.lipSyncAnalyzer.stopOutput();
     this.emitEvent({
       type: "connection.lost",
       cause,
@@ -684,97 +685,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     return true;
   }
 
-  private prepareAudioAnalysis(): void {
-    if (this.audioContext) {
-      return;
-    }
-
-    const audioContextConstructor =
-      window.AudioContext ||
-      (window as Window & { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!audioContextConstructor) {
-      return;
-    }
-
-    this.audioContext = new audioContextConstructor();
-  }
-
-  private setupAudioAnalysis(stream: MediaStream): void {
-    try {
-      this.prepareAudioAnalysis();
-      if (!this.audioContext) {
-        return;
-      }
-
-      this.audioSource?.disconnect();
-      this.audioSource = this.audioContext.createMediaStreamSource(stream);
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.8;
-      this.audioSource.connect(this.analyser);
-
-      this.startLipSyncAnalysis();
-    } catch (error) {
-      console.error("Failed to setup audio analysis:", error);
-    }
-  }
-
-  private startLipSyncAnalysis(): void {
-    if (!this.analyser) {
-      return;
-    }
-
-    const bufferLength = this.analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    this.lipSyncInterval = window.setInterval(() => {
-      if (!this.analyser) {
-        return;
-      }
-
-      this.analyser.getByteFrequencyData(dataArray);
-
-      let sum = 0;
-      for (let index = 0; index < bufferLength; index += 1) {
-        const normalized = dataArray[index] / 255;
-        sum += normalized * normalized;
-      }
-
-      const rms = Math.sqrt(sum / bufferLength);
-      this.emitEvent({
-        type: "audio.lipsync",
-        rms: Math.min(rms * 3, 1),
-      });
-    }, 1000 / 60);
-  }
-
-  private stopLipSyncAnalysis(): void {
-    if (this.lipSyncInterval) {
-      clearInterval(this.lipSyncInterval);
-      this.lipSyncInterval = null;
-    }
-
-    this.emitEvent({ type: "audio.lipsync", rms: 0 });
-  }
-
-  private pauseAudioAnalysis(): void {
-    this.stopLipSyncAnalysis();
-  }
-
-  private resumeAudioAnalysis(): void {
-    if (!this.analyser || this.lipSyncInterval) {
-      return;
-    }
-
-    this.startLipSyncAnalysis();
-  }
-
   private cleanup(): void {
     this.isCleaningUp = true;
     this.unbindTransportLifecycleEvents();
     this.iceDisconnectDebouncer.cancel();
-    this.stopLipSyncAnalysis();
+    this.lipSyncAnalyzer.cleanup();
     this.rejectPendingSessionUpdate(
       new Error("Realtime session ended before session update completed"),
     );
@@ -799,14 +714,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       this.audioElement = null;
     }
 
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
-
-    this.audioSource = null;
     this.audioSender = null;
-    this.analyser = null;
     this.isResponseInProgress = false;
     this.cancelInFlight = false;
     this.connectionLossNotified = false;
