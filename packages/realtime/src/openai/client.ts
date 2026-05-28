@@ -1057,8 +1057,8 @@ function toOpenAIRealtimeSessionUpdate(
     session.max_response_output_tokens = config.maxTokens;
   }
 
-  if (config?.tools?.length) {
-    session.tools = config.tools;
+  if (config && "tools" in config) {
+    session.tools = config.tools ?? [];
   }
 
   return session;

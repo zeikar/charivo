@@ -1855,4 +1855,175 @@ describe("realtime-core", () => {
     await expect(manager.sendMessage("hi")).resolves.toBeUndefined();
     expect(stub.client.sendText).toHaveBeenCalledWith("hi");
   });
+
+  it("rejects second sendMessage before the first assistant.response.started event arrives", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+
+    // First sendMessage dispatches to transport but response.started hasn't arrived yet.
+    const first = manager.sendMessage("hello");
+
+    // Second sendMessage should be rejected even before state.response.status becomes "responding".
+    await expect(manager.sendMessage("world")).rejects.toThrow(
+      "already in progress",
+    );
+
+    // Let the first one complete.
+    await expect(first).resolves.toBeUndefined();
+    expect(stub.client.sendText).toHaveBeenCalledTimes(1);
+    expect(stub.client.sendText).toHaveBeenCalledWith("hello");
+  });
+
+  it("defers requestToolRefresh updateSession until response settles", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const toolA: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolA",
+        description: "Tool A",
+        parameters: { type: "object", properties: {} },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const toolB: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolB",
+        description: "Tool B",
+        parameters: { type: "object", properties: {} },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const manager = createRealtimeManager(stub.client, { tools: [toolA] });
+
+    await manager.startSession({ provider: "openai" });
+    vi.mocked(stub.client.updateSession).mockClear();
+
+    // Simulate a response in progress.
+    await stub.emit({ type: "assistant.response.started" });
+    expect(manager.getState().response.status).toBe("responding");
+
+    // Register and unregister tools while response is active — both should be queued.
+    manager.registerTool(toolB);
+    manager.unregisterTool("toolA");
+
+    // No session update should have fired yet.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stub.client.updateSession).not.toHaveBeenCalled();
+
+    // Complete the response — the deferred refresh should now fire (collapsed into one call).
+    await stub.emit({
+      type: "assistant.response.completed",
+      text: "done",
+      usage: undefined,
+      model: undefined,
+      responseId: undefined,
+    });
+
+    await vi.waitFor(() => {
+      expect(stub.client.updateSession).toHaveBeenCalledTimes(1);
+    });
+
+    const refreshedConfig = vi.mocked(stub.client.updateSession).mock
+      .calls[0]?.[0];
+    expect((refreshedConfig?.tools ?? []).some((t) => t.name === "toolB")).toBe(
+      true,
+    );
+    expect((refreshedConfig?.tools ?? []).some((t) => t.name === "toolA")).toBe(
+      false,
+    );
+  });
+
+  it("clears responseOutstanding on transport error so subsequent sendMessage succeeds", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+
+    // Send a message — sets responseOutstanding before response.started arrives.
+    const first = manager.sendMessage("hello");
+    await expect(first).resolves.toBeUndefined();
+
+    // Transport error arrives before assistant.response.completed.
+    await stub.emit({ type: "error", error: new Error("transport boom") });
+
+    // responseOutstanding should be cleared; a new sendMessage must succeed.
+    await expect(manager.sendMessage("again")).resolves.toBeUndefined();
+    expect(stub.client.sendText).toHaveBeenLastCalledWith("again");
+  });
+
+  it("flushes pending tool refresh after transport error clears the in-flight response", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const toolA: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolA",
+        description: "Tool A",
+        parameters: { type: "object", properties: {} },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const manager = createRealtimeManager(stub.client, { tools: [toolA] });
+
+    await manager.startSession({ provider: "openai" });
+    vi.mocked(stub.client.updateSession).mockClear();
+
+    // Simulate response in progress.
+    await stub.emit({ type: "assistant.response.started" });
+
+    // Queue a tool refresh while responding.
+    manager.unregisterTool("toolA");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stub.client.updateSession).not.toHaveBeenCalled();
+
+    // Transport error resolves the in-flight response — deferred refresh must fire.
+    await stub.emit({ type: "error", error: new Error("transport boom") });
+
+    await vi.waitFor(() => {
+      expect(stub.client.updateSession).toHaveBeenCalledTimes(1);
+    });
+
+    const refreshedConfig = vi.mocked(stub.client.updateSession).mock
+      .calls[0]?.[0];
+    expect(refreshedConfig?.tools).toEqual([]);
+  });
+
+  it("unregistering the last tool sends tools:[] in session.update", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const toolA: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolA",
+        description: "Tool A",
+        parameters: { type: "object", properties: {} },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const manager = createRealtimeManager(stub.client, { tools: [toolA] });
+
+    await manager.startSession({ provider: "openai" });
+    vi.mocked(stub.client.updateSession).mockClear();
+
+    manager.unregisterTool("toolA");
+
+    await vi.waitFor(() => {
+      expect(stub.client.updateSession).toHaveBeenCalled();
+    });
+
+    const refreshedConfig = vi.mocked(stub.client.updateSession).mock
+      .calls[0]?.[0];
+    expect(refreshedConfig?.tools).toEqual([]);
+  });
 });

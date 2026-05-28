@@ -69,6 +69,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private hasQueuedRefresh = false;
   private stopRequestedDuringRefresh = false;
   private reconnectToken = 0;
+  private responseOutstanding = false;
+  private hasPendingToolRefresh = false;
   private sessionId?: string;
   private readonly toolRegistry = new RealtimeToolRegistry();
   private readonly audioOutput = new RealtimeAudioOutput((event, payload) => {
@@ -279,15 +281,20 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       throw new CharivoStateError("Realtime session is reconnecting");
     }
 
-    if (this.state.response.status === "responding") {
+    if (
+      this.state.response.status === "responding" ||
+      this.responseOutstanding
+    ) {
       throw new CharivoStateError(
         "Response already in progress. Call interrupt() before sending a new message.",
       );
     }
 
-    await this.client
-      .sendText(text)
-      .catch((error) => Promise.reject(toCharivoError("transport", error)));
+    this.responseOutstanding = true;
+    await this.client.sendText(text).catch((error) => {
+      this.responseOutstanding = false;
+      return Promise.reject(toCharivoError("transport", error));
+    });
   }
 
   async sendAudioChunk(audio: ArrayBuffer): Promise<void> {
@@ -316,6 +323,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     await this.client
       .interrupt()
       .catch((error) => Promise.reject(toCharivoError("transport", error)));
+    this.responseOutstanding = false;
     this.state = {
       ...this.state,
       response: {
@@ -325,6 +333,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     };
     this.audioOutput.end();
     this.emitState();
+    this.flushPendingToolRefresh();
   }
 
   private async handleClientEvent(
@@ -408,7 +417,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "assistant.response.completed": {
+        this.responseOutstanding = false;
         if (this.state.response.status === "interrupted") {
+          this.flushPendingToolRefresh();
           return;
         }
 
@@ -423,6 +434,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         };
         this.eventEmitter?.emit("realtime:assistant:done", { text });
         this.emitState();
+        this.flushPendingToolRefresh();
         return;
       }
 
@@ -490,7 +502,18 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           this.emitState();
           return;
         }
+        this.responseOutstanding = false;
+        if (this.state.response.status === "responding") {
+          this.audioOutput.end();
+          this.state = {
+            ...this.state,
+            response: { status: "interrupted", text: this.state.response.text },
+          };
+        }
         this.applyError(event.error, this.state.connection);
+        if (this.state.session.status === "active") {
+          this.flushPendingToolRefresh();
+        }
         return;
     }
   }
@@ -522,6 +545,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       return;
     }
 
+    this.responseOutstanding = false;
+    this.hasPendingToolRefresh = false;
     this.isRecoveringConnection = true;
     this.reconnectToken += 1;
     const reconnectToken = this.reconnectToken;
@@ -766,11 +791,24 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
   private requestToolRefresh(): void {
     if (this.state.session.status !== "active") return;
+    if (
+      this.state.response.status === "responding" ||
+      this.responseOutstanding
+    ) {
+      this.hasPendingToolRefresh = true;
+      return;
+    }
     this.updateSession().catch(() => {
       // performSessionRefresh calls applyError (which emits realtime:error
       // and sets state.lastError) before rethrowing; swallow here to avoid
       // an unhandled rejection.
     });
+  }
+
+  private flushPendingToolRefresh(): void {
+    if (!this.hasPendingToolRefresh) return;
+    this.hasPendingToolRefresh = false;
+    this.requestToolRefresh();
   }
 
   private async runRefreshLoop(): Promise<void> {
@@ -858,6 +896,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   private finalizeFailedSession(error: Error): void {
+    this.responseOutstanding = false;
+    this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
     this.audioOutput.end();
@@ -887,6 +927,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     emitSessionEnd: boolean,
     reason: RealtimeSessionTransitionReason,
   ): void {
+    this.responseOutstanding = false;
+    this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
     this.audioOutput.end();
