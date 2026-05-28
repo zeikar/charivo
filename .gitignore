@@ -85,3 +85,6 @@ jspm_packages/
 # Temporary files
 *.tmp
 *.temp
+
+# hyperclaude workflow artifacts (plans, reviews, research)
+.hyperclaude/
