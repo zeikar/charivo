@@ -18,6 +18,7 @@ import {
   isRealtimeSessionBootstrap,
   isRecord,
 } from "../internal/shared";
+import { delay } from "../internal/timing";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import { DEFAULT_OPENAI_REALTIME_VOICE } from "./defaults";
 
@@ -172,19 +173,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         sdpOffer: offer.sdp,
       });
 
-      if (
-        bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
-        bootstrap.transport !== "webrtc" ||
-        !("answerSdp" in bootstrap)
-      ) {
-        throw new Error(
-          `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,
-        );
-      }
+      const answerSdp = this.resolveWebRTCAnswerSdp(bootstrap);
 
       await this.pc.setRemoteDescription({
         type: "answer",
-        sdp: bootstrap.answerSdp,
+        sdp: answerSdp,
       });
 
       this.emitEvent({ type: "session.started" });
@@ -421,10 +414,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
           return;
         }
 
-        if (!this.hasStartedAssistantResponse) {
-          this.hasStartedAssistantResponse = true;
-          this.emitEvent({ type: "assistant.response.started" });
-        }
+        this.ensureAssistantResponseStarted();
 
         this.assistantText += event.delta;
         this.emitEvent({
@@ -437,50 +427,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         if (this.cancelInFlight || !event.text) {
           return;
         }
-
-        if (!this.hasStartedAssistantResponse) {
-          this.hasStartedAssistantResponse = true;
-          this.emitEvent({ type: "assistant.response.started" });
-        }
-
-        if (event.text !== this.assistantText) {
-          const delta = event.text.startsWith(this.assistantText)
-            ? event.text.slice(this.assistantText.length)
-            : event.text;
-
-          this.assistantText = event.text;
-          if (delta) {
-            this.emitEvent({
-              type: "assistant.text.delta",
-              text: delta,
-            });
-          }
-        }
+        this.emitFinalAssistantText(event.text);
         return;
 
       case "response.output_audio_transcript.done":
         if (this.cancelInFlight || !event.transcript) {
           return;
         }
-
-        if (!this.hasStartedAssistantResponse) {
-          this.hasStartedAssistantResponse = true;
-          this.emitEvent({ type: "assistant.response.started" });
-        }
-
-        if (event.transcript !== this.assistantText) {
-          const delta = event.transcript.startsWith(this.assistantText)
-            ? event.transcript.slice(this.assistantText.length)
-            : event.transcript;
-
-          this.assistantText = event.transcript;
-          if (delta) {
-            this.emitEvent({
-              type: "assistant.text.delta",
-              text: delta,
-            });
-          }
-        }
+        this.emitFinalAssistantText(event.transcript);
         return;
 
       case "conversation.item.input_audio_transcription.completed":
@@ -918,19 +872,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       sdpOffer: offer.sdp,
     });
 
-    if (
-      bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
-      bootstrap.transport !== "webrtc" ||
-      !("answerSdp" in bootstrap)
-    ) {
-      throw new Error(
-        `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,
-      );
-    }
+    const answerSdp = this.resolveWebRTCAnswerSdp(bootstrap);
 
     await pc.setRemoteDescription({
       type: "answer",
-      sdp: bootstrap.answerSdp,
+      sdp: answerSdp,
     });
     return true;
   }
@@ -989,10 +935,48 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     );
   }
 
+  private resolveWebRTCAnswerSdp(bootstrap: RealtimeSessionBootstrap): string {
+    if (
+      bootstrap.adapter !== OPENAI_REALTIME_ADAPTER ||
+      bootstrap.transport !== "webrtc" ||
+      !("answerSdp" in bootstrap)
+    ) {
+      throw new Error(
+        `OpenAI realtime client only supports ${OPENAI_REALTIME_ADAPTER} bootstrap, received ${bootstrap.adapter}/${bootstrap.transport}`,
+      );
+    }
+    return bootstrap.answerSdp;
+  }
+
   private resetResponseTracking(): void {
     this.assistantText = "";
     this.hasStartedAssistantResponse = false;
     this.hasStartedAudioOutput = false;
+  }
+
+  private ensureAssistantResponseStarted(): void {
+    if (!this.hasStartedAssistantResponse) {
+      this.hasStartedAssistantResponse = true;
+      this.emitEvent({ type: "assistant.response.started" });
+    }
+  }
+
+  private emitFinalAssistantText(full: string): void {
+    this.ensureAssistantResponseStarted();
+
+    if (full !== this.assistantText) {
+      const delta = full.startsWith(this.assistantText)
+        ? full.slice(this.assistantText.length)
+        : full;
+
+      this.assistantText = full;
+      if (delta) {
+        this.emitEvent({
+          type: "assistant.text.delta",
+          text: delta,
+        });
+      }
+    }
   }
 
   private emitEvent(event: RealtimeTransportEvent): void {
@@ -1062,10 +1046,4 @@ function toOpenAIRealtimeSessionUpdate(
   }
 
   return session;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
