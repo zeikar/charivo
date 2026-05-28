@@ -1819,4 +1819,40 @@ describe("realtime-core", () => {
       text: "fresh",
     });
   });
+
+  it("rejects sendMessage while a response is in progress", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+
+    await stub.emit({ type: "assistant.response.started" });
+
+    expect(manager.getState().response.status).toBe("responding");
+
+    await expect(manager.sendMessage("hi")).rejects.toThrow(
+      "already in progress",
+    );
+    expect(stub.client.sendText).not.toHaveBeenCalled();
+  });
+
+  it("allows sendMessage after interrupt() resolves", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+
+    await stub.emit({ type: "assistant.response.started" });
+    expect(manager.getState().response.status).toBe("responding");
+
+    await manager.interrupt();
+    expect(manager.getState().response.status).toBe("interrupted");
+
+    await expect(manager.sendMessage("hi")).resolves.toBeUndefined();
+    expect(stub.client.sendText).toHaveBeenCalledWith("hi");
+  });
 });

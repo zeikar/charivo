@@ -279,6 +279,12 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       throw new CharivoStateError("Realtime session is reconnecting");
     }
 
+    if (this.state.response.status === "responding") {
+      throw new CharivoStateError(
+        "Response already in progress. Call interrupt() before sending a new message.",
+      );
+    }
+
     await this.client
       .sendText(text)
       .catch((error) => Promise.reject(toCharivoError("transport", error)));
