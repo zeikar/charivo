@@ -1,5 +1,46 @@
 # @charivo/realtime
 
+## 0.8.0
+
+### Minor Changes
+
+- 8f7d277: Expose inputAudioTranscription on RealtimeSessionConfig (model + enabled)
+
+  `RealtimeSessionConfig` now accepts an optional `inputAudioTranscription` field for controlling user-microphone transcription on the provider:
+  - `inputAudioTranscription: { model: "gpt-4o-mini-transcribe" }` selects a cheaper transcription model.
+  - `inputAudioTranscription: { model: "gpt-4o-transcribe" }` selects the higher-quality option.
+  - `inputAudioTranscription: { enabled: false }` disables transcription entirely (useful when the UI never displays the user transcript).
+
+  Default behavior is unchanged when the field is unset — providers continue with their existing server-side defaults. The wire shape lands under `audio.input.transcription` per the OpenAI Realtime GA contract, and applies consistently across the legacy OpenAI WebRTC client, the OpenAI Agents SDK transport, and the server provider. Model strings are pass-through; unknown values surface as upstream errors from OpenAI rather than being validated locally. Example known values: `whisper-1`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`.
+
+- d7de06e: Reject sendMessage while a realtime response is in progress
+
+  `RealtimeManager.sendMessage()` now throws `CharivoStateError` when
+  `state.response.status === "responding"`. Previously the call was forwarded
+  to the underlying transport client, which either silently dropped it (legacy
+  OpenAI client) or caused OpenAI to auto-cancel the in-progress response and
+  start a new one — paying for tokens that were immediately discarded.
+
+  **Behavior/contract change:** callers who relied on silent-drop or
+  auto-cancel behavior must now call `interrupt()` first and wait for it to
+  resolve before sending a new message.
+
+  The guard order in `sendMessage` is: session active → connection connected →
+  response not in progress.
+
+  `sendAudioChunk` is intentionally unaffected. Audio chunks are continuous
+  streaming input and overlap is handled by OpenAI VAD/turn-detection on the
+  server side.
+
+### Patch Changes
+
+- 3c2418a: Auto-refresh active realtime session when tools are registered or unregistered
+
+  Previously, tools registered or unregistered after `startSession()` were silently invisible to the provider until the caller explicitly called `updateSession()`. The `registerTool` and `unregisterTool` methods now enqueue a session refresh automatically when a session is active. Idle managers (no active session) are unaffected and incur no cost.
+
+- Updated dependencies [8f7d277]
+  - @charivo/core@0.12.0
+
 ## 0.7.2
 
 ### Patch Changes
