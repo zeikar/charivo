@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Render manager and utilities for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
