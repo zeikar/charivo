@@ -1233,15 +1233,16 @@ describe("realtime-core", () => {
     vi.mocked(stub.client.disconnect).mockClear();
 
     manager.registerTool(toolB);
-    await manager.updateSession();
 
-    expect(stub.client.updateSession).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        tools: expect.arrayContaining([
-          expect.objectContaining({ name: "toolA" }),
-          expect.objectContaining({ name: "toolB" }),
-        ]),
-      }),
+    await vi.waitFor(() =>
+      expect(stub.client.updateSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          tools: expect.arrayContaining([
+            expect.objectContaining({ name: "toolA" }),
+            expect.objectContaining({ name: "toolB" }),
+          ]),
+        }),
+      ),
     );
 
     vi.mocked(stub.client.connect).mockClear();
@@ -1249,18 +1250,85 @@ describe("realtime-core", () => {
     vi.mocked(stub.client.disconnect).mockClear();
 
     manager.unregisterTool("toolA");
-    await manager.updateSession();
 
-    const refreshedConfig = vi.mocked(stub.client.updateSession).mock
-      .calls[0]?.[0];
-    expect(refreshedConfig).toMatchObject({
-      tools: expect.arrayContaining([
-        expect.objectContaining({ name: "toolB" }),
-      ]),
+    await vi.waitFor(() => {
+      const refreshedConfig = vi.mocked(stub.client.updateSession).mock
+        .calls[0]?.[0];
+      expect(refreshedConfig).toMatchObject({
+        tools: expect.arrayContaining([
+          expect.objectContaining({ name: "toolB" }),
+        ]),
+      });
+      expect(
+        (refreshedConfig?.tools ?? []).some((tool) => tool.name === "toolA"),
+      ).toBe(false);
     });
-    expect(
-      (refreshedConfig?.tools ?? []).some((tool) => tool.name === "toolA"),
-    ).toBe(false);
+  });
+
+  it("does NOT auto-refresh when registering a tool on an idle manager", async () => {
+    const stub = createRealtimeClientStub();
+    const toolB: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolB",
+        description: "Tool B",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+    const manager = createRealtimeManager(stub.client);
+
+    // Register a tool before any session has been started.
+    manager.registerTool(toolB);
+
+    // Give any async work a chance to run (macrotask drains all pending microtasks).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(stub.client.updateSession).not.toHaveBeenCalled();
+  });
+
+  it("emits realtime:error and sets lastError when auto-refresh fails", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+
+    const manager = createRealtimeManager(stub.client);
+    manager.setEventEmitter(eventEmitter);
+
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    // startSession uses client.connect, not updateSession. Set rejection now.
+    vi.mocked(stub.client.updateSession).mockRejectedValue(
+      new Error("transport failure"),
+    );
+
+    const toolB: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toolB",
+        description: "Tool B",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(async () => ({ success: true })),
+    };
+
+    manager.registerTool(toolB);
+
+    await vi.waitFor(() => {
+      const errorPayloads = getEventPayloads(eventEmitter, "realtime:error");
+      expect(errorPayloads.length).toBeGreaterThan(0);
+    });
+
+    expect(manager.getState().lastError).toMatchObject({
+      message: expect.stringContaining("transport failure"),
+    });
   });
 
   it("keeps the active session on refresh failures and can retry patching", async () => {

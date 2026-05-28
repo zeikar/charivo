@@ -128,10 +128,12 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
   registerTool(tool: RealtimeToolRegistration): void {
     this.toolRegistry.register(tool);
+    this.requestToolRefresh();
   }
 
   unregisterTool(name: string): void {
     this.toolRegistry.unregister(name);
+    this.requestToolRefresh();
   }
 
   getRegisteredTools(): RealtimeTool[] {
@@ -754,6 +756,15 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     } finally {
       this.isStoppingSession = false;
     }
+  }
+
+  private requestToolRefresh(): void {
+    if (this.state.session.status !== "active") return;
+    this.updateSession().catch(() => {
+      // performSessionRefresh calls applyError (which emits realtime:error
+      // and sets state.lastError) before rethrowing; swallow here to avoid
+      // an unhandled rejection.
+    });
   }
 
   private async runRefreshLoop(): Promise<void> {
