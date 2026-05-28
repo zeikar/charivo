@@ -87,6 +87,8 @@ await manager.startSession({
 });
 ```
 
+`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
+
 ### Input Audio Transcription
 
 `RealtimeSessionConfig.inputAudioTranscription` controls how the provider
@@ -232,7 +234,7 @@ const bootstrap = await provider.createSession({
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can
 still pass those fields explicitly when they need deterministic provider
-configuration.
+configuration. For pricing information on the available models, see [OpenAI's pricing page](https://openai.com/api/pricing/).
 
 ## Alternatives
 

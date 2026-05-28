@@ -50,7 +50,11 @@ await manager.startSession({
   provider: "openai",
   model: "gpt-realtime-mini",
 });
+```
 
+`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive — consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
+
+```ts
 await manager.updateSession({
   voice: "alloy",
 });
