@@ -1,7 +1,7 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
-Updated: 2026-04-21
+Updated: 2026-05-29
 
 ## Purpose
 
@@ -66,7 +66,7 @@ Lock the product target and establish a baseline for the current realtime
 stack.
 
 Status:
-Mostly complete.
+Complete.
 
 What is done:
 
@@ -77,15 +77,13 @@ What is done:
 
 What is still open:
 
-- interruption recovery and lip-sync still need a lightweight written baseline
-- acceptance thresholds should be written down explicitly instead of staying
-  implicit in recent work
+- nothing blocking; the baseline is now recorded in [docs/baseline.md](docs/baseline.md)
 
-Exit criteria:
+Exit criteria (met):
 
-- response-start baseline is recorded
+- response-start baseline is recorded (see [docs/baseline.md](docs/baseline.md))
 - interruption and lip-sync expectations are stated clearly enough to compare
-  future changes against them
+  future changes against them (see [docs/baseline.md](docs/baseline.md))
 
 ### Phase 1. Avatar Expressiveness
 
