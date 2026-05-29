@@ -104,12 +104,23 @@ What is done:
 - `examples/web` demonstrates live expression, motion, gaze, and avatar debug
   visibility
 
+Decisions:
+
+- `setIdleMode` stays **renderer/state-driven; not a primitive** (decided
+  2026-05-29). Idle is fallback filler behavior (the Live2D renderer auto-plays
+  a random `Idle`-group motion at lowest priority when nothing else is running),
+  semantically distinct from the directed `setExpression` / `playMotion` /
+  `lookAt` actions — exposing it as a per-turn tool would mis-model it, and
+  there is no demand (no demo control, no request) to justify the core-event +
+  tool + renderer surface a primitive would add. If a concrete need ever appears
+  (e.g. "freeze the avatar mid-conversation"), expose it as session config
+  (`enableIdleFallback`-style), not a per-turn tool; the current implementation
+  is isolated, so adding it later is cheap and non-breaking.
+
 What is still open:
 
 - validate whether the current action mix actually feels like Amadeus rather
   than a generic demo
-- decide whether `setIdleMode` is a real primitive or should remain
-  renderer/state-driven
 - decide whether non-realtime paths should ever drive avatar actions again
 
 Exit criteria:
