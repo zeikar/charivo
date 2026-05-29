@@ -79,7 +79,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private isCleaningUp = false;
   private assistant: AssistantState = { text: "", started: false };
   private assistantCompletionMetadata: AssistantCompletionMetadata = {};
-  private latestHistory: RealtimeItem[] = [];
+  private latestAssistantText = "";
   private currentSessionConfig?: RealtimeSessionConfig;
   private teardownTransportLifecycle?: () => void;
   private readonly iceDisconnectDebouncer = createIceDisconnectDebouncer(() => {
@@ -288,7 +288,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("history_updated", (history) => {
-      this.latestHistory = history;
+      this.latestAssistantText = this.extractLatestAssistantText(history);
     });
 
     session.on("error", ({ error }) => {
@@ -382,14 +382,13 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     // see one completion per user turn instead of two, and keep tracking
     // live so the follow-up sub-cycle does not re-emit
     // assistant.response.started. Without this guard the first agent_end
-    // would fall back to getLatestAssistantText(), which can return the
+    // would fall back to latestAssistantText, which can return the
     // previous turn's message.
     if (!this.assistant.text && !output.trim()) {
       return;
     }
 
-    const finalText =
-      this.getLatestAssistantText() || output || this.assistant.text;
+    const finalText = this.latestAssistantText || output || this.assistant.text;
 
     this.ensureAssistantStarted();
 
@@ -416,9 +415,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.resetAssistantTracking();
   }
 
-  private getLatestAssistantText(): string {
-    for (let index = this.latestHistory.length - 1; index >= 0; index -= 1) {
-      const item = this.latestHistory[index];
+  private extractLatestAssistantText(history: RealtimeItem[]): string {
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      const item = history[index];
       if (
         item.type === "message" &&
         item.role === "assistant" &&
@@ -695,7 +694,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
     this.peerConnection = null;
     this.audioSender = null;
-    this.latestHistory = [];
+    this.latestAssistantText = "";
     this.connectionLossNotified = false;
     this.isCleaningUp = false;
     this.resetAssistantTracking();
