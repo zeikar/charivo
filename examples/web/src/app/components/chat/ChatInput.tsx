@@ -4,7 +4,7 @@ import {
   MicrophoneIcon,
   SignalIcon,
 } from "@heroicons/react/24/outline";
-import { ArrowPathIcon } from "@heroicons/react/24/solid";
+import { ArrowPathIcon, StopIcon } from "@heroicons/react/24/solid";
 import { useChatStore } from "../../stores/useChatStore";
 
 type ChatInputProps = {
@@ -13,6 +13,7 @@ type ChatInputProps = {
   onStartRecording?: () => void;
   onStopRecording?: () => void;
   onToggleRealtimeMode?: () => void;
+  onInterruptRealtime?: () => void;
 };
 
 type RealtimeUIState =
@@ -77,6 +78,7 @@ export function ChatInput({
   onStartRecording,
   onStopRecording,
   onToggleRealtimeMode,
+  onInterruptRealtime,
 }: ChatInputProps) {
   const {
     input,
@@ -129,6 +131,8 @@ export function ChatInput({
 
   const realtimeState = getRealtimeUIState();
   const realtimeConfig = REALTIME_STATE_CONFIG[realtimeState];
+  const canInterrupt =
+    Boolean(onInterruptRealtime) && realtimeState === "responding";
 
   return (
     <div className="flex-shrink-0 relative z-20">
@@ -195,6 +199,16 @@ export function ChatInput({
             ) : (
               <MicrophoneIcon className="h-5 w-5" />
             )}
+          </button>
+        )}
+        {canInterrupt && (
+          <button
+            onClick={() => onInterruptRealtime?.()}
+            aria-label="Stop response"
+            title="Stop response"
+            className="flex-shrink-0 cursor-pointer rounded-full bg-red-500 p-2.5 text-white transition-all duration-200 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            <StopIcon className="h-5 w-5" />
           </button>
         )}
         <button

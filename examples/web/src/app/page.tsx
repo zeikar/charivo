@@ -51,7 +51,8 @@ export default function Home() {
     getAvailableMotionGroups,
   } = useCharivoChat({ canvasContainerRef });
 
-  const { toggleRealtimeMode, sendRealtimeMessage } = useRealtimeMode();
+  const { toggleRealtimeMode, sendRealtimeMessage, interruptRealtime } =
+    useRealtimeMode();
 
   const handleSendClick = () => {
     if (isRealtimeMode) {
@@ -126,6 +127,7 @@ export default function Home() {
             onStartRecording={handleStartRecording}
             onStopRecording={handleStopRecording}
             onToggleRealtimeMode={toggleRealtimeMode}
+            onInterruptRealtime={interruptRealtime}
           />
         </main>
       </div>

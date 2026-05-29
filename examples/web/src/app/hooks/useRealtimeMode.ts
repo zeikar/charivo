@@ -169,8 +169,31 @@ export function useRealtimeMode() {
     [charivo, isRealtimeMode, setRealtimeError],
   );
 
+  const interruptRealtime = useCallback(async () => {
+    if (!charivo || !isRealtimeMode) {
+      console.warn("Realtime mode not active");
+      return;
+    }
+
+    const realtimeManager = charivo.getRealtimeManager();
+    if (!realtimeManager) {
+      console.error("Realtime manager not found");
+      return;
+    }
+
+    try {
+      await realtimeManager.interrupt();
+    } catch (error) {
+      console.error("Failed to interrupt Realtime response:", error);
+      setRealtimeError(
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    }
+  }, [charivo, isRealtimeMode, setRealtimeError]);
+
   return {
     toggleRealtimeMode,
     sendRealtimeMessage,
+    interruptRealtime,
   };
 }
