@@ -168,7 +168,9 @@ Goal:
 Create continuity across sessions.
 
 Status:
-Not started. Architecture decided (2026-05-29); design/implementation next.
+Architecture decided (2026-05-29); design decisions recorded (2026-05-29).
+Implementation next, decomposed into ordered subtasks under
+`.hyperclaude/tasks/` and run one at a time via `/hyperclaude:hyper-auto`.
 
 Decisions (2026-05-29):
 
@@ -191,6 +193,33 @@ Decisions (2026-05-29):
   is intentionally deferred (generic `companion`) until this graduates to its
   own standalone repo at release stage (Phase 5+). Add `companion` to the
   changeset `ignore` list so it is never published.
+
+Design decisions (2026-05-29):
+
+- **Scope = `userId + characterId`.** Both scope keys exist on every record from
+  day one so multi-character continuity needs no migration; the MVP runs a
+  single local user with no auth (`userId` is a local placeholder).
+- **Persistence = server-side SQLite + in-memory cosine retrieval**, hidden
+  behind the `MemoryStore` boundary so a Postgres + `pgvector` backend is a
+  later drop-in. No vector database is introduced early.
+- **Write trigger = session end + periodic checkpoint** (every N turns / salient
+  events), with idempotent upserts so an abnormal end (tab close, reconnect
+  failure) does not lose the session's memory.
+- **Relationship state is typed, not free text** (`rapport`, `sessionCount`,
+  `lastSeenAt`, `addressStyle`, `flags`), kept in its own table separate from
+  facts — cheaper to inject and easier to evaluate.
+- **No sensitive-data filter in the MVP.** Everything is allowed; the extraction
+  pipeline keeps a `policyFilter` seam that passes through for now so a privacy
+  policy can be added later without reshaping the pipeline.
+- **Phase 5 regression gate is precision-first.** A wrong memory hurts a
+  companion more than a missed one, so extraction/merge/injection stay
+  conservative (higher importance threshold, `NOOP` on ambiguous merges, narrow
+  top-K) and precision is the primary gate metric.
+- **Correction/deletion in the MVP = data model + voice-delete detection.**
+  Corrections are soft (`invalidAt` / `supersededBy`, never destructive); a
+  spoken "forget that" is detected in the post-session extraction step and
+  queued as a supersede (the model never writes long-term directly). A
+  user-facing memory editor UI is deferred.
 
 Required outputs:
 
