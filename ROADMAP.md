@@ -168,7 +168,29 @@ Goal:
 Create continuity across sessions.
 
 Status:
-Not started.
+Not started. Architecture decided (2026-05-29); design/implementation next.
+
+Decisions (2026-05-29):
+
+- **Memory lives in the product app/server layer, not `@charivo/*` core.** A
+  generic `@charivo/memory` is plausible long-term (it fits the existing
+  pluggable-manager idiom — `MemoryManager(memoryStore, …)` like the realtime /
+  TTS / STT managers), but building it before any real usage would lock in a
+  wrong contract on a published package. Build it concretely in the app first,
+  **extraction-ready** (a clean internal `MemoryStore`-style boundary), and
+  graduate the stable mechanism to a thin core package only once a second
+  consumer or a clearly product-agnostic shape appears.
+- **Injection uses the existing seam, no core change:** retrieved memory is fed
+  in via `startSession({ instructions })` (the same place product persona /
+  acting guidance is composed) and optionally refreshed via `updateSession(...)`.
+  Writes happen app-side on session end / salient events, filtered — the model
+  never writes long-term memory directly.
+- **Product surface = a new `examples/companion` app** (monorepo sibling), not
+  `examples/web`. `examples/web` stays the minimal framework demo; `companion`
+  carries product persona / memory / relationship state. The product name/brand
+  is intentionally deferred (generic `companion`) until this graduates to its
+  own standalone repo at release stage (Phase 5+). Add `companion` to the
+  changeset `ignore` list so it is never published.
 
 Required outputs:
 
@@ -251,8 +273,16 @@ Current focus areas:
 
 ### `examples/web`
 
-Primary product-validation surface. This is where turn UX, reconnect behavior,
-memory experiments, and persona iteration should become visible first.
+Minimal framework demo — the reference for "how to use Charivo." Kept lean; it
+does not carry product-specific persona/memory logic.
+
+### `examples/companion` (planned)
+
+The product-validation surface (the "Amadeus-like" target, unbranded for now —
+see Phase 3 Decisions). Memory, persona, relationship state, and session
+archives live here in the app/server layer, built extraction-ready so a stable
+memory mechanism can later graduate to a thin core package. Turn UX, reconnect
+behavior, memory experiments, and persona iteration become visible here first.
 
 ### `@charivo/realtime/openai-agents`
 
