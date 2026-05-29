@@ -51,6 +51,10 @@ export function useRealtimeSession(
 
   const isConnectedRef = useRef(false);
   const isConnectingRef = useRef(false);
+  // Tracks whether the component is currently mounted. Set to true on effect
+  // setup and false on cleanup so Strict Mode's double-invoke correctly restores
+  // the flag, and any in-flight startSession can detect a real unmount.
+  const mountedRef = useRef(false);
 
   const managerRef = useRef<ReturnType<typeof createRealtimeManager> | null>(
     null,
@@ -59,7 +63,9 @@ export function useRealtimeSession(
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
         unsubscribeRef.current = null;
@@ -108,6 +114,12 @@ export function useRealtimeSession(
         logSession("state", conn);
       };
 
+      // Reset transcript at the start of each new response so interrupted
+      // partial text does not bleed into the next response's deltas.
+      const onAssistantStart = () => {
+        setTranscript("");
+      };
+
       const onDelta = (data: { text: string }) => {
         setTranscript((prev) => prev + data.text);
       };
@@ -118,11 +130,13 @@ export function useRealtimeSession(
       };
 
       eventBus.on("realtime:state", onState);
+      eventBus.on("realtime:assistant:start", onAssistantStart);
       eventBus.on("realtime:assistant:delta", onDelta);
       eventBus.on("realtime:assistant:done", onDone);
 
       unsubscribeRef.current = () => {
         eventBus.off("realtime:state", onState);
+        eventBus.off("realtime:assistant:start", onAssistantStart);
         eventBus.off("realtime:assistant:delta", onDelta);
         eventBus.off("realtime:assistant:done", onDone);
       };
@@ -141,6 +155,20 @@ export function useRealtimeSession(
         model: "gpt-realtime-mini",
         instructions,
       });
+
+      // If the component unmounted while the connection was in-flight, stop the
+      // session immediately so microphone/WebRTC resources are not leaked.
+      if (!mountedRef.current) {
+        manager.stopSession().catch((error: unknown) => {
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              "[realtime-session] stopSession after unmounted start failed",
+              error,
+            );
+          }
+        });
+        return;
+      }
 
       logSession("session started");
     } catch (error) {

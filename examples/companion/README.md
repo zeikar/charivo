@@ -52,7 +52,7 @@ pnpm build
 pnpm --filter ./examples/companion dev
 ```
 
-Then open `http://localhost:3000`.
+Then open `http://localhost:3001`.
 
 ## API Routes
 
