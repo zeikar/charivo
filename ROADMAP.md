@@ -52,7 +52,6 @@ What already exists:
 
 What is still missing is product quality, not basic plumbing:
 
-- clearer interruption and reconnect UX
 - a memory model and promotion rules
 - an explicit persona and relationship-state model
 - evaluation thresholds that are good enough to defend regressions
@@ -136,24 +135,27 @@ Turn the realtime stack from a transport success into a coherent conversation
 experience within a single session.
 
 Status:
-Current active phase.
+Substantially complete; exit criteria met (2026-05-29). Remaining reconnect-UX
+polish is deferred as optional — revisit only if real usage shows friction.
 
-Why this is next:
+What is done:
 
-- draft and final transcript handling has improved
-- reconnect refresh exists technically
-- interruption and reconnect behavior are still not expressed cleanly enough at
-  the product UX level
+- live draft, final utterance, and interruption artifacts are surfaced in
+  `examples/web` (a "Live" draft bubble, final bubbles, an "Interrupted" bubble,
+  and a Stop button that drives `RealtimeManager.interrupt()`)
+- reconnect-visible state is intentional: a `Reconnecting` indicator plus the
+  documented interrupted-on-reconnect contract (in-flight responses are marked
+  interrupted and not resumed; the next fresh turn clears it)
+- long sessions no longer accumulate stale turn state: the openai-agents client
+  caches only the latest assistant text instead of retaining full SDK history
 
-Primary questions:
+Deferred (optional, beyond the exit bar):
 
-- what should the user see during live draft, finalization, interruption, and
-  reconnect
-- what state should survive reconnect inside the same session
-- where is `updateSession(...)` acceptable, and where does reconnect cost hurt
-  the experience too much
+- finer reconnect/session-refresh UX polish (e.g. richer draft visibility during
+  reconnect). The interrupted-on-reconnect contract is recorded in
+  [docs/baseline.md](docs/baseline.md); revisit only if real usage shows friction
 
-Exit criteria:
+Exit criteria (met):
 
 - partial drafts, final utterances, and interruption artifacts are clear to the
   user
@@ -233,14 +235,17 @@ Exit criteria:
 
 ## Immediate Focus
 
-The near-term priority is Phase 2, not new framework primitives.
+Phases 0–2 are complete (Phase 1 is substantially complete; its `setIdleMode`
+question is decided). The near-term priority is now Phase 3 (Memory): cross-
+session continuity.
 
 Current focus areas:
 
-- define interruption-visible UX in `examples/web`
-- define reconnect/session-refresh expectations
-- close the gap between internal realtime state and what the user actually sees
-- keep Phase 0 baseline notes compact but explicit enough to anchor later work
+- design the memory schema (short/medium/long-term layers)
+- define promotion rules (summaries, facts, relationship updates) and retrieval
+  rules for what gets injected into future sessions
+- include a correction/deletion path from the start
+- build it in the app/server layer first, not in core packages
 
 ## Package Map
 
