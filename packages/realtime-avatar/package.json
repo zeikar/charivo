@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-avatar",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Avatar bridge helpers for Charivo realtime sessions",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
