@@ -2,3 +2,10 @@ packages:
   - "packages/*"
   - "examples/*"
   - "docs-site"
+allowBuilds:
+  esbuild: true
+  "@swc/core": true
+  "@tailwindcss/oxide": true
+  sharp: true
+  unrs-resolver: true
+  core-js: false
