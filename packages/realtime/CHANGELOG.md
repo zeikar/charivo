@@ -1,5 +1,11 @@
 # @charivo/realtime
 
+## 0.8.2
+
+### Patch Changes
+
+- d168d35: Bound retained realtime history to the latest assistant text; no change to normal completion behavior.
+
 ## 0.8.1
 
 ### Patch Changes
