@@ -8,7 +8,9 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eval:memory": "vitest run --config testing/vitest.eval.config.ts",
+    "eval:memory:check-sensitivity": "out=$(EVAL_INJECT_BREAK=1 vitest run --config testing/vitest.eval.config.ts -t 'extraction precision/recall meets threshold' 2>&1); code=$?; echo \"$out\"; if [ $code -ne 0 ] && echo \"$out\" | grep -q 'EXTRACTION_PRECISION_BELOW_THRESHOLD'; then exit 0; else exit 1; fi"
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
