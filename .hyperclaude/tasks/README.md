@@ -40,7 +40,7 @@ each depends on the ones above it.
 
 - [x] `01-scaffold-companion.md` — scaffold the `examples/companion` app + seam ✅ (branch `hyper/scaffold-a-new-examplescompanion-nextjs`)
 - [x] `02-memorystore-sqlite.md` — `MemoryStore` interface + SQLite + in-memory vector (mechanism only) ✅ (node:sqlite backend; Codex review clean after fixes; `pnpm verify` 320/320)
-- [ ] `03-promotion-pipeline.md` — write path: summarize → extract → filter → merge → persist
+- [x] `03-promotion-pipeline.md` — write path: summarize → extract → filter → merge → persist ✅ (9 task commits + 1 code-review fix on branch; Codex code-review clean after 3 fix rounds — same-kind merge scoping + explicit `subject` slot replacing token heuristic; `pnpm verify` green, 111 memory tests)
 - [ ] `04-retrieval-injection.md` — read path: select within token budget → compose into instructions
 - [ ] `05-correction-deletion.md` — soft-invalidate/supersede + voice "forget that" detection
 - [ ] `06-eval-harness.md` — Phase 5 seed: deterministic, precision-first memory eval
