@@ -1,34 +1,9 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 import { workspaceAliases } from "./test-aliases";
-import type { Plugin } from "vite";
-
-// vite-node 2.1.x normalizes "node:sqlite" to "sqlite" (stripping the
-// prefix) because "sqlite" is not yet in Node's legacy builtinModules list.
-// This plugin intercepts the bare "sqlite" id and provides the actual module
-// content by requiring it via Node's module system.
-const nodeSqliteShimPlugin: Plugin = {
-  name: "node-sqlite-shim",
-  enforce: "pre",
-  resolveId(id) {
-    if (id === "sqlite") {
-      return "\0node-sqlite-shim";
-    }
-  },
-  load(id) {
-    if (id === "\0node-sqlite-shim") {
-      // Re-export the node:sqlite built-in's named exports via a CommonJS
-      // interop trick so vite-node can import DatabaseSync from it.
-      return [
-        `import { createRequire } from "node:module";`,
-        `const _req = createRequire(import.meta.url);`,
-        `const _sqlite = _req("node:sqlite");`,
-        `export const DatabaseSync = _sqlite.DatabaseSync;`,
-        `export const StatementSync = _sqlite.StatementSync;`,
-      ].join("\n");
-    }
-  },
-};
+// Test-only workaround owned by examples/companion (the sole node:sqlite
+// consumer); see that file for why vite-node needs it.
+import { viteNodeSqlitePlugin } from "./examples/companion/testing/vite-node-sqlite-plugin.mjs";
 
 export default defineConfig({
   test: {
@@ -58,7 +33,7 @@ export default defineConfig({
       ["packages/**/__tests__/**/*.dom.test.{ts,tsx}", "jsdom"],
     ],
   },
-  plugins: [nodeSqliteShimPlugin],
+  plugins: [viteNodeSqlitePlugin()],
   resolve: {
     alias: workspaceAliases,
   },
