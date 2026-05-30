@@ -21,6 +21,39 @@ const DEFAULT_CHARACTER: Character = {
   personality: "warm, concise, and attentive",
 };
 
+async function fetchMemoryBlock(
+  scope: { userId: string; characterId: string },
+  query?: string,
+): Promise<string> {
+  try {
+    const body: {
+      scope: { userId: string; characterId: string };
+      query?: string;
+    } = { scope };
+    if (query !== undefined) body.query = query;
+    const res = await fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.warn(
+        "[realtime-session] fetchMemoryBlock non-ok response",
+        res.status,
+      );
+      return "";
+    }
+    const data: unknown = await res.json();
+    return typeof (data as { instructionsBlock?: unknown })
+      .instructionsBlock === "string"
+      ? (data as { instructionsBlock: string }).instructionsBlock
+      : "";
+  } catch (error) {
+    console.warn("[realtime-session] fetchMemoryBlock failed", error);
+    return "";
+  }
+}
+
 function logSession(...args: unknown[]): void {
   if (process.env.NODE_ENV !== "production") {
     console.info("[realtime-session]", ...args);
@@ -61,6 +94,7 @@ export function useRealtimeSession(
   );
   const eventBusRef = useRef<EventBus | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const firstUtteranceHandledRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -94,6 +128,7 @@ export function useRealtimeSession(
     isConnectingRef.current = true;
     setIsConnecting(true);
     setTranscript("");
+    firstUtteranceHandledRef.current = false;
 
     try {
       const client = createRemoteRealtimeClient({
@@ -104,6 +139,11 @@ export function useRealtimeSession(
       const manager = createRealtimeManager(client);
       const eventBus = new EventBus();
       manager.setEventEmitter!(eventBus);
+
+      const scope = { userId: "local-user", characterId: resolvedCharacter.id };
+      const personaInstructions = buildRealtimeSessionConfig({
+        character: resolvedCharacter,
+      }).instructions;
 
       const onState = (data: { state: RealtimeState }) => {
         const conn = data.state.connection;
@@ -129,25 +169,47 @@ export function useRealtimeSession(
         logSession("assistant:done", data.text.slice(0, 60));
       };
 
+      const onFirstUtterance = async (data: { text: string }) => {
+        if (firstUtteranceHandledRef.current) return;
+        firstUtteranceHandledRef.current = true;
+        try {
+          const refreshedBlock = await fetchMemoryBlock(scope, data.text);
+          const instructions = composeInstructions([
+            personaInstructions,
+            COMPANION_DEMO_GUIDANCE,
+            refreshedBlock,
+          ]);
+          await manager.updateSession({ instructions });
+        } catch (error) {
+          console.warn(
+            "[realtime-session] onFirstUtterance updateSession failed",
+            error,
+          );
+        }
+      };
+
       eventBus.on("realtime:state", onState);
       eventBus.on("realtime:assistant:start", onAssistantStart);
       eventBus.on("realtime:assistant:delta", onDelta);
       eventBus.on("realtime:assistant:done", onDone);
+      eventBus.on("realtime:user:transcript", onFirstUtterance);
 
       unsubscribeRef.current = () => {
         eventBus.off("realtime:state", onState);
         eventBus.off("realtime:assistant:start", onAssistantStart);
         eventBus.off("realtime:assistant:delta", onDelta);
         eventBus.off("realtime:assistant:done", onDone);
+        eventBus.off("realtime:user:transcript", onFirstUtterance);
       };
 
       managerRef.current = manager;
       eventBusRef.current = eventBus;
 
+      const memoryBlock = await fetchMemoryBlock(scope);
       const instructions = composeInstructions([
-        buildRealtimeSessionConfig({ character: resolvedCharacter })
-          .instructions,
+        personaInstructions,
         COMPANION_DEMO_GUIDANCE,
+        memoryBlock,
       ]);
 
       await manager.startSession({
@@ -200,6 +262,7 @@ export function useRealtimeSession(
 
     isConnectedRef.current = false;
     isConnectingRef.current = false;
+    firstUtteranceHandledRef.current = false;
     setIsConnected(false);
     setIsConnecting(false);
     logSession("session stopped");
