@@ -359,6 +359,34 @@ describe("createWriteJobScheduler", () => {
     errSpy.mockRestore();
   });
 
+  it("onSessionEnd resolves true when the finalize run succeeds", async () => {
+    const scheduler = createWriteJobScheduler({ runJob: h.runJob });
+
+    const p = scheduler.onSessionEnd(SID);
+    await flush();
+    expect(h.calls).toEqual([{ sessionId: SID, finalize: true }]);
+
+    h.complete(0);
+    const result = await p;
+    expect(result).toBe(true);
+  });
+
+  it("onSessionEnd resolves false when the finalize run rejects", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const scheduler = createWriteJobScheduler({ runJob: h.runJob });
+
+    const p = scheduler.onSessionEnd(SID);
+    await flush();
+    expect(h.calls).toEqual([{ sessionId: SID, finalize: true }]);
+
+    // Reject the finalize run — scheduler catches it (B6), p must resolve false.
+    h.fail(0);
+    const result = await p;
+    expect(result).toBe(false);
+
+    errSpy.mockRestore();
+  });
+
   it("drain() with no argument awaits quiescence across all sessions", async () => {
     const scheduler = createWriteJobScheduler({ runJob: h.runJob });
 

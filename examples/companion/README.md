@@ -53,7 +53,7 @@ COMPANION_MEMORY_DB=/path/to/companion-memory.db
 
 ## Run
 
-> Requires Node >=22.5 (the memory store uses the built-in `node:sqlite`).
+> Requires Node >=22.13 (the memory store uses the built-in `node:sqlite`, which requires the flag on 22.5–22.12).
 
 From the repository root:
 

@@ -208,9 +208,13 @@ export function createWriteJobScheduler(args: {
     /**
      * Called when a session ends. Schedules a FINAL (finalize:true) run and
      * resolves once a finalize:true run for this session has settled.
+     * Resolves `true` when the run succeeded (state.finalized is set), `false`
+     * when the run was caught and swallowed (B6 — the scheduler never rejects).
      */
-    onSessionEnd(sessionId: string): Promise<void> {
-      return schedule(sessionId, true);
+    onSessionEnd(sessionId: string): Promise<boolean> {
+      return schedule(sessionId, true).then(
+        () => sessions.get(sessionId)?.finalized ?? false,
+      );
     },
 
     /**
