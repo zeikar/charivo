@@ -21,6 +21,7 @@ export {
 } from "./scoring";
 
 export { promoteSession } from "./promote";
+export { createWriteJobScheduler } from "./trigger";
 export { extractFacts } from "./extract-facts";
 export { policyFilter } from "./policy-filter";
 export { decideMerge } from "./decide-merge";
