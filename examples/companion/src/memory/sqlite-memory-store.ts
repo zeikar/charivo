@@ -318,6 +318,40 @@ export class SqliteMemoryStore implements MemoryStore {
   }
 
   // -------------------------------------------------------------------------
+  // Summary retrieval (concrete capabilities — intentionally NOT part of the
+  // MemoryStore interface, which stays mechanism-only).
+  // -------------------------------------------------------------------------
+
+  /**
+   * Return up to `limit` sessions that have a non-null, non-blank summary,
+   * newest-first (by ended_at, falling back to started_at).
+   */
+  async getRecentSummaries(
+    scope: MemoryScope,
+    limit: number,
+  ): Promise<{ id: string; endedAt: number | null; summary: string }[]> {
+    interface SummaryRow {
+      id: string;
+      ended_at: number | null;
+      summary: string;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT id, ended_at, summary FROM sessions
+         WHERE user_id = ? AND character_id = ?
+           AND summary IS NOT NULL AND trim(summary) <> ''
+         ORDER BY COALESCE(ended_at, started_at) DESC
+         LIMIT ?`,
+      )
+      .all(scope.userId, scope.characterId, limit) as unknown as SummaryRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      endedAt: row.ended_at,
+      summary: row.summary,
+    }));
+  }
+
+  // -------------------------------------------------------------------------
   // Finalization ledger (concrete capabilities — intentionally NOT part of the
   // MemoryStore interface, which stays mechanism-only).
   //

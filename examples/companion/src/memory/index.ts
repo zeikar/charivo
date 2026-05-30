@@ -46,3 +46,5 @@ export {
   MEMORY_TOKEN_BUDGET,
   MEMORY_GUARD_LINE,
 } from "./render-memory";
+
+export { buildMemoryInstructionBlock } from "./build-memory-block";
