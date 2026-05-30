@@ -718,4 +718,132 @@ describe("finalization ledger", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("[F2] same sessionId across two scopes: independent rows; finalizing one leaves the other unfinalized and able to finalize on its own", async () => {
+    const db = new DatabaseSync(":memory:");
+    const injectedStore = new SqliteMemoryStore({ db, now: () => NOW });
+    const SCOPE_B: MemoryScope = { userId: "userB", characterId: "charB" };
+    const sharedId = "shared-session-id";
+
+    try {
+      await saveSessionRec(injectedStore, sharedId, SCOPE_A);
+      await saveSessionRec(injectedStore, sharedId, SCOPE_B);
+
+      // Scoped composite key → two independent rows, not one overwritten row.
+      const countRow = db
+        .prepare("SELECT COUNT(*) AS c FROM sessions WHERE id = ?")
+        .get(sharedId) as { c: number };
+      expect(countRow.c).toBe(2);
+
+      // Finalize only scope A.
+      const advancedA = await injectedStore.finalizeSession(
+        SCOPE_A,
+        sharedId,
+        deriveRelationshipSignals(makeTranscript(sharedId, SCOPE_A)),
+        NOW,
+        updateRelationship,
+      );
+      expect(advancedA).toBe(true);
+
+      // Scope A finalized; scope B's row is untouched.
+      expect(await injectedStore.isSessionFinalized(SCOPE_A, sharedId)).toBe(
+        true,
+      );
+      expect(await injectedStore.isSessionFinalized(SCOPE_B, sharedId)).toBe(
+        false,
+      );
+
+      // Scope B still finalizes independently and advances ITS own relationship.
+      const advancedB = await injectedStore.finalizeSession(
+        SCOPE_B,
+        sharedId,
+        deriveRelationshipSignals(makeTranscript(sharedId, SCOPE_B)),
+        NOW,
+        updateRelationship,
+      );
+      expect(advancedB).toBe(true);
+      expect((await injectedStore.getRelationship(SCOPE_A))?.sessionCount).toBe(
+        1,
+      );
+      expect((await injectedStore.getRelationship(SCOPE_B))?.sessionCount).toBe(
+        1,
+      );
+    } finally {
+      injectedStore.close();
+    }
+  });
+
+  it("[M15] migration: opening a single-column-PK DB rebuilds sessions on the scoped key, preserving rows and allowing the same id across scopes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "charivo-sesspk-"));
+    const dbPath = join(dir, "memory.db");
+
+    try {
+      // Pre-create the early sessions shape: PK on `id` alone, with one row.
+      const raw = new DatabaseSync(dbPath);
+      raw.exec(
+        `CREATE TABLE sessions (
+           id TEXT PRIMARY KEY,
+           user_id TEXT NOT NULL,
+           character_id TEXT NOT NULL,
+           started_at INTEGER NOT NULL,
+           ended_at INTEGER,
+           summary TEXT,
+           turn_count INTEGER NOT NULL,
+           finalized_at INTEGER
+         )`,
+      );
+      raw
+        .prepare(
+          `INSERT INTO sessions
+             (id, user_id, character_id, started_at, ended_at, summary, turn_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run("legacy", SCOPE_A.userId, SCOPE_A.characterId, NOW, NOW, null, 1);
+      raw.close();
+
+      // Open through the store — the M13 migration must rebuild the table.
+      const migratedStore = new SqliteMemoryStore({
+        db: dbPath,
+        now: () => NOW,
+      });
+
+      // (a) PK is now the composite scoped key.
+      const check = new DatabaseSync(dbPath);
+      const pkCols = (
+        check.prepare("PRAGMA table_info(sessions)").all() as Array<{
+          name: string;
+          pk: number;
+        }>
+      )
+        .filter((c) => c.pk > 0)
+        .map((c) => c.name)
+        .sort();
+      check.close();
+      expect(pkCols).toEqual(["character_id", "id", "user_id"]);
+
+      // (b) the pre-existing row survived the rebuild.
+      expect(await migratedStore.isSessionFinalized(SCOPE_A, "legacy")).toBe(
+        false,
+      );
+
+      // (c) the same id under a different scope now coexists (no global collision).
+      const SCOPE_B: MemoryScope = { userId: "userB", characterId: "charB" };
+      await saveSessionRec(migratedStore, "legacy", SCOPE_B);
+      const advanced = await migratedStore.finalizeSession(
+        SCOPE_B,
+        "legacy",
+        deriveRelationshipSignals(makeTranscript("legacy", SCOPE_B)),
+        NOW,
+        updateRelationship,
+      );
+      expect(advanced).toBe(true);
+      expect(await migratedStore.isSessionFinalized(SCOPE_A, "legacy")).toBe(
+        false,
+      );
+
+      migratedStore.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

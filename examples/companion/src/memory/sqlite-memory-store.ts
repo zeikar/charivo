@@ -116,14 +116,15 @@ export class SqliteMemoryStore implements MemoryStore {
         ON facts (user_id, character_id);
 
       CREATE TABLE IF NOT EXISTS sessions (
-        id           TEXT PRIMARY KEY,
+        id           TEXT NOT NULL,
         user_id      TEXT NOT NULL,
         character_id TEXT NOT NULL,
         started_at   INTEGER NOT NULL,
         ended_at     INTEGER,
         summary      TEXT,
         turn_count   INTEGER NOT NULL,
-        finalized_at INTEGER
+        finalized_at INTEGER,
+        PRIMARY KEY (user_id, character_id, id)
       );
 
       CREATE TABLE IF NOT EXISTS relationship (
@@ -144,9 +145,42 @@ export class SqliteMemoryStore implements MemoryStore {
     // already-migrated DBs.
     const cols = this.db.prepare("PRAGMA table_info(sessions)").all() as Array<{
       name: string;
+      pk: number;
     }>;
     if (!cols.some((c) => c.name === "finalized_at")) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN finalized_at INTEGER");
+    }
+
+    // [M15] Idempotent migration: subtask-02 / early Phase-3 DBs keyed `sessions`
+    // on `id` alone, so a sessionId reused across scopes would collide globally
+    // and rewrite the wrong scope's row. Rebuild with the scoped composite key
+    // (user_id, character_id, id). Detect by PK arity: a single-column PK has one
+    // column with pk>0; the composite has three. No-op on fresh / already-migrated
+    // DBs. Runs AFTER the finalized_at ALTER so the copy includes that column.
+    if (cols.filter((c) => c.pk > 0).length !== 3) {
+      this.db.exec(`
+        BEGIN;
+        CREATE TABLE sessions_scoped (
+          id           TEXT NOT NULL,
+          user_id      TEXT NOT NULL,
+          character_id TEXT NOT NULL,
+          started_at   INTEGER NOT NULL,
+          ended_at     INTEGER,
+          summary      TEXT,
+          turn_count   INTEGER NOT NULL,
+          finalized_at INTEGER,
+          PRIMARY KEY (user_id, character_id, id)
+        );
+        INSERT INTO sessions_scoped
+          (id, user_id, character_id, started_at, ended_at, summary,
+           turn_count, finalized_at)
+          SELECT id, user_id, character_id, started_at, ended_at, summary,
+                 turn_count, finalized_at
+          FROM sessions;
+        DROP TABLE sessions;
+        ALTER TABLE sessions_scoped RENAME TO sessions;
+        COMMIT;
+      `);
     }
   }
 
@@ -303,9 +337,7 @@ export class SqliteMemoryStore implements MemoryStore {
         `INSERT INTO sessions
            (id, user_id, character_id, started_at, ended_at, summary, turn_count)
          VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           user_id      = excluded.user_id,
-           character_id = excluded.character_id,
+         ON CONFLICT(user_id, character_id, id) DO UPDATE SET
            started_at   = excluded.started_at,
            ended_at     = excluded.ended_at,
            summary      = excluded.summary,
