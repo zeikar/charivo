@@ -10,8 +10,12 @@
  * cosines (verified empirically) are:
  *   - "I take my coffee with milk" vs "I take my coffee black"  ≈ 0.8018 (UPDATE band)
  *   - "I work as a teacher" vs "I no longer work as a teacher"  ≈ 0.9701 (DELETE band)
+ *   - "Forget that I work as a teacher" vs "I work as a teacher"  ≈ 0.9045 (DELETE band)
+ *   - "That's wrong, I don't work as a teacher" vs "I work as a teacher"  ≈ 0.8660 (DELETE band)
  * The correction candidate carries `subject:"coffee"` so the explicit-subject
  * isReplacement check matches ("coffee" appears in the seeded neighbor's text).
+ * The two retraction fixtures below carry NO `subject` — they are pure DELETE
+ * retractions (the "forget that" / "that's wrong" markers drive the decision).
  */
 
 import type { MemoryScope } from "../types";
@@ -141,6 +145,70 @@ export const correctionScript: Record<string, FactCandidate[]> = {
       kind: "biographical",
       importance: 0.7,
       sourceTurnId: "u5",
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Retraction sessions: a later session, same scope, that retracts the seeded
+// biographical "I work as a teacher" fact via an explicit "forget that" /
+// "that's wrong" marker. No `subject` → pure DELETE (invalidate), not an
+// UPDATE. Each text is authored to embed the teacher fact's tokens so the fake
+// embedder's cosine clears RELATED_SIMILARITY (0.6) and DELETE targets it.
+// ---------------------------------------------------------------------------
+
+export const forgetThatTranscript: Transcript = {
+  sessionId: "s3",
+  scope: SCOPE,
+  startedAt: NOW + 60_000,
+  endedAt: NOW + 120_000,
+  turns: [
+    {
+      id: "u6",
+      role: "user",
+      text: "Forget that I work as a teacher",
+      at: NOW + 70_000,
+    },
+  ],
+};
+
+export const forgetThatScript: Record<string, FactCandidate[]> = {
+  // "forget that" marker + the teacher fact embedded verbatim → DELETE the
+  // seeded biographical fact. No subject: a pure retraction, not a replacement.
+  u6: [
+    {
+      text: "Forget that I work as a teacher",
+      kind: "biographical",
+      importance: 0.7,
+      sourceTurnId: "u6",
+    },
+  ],
+};
+
+export const thatsWrongTranscript: Transcript = {
+  sessionId: "s4",
+  scope: SCOPE,
+  startedAt: NOW + 60_000,
+  endedAt: NOW + 120_000,
+  turns: [
+    {
+      id: "u7",
+      role: "user",
+      text: "That's wrong, I don't work as a teacher",
+      at: NOW + 70_000,
+    },
+  ],
+};
+
+export const thatsWrongScript: Record<string, FactCandidate[]> = {
+  // "that's wrong" marker (added in Task 1) + high overlap with the teacher
+  // fact (work/as/a/teacher) → DELETE. No subject: pure retraction.
+  u7: [
+    {
+      text: "That's wrong, I don't work as a teacher",
+      kind: "biographical",
+      importance: 0.7,
+      sourceTurnId: "u7",
     },
   ],
 };
