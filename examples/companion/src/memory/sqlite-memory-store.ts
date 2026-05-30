@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
 import { scoreFact, estimateTokens } from "./scoring";
+import type { RelationshipSignals } from "./promotion-types";
 import type {
   MemoryFact,
   MemoryFactKind,
@@ -121,7 +122,8 @@ export class SqliteMemoryStore implements MemoryStore {
         started_at   INTEGER NOT NULL,
         ended_at     INTEGER,
         summary      TEXT,
-        turn_count   INTEGER NOT NULL
+        turn_count   INTEGER NOT NULL,
+        finalized_at INTEGER
       );
 
       CREATE TABLE IF NOT EXISTS relationship (
@@ -135,6 +137,17 @@ export class SqliteMemoryStore implements MemoryStore {
         PRIMARY KEY (user_id, character_id)
       );
     `);
+
+    // [M12] Idempotent migration: EXISTING file-backed DBs from subtask-02 lack
+    // the finalized_at column (their CREATE TABLE predates it). Add it via a
+    // guarded ALTER. No-op on fresh DBs (column already in CREATE above) and on
+    // already-migrated DBs.
+    const cols = this.db.prepare("PRAGMA table_info(sessions)").all() as Array<{
+      name: string;
+    }>;
+    if (!cols.some((c) => c.name === "finalized_at")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN finalized_at INTEGER");
+    }
   }
 
   async upsertFact(fact: MemoryFact): Promise<void> {
@@ -302,6 +315,127 @@ export class SqliteMemoryStore implements MemoryStore {
         state.addressStyle,
         JSON.stringify(state.flags),
       );
+  }
+
+  // -------------------------------------------------------------------------
+  // Finalization ledger (concrete capabilities — intentionally NOT part of the
+  // MemoryStore interface, which stays mechanism-only).
+  //
+  // The `sessions.finalized_at` column is the dedicated, append-once marker
+  // that a session's relationship contribution has been committed. saveSession
+  // never touches it ([B5]: checkpoint writes can never clear the ledger).
+  // -------------------------------------------------------------------------
+
+  /**
+   * True iff the session row exists AND has a non-null finalized_at marker.
+   * Read-only.
+   */
+  async isSessionFinalized(id: string): Promise<boolean> {
+    const row = this.db
+      .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
+      .get(id) as { finalized_at: number | null } | undefined;
+    return row !== undefined && row.finalized_at !== null;
+  }
+
+  /**
+   * Atomically finalize a session and advance its scope's relationship exactly
+   * once. The entire read-modify-write of the relationship runs INSIDE a single
+   * synchronous SQLite transaction:
+   *
+   *   [m7] There is NO `await` anywhere between BEGIN and COMMIT — every
+   *        statement is a synchronous node:sqlite call.
+   *   [m8] The finalized_at marker is written FIRST, guarded by
+   *        `finalized_at IS NULL` + a `changes === 1` check, so it doubles as
+   *        the race guard before the relationship is touched.
+   *   [B7] The marker write and the relationship upsert share ONE transaction:
+   *        they commit or roll back together.
+   *   [M13] Because the whole body is synchronous between BEGIN and COMMIT and
+   *        JS is single-threaded, two same-scope sessions finalizing
+   *        "concurrently" cannot interleave — each advances sessionCount once.
+   *
+   * Returns true only when this call advanced the relationship; false when the
+   * session was never saved, was already finalized, or lost the marker race.
+   */
+  async finalizeSession(
+    scope: MemoryScope,
+    sessionId: string,
+    signals: RelationshipSignals,
+    now: number,
+    reduce: (
+      prev: RelationshipState | null,
+      signals: RelationshipSignals,
+      scope: MemoryScope,
+      now: number,
+    ) => RelationshipState,
+  ): Promise<boolean> {
+    this.db.exec("BEGIN");
+    try {
+      const row = this.db
+        .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
+        .get(sessionId) as { finalized_at: number | null } | undefined;
+
+      // No such session (never saveSession-ed) → nothing to finalize.
+      if (row === undefined) {
+        this.db.exec("COMMIT");
+        return false;
+      }
+      // Already finalized → do not advance the relationship.
+      if (row.finalized_at !== null) {
+        this.db.exec("COMMIT");
+        return false;
+      }
+
+      // [m8] Write the marker FIRST as the guard.
+      const info = this.db
+        .prepare(
+          "UPDATE sessions SET finalized_at = ? WHERE id = ? AND finalized_at IS NULL",
+        )
+        .run(now, sessionId);
+      if (info.changes !== 1) {
+        // Lost a race / row vanished — do NOT touch the relationship.
+        this.db.exec("COMMIT");
+        return false;
+      }
+
+      const relRow = this.db
+        .prepare(
+          "SELECT * FROM relationship WHERE user_id = ? AND character_id = ?",
+        )
+        .get(scope.userId, scope.characterId) as RelationshipRow | undefined;
+      const prev = relRow ? rowToRelationship(relRow) : null;
+
+      const next = reduce(prev, signals, scope, now);
+
+      // Inline the same upsert putRelationship uses (kept await-free here).
+      this.db
+        .prepare(
+          `INSERT INTO relationship
+             (user_id, character_id, rapport, session_count, last_seen_at,
+              address_style, flags)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, character_id) DO UPDATE SET
+             rapport       = excluded.rapport,
+             session_count = excluded.session_count,
+             last_seen_at  = excluded.last_seen_at,
+             address_style = excluded.address_style,
+             flags         = excluded.flags`,
+        )
+        .run(
+          next.scope.userId,
+          next.scope.characterId,
+          next.rapport,
+          next.sessionCount,
+          next.lastSeenAt,
+          next.addressStyle,
+          JSON.stringify(next.flags),
+        );
+
+      this.db.exec("COMMIT");
+      return true;
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   /** Close the underlying database. Intended for test teardown. */

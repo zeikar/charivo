@@ -19,3 +19,21 @@ export {
   estimateTokens,
   scoreFact,
 } from "./scoring";
+
+export { promoteSession } from "./promote";
+export { extractFacts } from "./extract-facts";
+export { policyFilter } from "./policy-filter";
+export { decideMerge } from "./decide-merge";
+export { updateRelationship, deriveRelationshipSignals } from "./relationship";
+
+export type {
+  Turn,
+  Transcript,
+  FactCandidate,
+  FactExtractor,
+  ExtractResult,
+  MergeAction,
+  MergeDecision,
+  RelationshipSignals,
+  PromotionResult,
+} from "./promotion-types";

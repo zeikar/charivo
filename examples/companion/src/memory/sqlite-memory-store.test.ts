@@ -1,9 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
+import { tmpdir } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { SqliteMemoryStore } from "./sqlite-memory-store";
 import { createFakeEmbedder } from "./embedding";
 import { estimateTokens } from "./scoring";
+import { updateRelationship, deriveRelationshipSignals } from "./relationship";
+import type { RelationshipSignals, Transcript } from "./promotion-types";
 import type {
   MemoryFact,
   MemoryScope,
@@ -411,5 +416,241 @@ describe("session round-trip and idempotency", () => {
     expect(summaryRow.summary).toBe("updated summary");
 
     injectedStore.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finalization ledger
+// ---------------------------------------------------------------------------
+
+describe("finalization ledger", () => {
+  // A tiny transcript with one positive user turn — drives deriveRelationshipSignals.
+  function makeTranscript(sessionId: string, scope: MemoryScope): Transcript {
+    return {
+      sessionId,
+      scope,
+      startedAt: NOW - 1000,
+      endedAt: NOW,
+      turns: [
+        { id: "t1", role: "user", text: "thanks, that was great", at: NOW },
+      ],
+    };
+  }
+
+  function saveSessionRec(
+    s: SqliteMemoryStore,
+    id: string,
+    scope: MemoryScope,
+  ): Promise<void> {
+    const rec: SessionRecord = {
+      id,
+      scope,
+      startedAt: NOW - 1000,
+      endedAt: NOW,
+      summary: null,
+      turnCount: 1,
+    };
+    return s.saveSession(rec);
+  }
+
+  it("saved session: isSessionFinalized false → finalizeSession true → finalized true and relationship reduced", async () => {
+    const id = "sess-1";
+    await saveSessionRec(store, id, SCOPE_A);
+
+    expect(await store.isSessionFinalized(id)).toBe(false);
+
+    const signals = deriveRelationshipSignals(makeTranscript(id, SCOPE_A));
+    const result = await store.finalizeSession(
+      SCOPE_A,
+      id,
+      signals,
+      NOW,
+      updateRelationship,
+    );
+    expect(result).toBe(true);
+    expect(await store.isSessionFinalized(id)).toBe(true);
+
+    const rel = await store.getRelationship(SCOPE_A);
+    expect(rel?.sessionCount).toBe(1);
+    expect(rel?.lastSeenAt).toBe(NOW);
+  });
+
+  it("[B7] second finalizeSession for same id returns false, relationship unchanged, finalized_at keeps its first value", async () => {
+    const db = new DatabaseSync(":memory:");
+    const injectedStore = new SqliteMemoryStore({ db, now: () => NOW });
+
+    const id = "sess-b7";
+    await saveSessionRec(injectedStore, id, SCOPE_A);
+
+    const signals = deriveRelationshipSignals(makeTranscript(id, SCOPE_A));
+
+    const FIRST_T = NOW;
+    const first = await injectedStore.finalizeSession(
+      SCOPE_A,
+      id,
+      signals,
+      FIRST_T,
+      updateRelationship,
+    );
+    expect(first).toBe(true);
+
+    const firstMarker = db
+      .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
+      .get(id) as { finalized_at: number };
+    expect(firstMarker.finalized_at).toBe(FIRST_T);
+
+    // Second finalize with a DIFFERENT timestamp must be rejected.
+    const SECOND_T = NOW + 5000;
+    const second = await injectedStore.finalizeSession(
+      SCOPE_A,
+      id,
+      signals,
+      SECOND_T,
+      updateRelationship,
+    );
+    expect(second).toBe(false);
+
+    const rel = await injectedStore.getRelationship(SCOPE_A);
+    expect(rel?.sessionCount).toBe(1); // not advanced a second time
+
+    const secondMarker = db
+      .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
+      .get(id) as { finalized_at: number };
+    expect(secondMarker.finalized_at).toBe(FIRST_T); // marker unchanged
+
+    injectedStore.close();
+  });
+
+  it("[m8] finalizeSession on a never-saved session returns false and leaves the relationship unchanged", async () => {
+    const signals = deriveRelationshipSignals(
+      makeTranscript("never-saved", SCOPE_A),
+    );
+    const result = await store.finalizeSession(
+      SCOPE_A,
+      "never-saved",
+      signals,
+      NOW,
+      updateRelationship,
+    );
+    expect(result).toBe(false);
+    expect(await store.getRelationship(SCOPE_A)).toBeNull();
+  });
+
+  it("[M13]+[m9] two sessions for the same scope each finalize once; sessionCount reaches 2 with no lost increment", async () => {
+    const s1 = "sess-c1";
+    const s2 = "sess-c2";
+    await saveSessionRec(store, s1, SCOPE_A);
+    await saveSessionRec(store, s2, SCOPE_A);
+
+    const signals: RelationshipSignals = {
+      userTurnCount: 1,
+      positiveSignals: 0,
+      negativeSignals: 0,
+    };
+
+    const r1 = await store.finalizeSession(
+      SCOPE_A,
+      s1,
+      signals,
+      NOW,
+      updateRelationship,
+    );
+    const r2 = await store.finalizeSession(
+      SCOPE_A,
+      s2,
+      signals,
+      NOW,
+      updateRelationship,
+    );
+    expect(r1).toBe(true);
+    expect(r2).toBe(true);
+
+    const rel = await store.getRelationship(SCOPE_A);
+    expect(rel?.sessionCount).toBe(2);
+  });
+
+  it("[B5] a saveSession upsert after finalize (delayed checkpoint) leaves the session finalized", async () => {
+    const id = "sess-b5";
+    await saveSessionRec(store, id, SCOPE_A);
+
+    const signals: RelationshipSignals = {
+      userTurnCount: 1,
+      positiveSignals: 0,
+      negativeSignals: 0,
+    };
+    await store.finalizeSession(SCOPE_A, id, signals, NOW, updateRelationship);
+    expect(await store.isSessionFinalized(id)).toBe(true);
+
+    // A delayed checkpoint writes endedAt: null (and never touches finalized_at).
+    await store.saveSession({
+      id,
+      scope: SCOPE_A,
+      startedAt: NOW - 1000,
+      endedAt: null,
+      summary: null,
+      turnCount: 2,
+    });
+
+    expect(await store.isSessionFinalized(id)).toBe(true);
+  });
+
+  it("[m6]+[M12] migration: opening a subtask-02 DB without finalized_at adds the column and the ledger works end-to-end", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "charivo-ledger-"));
+    const dbPath = join(dir, "memory.db");
+
+    try {
+      // Pre-create the subtask-02 sessions shape (NO finalized_at column).
+      const raw = new DatabaseSync(dbPath);
+      raw.exec(
+        `CREATE TABLE sessions (
+           id TEXT PRIMARY KEY,
+           user_id TEXT NOT NULL,
+           character_id TEXT NOT NULL,
+           started_at INTEGER NOT NULL,
+           ended_at INTEGER,
+           summary TEXT,
+           turn_count INTEGER NOT NULL
+         )`,
+      );
+      raw.close();
+
+      // Open the SAME file through the store — migrate() must add the column.
+      const migratedStore = new SqliteMemoryStore({
+        db: dbPath,
+        now: () => NOW,
+      });
+
+      // (a) column now exists (verified on a fresh raw handle).
+      const checkHandle = new DatabaseSync(dbPath);
+      const cols = checkHandle
+        .prepare("PRAGMA table_info(sessions)")
+        .all() as Array<{ name: string }>;
+      checkHandle.close();
+      expect(cols.some((c) => c.name === "finalized_at")).toBe(true);
+
+      // (b) the ledger runs end-to-end without throwing.
+      const id = "sess-migrated";
+      await saveSessionRec(migratedStore, id, SCOPE_A);
+      expect(await migratedStore.isSessionFinalized(id)).toBe(false);
+
+      const signals: RelationshipSignals = {
+        userTurnCount: 1,
+        positiveSignals: 0,
+        negativeSignals: 0,
+      };
+      const advanced = await migratedStore.finalizeSession(
+        SCOPE_A,
+        id,
+        signals,
+        NOW,
+        updateRelationship,
+      );
+      expect(advanced).toBe(true);
+      expect(await migratedStore.isSessionFinalized(id)).toBe(true);
+
+      migratedStore.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
