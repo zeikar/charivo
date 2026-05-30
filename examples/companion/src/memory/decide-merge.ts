@@ -47,6 +47,10 @@ const RETRACTION_MARKERS = [
   "never mind",
   "used to",
   "don't remember",
+  // Explicit "that's wrong" correction. Both the contracted and expanded forms
+  // are listed because matching is substring (`lower.includes(marker)`).
+  "that's wrong",
+  "that is wrong",
 ] as const;
 
 /**

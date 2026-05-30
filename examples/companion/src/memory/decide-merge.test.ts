@@ -86,6 +86,20 @@ describe("isRetraction", () => {
     expect(isRetraction("I don't remember liking that")).toBe(true);
   });
 
+  it("detects 'that's wrong' (contracted form)", () => {
+    expect(isRetraction("No, that's wrong, I don't work there")).toBe(true);
+  });
+
+  it("detects 'that is wrong' (expanded form)", () => {
+    expect(isRetraction("That is wrong")).toBe(true);
+  });
+
+  it("does NOT flag bare 'wrong' without the 'that('s/ is) wrong' marker", () => {
+    // Precision guard for the added markers: "wrong" alone is a legitimate
+    // opinion fact, not a retraction. Text contains neither marker substring.
+    expect(isRetraction("I think eating meat is morally wrong")).toBe(false);
+  });
+
   it("does NOT flag bare 'not' (M10: valid negative preference)", () => {
     expect(isRetraction("I'm not drinking alcohol anymore")).toBe(false);
   });
