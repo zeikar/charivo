@@ -92,6 +92,15 @@ Then open `http://localhost:3001`.
   > advance the relationship (session count / rapport / last-seen) but do not yet
   > mine content facts. A real LLM extractor lands behind a flag in a later
   > subtask; until then, content facts can still be seeded externally.
+  >
+  > **Corrections take effect next session.** Correction candidates emitted by
+  > extraction (e.g. "forget that" / "that's wrong") are detected during merge,
+  > which soft-invalidates or supersedes the target fact. Because the model never
+  > rewrites long-term memory live, a correction's effect lands at the **next
+  > session start** (cold-start retrieval), not mid-conversation. Live spoken
+  > correction detection is gated on the same future real server extractor as
+  > above; the marker logic itself is real and unit-tested via the scripted
+  > extractor today.
 
 ## Structure
 
