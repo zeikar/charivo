@@ -38,3 +38,11 @@ export type {
   RelationshipSignals,
   PromotionResult,
 } from "./promotion-types";
+
+export {
+  renderMemoryBlock,
+  renderRelationshipBlock,
+  selectMemoryForRender,
+  MEMORY_TOKEN_BUDGET,
+  MEMORY_GUARD_LINE,
+} from "./render-memory";
