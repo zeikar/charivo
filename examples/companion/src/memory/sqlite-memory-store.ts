@@ -400,13 +400,19 @@ export class SqliteMemoryStore implements MemoryStore {
   // -------------------------------------------------------------------------
 
   /**
-   * True iff the session row exists AND has a non-null finalized_at marker.
+   * True iff the session row exists for this scope AND has a non-null
+   * finalized_at marker. Scope predicate prevents a sessionId reused across
+   * scopes from treating another scope's finalized row as its own.
    * Read-only.
    */
-  async isSessionFinalized(id: string): Promise<boolean> {
+  async isSessionFinalized(scope: MemoryScope, id: string): Promise<boolean> {
     const row = this.db
-      .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
-      .get(id) as { finalized_at: number | null } | undefined;
+      .prepare(
+        "SELECT finalized_at FROM sessions WHERE id = ? AND user_id = ? AND character_id = ?",
+      )
+      .get(id, scope.userId, scope.characterId) as
+      | { finalized_at: number | null }
+      | undefined;
     return row !== undefined && row.finalized_at !== null;
   }
 
@@ -444,10 +450,14 @@ export class SqliteMemoryStore implements MemoryStore {
     this.db.exec("BEGIN");
     try {
       const row = this.db
-        .prepare("SELECT finalized_at FROM sessions WHERE id = ?")
-        .get(sessionId) as { finalized_at: number | null } | undefined;
+        .prepare(
+          "SELECT finalized_at FROM sessions WHERE id = ? AND user_id = ? AND character_id = ?",
+        )
+        .get(sessionId, scope.userId, scope.characterId) as
+        | { finalized_at: number | null }
+        | undefined;
 
-      // No such session (never saveSession-ed) → nothing to finalize.
+      // No such session (never saveSession-ed, or wrong scope) → nothing to finalize.
       if (row === undefined) {
         this.db.exec("COMMIT");
         return false;
@@ -458,12 +468,13 @@ export class SqliteMemoryStore implements MemoryStore {
         return false;
       }
 
-      // [m8] Write the marker FIRST as the guard.
+      // [m8] Write the marker FIRST as the guard. Scope predicates ensure a
+      // sessionId shared across scopes cannot finalize the wrong scope's row.
       const info = this.db
         .prepare(
-          "UPDATE sessions SET finalized_at = ? WHERE id = ? AND finalized_at IS NULL",
+          "UPDATE sessions SET finalized_at = ? WHERE id = ? AND user_id = ? AND character_id = ? AND finalized_at IS NULL",
         )
-        .run(now, sessionId);
+        .run(now, sessionId, scope.userId, scope.characterId);
       if (info.changes !== 1) {
         // Lost a race / row vanished — do NOT touch the relationship.
         this.db.exec("COMMIT");

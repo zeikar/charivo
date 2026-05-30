@@ -522,7 +522,7 @@ describe("finalization ledger", () => {
     const id = "sess-1";
     await saveSessionRec(store, id, SCOPE_A);
 
-    expect(await store.isSessionFinalized(id)).toBe(false);
+    expect(await store.isSessionFinalized(SCOPE_A, id)).toBe(false);
 
     const signals = deriveRelationshipSignals(makeTranscript(id, SCOPE_A));
     const result = await store.finalizeSession(
@@ -533,7 +533,7 @@ describe("finalization ledger", () => {
       updateRelationship,
     );
     expect(result).toBe(true);
-    expect(await store.isSessionFinalized(id)).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE_A, id)).toBe(true);
 
     const rel = await store.getRelationship(SCOPE_A);
     expect(rel?.sessionCount).toBe(1);
@@ -644,7 +644,7 @@ describe("finalization ledger", () => {
       negativeSignals: 0,
     };
     await store.finalizeSession(SCOPE_A, id, signals, NOW, updateRelationship);
-    expect(await store.isSessionFinalized(id)).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE_A, id)).toBe(true);
 
     // A delayed checkpoint writes endedAt: null (and never touches finalized_at).
     await store.saveSession({
@@ -656,7 +656,7 @@ describe("finalization ledger", () => {
       turnCount: 2,
     });
 
-    expect(await store.isSessionFinalized(id)).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE_A, id)).toBe(true);
   });
 
   it("[m6]+[M12] migration: opening a subtask-02 DB without finalized_at adds the column and the ledger works end-to-end", async () => {
@@ -696,7 +696,7 @@ describe("finalization ledger", () => {
       // (b) the ledger runs end-to-end without throwing.
       const id = "sess-migrated";
       await saveSessionRec(migratedStore, id, SCOPE_A);
-      expect(await migratedStore.isSessionFinalized(id)).toBe(false);
+      expect(await migratedStore.isSessionFinalized(SCOPE_A, id)).toBe(false);
 
       const signals: RelationshipSignals = {
         userTurnCount: 1,
@@ -711,7 +711,7 @@ describe("finalization ledger", () => {
         updateRelationship,
       );
       expect(advanced).toBe(true);
-      expect(await migratedStore.isSessionFinalized(id)).toBe(true);
+      expect(await migratedStore.isSessionFinalized(SCOPE_A, id)).toBe(true);
 
       migratedStore.close();
     } finally {

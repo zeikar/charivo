@@ -321,7 +321,7 @@ describe("promoteSession — checkpoint then finalize", () => {
       finalize: false,
     });
     expect(checkpoint.relationshipUpdated).toBe(false);
-    expect(await store.isSessionFinalized("s1")).toBe(false);
+    expect(await store.isSessionFinalized(SCOPE, "s1")).toBe(false);
     expect(await store.getRelationship(SCOPE)).toBeNull();
 
     const finalized = await promoteSession({
@@ -333,7 +333,7 @@ describe("promoteSession — checkpoint then finalize", () => {
       finalize: true,
     });
     expect(finalized.relationshipUpdated).toBe(true);
-    expect(await store.isSessionFinalized("s1")).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE, "s1")).toBe(true);
 
     const rel = await store.getRelationship(SCOPE);
     expect(rel!.sessionCount).toBe(1);
@@ -357,7 +357,7 @@ describe("promoteSession — abnormal end (endedAt null)", () => {
       finalize: true,
     });
     expect(run1.relationshipUpdated).toBe(true);
-    expect(await store.isSessionFinalized("s1")).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE, "s1")).toBe(true);
     expect((await store.getRelationship(SCOPE))!.sessionCount).toBe(1);
 
     const run2 = await promoteSession({
@@ -392,7 +392,7 @@ describe("promoteSession — failed then retried finalize", () => {
       }),
     ).rejects.toThrow();
 
-    expect(await store.isSessionFinalized("s1")).toBe(false);
+    expect(await store.isSessionFinalized(SCOPE, "s1")).toBe(false);
     expect(await store.getRelationship(SCOPE)).toBeNull();
 
     // Retry with the working extractor → advances once.
@@ -405,7 +405,7 @@ describe("promoteSession — failed then retried finalize", () => {
       finalize: true,
     });
     expect(retry.relationshipUpdated).toBe(true);
-    expect(await store.isSessionFinalized("s1")).toBe(true);
+    expect(await store.isSessionFinalized(SCOPE, "s1")).toBe(true);
     expect((await store.getRelationship(SCOPE))!.sessionCount).toBe(1);
 
     // A third run does not advance again.

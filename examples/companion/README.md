@@ -55,6 +55,13 @@ COMPANION_MEMORY_DB=/path/to/companion-memory.db
 
 > Requires Node >=22.13 (the memory store uses the built-in `node:sqlite`, which requires the flag on 22.5–22.12).
 
+> ⚠️ **Single-user / local-only.** This demo persists all memory under a fixed
+> local `userId` placeholder (no auth), so the file-backed SQLite store is
+> per-machine, not multi-tenant. Do **not** deploy it as a shared/multi-user
+> service — every visitor would share the same relationship state and retrieved
+> memories. Multi-user scoping (a trusted server-derived `userId`) is out of
+> scope for this MVP.
+
 From the repository root:
 
 ```bash

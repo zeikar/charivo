@@ -45,7 +45,7 @@ import type {
  * satisfies this; the MemoryStore interface itself stays untouched.
  */
 type PromotionStore = MemoryStore & {
-  isSessionFinalized(id: string): Promise<boolean>;
+  isSessionFinalized(scope: MemoryScope, id: string): Promise<boolean>;
   replaceFact(oldId: string, newFact: MemoryFact): Promise<void>;
   finalizeSession(
     scope: MemoryScope,
@@ -89,7 +89,10 @@ export async function promoteSession(args: {
 
   // 1. Read the dedicated finalization marker FIRST. The in-txn check inside
   //    finalizeSession remains authoritative; this is only a cheap early-out.
-  const alreadyFinalized = await store.isSessionFinalized(transcript.sessionId);
+  const alreadyFinalized = await store.isSessionFinalized(
+    scope,
+    transcript.sessionId,
+  );
 
   // 2. Idempotent session upsert. Does NOT touch finalized_at.
   //    summary is null: there is no LLM summarizer in the MVP (deferred).

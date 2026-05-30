@@ -183,9 +183,13 @@ export function useRealtimeSession(
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
-      // Best-effort final write if the component unmounts mid-session (the user
-      // navigated away without calling stop). Fire-and-forget — cleanup cannot
-      // await, and the scheduler short-circuits if already finalized.
+      // Unmount finalization is BEST-EFFORT. The reliable finalize path is
+      // stop() (snapshot + retry while mounted). On unmount the component is
+      // gone, so we route through the scheduler — preserving its one-in-flight
+      // serialization — rather than bypass it with a keepalive write (which
+      // would risk overlapping a checkpoint and is capped at a 64 KiB body). A
+      // navigation may still cancel the in-flight request; accepted for this
+      // local MVP demo.
       if (schedulerRef.current) {
         schedulerRef.current.onSessionEnd(sessionIdRef.current).catch(() => {});
         schedulerRef.current = null;
@@ -234,6 +238,10 @@ export function useRealtimeSession(
       const eventBus = new EventBus();
       manager.setEventEmitter!(eventBus);
 
+      // "local-user" is an intentional single-user, local-only MVP placeholder:
+      // no auth, no server-side session derivation — the file-backed store is
+      // per-machine, not multi-tenant. All demo users on the same machine share
+      // one relationship + memory namespace. See examples/companion/README.md.
       const scope = { userId: "local-user", characterId: resolvedCharacter.id };
       scopeRef.current = scope;
       const personaInstructions = buildRealtimeSessionConfig({
