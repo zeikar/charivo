@@ -9,6 +9,9 @@ and no dedicated TTS/STT stack.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
 - Fetches a personalized memory block from `POST /api/memory` at cold-start and
   does one relevance refresh after the first user utterance.
+- Captures conversation turns and writes them back to memory through
+  `POST /api/memory/promote` (at checkpoints and on session end), so the
+  longitudinal relationship state carries across sessions.
 - Composes per-session instructions through `composeInstructions([...])` before
   calling `startSession({ instructions })`.
 - Renders connection state, the latest assistant transcript, and controls to
@@ -76,10 +79,19 @@ Then open `http://localhost:3001`.
   no facts are stored). Runs the SQLite store server-side so `node:sqlite` never
   reaches the client bundle.
 
-  > **Current limitation:** this subtask implements the read/injection path only.
-  > The write path (`promoteSession`) is not yet wired into the live session, so
-  > the store must be seeded externally for cross-session memory to appear.
-  > Live write-wiring is deferred to a later subtask.
+- `POST /api/memory/promote`
+  Accepts `{ scope, sessionId, startedAt, endedAt, turns, finalize }` and runs
+  `promoteSession` against the same server-side store, returning the
+  `{ result }` counts. `finalize: false` is a checkpoint; `finalize: true` (sent
+  on session end) advances the relationship exactly once. Both routes share one
+  store connection (`getCompanionStore`) so a write is immediately visible to
+  the next read.
+
+  > **MVP scope:** the server fact extractor is currently a no-op
+  > (`createServerExtractor`), so live sessions persist the session record and
+  > advance the relationship (session count / rapport / last-seen) but do not yet
+  > mine content facts. A real LLM extractor lands behind a flag in a later
+  > subtask; until then, content facts can still be seeded externally.
 
 ## Structure
 
@@ -87,9 +99,10 @@ Then open `http://localhost:3001`.
 examples/companion/src/app
   api/
     realtime/route.ts
-    memory/route.ts       ← memory injection endpoint
+    memory/route.ts          ← memory injection (read) endpoint
+    memory/promote/route.ts  ← memory promotion (write) endpoint
   hooks/
-    useRealtimeSession.ts
+    useRealtimeSession.ts    ← captures turns + schedules promotion writes
   lib/
     compose-instructions.ts
   layout.tsx
@@ -98,6 +111,10 @@ examples/companion/src/app
 examples/companion/src/memory
   render-memory.ts        ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts   ← buildMemoryInstructionBlock (render + select combined)
+  promote.ts              ← promoteSession write pipeline
+  trigger.ts              ← createWriteJobScheduler (checkpoint / finalize fires)
+  server-extractor.ts     ← createServerExtractor (MVP no-op fact extractor)
   sqlite-memory-store.ts  ← SQLite-backed MemoryStore
+  store-singleton.ts      ← shared file-backed store for the API routes
   db-path.ts              ← resolves COMPANION_MEMORY_DB with fallback
 ```

@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SqliteMemoryStore } from "@/memory/sqlite-memory-store";
 import { createFakeEmbedder } from "@/memory/embedding";
-import { getCompanionDbPath } from "@/memory/db-path";
+import { getCompanionStore } from "@/memory/store-singleton";
 import { buildMemoryInstructionBlock } from "@/memory/build-memory-block";
-
-// Lazy singleton so the file-backed DB persists across requests in one server
-// process — avoids re-opening the SQLite file on every request.
-let storeSingleton: SqliteMemoryStore | null = null;
-function getStore(): SqliteMemoryStore {
-  if (!storeSingleton)
-    storeSingleton = new SqliteMemoryStore({ db: getCompanionDbPath() });
-  return storeSingleton;
-}
 
 export async function POST(request: NextRequest) {
   // Parse body in its own try/catch so malformed JSON returns a clean 400
@@ -56,7 +46,7 @@ export async function POST(request: NextRequest) {
     const queryEmbedding = query ? await embedder.embed(query) : undefined;
 
     const instructionsBlock = await buildMemoryInstructionBlock({
-      store: getStore(),
+      store: getCompanionStore(),
       scope: { userId: scope.userId, characterId: scope.characterId },
       now: Date.now(),
       queryEmbedding,
