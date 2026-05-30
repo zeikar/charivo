@@ -44,6 +44,8 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 ## Run
 
+> Requires Node >=22.5 (the memory store uses the built-in `node:sqlite`).
+
 From the repository root:
 
 ```bash
