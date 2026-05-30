@@ -12,6 +12,10 @@ import {
   firstSessionScript,
   correctionTranscript,
   correctionScript,
+  forgetThatTranscript,
+  forgetThatScript,
+  thatsWrongTranscript,
+  thatsWrongScript,
 } from "./__fixtures__/transcripts";
 import type { EmbeddingAdapter, MemoryFact } from "./types";
 import type { FactExtractor, Transcript } from "./promotion-types";
@@ -415,5 +419,88 @@ describe("promoteSession — failed then retried finalize", () => {
     });
     expect(third.relationshipUpdated).toBe(false);
     expect((await store.getRelationship(SCOPE))!.sessionCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Scripted retraction (forget that / that's wrong) → excluded from next retrieve
+//
+// Deterministic, scripted fake extractor — NOT the live spoken path. Replacement
+// correction is already covered by the "merge path" describe above
+// (coffee-with-milk → coffee-black supersede); these tests only cover the new
+// pure-retraction (DELETE/invalidate) marker path.
+// ---------------------------------------------------------------------------
+
+describe("promoteSession — scripted retraction (forget that / that's wrong)", () => {
+  it("'forget that' retraction invalidates the teacher fact and excludes it from the next retrieve", async () => {
+    // Seed the biographical "I work as a teacher" fact.
+    await promoteSession({
+      transcript: firstSessionTranscript,
+      store,
+      embedder,
+      extractor: createScriptedExtractor(firstSessionScript),
+      now: NOW,
+      finalize: true,
+    });
+    const teacher = (await activeFacts(store)).find(
+      (f) => f.sourceTurnId === "u2",
+    )!;
+    expect(teacher).toBeDefined();
+
+    const result = await promoteSession({
+      transcript: forgetThatTranscript,
+      store,
+      embedder,
+      extractor: createScriptedExtractor(forgetThatScript),
+      now: NOW,
+      finalize: true,
+    });
+
+    // Pure retraction → DELETE (invalidate), nothing added.
+    expect(result.invalidated).toBe(1);
+    expect(result.added).toBe(0);
+
+    // Core "excluded from the next retrieve" check.
+    const active = await activeFacts(store);
+    expect(active.map((f) => f.sourceTurnId)).not.toContain("u2");
+
+    // Invalidated (soft) with NO replacement link.
+    const teacherRow = await store.getFact(teacher.id);
+    expect(teacherRow!.invalidAt).not.toBeNull();
+    expect(teacherRow!.supersededBy).toBeNull();
+  });
+
+  it("'that's wrong' retraction (Task-1 marker) invalidates the teacher fact and excludes it from the next retrieve", async () => {
+    await promoteSession({
+      transcript: firstSessionTranscript,
+      store,
+      embedder,
+      extractor: createScriptedExtractor(firstSessionScript),
+      now: NOW,
+      finalize: true,
+    });
+    const teacher = (await activeFacts(store)).find(
+      (f) => f.sourceTurnId === "u2",
+    )!;
+    expect(teacher).toBeDefined();
+
+    const result = await promoteSession({
+      transcript: thatsWrongTranscript,
+      store,
+      embedder,
+      extractor: createScriptedExtractor(thatsWrongScript),
+      now: NOW,
+      finalize: true,
+    });
+
+    expect(result.invalidated).toBe(1);
+    expect(result.added).toBe(0);
+
+    const active = await activeFacts(store);
+    expect(active.map((f) => f.sourceTurnId)).not.toContain("u2");
+
+    const teacherRow = await store.getFact(teacher.id);
+    expect(teacherRow!.invalidAt).not.toBeNull();
+    expect(teacherRow!.supersededBy).toBeNull();
   });
 });
