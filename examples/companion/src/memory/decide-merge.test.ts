@@ -106,50 +106,92 @@ describe("isRetraction", () => {
 // ── isReplacement (unit) ───────────────────────────────────────────────────
 
 describe("isReplacement", () => {
-  it("returns true when same kind + shared subject token + new object", () => {
+  it("returns true when subject is declared and appears as a whole word in neighbor text", () => {
+    // subject:"coffee" declared; "coffee" is a whole word in the neighbor text.
     const candidate = makeCandidate({
-      text: "I prefer tea",
+      text: "I take my coffee black",
       kind: "preference",
+      subject: "coffee",
     });
     const neighbor = makeFact({
-      text: "I prefer coffee",
+      text: "I take my coffee with milk",
       kind: "preference",
       embedding: [],
     });
     expect(isReplacement(candidate, neighbor)).toBe(true);
   });
 
-  it("returns false when kinds differ", () => {
+  it("returns false when subject is absent (no declared metadata → no supersede)", () => {
+    // Even though texts share 'coffee', absence of subject → conservative ADD.
+    const candidate = makeCandidate({
+      text: "I take my coffee black",
+      kind: "preference",
+      // subject intentionally omitted
+    });
+    const neighbor = makeFact({
+      text: "I take my coffee with milk",
+      kind: "preference",
+      embedding: [],
+    });
+    expect(isReplacement(candidate, neighbor)).toBe(false);
+  });
+
+  it("returns false when subject is empty string", () => {
+    const candidate = makeCandidate({
+      text: "I take my coffee black",
+      kind: "preference",
+      subject: "",
+    });
+    const neighbor = makeFact({
+      text: "I take my coffee with milk",
+      kind: "preference",
+      embedding: [],
+    });
+    expect(isReplacement(candidate, neighbor)).toBe(false);
+  });
+
+  it("returns false when subject is declared but does NOT appear in neighbor text", () => {
+    // subject:"tea" not present in the neighbor about coffee → not a replacement.
     const candidate = makeCandidate({
       text: "I prefer tea",
       kind: "preference",
+      subject: "tea",
     });
     const neighbor = makeFact({
-      text: "I prefer coffee",
-      kind: "biographical",
-      embedding: [],
-    });
-    expect(isReplacement(candidate, neighbor)).toBe(false);
-  });
-
-  it("returns false when no shared content tokens", () => {
-    const candidate = makeCandidate({ text: "quantum physics", kind: "other" });
-    const neighbor = makeFact({
-      text: "I love cooking pasta",
-      kind: "other",
-      embedding: [],
-    });
-    expect(isReplacement(candidate, neighbor)).toBe(false);
-  });
-
-  it("returns false when candidate is subset of neighbor (no new object)", () => {
-    const candidate = makeCandidate({ text: "coffee", kind: "preference" });
-    const neighbor = makeFact({
-      text: "I prefer coffee daily",
+      text: "I prefer quiet restaurants",
       kind: "preference",
       embedding: [],
     });
     expect(isReplacement(candidate, neighbor)).toBe(false);
+  });
+
+  it("subject match is whole-word (does not match partial word)", () => {
+    // subject:"coffee" should not match "coffeemaker".
+    const candidate = makeCandidate({
+      text: "I prefer coffee",
+      kind: "preference",
+      subject: "coffee",
+    });
+    const neighbor = makeFact({
+      text: "I own a coffeemaker",
+      kind: "preference",
+      embedding: [],
+    });
+    expect(isReplacement(candidate, neighbor)).toBe(false);
+  });
+
+  it("subject match is case-insensitive", () => {
+    const candidate = makeCandidate({
+      text: "I take my coffee black",
+      kind: "preference",
+      subject: "Coffee",
+    });
+    const neighbor = makeFact({
+      text: "I take my coffee with milk",
+      kind: "preference",
+      embedding: [],
+    });
+    expect(isReplacement(candidate, neighbor)).toBe(true);
   });
 });
 
@@ -172,6 +214,12 @@ describe("decideMerge", () => {
   let embAmbCandidate: number[];
   let embAmbN1: number[];
   let embAmbN2: number[];
+  // [Finding 1] cross-kind retraction test
+  let embF1RetractCandidate: number[];
+  let embF1PreferenceNeighbor: number[];
+  // [Finding 2] predicate-only sharing counterexample
+  let embF2Candidate: number[];
+  let embF2Neighbor: number[];
 
   beforeAll(async () => {
     // ADD: no neighbor
@@ -181,12 +229,13 @@ describe("decideMerge", () => {
     embDupCandidate = await embedder.embed("I love pizza");
     embDupNeighbor = await embedder.embed("I love pizza");
 
-    // UPDATE: cosine ≈ 0.7746 — in [0.6, 0.92) band
-    // "prefer" is shared (subject), "tea" vs "coffee" differ (object)
-    embUpdCandidate = await embedder.embed("I prefer tea");
-    embUpdNeighbor = await embedder.embed("I prefer coffee");
+    // UPDATE: cosine ≈ 0.8018 — in [0.6, 0.92) band
+    // Candidate carries subject:"coffee"; neighbor text contains "coffee" as a
+    // whole word → isReplacement returns true → UPDATE.
+    embUpdCandidate = await embedder.embed("I take my coffee black");
+    embUpdNeighbor = await embedder.embed("I take my coffee with milk");
 
-    // DELETE: cosine ≈ 0.6761 — retraction phrase + match >= 0.6
+    // DELETE: cosine ≈ 0.6761 — retraction phrase + same-kind match >= 0.6
     embDelCandidate = await embedder.embed("I no longer drink coffee");
     embDelNeighbor = await embedder.embed("I drink coffee every morning");
 
@@ -201,6 +250,18 @@ describe("decideMerge", () => {
     embAmbCandidate = await embedder.embed("I enjoy swimming laps");
     embAmbN1 = await embedder.embed("I enjoy running laps");
     embAmbN2 = await embedder.embed("I enjoy cycling laps");
+
+    // [Finding 1] cross-kind: biographical retraction, cosine ≈ 0.7334 to a
+    // preference neighbor — must NOT DELETE because kinds differ.
+    embF1RetractCandidate = await embedder.embed(
+      "I no longer work as a teacher",
+    );
+    embF1PreferenceNeighbor = await embedder.embed("I work at a school");
+
+    // [Finding 2] predicate-only sharing: "prefer" shared, no content subject —
+    // must be ADD, not UPDATE.
+    embF2Candidate = await embedder.embed("I prefer tea");
+    embF2Neighbor = await embedder.embed("I prefer quiet restaurants");
   });
 
   // ── ADD: no neighbor ────────────────────────────────────────────────────
@@ -237,17 +298,19 @@ describe("decideMerge", () => {
   // ── UPDATE: related neighbor + replacement ───────────────────────────────
   it("assertion with related neighbor in UPDATE band → UPDATE with targetFactId", async () => {
     const sim = cosineSimilarity(embUpdCandidate, embUpdNeighbor);
-    // Verify band: cosine ≈ 0.7746, genuinely in [0.6, 0.92)
+    // Verify band: cosine ≈ 0.8018, genuinely in [0.6, 0.92)
     expect(sim).toBeGreaterThanOrEqual(0.6);
     expect(sim).toBeLessThan(0.92);
 
+    // subject:"coffee" declared; "coffee" appears in the neighbor → isReplacement true.
     const candidate = makeCandidate({
-      text: "I prefer tea",
+      text: "I take my coffee black",
       kind: "preference",
+      subject: "coffee",
     });
     const neighbor = makeFact({
       id: "fact-upd-01",
-      text: "I prefer coffee",
+      text: "I take my coffee with milk",
       kind: "preference",
       embedding: embUpdNeighbor,
     });
@@ -364,5 +427,99 @@ describe("decideMerge", () => {
 
     const result = decideMerge(candidate, embAmbCandidate, [n1, n2]);
     expect(result).toEqual({ action: "NOOP", targetFactId: null });
+  });
+
+  // ── [Finding 1] Cross-kind retraction → NOOP ────────────────────────────
+  it("[Finding 1] biographical retraction does NOT delete a different-kind (preference) neighbor even when cosine is high", async () => {
+    // cosine ≈ 0.7334 — above RELATED_SIMILARITY, but kinds differ → NOOP
+    const sim = cosineSimilarity(
+      embF1RetractCandidate,
+      embF1PreferenceNeighbor,
+    );
+    expect(sim).toBeGreaterThanOrEqual(0.6);
+
+    const candidate = makeCandidate({
+      text: "I no longer work as a teacher",
+      kind: "biographical",
+    });
+    const neighbor = makeFact({
+      id: "fact-pref-school",
+      text: "I work at a school",
+      kind: "preference", // different kind — must not be deleted
+      embedding: embF1PreferenceNeighbor,
+    });
+
+    const result = decideMerge(candidate, embF1RetractCandidate, [neighbor]);
+    expect(result).toEqual({ action: "NOOP", targetFactId: null });
+  });
+
+  // ── [Finding 2] No declared subject → ADD (not UPDATE) ───────────────────
+  it("[Finding 2] candidate in RELATED band with no declared subject → ADD (conservative)", async () => {
+    // No subject metadata → isReplacement returns false regardless of text
+    // similarity; two preferences that share only a predicate stay separate.
+    const sim = cosineSimilarity(embF2Candidate, embF2Neighbor);
+    expect(sim).toBeGreaterThanOrEqual(0.6);
+    expect(sim).toBeLessThan(0.92);
+
+    const candidate = makeCandidate({
+      text: "I prefer tea",
+      kind: "preference",
+      // subject intentionally absent — no metadata → no supersede
+    });
+    const neighbor = makeFact({
+      id: "fact-pref-restaurants",
+      text: "I prefer quiet restaurants",
+      kind: "preference",
+      embedding: embF2Neighbor,
+    });
+
+    const result = decideMerge(candidate, embF2Candidate, [neighbor]);
+    expect(result).toEqual({ action: "ADD", targetFactId: null });
+  });
+
+  // ── [Finding 3] Same-text different-kind → ADD (kind filter) ─────────────
+  it("[Finding 3] candidate same text as existing fact but different kind → ADD", async () => {
+    // The dup gate must not fire across kinds. After kind-filtering, no
+    // same-kind neighbor exists → ADD (the new fact is a distinct kind).
+    const embedding = await embedder.embed("I love pizza");
+    const candidate = makeCandidate({
+      text: "I love pizza",
+      kind: "biographical", // different kind from the neighbor
+    });
+    const neighbor = makeFact({
+      id: "fact-pizza-pref",
+      text: "I love pizza",
+      kind: "preference", // same text, different kind
+      embedding,
+    });
+
+    // cosine = 1.0 (identical text) — would be NOOP without kind filter
+    const sim = cosineSimilarity(embedding, neighbor.embedding);
+    expect(sim).toBeGreaterThanOrEqual(0.92);
+
+    const result = decideMerge(candidate, embedding, [neighbor]);
+    expect(result).toEqual({ action: "ADD", targetFactId: null });
+  });
+
+  // ── [Finding 4] Generic-verb shared token with declared subject not in neighbor → ADD
+  it("[Finding 4] candidate with subject not mentioned in neighbor text → ADD (no false UPDATE)", async () => {
+    // subject:"tea" declared, but neighbor "I take medication daily" does not
+    // contain "tea" → isReplacement false → ADD (unrelated facts stay separate).
+    const embCandidate = await embedder.embed("I drink tea");
+    const embNeighbor = await embedder.embed("I take medication daily");
+    const candidate = makeCandidate({
+      text: "I drink tea",
+      kind: "preference",
+      subject: "tea",
+    });
+    const neighbor = makeFact({
+      id: "fact-medication",
+      text: "I take medication daily",
+      kind: "preference",
+      embedding: embNeighbor,
+    });
+
+    const result = decideMerge(candidate, embCandidate, [neighbor]);
+    expect(result).toEqual({ action: "ADD", targetFactId: null });
   });
 });

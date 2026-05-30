@@ -8,10 +8,10 @@
  * The texts are deliberately authored so the fake bag-of-words embedder
  * (`createFakeEmbedder`) yields the intended merge decisions. The relevant
  * cosines (verified empirically) are:
- *   - "I prefer coffee" vs "I prefer tea"            ≈ 0.7746  (UPDATE band)
- *   - "I work as a teacher" vs "I no longer work …"  ≈ 0.9701  (DELETE band)
- * Both land in [RELATED_SIMILARITY, DUP_SIMILARITY) / >= RELATED_SIMILARITY,
- * so the supersede and invalidate branches are genuinely exercised.
+ *   - "I take my coffee with milk" vs "I take my coffee black"  ≈ 0.8018 (UPDATE band)
+ *   - "I work as a teacher" vs "I no longer work as a teacher"  ≈ 0.9701 (DELETE band)
+ * The correction candidate carries `subject:"coffee"` so the explicit-subject
+ * isReplacement check matches ("coffee" appears in the seeded neighbor's text).
  */
 
 import type { MemoryScope } from "../types";
@@ -35,7 +35,12 @@ export const firstSessionTranscript: Transcript = {
   startedAt: NOW - 60_000,
   endedAt: NOW,
   turns: [
-    { id: "u1", role: "user", text: "I prefer coffee", at: NOW - 50_000 },
+    {
+      id: "u1",
+      role: "user",
+      text: "I take my coffee with milk",
+      at: NOW - 50_000,
+    },
     { id: "u2", role: "user", text: "I work as a teacher", at: NOW - 40_000 },
     {
       id: "u3",
@@ -55,7 +60,7 @@ export const firstSessionTranscript: Transcript = {
 export const firstSessionScript: Record<string, FactCandidate[]> = {
   u1: [
     {
-      text: "I prefer coffee",
+      text: "I take my coffee with milk",
       kind: "preference",
       importance: 0.8,
       sourceTurnId: "u1",
@@ -102,7 +107,12 @@ export const correctionTranscript: Transcript = {
   startedAt: NOW + 60_000,
   endedAt: NOW + 120_000,
   turns: [
-    { id: "u4", role: "user", text: "I prefer tea", at: NOW + 70_000 },
+    {
+      id: "u4",
+      role: "user",
+      text: "I take my coffee black",
+      at: NOW + 70_000,
+    },
     {
       id: "u5",
       role: "user",
@@ -113,13 +123,15 @@ export const correctionTranscript: Transcript = {
 };
 
 export const correctionScript: Record<string, FactCandidate[]> = {
-  // Same kind as the coffee fact, shares "prefer", new object "tea" → UPDATE.
+  // Same kind as the milk fact; subject:"coffee" anchors the replacement check
+  // ("coffee" appears in "I take my coffee with milk") → UPDATE (supersede).
   u4: [
     {
-      text: "I prefer tea",
+      text: "I take my coffee black",
       kind: "preference",
       importance: 0.8,
       sourceTurnId: "u4",
+      subject: "coffee",
     },
   ],
   // "no longer" retraction marker + high overlap with the teacher fact → DELETE.

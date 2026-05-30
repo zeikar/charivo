@@ -29,6 +29,16 @@ export type FactCandidate = {
   importance: number;
   /** Required, non-null: the `Turn.id` this candidate was derived from. */
   sourceTurnId: string;
+  /**
+   * Optional: the entity/slot this fact is about (e.g. "coffee", "job").
+   * Supplied by the extractor — a real LLM would emit it; scripted fakes
+   * provide it in fixtures. When present and non-empty, `decideMerge` uses it
+   * as an anchor for the replacement check: a same-kind neighbor is considered
+   * the target only when its text contains `subject` as a whole word.
+   * Absent or empty → no auto-supersede (precision-first; prefer ADD over a
+   * wrong UPDATE). Not persisted; used only during the promotion pass.
+   */
+  subject?: string;
 };
 
 /**

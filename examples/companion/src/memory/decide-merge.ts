@@ -49,45 +49,6 @@ const RETRACTION_MARKERS = [
   "don't remember",
 ] as const;
 
-// ── Stopword list for isReplacement ───────────────────────────────────────
-// Short function words that don't carry subject/object meaning.
-const STOPWORDS = new Set([
-  "i",
-  "a",
-  "an",
-  "the",
-  "is",
-  "are",
-  "was",
-  "were",
-  "be",
-  "been",
-  "being",
-  "have",
-  "has",
-  "had",
-  "do",
-  "does",
-  "did",
-  "will",
-  "would",
-  "could",
-  "should",
-  "may",
-  "might",
-  "to",
-  "of",
-  "in",
-  "on",
-  "at",
-  "by",
-  "for",
-  "with",
-  "about",
-  "from",
-  "as",
-]);
-
 /**
  * Returns true when `text` contains an explicit retraction or forgetting
  * phrase. Matched against the fixed RETRACTION_MARKERS set — no inference.
@@ -105,43 +66,32 @@ export function isRetraction(text: string): boolean {
 }
 
 /**
- * Extracts content tokens: lowercase, split on non-word chars, drop
- * stopwords and tokens shorter than 3 characters.
- */
-function contentTokens(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((t) => t.length > 2 && !STOPWORDS.has(t)),
-  );
-}
-
-/**
- * Conservative deterministic heuristic for whether `candidate` replaces
- * `neighbor`. Returns true only when both share the same `kind` AND the
- * texts share at least one content token (the "subject") AND the candidate
- * has at least one content token not present in the neighbor (the "object"
- * has changed).
+ * Returns true when `candidate` explicitly replaces `neighbor`.
  *
- * Deliberately biased toward false (prefer false-NOOP / false-ADD over
- * false-UPDATE). No LLM. Stands in for a proper judge until one is wired in.
+ * Replacement is anchored to declared extraction metadata, not coincidental
+ * token overlap. Both conditions must hold:
+ *   1. `candidate.subject` is a non-empty string (supplied by the extractor).
+ *   2. The neighbor's text contains that subject as a whole word (case-insensitive).
  *
- * MVP heuristic — document any changes to the token overlap rules here.
+ * When `candidate.subject` is absent or empty → always false (precision-first;
+ * missing metadata means no auto-supersede — prefer ADD over a wrong UPDATE).
+ *
+ * The kind-equality check is omitted here because `decideMerge` already
+ * pre-filters neighbors to the candidate's kind before calling this function.
  */
 export function isReplacement(
   candidate: FactCandidate,
   neighbor: MemoryFact,
 ): boolean {
-  if (candidate.kind !== neighbor.kind) return false;
+  const subject = candidate.subject?.trim();
+  if (!subject) return false;
 
-  const ct = contentTokens(candidate.text);
-  const nt = contentTokens(neighbor.text);
-
-  const hasSharedSubject = [...ct].some((t) => nt.has(t));
-  const hasNewObject = [...ct].some((t) => !nt.has(t));
-
-  return hasSharedSubject && hasNewObject;
+  // Whole-word, case-insensitive match of the declared subject in the neighbor text.
+  const pattern = new RegExp(
+    `\\b${subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    "i",
+  );
+  return pattern.test(neighbor.text);
 }
 
 /**
@@ -173,7 +123,10 @@ export function decideMerge(
     let bestSim = -Infinity;
     let bestNeighbor: MemoryFact | null = null;
 
+    // Only consider same-kind neighbors: a biographical retraction must not
+    // accidentally DELETE an unrelated preference fact that embeds nearby.
     for (const neighbor of neighbors) {
+      if (neighbor.kind !== candidate.kind) continue;
       const sim = cosineSimilarity(candidateEmbedding, neighbor.embedding);
       if (sim > bestSim) {
         bestSim = sim;
@@ -190,12 +143,17 @@ export function decideMerge(
   }
 
   // ── 2. Assertion branch ──────────────────────────────────────────────────
-  if (neighbors.length === 0) {
+  // Pre-filter to same-kind neighbors only. A same-text/different-kind
+  // candidate is a distinct fact — do not let a cross-kind neighbor trigger
+  // a false NOOP or UPDATE and lose it.
+  const sameKindNeighbors = neighbors.filter((n) => n.kind === candidate.kind);
+
+  if (sameKindNeighbors.length === 0) {
     return { action: "ADD", targetFactId: null };
   }
 
-  // Rank neighbors by similarity descending.
-  const ranked = neighbors
+  // Rank same-kind neighbors by similarity descending.
+  const ranked = sameKindNeighbors
     .map((n) => ({
       neighbor: n,
       sim: cosineSimilarity(candidateEmbedding, n.embedding),

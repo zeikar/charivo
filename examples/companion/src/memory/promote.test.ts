@@ -79,7 +79,7 @@ describe("promoteSession — extraction, admission, persisted effects", () => {
 
     const coffee = byTurn.get("u1");
     expect(coffee).toBeDefined();
-    expect(coffee!.text).toBe("I prefer coffee");
+    expect(coffee!.text).toBe("I take my coffee with milk");
     expect(coffee!.kind).toBe("preference");
     expect(coffee!.importance).toBe(0.8);
 
@@ -128,11 +128,11 @@ describe("promoteSession — merge path", () => {
     expect(result.invalidated).toBe(1);
     expect(result.added).toBe(0);
 
-    // Active facts: only the new "I prefer tea" fact remains.
+    // Active facts: only the new "I take my coffee black" fact remains.
     const active = await activeFacts(store);
     expect(active).toHaveLength(1);
     const tea = active[0];
-    expect(tea.text).toBe("I prefer tea");
+    expect(tea.text).toBe("I take my coffee black");
     expect(tea.sourceTurnId).toBe("u4");
 
     // The old coffee fact is inactive and points at the new tea fact.
@@ -290,9 +290,9 @@ describe("promoteSession — idempotency, correction rerun", () => {
       // No resurrected retraction fact, no duplicated update row.
       expect(ids2).toEqual(ids1);
       expect(factCount2).toBe(factCount1);
-      // Only the tea fact is active; the teacher fact stays invalidated.
+      // Only the coffee-black fact is active; the teacher fact stays invalidated.
       expect(active2).toHaveLength(1);
-      expect(active2[0].text).toBe("I prefer tea");
+      expect(active2[0].text).toBe("I take my coffee black");
 
       // Relationship session count unchanged across the two correction runs.
       expect(rel2!.sessionCount).toBe(rel1!.sessionCount);
