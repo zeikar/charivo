@@ -48,3 +48,5 @@ export {
 } from "./render-memory";
 
 export { buildMemoryInstructionBlock } from "./build-memory-block";
+
+export { getCompanionDbPath } from "./db-path";
