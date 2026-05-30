@@ -19,8 +19,8 @@ export default function Page() {
   async function handleSend() {
     const text = input.trim();
     if (!text) return;
-    await sendMessage(text);
-    setInput("");
+    const ok = await sendMessage(text);
+    if (ok) setInput("");
   }
 
   return (

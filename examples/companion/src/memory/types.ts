@@ -88,8 +88,11 @@ export interface MemoryStore {
   retrieve(query: MemoryQuery): Promise<MemoryFact[]>;
 
   /**
-   * Mark fact `id` as superseded by fact `by`.
-   * Pass null to clear the supersededBy link without invalidating.
+   * Retire fact `id` (sets `invalidAt` so it is excluded from `retrieve`)
+   * and record `by` as the id of the replacing fact, or null when there is
+   * no specific replacement. Retiring is unconditional: passing null still
+   * excludes the fact. `supersededBy` is only a replacement-link, never the
+   * active gate.
    */
   supersede(id: string, by: string | null): Promise<void>;
 

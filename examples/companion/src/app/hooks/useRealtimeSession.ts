@@ -33,7 +33,7 @@ export interface UseRealtimeSessionResult {
   transcript: string;
   start: () => Promise<void>;
   stop: () => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string) => Promise<boolean>;
   interrupt: () => Promise<void>;
 }
 
@@ -205,17 +205,19 @@ export function useRealtimeSession(
     logSession("session stopped");
   }, []);
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string): Promise<boolean> => {
     const manager = managerRef.current;
     if (!manager) {
       console.warn("[realtime-session] No active session to send message");
-      return;
+      return false;
     }
 
     try {
       await manager.sendMessage(text);
+      return true;
     } catch (error) {
       console.error("[realtime-session] Failed to send message:", error);
+      return false;
     }
   }, []);
 
