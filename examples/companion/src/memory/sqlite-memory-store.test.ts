@@ -129,6 +129,71 @@ describe("supersede/invalidate exclusion", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Atomic replaceFact ([M1])
+// ---------------------------------------------------------------------------
+
+describe("replaceFact (atomic upsert-new + supersede-old)", () => {
+  it("activates the new fact and retires the old one, linked by supersededBy", async () => {
+    const scope = SCOPE_A;
+    const oldFact = makeFact({ scope, text: "I take my coffee with milk" });
+    const newFact = makeFact({ scope, text: "I take my coffee black" });
+
+    await store.upsertFact(oldFact);
+    await store.replaceFact(oldFact.id, newFact);
+
+    // New fact is active; old fact is inactive and points at the new one.
+    const active = await store.retrieve({
+      scope,
+      budgetTokens: 999999,
+      now: NOW,
+    });
+    expect(active.map((f) => f.id)).toEqual([newFact.id]);
+
+    const oldRow = await store.getFact(oldFact.id);
+    expect(oldRow).not.toBeNull();
+    expect(oldRow!.invalidAt).not.toBeNull();
+    expect(oldRow!.supersededBy).toBe(newFact.id);
+
+    const newRow = await store.getFact(newFact.id);
+    expect(newRow!.invalidAt).toBeNull();
+  });
+
+  it("rolls back BOTH writes when the supersede step fails mid-transaction", async () => {
+    // Inject a db whose supersede UPDATE aborts, proving the new-fact insert is
+    // rolled back too — the partial-update window the non-atomic code left open.
+    const db = new DatabaseSync(":memory:");
+    const injectedStore = new SqliteMemoryStore({ db, now: () => NOW });
+
+    const scope = SCOPE_A;
+    const oldFact = makeFact({ scope, text: "old preference" });
+    await injectedStore.upsertFact(oldFact);
+
+    // newFact.id is the sentinel the trigger watches: superseding the old fact
+    // writes superseded_by = 'BOOM', which raises and aborts the transaction.
+    const newFact = makeFact({ scope, id: "BOOM", text: "new preference" });
+    db.exec(
+      `CREATE TRIGGER block_boom BEFORE UPDATE ON facts
+       WHEN NEW.superseded_by = 'BOOM'
+       BEGIN
+         SELECT RAISE(ABORT, 'boom');
+       END;`,
+    );
+
+    await expect(
+      injectedStore.replaceFact(oldFact.id, newFact),
+    ).rejects.toThrow();
+
+    // The new fact insert was rolled back, and the old fact stays untouched.
+    expect(await injectedStore.getFact("BOOM")).toBeNull();
+    const oldRow = await injectedStore.getFact(oldFact.id);
+    expect(oldRow!.invalidAt).toBeNull();
+    expect(oldRow!.supersededBy).toBeNull();
+
+    injectedStore.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Ordering: recency + importance (no queryEmbedding, large budget)
 // ---------------------------------------------------------------------------
 

@@ -150,7 +150,12 @@ export class SqliteMemoryStore implements MemoryStore {
     }
   }
 
-  async upsertFact(fact: MemoryFact): Promise<void> {
+  /**
+   * Synchronous upsert-by-id. Extracted so the async `upsertFact` and the
+   * transactional `replaceFact` share ONE definition of the row write (no SQL
+   * duplication, no `await` inside a transaction).
+   */
+  private upsertFactRow(fact: MemoryFact): void {
     this.db
       .prepare(
         `INSERT INTO facts
@@ -187,6 +192,10 @@ export class SqliteMemoryStore implements MemoryStore {
         fact.invalidAt,
         fact.supersededBy,
       );
+  }
+
+  async upsertFact(fact: MemoryFact): Promise<void> {
+    this.upsertFactRow(fact);
   }
 
   async getFact(id: string): Promise<MemoryFact | null> {
@@ -243,13 +252,43 @@ export class SqliteMemoryStore implements MemoryStore {
     return selected;
   }
 
-  async supersede(id: string, by: string | null): Promise<void> {
-    // Sets BOTH invalid_at AND superseded_by (by may be null).
+  /**
+   * Synchronous supersede. Sets BOTH invalid_at (from the caller-supplied
+   * store-clock `at`) AND superseded_by (`by` may be null). Shared by the async
+   * `supersede` and the transactional `replaceFact`.
+   */
+  private supersedeRow(id: string, by: string | null, at: number): void {
     this.db
       .prepare(
         `UPDATE facts SET invalid_at = ?, superseded_by = ? WHERE id = ?`,
       )
-      .run(this.now(), by, id);
+      .run(at, by, id);
+  }
+
+  async supersede(id: string, by: string | null): Promise<void> {
+    this.supersedeRow(id, by, this.now());
+  }
+
+  /**
+   * [M1] Atomically replace an existing fact: upsert `newFact` AND supersede the
+   * old fact (linking it to `newFact.id`) inside ONE synchronous SQLite
+   * transaction. There is no `await` between BEGIN and COMMIT, so a crash can
+   * never leave BOTH the old and the new fact active — either both writes land
+   * or neither does, and a retry re-runs the same UPDATE decision cleanly.
+   *
+   * Concrete capability — intentionally NOT part of the MemoryStore interface,
+   * which stays mechanism-only.
+   */
+  async replaceFact(oldId: string, newFact: MemoryFact): Promise<void> {
+    this.db.exec("BEGIN");
+    try {
+      this.upsertFactRow(newFact);
+      this.supersedeRow(oldId, newFact.id, this.now());
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   async invalidate(id: string): Promise<void> {

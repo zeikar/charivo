@@ -46,6 +46,7 @@ import type {
  */
 type PromotionStore = MemoryStore & {
   isSessionFinalized(id: string): Promise<boolean>;
+  replaceFact(oldId: string, newFact: MemoryFact): Promise<void>;
   finalizeSession(
     scope: MemoryScope,
     sessionId: string,
@@ -168,9 +169,10 @@ export async function promoteSession(args: {
         break;
       }
       case "UPDATE": {
-        const newFact = buildFact();
-        await store.upsertFact(newFact);
-        await store.supersede(decision.targetFactId!, newFact.id);
+        // [M1] Atomic replace: upsert-new + supersede-old commit together, so a
+        // crash can never strand both facts active (which would make the retry
+        // see the new fact as a duplicate and never retire the old one).
+        await store.replaceFact(decision.targetFactId!, buildFact());
         superseded++;
         break;
       }
