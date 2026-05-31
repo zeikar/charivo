@@ -4,6 +4,8 @@ A minimal companion demo that starts an OpenAI Realtime session and lets you
 talk to a character via voice and text. It intentionally has no Live2D renderer
 and no dedicated TTS/STT stack.
 
+Live demo: https://charivo-companion.vercel.app/
+
 ## What it does
 
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
