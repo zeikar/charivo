@@ -218,7 +218,10 @@ export default function Page() {
         canvasContainerRef={canvasContainerRef}
         rendererReady={rendererReady}
       />
-      <VoiceOrb phase={phase} />
+      <VoiceOrb
+        phase={phase}
+        onTalk={!isConnected && !isConnecting ? handleRetry : undefined}
+      />
       <TopBar
         name={HER_NAME}
         status={topBarStatus}

@@ -2,7 +2,7 @@ import type { Phase } from "../lib/hearth-theme";
 
 export function VoiceOrb({
   phase,
-  onTalk = () => {},
+  onTalk,
 }: {
   phase: Phase;
   onTalk?: () => void;
@@ -18,7 +18,8 @@ export function VoiceOrb({
     <button
       className={"voicehint phase-" + phase}
       onClick={onTalk}
-      aria-label="Talk"
+      disabled={onTalk === undefined}
+      aria-label={onTalk !== undefined ? "Wake her" : undefined}
     >
       <span className="vh-orb">
         <span className="vh-core" />

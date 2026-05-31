@@ -121,6 +121,7 @@ export function SettingsPanel({
         className="sheet"
         style={{ transform: open ? "translateX(0)" : "translateX(100%)" }}
         aria-hidden={!open}
+        inert={!open}
       >
         <div className="sheet-head">
           <h2 className="sheet-title">Settings</h2>
