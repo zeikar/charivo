@@ -79,6 +79,79 @@ await charivo.dispose();
 
 For a complete app, see [`examples/web`](./examples/web).
 
+## Realtime Voice
+
+For low-latency, speech-to-speech conversation, attach a realtime manager
+instead of the LLM + TTS pair. The browser streams microphone audio to a server
+route and plays the model's voice back directly.
+
+```bash
+pnpm add \
+  @charivo/core \
+  @charivo/realtime \
+  @charivo/render @charivo/render-live2d
+```
+
+```ts
+import { Charivo } from "@charivo/core";
+import {
+  buildRealtimeSessionConfig,
+  createRealtimeManager,
+} from "@charivo/realtime";
+import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
+import { createRenderManager } from "@charivo/render";
+import { createLive2DRenderer } from "@charivo/render-live2d";
+
+const canvas = document.querySelector("canvas")!;
+
+const charivo = new Charivo();
+
+const renderer = createLive2DRenderer({ canvas });
+const renderManager = createRenderManager(renderer, {
+  canvas,
+  mouseTracking: "document",
+});
+await renderManager.initialize();
+await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
+
+charivo.attachRenderer(renderManager);
+charivo.attachRealtime(
+  createRealtimeManager(
+    createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" }),
+  ),
+);
+
+charivo.setCharacter({
+  id: "hiyori",
+  name: "Hiyori",
+  personality: "Cheerful and helpful assistant",
+  voice: { voiceId: "marin" },
+});
+
+// Start a live microphone session (speech in, voice out).
+const realtime = charivo.getRealtimeManager()!;
+const base = buildRealtimeSessionConfig({
+  character: charivo.getCharacter() ?? undefined,
+});
+
+await realtime.startSession({
+  provider: "openai",
+  model: "gpt-realtime-mini",
+  instructions: base.instructions,
+});
+
+// End the live session when the conversation is over.
+await realtime.stopSession();
+
+await charivo.dispose();
+```
+
+To let the live model drive avatar expressions and motions, register the avatar
+tools and result projector from `@charivo/realtime-avatar`. See
+[`examples/web`](./examples/web) for the full wiring and the
+[Companion demo](https://charivo-companion.vercel.app/) for realtime voice with
+cross-session memory.
+
 ## Choosing Packages
 
 Use the remote/server-mediated path by default:
