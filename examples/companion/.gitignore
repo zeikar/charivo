@@ -43,3 +43,5 @@ next-env.d.ts
 
 # local runtime DB (companion memory)
 /.data/
+
+design_handoff_companion_main
