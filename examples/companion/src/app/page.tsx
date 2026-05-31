@@ -2,12 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
+import {
+  loadUserName,
+  saveUserName,
+  clearUserName,
+  sanitizeUserName,
+} from "./lib/user-name-store";
 
 export default function Page() {
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
 
+  // Intro gate + one-action meet-and-connect state.
+  const [hasMet, setHasMet] = useState(false);
+  // The one-shot connect intent: armed by meet / revisit / 다시 만나기, consumed
+  // (set false) at the moment the auto-connect effect invokes start().
+  const [connectRequested, setConnectRequested] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState("");
+
   useEffect(() => {
+    if (!hasMet) return;
     const container = canvasContainerRef.current;
     if (!container) {
       return;
@@ -29,7 +44,7 @@ export default function Page() {
         container.removeChild(nextCanvas);
       }
     };
-  }, []);
+  }, [hasMet]);
 
   const {
     isConnected,
@@ -39,9 +54,67 @@ export default function Page() {
     stop,
     sendMessage,
     interrupt,
-  } = useRealtimeSession(canvas);
+    rendererReady,
+  } = useRealtimeSession(canvas, undefined, userName);
 
   const [input, setInput] = useState("");
+
+  // Returning visitor: land past the gate with the connect intent armed so the
+  // revisit path auto-connects through the same auto-connect effect as a first
+  // meet. Client-only (localStorage), so SSR is unaffected.
+  useEffect(() => {
+    const saved = loadUserName();
+    if (saved) {
+      setUserName(saved);
+      setHasMet(true);
+      setConnectRequested(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (connectRequested && rendererReady && !isConnected && !isConnecting) {
+      // Consume the one-shot intent FIRST, so a start() failure or an
+      // unexpected session drop (which flips isConnecting/isConnected back to
+      // false) does NOT re-trigger this effect into a retry loop. One arming
+      // == exactly one start() attempt; reconnect is a manual 다시 만나기 (or
+      // 만나기 on first meet / revisit).
+      setConnectRequested(false);
+      void start();
+    }
+  }, [connectRequested, rendererReady, isConnected, isConnecting, start]);
+
+  function handleMeet(): void {
+    const name = sanitizeUserName(nameInput);
+    if (!name) return;
+    saveUserName(name);
+    setUserName(name);
+    setHasMet(true);
+    setConnectRequested(true);
+  }
+
+  async function handleDisconnect(): Promise<void> {
+    setConnectRequested(false);
+    await stop();
+  }
+
+  function handleRetry(): void {
+    setConnectRequested(true);
+  }
+
+  // 이름 바꾸기 is a full identity reset: it clears the connect intent, tears
+  // down any live session, unmounts the canvas (→ teardownRender → rendererReady
+  // false), and clears the stored name so a reload before re-confirming shows
+  // the intro again.
+  async function handleChangeName(): Promise<void> {
+    setConnectRequested(false);
+    if (isConnected) {
+      await stop();
+    }
+    setHasMet(false);
+    setUserName(null);
+    setNameInput("");
+    clearUserName();
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -50,9 +123,54 @@ export default function Page() {
     if (ok) setInput("");
   }
 
+  if (!hasMet) {
+    const canMeet = sanitizeUserName(nameInput) !== "";
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0a0a] via-[#0d0a12] to-[#0a0a0a] p-8">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center shadow-2xl backdrop-blur-sm">
+          <h1 className="bg-gradient-to-r from-rose-300 to-violet-300 bg-clip-text text-2xl font-semibold text-transparent">
+            여자친구를 만나시겠습니까?
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-gray-400">
+            그녀는 당신을 기다리고 있어요. 이름을 알려주면, 그렇게 불러줄게요.
+          </p>
+
+          <input
+            type="text"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleMeet()}
+            placeholder="당신의 이름을 알려주세요"
+            className="mt-6 w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-center text-sm text-white placeholder-gray-600 outline-none focus:border-rose-400/40"
+          />
+
+          <button
+            onClick={handleMeet}
+            disabled={!canMeet}
+            className="mt-4 w-full rounded-lg bg-gradient-to-r from-rose-500 to-violet-500 px-4 py-3 text-sm font-medium text-white transition hover:from-rose-400 hover:to-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            만나기
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
-      <h1 className="text-2xl font-bold">Charivo Companion</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold">Charivo Companion</h1>
+        {userName && (
+          <span className="text-sm text-gray-400">{userName}님</span>
+        )}
+        <button
+          onClick={handleChangeName}
+          disabled={isConnecting}
+          className="text-xs text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline disabled:opacity-40"
+        >
+          이름 바꾸기
+        </button>
+      </div>
 
       <div ref={canvasContainerRef} className="h-[320px] w-[320px]" />
 
@@ -68,20 +186,20 @@ export default function Page() {
       </p>
 
       <div className="flex gap-3">
-        {isConnected ? (
+        <button
+          onClick={handleDisconnect}
+          disabled={isConnecting || !isConnected}
+          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          Disconnect
+        </button>
+
+        {!isConnected && !isConnecting && (
           <button
-            onClick={stop}
-            className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            onClick={handleRetry}
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            Disconnect
-          </button>
-        ) : (
-          <button
-            onClick={start}
-            disabled={isConnecting}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isConnecting ? "Connecting…" : "Connect"}
+            다시 만나기
           </button>
         )}
 

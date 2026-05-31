@@ -114,6 +114,7 @@ export interface UseRealtimeSessionResult {
   isConnected: boolean;
   isConnecting: boolean;
   transcript: string;
+  rendererReady: boolean;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   sendMessage: (text: string) => Promise<boolean>;
@@ -138,6 +139,11 @@ export function useRealtimeSession(
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [transcript, setTranscript] = useState("");
+  // Observable mirror of rendererReadyRef so a consumer effect (page-level
+  // auto-connect) can react when the renderer becomes ready. start() still
+  // guards on rendererReadyRef.current synchronously; this is purely the
+  // re-render trigger.
+  const [rendererReady, setRendererReady] = useState(false);
 
   const isConnectedRef = useRef(false);
   const isConnectingRef = useRef(false);
@@ -256,6 +262,7 @@ export function useRealtimeSession(
   // Charivo refs. Guarded so a null ref is a no-op and it never rethrows.
   const teardownRender = async () => {
     rendererReadyRef.current = false;
+    setRendererReady(false);
     try {
       await renderManagerRef.current?.destroy();
     } catch (error) {
@@ -311,11 +318,16 @@ export function useRealtimeSession(
             return;
           }
           rendererReadyRef.current = true;
+          setRendererReady(true);
         } catch (error) {
           console.error(
             "[realtime-session] Failed to initialize Live2D renderer",
             error,
           );
+          // rendererReady stays false after teardownRender, so the auto-connect
+          // effect never fires. In-UI recovery is a page reload — the render
+          // effect only re-runs on [canvas, resolvedCharacter], so there is no
+          // automatic retry path. This is a deliberate demo simplification.
           await teardownRender();
         }
       })();
@@ -642,6 +654,7 @@ export function useRealtimeSession(
     isConnected,
     isConnecting,
     transcript,
+    rendererReady,
     start,
     stop,
     sendMessage,
