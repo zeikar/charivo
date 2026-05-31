@@ -11,12 +11,12 @@ Live demo: https://charivo-companion.vercel.app/
 ## What it does
 
 - Shows an intro gate on first visit: an emotional headline asks the user for
-  their own name before the avatar appears. Pressing **만나기** renders the
+  their own name before the avatar appears. Pressing **Meet her** renders the
   Live2D canvas and connects realtime in a single action — there is no separate
   Connect step.
 - Persists the user's name in `localStorage` (`charivo:companion:user-name`).
   On revisit the name-entry intro is skipped and the avatar renders immediately,
-  but the user taps **다시 만나기** once to connect — a deliberate user gesture
+  but the user taps **Meet her again** once to connect — a deliberate user gesture
   so audio and lip-sync unlock correctly on iOS/Safari.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
 - Builds a personalized memory block from the browser-local store at cold-start
@@ -35,12 +35,12 @@ Live demo: https://charivo-companion.vercel.app/
   no expression entries; expression tool control activates automatically for
   models that provide them.)
 - Post-gate controls: **Disconnect** (disabled while connecting or already
-  disconnected), **다시 만나기** to reconnect after a Disconnect or a failed
+  disconnected), **Meet her again** to reconnect after a Disconnect or a failed
   connect (one `start()` attempt per arming; shown only when disconnected and
-  not connecting), and **이름 바꾸기** to fully reset identity (clears the
+  not connecting), and **Change name** to fully reset identity (clears the
   stored name, disconnects if needed, and returns to the intro; disabled while
   connecting). Disconnect/interrupt/type-a-message remain available while
-  connected. The intro's **만나기** replaced the former standalone Connect button.
+  connected. The intro's **Meet her** replaced the former standalone Connect button.
 
 ## `composeInstructions` seam
 
@@ -207,11 +207,11 @@ examples/companion/src/app
                                  key charivo:companion:user-name; max 40 chars
   layout.tsx
   globals.css
-  page.tsx                   ← intro gate (만나기 → mounts canvas + arms connect intent,
+  page.tsx                   ← intro gate (Meet her → mounts canvas + arms connect intent,
                                  auto-connects when rendererReady); revisit skips gate,
-                                 renders avatar, connects on 다시 만나기 tap (iOS-safe
+                                 renders avatar, connects on Meet her again tap (iOS-safe
                                  audio unlock); post-gate controls: Disconnect,
-                                 다시 만나기, 이름 바꾸기
+                                 Meet her again, Change name
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)

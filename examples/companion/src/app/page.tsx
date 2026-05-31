@@ -15,8 +15,8 @@ export default function Page() {
 
   // Intro gate + one-action meet-and-connect state.
   const [hasMet, setHasMet] = useState(false);
-  // The one-shot connect intent: armed by meet / revisit / 다시 만나기, consumed
-  // (set false) at the moment the auto-connect effect invokes start().
+  // The one-shot connect intent: armed by meet / revisit / "Meet her again",
+  // consumed (set false) at the moment the auto-connect effect invokes start().
   const [connectRequested, setConnectRequested] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
@@ -60,9 +60,9 @@ export default function Page() {
   const [input, setInput] = useState("");
 
   // Returning visitor: land past the gate so the canvas mounts and the avatar
-  // renders, but do NOT arm the connect intent here. The user taps 다시 만나기
-  // (which calls handleRetry → setConnectRequested(true)) to connect — that tap
-  // is the user gesture that lets start() → prepareAudio() unlock
+  // renders, but do NOT arm the connect intent here. The user taps "Meet her
+  // again" (which calls handleRetry → setConnectRequested(true)) to connect —
+  // that tap is the user gesture that lets start() → prepareAudio() unlock
   // AudioContext/lip-sync safely on iOS/Safari. Client-only (localStorage), so
   // SSR is unaffected.
   useEffect(() => {
@@ -78,8 +78,8 @@ export default function Page() {
       // Consume the one-shot intent FIRST, so a start() failure or an
       // unexpected session drop (which flips isConnecting/isConnected back to
       // false) does NOT re-trigger this effect into a retry loop. One arming
-      // == exactly one start() attempt; reconnect is a manual 다시 만나기 (or
-      // 만나기 on first meet / revisit).
+      // == exactly one start() attempt; reconnect is a manual "Meet her again"
+      // tap (or "Meet her" on first meet / revisit).
       setConnectRequested(false);
       void start();
     }
@@ -103,7 +103,7 @@ export default function Page() {
     setConnectRequested(true);
   }
 
-  // 이름 바꾸기 is a full identity reset: it clears the connect intent, tears
+  // "Change name" is a full identity reset: it clears the connect intent, tears
   // down any live session, unmounts the canvas (→ teardownRender → rendererReady
   // false), and clears the stored name so a reload before re-confirming shows
   // the intro again.
@@ -131,10 +131,11 @@ export default function Page() {
       <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0a0a] via-[#0d0a12] to-[#0a0a0a] p-8">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center shadow-2xl backdrop-blur-sm">
           <h1 className="bg-gradient-to-r from-rose-300 to-violet-300 bg-clip-text text-2xl font-semibold text-transparent">
-            여자친구를 만나시겠습니까?
+            Ready to meet her?
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-gray-400">
-            그녀는 당신을 기다리고 있어요. 이름을 알려주면, 그렇게 불러줄게요.
+            She&apos;s been waiting for you. Tell her your name, and that&apos;s
+            what she&apos;ll call you.
           </p>
 
           <input
@@ -142,7 +143,7 @@ export default function Page() {
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleMeet()}
-            placeholder="당신의 이름을 알려주세요"
+            placeholder="What should she call you?"
             className="mt-6 w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-center text-sm text-white placeholder-gray-600 outline-none focus:border-rose-400/40"
           />
 
@@ -151,7 +152,7 @@ export default function Page() {
             disabled={!canMeet}
             className="mt-4 w-full rounded-lg bg-gradient-to-r from-rose-500 to-violet-500 px-4 py-3 text-sm font-medium text-white transition hover:from-rose-400 hover:to-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            만나기
+            Meet her
           </button>
         </div>
       </main>
@@ -163,14 +164,14 @@ export default function Page() {
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold">Charivo Companion</h1>
         {userName && (
-          <span className="text-sm text-gray-400">{userName}님</span>
+          <span className="text-sm text-gray-400">Hi, {userName}</span>
         )}
         <button
           onClick={handleChangeName}
           disabled={isConnecting}
           className="text-xs text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline disabled:opacity-40"
         >
-          이름 바꾸기
+          Change name
         </button>
       </div>
 
@@ -201,7 +202,7 @@ export default function Page() {
             onClick={handleRetry}
             className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            다시 만나기
+            Meet her again
           </button>
         )}
 
