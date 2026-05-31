@@ -7,11 +7,11 @@ and no dedicated TTS/STT stack.
 ## What it does
 
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
-- Fetches a personalized memory block from `POST /api/memory` at cold-start and
-  does one relevance refresh after the first user utterance.
-- Captures conversation turns and writes them back to memory through
-  `POST /api/memory/promote` (at checkpoints and on session end), so the
-  longitudinal relationship state carries across sessions.
+- Builds a personalized memory block from the browser-local store at cold-start
+  and does one relevance refresh after the first user utterance.
+- Captures conversation turns and promotes them back into the local store (at
+  checkpoints and on session end), so the longitudinal relationship state
+  carries across sessions in the same browser.
 - Composes per-session instructions through `composeInstructions([...])` before
   calling `startSession({ instructions })`.
 - Renders connection state, the latest assistant transcript, and controls to
@@ -31,9 +31,9 @@ composeInstructions([
 
 Today the function joins a persona block (derived from the character definition
 via `buildRealtimeSessionConfig`), a demo-guidance block that keeps replies
-short and natural for a live voice demo, and an optional memory block fetched
-from `/api/memory`. Later subtasks can insert additional blocks at this seam
-without touching the call site.
+short and natural for a live voice demo, and an optional memory block built from
+the browser-local store. Later subtasks can insert additional blocks at this
+seam without touching the call site.
 
 ## Environment
 
@@ -45,22 +45,17 @@ cp examples/companion/.env.example examples/companion/.env.local
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-
-# Optional: absolute path for the SQLite memory database.
-# Defaults to <cwd>/.data/companion-memory.db. ":memory:" is rejected.
-COMPANION_MEMORY_DB=/path/to/companion-memory.db
 ```
 
 ## Run
 
-> Requires Node >=22.13 (the memory store uses the built-in `node:sqlite`, which requires the flag on 22.5–22.12).
-
-> ⚠️ **Single-user / local-only.** This demo persists all memory under a fixed
-> local `userId` placeholder (no auth), so the file-backed SQLite store is
-> per-machine, not multi-tenant. Do **not** deploy it as a shared/multi-user
-> service — every visitor would share the same relationship state and retrieved
-> memories. Multi-user scoping (a trusted server-derived `userId`) is out of
-> scope for this MVP.
+> 🗂️ **Per-browser memory.** All memory lives in the browser's `localStorage`,
+> so each browser profile gets its own isolated relationship state and facts —
+> there is no shared server database. That is exactly what makes the demo safe to
+> deploy publicly (every visitor gets their own memory) and serverless-friendly.
+> Trade-offs: memory does not sync across devices/browsers, and clearing site
+> data resets it. A real multi-device product would add auth + a server datastore
+> (out of scope for this demo).
 
 From the repository root:
 
@@ -74,33 +69,44 @@ Then open `http://localhost:3001`.
 
 ## Memory flow
 
-`node:sqlite` is server-only, so the store never reaches the browser — the
-client talks to it through **two HTTP routes only**. The client decides *when*
-to read/write; the server decides *what* to extract, merge, and persist.
+The entire memory engine is pure TypeScript and runs **in the browser** — there
+is no server datastore. The client decides *when* to read/write and runs the
+extract → merge → persist pipeline against a `localStorage`-backed store.
 
 ```text
-browser (useRealtimeSession.ts)              Next server (Node runtime)
-  collects turns, schedules writes,    POST   /api/memory          (read)
-  injects memory into the session    ◄─────►  /api/memory/promote  (write)
-        ▲ one realtime session                  getCompanionStore()
-        │ (voice + typed text)                    └ SqliteMemoryStore
+browser (useRealtimeSession.ts)
+  one realtime session (voice + typed text)
+        │
+        ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)
+        │                     → composeInstructions → startSession({ instructions })
+        │
+        └─ write (promote) → promoteSession(store, transcript, …)
+                                        │
+                              getClientMemoryStore()
+                                └ LocalStorageMemoryStore  (window.localStorage)
 ```
 
-- **Read (inject).** On `start()`, `POST /api/memory { scope }` returns a memory
-  block that is composed into `startSession({ instructions })`. After the first
-  user utterance, a single `POST /api/memory { scope, query }` refreshes it via
-  `updateSession(...)` — never per turn.
+- **Read (inject).** On `start()`, `buildMemoryInstructionBlock({ store, scope })`
+  builds a memory block that is composed into `startSession({ instructions })`.
+  After the first user utterance, a single rebuild with a `queryEmbedding`
+  refreshes it via `updateSession(...)` — never per turn.
 - **Write (promote).** Every turn (voice transcript or typed text) is appended to
   a cumulative transcript. A write-job scheduler ([trigger.ts](./src/memory/trigger.ts))
   fires a checkpoint every 10 turns and a final write on session end, each a
-  `POST /api/memory/promote { scope, sessionId, turns, finalize }`. The transcript
-  is cumulative and `promoteSession` is idempotent (deterministic fact ids + a
-  finalize-once ledger), so resent payloads never double-count.
+  `promoteSession({ store, transcript, finalize })`. The transcript is cumulative
+  and `promoteSession` is idempotent (deterministic fact ids + a finalize-once
+  ledger), so resent payloads never double-count.
 
-Both calls carry `scope = { userId, characterId }`, and neither route imports the
-realtime stack — so a future non-realtime chat could reuse them unchanged.
+Memory is keyed by `scope = { userId, characterId }`. `userId` is a fixed
+placeholder (no auth) — isolation comes from `localStorage` being per-browser —
+while `characterId` partitions memory per character. The realtime stack is only
+imported by the client hook, so a future non-realtime chat could reuse the same
+store + pipeline unchanged.
 
 ## API Routes
+
+The only server route is the realtime bootstrap — memory is fully client-side
+(see [Memory flow](#memory-flow)).
 
 - `POST /api/realtime`
   Uses `@charivo/server/openai` to create a Realtime session bootstrap for
@@ -108,34 +114,19 @@ realtime stack — so a future non-realtime chat could reuse them unchanged.
   present and that `session.provider` is `"openai"`, then returns the session
   bootstrap payload.
 
-- `POST /api/memory`
-  Accepts `{ scope: { userId, characterId }, query? }` and returns
-  `{ instructionsBlock }` — a ready-to-inject memory string (empty string when
-  no facts are stored). Runs the SQLite store server-side so `node:sqlite` never
-  reaches the client bundle.
-
-- `POST /api/memory/promote`
-  Accepts `{ scope, sessionId, startedAt, endedAt, turns, finalize }` and runs
-  `promoteSession` against the same server-side store, returning the
-  `{ result }` counts. `finalize: false` is a checkpoint; `finalize: true` (sent
-  on session end) advances the relationship exactly once. Both routes share one
-  store connection (`getCompanionStore`) so a write is immediately visible to
-  the next read.
-
-  > **MVP scope:** the server fact extractor is currently a no-op
-  > (`createServerExtractor`), so live sessions persist the session record and
-  > advance the relationship (session count / rapport / last-seen) but do not yet
-  > mine content facts. A real LLM extractor lands behind a flag in a later
-  > subtask; until then, content facts can still be seeded externally.
-  >
-  > **Corrections take effect next session.** Correction candidates emitted by
-  > extraction (e.g. "forget that" / "that's wrong") are detected during merge,
-  > which soft-invalidates or supersedes the target fact. Because the model never
-  > rewrites long-term memory live, a correction's effect lands at the **next
-  > session start** (cold-start retrieval), not mid-conversation. Live spoken
-  > correction detection is gated on the same future real server extractor as
-  > above; the marker logic itself is real and unit-tested via the scripted
-  > extractor today.
+> **MVP scope:** the fact extractor is currently a no-op (`createServerExtractor`),
+> so live sessions persist the session record and advance the relationship
+> (session count / rapport / last-seen) but do not yet mine content facts. A real
+> LLM extractor lands in a later subtask; until then, content facts can still be
+> seeded externally.
+>
+> **Corrections take effect next session.** Correction candidates (e.g. "forget
+> that" / "that's wrong") are detected during merge, which soft-invalidates or
+> supersedes the target fact. Because the model never rewrites long-term memory
+> live, a correction's effect lands at the **next session start** (cold-start
+> retrieval), not mid-conversation. Live spoken correction detection is gated on
+> the same future real extractor; the marker logic itself is real and
+> unit-tested via the scripted extractor today.
 
 ## Structure
 
@@ -143,22 +134,19 @@ realtime stack — so a future non-realtime chat could reuse them unchanged.
 examples/companion/src/app
   api/
     realtime/route.ts
-    memory/route.ts          ← memory injection (read) endpoint
-    memory/promote/route.ts  ← memory promotion (write) endpoint
   hooks/
-    useRealtimeSession.ts    ← captures turns + schedules promotion writes
+    useRealtimeSession.ts    ← captures turns; reads/promotes the local store
   lib/
     compose-instructions.ts
   layout.tsx
   globals.css
   page.tsx
 examples/companion/src/memory
-  render-memory.ts        ← renderMemoryBlock, selectMemoryForRender
-  build-memory-block.ts   ← buildMemoryInstructionBlock (render + select combined)
-  promote.ts              ← promoteSession write pipeline
-  trigger.ts              ← createWriteJobScheduler (checkpoint / finalize fires)
-  server-extractor.ts     ← createServerExtractor (MVP no-op fact extractor)
-  sqlite-memory-store.ts  ← SQLite-backed MemoryStore
-  store-singleton.ts      ← shared file-backed store for the API routes
-  db-path.ts              ← resolves COMPANION_MEMORY_DB with fallback
+  render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
+  build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)
+  promote.ts                    ← promoteSession write pipeline
+  trigger.ts                    ← createWriteJobScheduler (checkpoint / finalize fires)
+  server-extractor.ts           ← createServerExtractor (MVP no-op fact extractor)
+  local-storage-memory-store.ts ← localStorage-backed MemoryStore
+  client-store.ts               ← getClientMemoryStore (browser-local store singleton)
 ```

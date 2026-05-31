@@ -1,9 +1,6 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import path from "node:path";
 import { workspaceAliases } from "./test-aliases";
-// Test-only workaround owned by examples/companion (the sole node:sqlite
-// consumer); see that file for why vite-node needs it.
-import { viteNodeSqlitePlugin } from "./examples/companion/testing/vite-node-sqlite-plugin.mjs";
 
 export default defineConfig({
   test: {
@@ -33,7 +30,6 @@ export default defineConfig({
       ["packages/**/__tests__/**/*.dom.test.{ts,tsx}", "jsdom"],
     ],
   },
-  plugins: [viteNodeSqlitePlugin()],
   resolve: {
     alias: workspaceAliases,
   },

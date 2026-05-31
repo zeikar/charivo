@@ -9,6 +9,11 @@ import {
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { composeInstructions } from "../lib/compose-instructions";
 import { createWriteJobScheduler } from "@/memory/trigger";
+import { getClientMemoryStore } from "@/memory/client-store";
+import { createFakeEmbedder } from "@/memory/embedding";
+import { createServerExtractor } from "@/memory/server-extractor";
+import { promoteSession } from "@/memory/promote";
+import { buildMemoryInstructionBlock } from "@/memory/build-memory-block";
 import type { Turn } from "@/memory/promotion-types";
 
 const COMPANION_DEMO_GUIDANCE = `
@@ -23,46 +28,36 @@ const DEFAULT_CHARACTER: Character = {
   personality: "warm, concise, and attentive",
 };
 
-async function fetchMemoryBlock(
+// Read (inject): build the memory block directly from the browser-local store.
+// The whole memory engine is pure TS and runs client-side — no server round
+// trip. Returns "" on any failure so a memory hiccup never blocks the session.
+async function readMemoryBlock(
   scope: { userId: string; characterId: string },
   query?: string,
 ): Promise<string> {
   try {
-    const body: {
-      scope: { userId: string; characterId: string };
-      query?: string;
-    } = { scope };
-    if (query !== undefined) body.query = query;
-    const res = await fetch("/api/memory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    const store = getClientMemoryStore();
+    const queryEmbedding =
+      query !== undefined ? await createFakeEmbedder().embed(query) : undefined;
+    return await buildMemoryInstructionBlock({
+      store,
+      scope,
+      now: Date.now(),
+      queryEmbedding,
     });
-    if (!res.ok) {
-      console.warn(
-        "[realtime-session] fetchMemoryBlock non-ok response",
-        res.status,
-      );
-      return "";
-    }
-    const data: unknown = await res.json();
-    return typeof (data as { instructionsBlock?: unknown })
-      .instructionsBlock === "string"
-      ? (data as { instructionsBlock: string }).instructionsBlock
-      : "";
   } catch (error) {
-    console.warn("[realtime-session] fetchMemoryBlock failed", error);
+    console.warn("[realtime-session] readMemoryBlock failed", error);
     return "";
   }
 }
 
 /**
- * Post a (cumulative) transcript to the server write path. Throws on a non-ok
- * response so the write scheduler's runJob sees the failure (it catches and
- * keeps the session schedulable). node:sqlite stays server-side — this only
- * sends JSON.
+ * Write (promote): run the promotion pipeline against the browser-local store.
+ * Rejects on a pipeline error so the write scheduler's runJob sees the failure
+ * (it catches and keeps the session schedulable). promoteSession is idempotent,
+ * so the cumulative-transcript resends are safe.
  */
-async function postPromote(payload: {
+async function runPromote(payload: {
   scope: { userId: string; characterId: string };
   sessionId: string;
   startedAt: number;
@@ -70,14 +65,20 @@ async function postPromote(payload: {
   turns: Turn[];
   finalize: boolean;
 }): Promise<void> {
-  const res = await fetch("/api/memory/promote", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  await promoteSession({
+    transcript: {
+      sessionId: payload.sessionId,
+      scope: payload.scope,
+      startedAt: payload.startedAt,
+      endedAt: payload.endedAt,
+      turns: payload.turns,
+    },
+    store: getClientMemoryStore(),
+    embedder: createFakeEmbedder(),
+    extractor: createServerExtractor(),
+    now: Date.now(),
+    finalize: payload.finalize,
   });
-  if (!res.ok) {
-    throw new Error(`promote failed: ${res.status}`);
-  }
 }
 
 function logSession(...args: unknown[]): void {
@@ -131,7 +132,7 @@ export function useRealtimeSession(
   const turnsRef = useRef<Turn[]>([]);
   const sessionIdRef = useRef<string>("");
   const startedAtRef = useRef<number>(0);
-  // Kept so stop() can build the postPromote payload without closing over the
+  // Kept so stop() can build the runPromote payload without closing over the
   // start() local; updated at the top of every start() call.
   const scopeRef = useRef<{ userId: string; characterId: string } | null>(null);
   // Single-slot retry for a failed final write. Decoupled from the live session
@@ -159,7 +160,7 @@ export function useRealtimeSession(
     const pending = pendingFailedWriteRef.current;
     if (!pending || retryInFlightRef.current) return;
     retryInFlightRef.current = true;
-    postPromote({ ...pending, endedAt: Date.now(), finalize: true })
+    runPromote({ ...pending, endedAt: Date.now(), finalize: true })
       .then(() => {
         // Only clear the slot if the same snapshot is still queued — a later
         // failed session may have replaced it while this retry was in-flight.
@@ -183,13 +184,11 @@ export function useRealtimeSession(
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
-      // Unmount finalization is BEST-EFFORT. The reliable finalize path is
-      // stop() (snapshot + retry while mounted). On unmount the component is
-      // gone, so we route through the scheduler — preserving its one-in-flight
-      // serialization — rather than bypass it with a keepalive write (which
-      // would risk overlapping a checkpoint and is capped at a 64 KiB body). A
-      // navigation may still cancel the in-flight request; accepted for this
-      // local MVP demo.
+      // Unmount finalization routes through the scheduler so it cannot overlap
+      // an in-flight checkpoint (one-in-flight serialization). The write itself
+      // is a local promoteSession (localStorage, no network), so it resolves in
+      // a microtask — there is no request to cancel. stop() remains the primary
+      // finalize path (snapshot + retry while mounted).
       if (schedulerRef.current) {
         schedulerRef.current.onSessionEnd(sessionIdRef.current).catch(() => {});
         schedulerRef.current = null;
@@ -238,19 +237,19 @@ export function useRealtimeSession(
       const eventBus = new EventBus();
       manager.setEventEmitter!(eventBus);
 
-      // "local-user" is an intentional single-user, local-only MVP placeholder:
-      // no auth, no server-side session derivation — the file-backed store is
-      // per-machine, not multi-tenant. All demo users on the same machine share
-      // one relationship + memory namespace. See examples/companion/README.md.
+      // "local-user" is a fixed placeholder: there is no auth, so userId is not
+      // a real identity. Isolation comes from localStorage being per-browser —
+      // each browser profile has its own memory namespace. characterId still
+      // partitions memory per character. See examples/companion/README.md.
       const scope = { userId: "local-user", characterId: resolvedCharacter.id };
       scopeRef.current = scope;
       const personaInstructions = buildRealtimeSessionConfig({
         character: resolvedCharacter,
       }).instructions;
 
-      // Fresh write-job scheduler per session. runJob posts the cumulative
-      // transcript to the server write path; the scheduler coalesces fires and
-      // never overlaps runs. promoteSession is idempotent, so cumulative
+      // Fresh write-job scheduler per session. runJob promotes the cumulative
+      // transcript into the browser-local store; the scheduler coalesces fires
+      // and never overlaps runs. promoteSession is idempotent, so cumulative
       // resends are safe.
       const sessionId = crypto.randomUUID();
       sessionIdRef.current = sessionId;
@@ -258,7 +257,7 @@ export function useRealtimeSession(
       turnsRef.current = [];
       const scheduler = createWriteJobScheduler({
         runJob: (sid, { finalize }) =>
-          postPromote({
+          runPromote({
             scope,
             sessionId: sid,
             startedAt: startedAtRef.current,
@@ -309,7 +308,7 @@ export function useRealtimeSession(
         firstUtteranceHandledRef.current = true;
         void (async () => {
           try {
-            const refreshedBlock = await fetchMemoryBlock(scope, data.text);
+            const refreshedBlock = await readMemoryBlock(scope, data.text);
             const instructions = composeInstructions([
               personaInstructions,
               COMPANION_DEMO_GUIDANCE,
@@ -348,7 +347,7 @@ export function useRealtimeSession(
       managerRef.current = manager;
       eventBusRef.current = eventBus;
 
-      const memoryBlock = await fetchMemoryBlock(scope);
+      const memoryBlock = await readMemoryBlock(scope);
       const instructions = composeInstructions([
         personaInstructions,
         COMPANION_DEMO_GUIDANCE,

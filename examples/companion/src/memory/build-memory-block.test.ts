@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import { buildMemoryInstructionBlock } from "./build-memory-block";
 import { MEMORY_GUARD_LINE } from "./render-memory";
-import { SqliteMemoryStore } from "./sqlite-memory-store";
+import {
+  LocalStorageMemoryStore,
+  createInMemoryStorage,
+} from "./local-storage-memory-store";
 import { createFakeEmbedder } from "./embedding";
 import { composeInstructions } from "../app/lib/compose-instructions";
 import type {
@@ -63,14 +66,13 @@ interface MemoryReadStore {
 // ---------------------------------------------------------------------------
 
 describe("buildMemoryInstructionBlock — cold-start (real store)", () => {
-  let store: SqliteMemoryStore;
+  let store: LocalStorageMemoryStore;
 
   beforeEach(() => {
-    store = new SqliteMemoryStore({ now: () => NOW });
-  });
-
-  afterEach(() => {
-    store.close();
+    store = new LocalStorageMemoryStore({
+      storage: createInMemoryStorage(),
+      now: () => NOW,
+    });
   });
 
   it("returns non-empty result and contains MEMORY_GUARD_LINE after seeding facts", async () => {
@@ -246,14 +248,13 @@ describe("buildMemoryInstructionBlock — refresh spy (queryEmbedding threading)
 // ---------------------------------------------------------------------------
 
 describe("buildMemoryInstructionBlock — empty store", () => {
-  let store: SqliteMemoryStore;
+  let store: LocalStorageMemoryStore;
 
   beforeEach(() => {
-    store = new SqliteMemoryStore({ now: () => NOW });
-  });
-
-  afterEach(() => {
-    store.close();
+    store = new LocalStorageMemoryStore({
+      storage: createInMemoryStorage(),
+      now: () => NOW,
+    });
   });
 
   it("returns empty string when store has no facts, summaries, or relationship", async () => {

@@ -1,7 +1,8 @@
 /**
  * Memory eval suite — drives the REAL mechanism (extractFacts / policyFilter /
- * promoteSession / SqliteMemoryStore.retrieve / render) over the deterministic
- * fixtures, computes the precision-first metrics, and asserts the thresholds.
+ * promoteSession / LocalStorageMemoryStore.retrieve / render) over the
+ * deterministic fixtures, computes the precision-first metrics, and asserts the
+ * thresholds.
  *
  * This is a `*.eval.ts` glob target run ONLY by the dedicated eval config /
  * `pnpm --filter companion eval:memory` — NOT by `pnpm test` (whose default
@@ -13,13 +14,16 @@
  * clock + a fresh in-memory store per test. No live realtime, no network.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import { promoteSession } from "../memory/promote";
 import { extractFacts } from "../memory/extract-facts";
 import { policyFilter } from "../memory/policy-filter";
 import { createScriptedExtractor } from "../memory/__fixtures__/scripted-extractor";
-import { SqliteMemoryStore } from "../memory/sqlite-memory-store";
+import {
+  LocalStorageMemoryStore,
+  createInMemoryStorage,
+} from "../memory/local-storage-memory-store";
 import { createFakeEmbedder } from "../memory/embedding";
 import {
   selectMemoryForRender,
@@ -55,14 +59,13 @@ import {
 const embedder = createFakeEmbedder();
 const EXTRACTOR_OVERRIDE = process.env.EVAL_INJECT_BREAK === "1";
 
-let store: SqliteMemoryStore;
+let store: LocalStorageMemoryStore;
 
 beforeEach(() => {
-  store = new SqliteMemoryStore({ now: () => NOW });
-});
-
-afterEach(() => {
-  store.close();
+  store = new LocalStorageMemoryStore({
+    storage: createInMemoryStorage(),
+    now: () => NOW,
+  });
 });
 
 /** Build a MemoryFact from a candidate, embedding its text under the fake embedder. */

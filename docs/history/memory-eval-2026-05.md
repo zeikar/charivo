@@ -28,7 +28,7 @@ merge, retrieval, or deletion behavior — fails the eval loudly.
   [`examples/companion/src/eval/fact-id.ts`](../../examples/companion/src/eval/fact-id.ts)
   — byte-identical to `promote.ts`'s `hashId`/`normalize`, so fixtures compute the
   SAME id the pipeline persists.
-- Eval-only vitest config (reuses the companion `node:sqlite` vite-node shim):
+- Eval-only vitest config:
   [`examples/companion/testing/vitest.eval.config.ts`](../../examples/companion/testing/vitest.eval.config.ts)
 - Determinism: fake embedder (`createFakeEmbedder`, 16-dim bag-of-words) + scripted
   fake extractor (`createScriptedExtractor`) + a fixed `{ now: () => NOW }` clock +
@@ -99,7 +99,7 @@ The sensitivity check runs ONLY the extraction-precision test under
 `EVAL_INJECT_BREAK=1` (which swaps in a hallucinated extra candidate) and passes
 iff vitest exits non-zero AND its output contains the
 `EXTRACTION_PRECISION_BELOW_THRESHOLD` marker — so an unrelated failure (a config
-/ `node:sqlite` shim / type error) does NOT satisfy the check. All metric lines
+/ import / type error) does NOT satisfy the check. All metric lines
 are logged with the `[eval]` prefix.
 
 ## References
@@ -108,7 +108,7 @@ are logged with the `[eval]` prefix.
   [`promote.ts`](../../examples/companion/src/memory/promote.ts),
   [`decide-merge.ts`](../../examples/companion/src/memory/decide-merge.ts),
   [`extract-facts.ts`](../../examples/companion/src/memory/extract-facts.ts),
-  [`sqlite-memory-store.ts`](../../examples/companion/src/memory/sqlite-memory-store.ts),
+  [`local-storage-memory-store.ts`](../../examples/companion/src/memory/local-storage-memory-store.ts),
   [`render-memory.ts`](../../examples/companion/src/memory/render-memory.ts),
   [`scoring.ts`](../../examples/companion/src/memory/scoring.ts)
 - Phase 3 / Phase 5 roadmap: [`ROADMAP.md`](../../ROADMAP.md)

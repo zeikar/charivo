@@ -1,8 +1,12 @@
-import { DatabaseSync } from "node:sqlite";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import { promoteSession } from "./promote";
-import { SqliteMemoryStore } from "./sqlite-memory-store";
+import {
+  LocalStorageMemoryStore,
+  createInMemoryStorage,
+  MEMORY_STORAGE_KEYS,
+  type KeyValueStorage,
+} from "./local-storage-memory-store";
 import { createFakeEmbedder } from "./embedding";
 import { createScriptedExtractor } from "./__fixtures__/scripted-extractor";
 import {
@@ -26,18 +30,23 @@ import type { FactExtractor, Transcript } from "./promotion-types";
 
 const embedder: EmbeddingAdapter = createFakeEmbedder();
 
-let store: SqliteMemoryStore;
+let store: LocalStorageMemoryStore;
 
 beforeEach(() => {
-  store = new SqliteMemoryStore({ now: () => NOW });
+  store = new LocalStorageMemoryStore({
+    storage: createInMemoryStorage(),
+    now: () => NOW,
+  });
 });
 
-afterEach(() => {
-  store.close();
-});
+/** Count entries in a stored collection (replaces the SQLite SELECT COUNT(*)). */
+function countCollection(storage: KeyValueStorage, key: string): number {
+  const raw = storage.getItem(key);
+  return raw ? Object.keys(JSON.parse(raw)).length : 0;
+}
 
 /** Retrieve all active facts for SCOPE under an unbounded budget. */
-function activeFacts(s: SqliteMemoryStore): Promise<MemoryFact[]> {
+function activeFacts(s: LocalStorageMemoryStore): Promise<MemoryFact[]> {
   return s.retrieve({
     scope: SCOPE,
     budgetTokens: Number.MAX_SAFE_INTEGER,
@@ -159,9 +168,9 @@ describe("promoteSession — merge path", () => {
 
 describe("promoteSession — idempotency, first-session rerun", () => {
   it("rerunning the first session produces no duplicate rows and advances the relationship once", async () => {
-    const handle = new DatabaseSync(":memory:");
-    const s = new SqliteMemoryStore({ db: handle, now: () => NOW });
-    try {
+    const storage = createInMemoryStorage();
+    const s = new LocalStorageMemoryStore({ storage, now: () => NOW });
+    {
       const run1 = await promoteSession({
         transcript: firstSessionTranscript,
         store: s,
@@ -206,22 +215,11 @@ describe("promoteSession — idempotency, first-session rerun", () => {
       }
 
       // Exactly one session row and one row per fact id.
-      const sessionCount = (
-        handle
-          .prepare("SELECT COUNT(*) AS n FROM sessions WHERE id = 's1'")
-          .get() as { n: number }
-      ).n;
-      expect(sessionCount).toBe(1);
-
-      const factCount = (
-        handle.prepare("SELECT COUNT(*) AS n FROM facts").get() as { n: number }
-      ).n;
-      expect(factCount).toBe(2);
+      expect(countCollection(storage, MEMORY_STORAGE_KEYS.sessions)).toBe(1);
+      expect(countCollection(storage, MEMORY_STORAGE_KEYS.facts)).toBe(2);
 
       const rel2 = await s.getRelationship(SCOPE);
       expect(rel2!.sessionCount).toBe(1);
-    } finally {
-      s.close();
     }
   });
 });
@@ -232,9 +230,9 @@ describe("promoteSession — idempotency, first-session rerun", () => {
 
 describe("promoteSession — idempotency, correction rerun", () => {
   it("rerunning the correction does not resurrect the retraction or duplicate the update", async () => {
-    const handle = new DatabaseSync(":memory:");
-    const s = new SqliteMemoryStore({ db: handle, now: () => NOW });
-    try {
+    const storage = createInMemoryStorage();
+    const s = new LocalStorageMemoryStore({ storage, now: () => NOW });
+    {
       // Seed the first session, then run the correction once.
       await promoteSession({
         transcript: firstSessionTranscript,
@@ -259,9 +257,7 @@ describe("promoteSession — idempotency, correction rerun", () => {
         now: NOW,
       });
       const ids1 = active1.map((f) => f.id).sort();
-      const factCount1 = (
-        handle.prepare("SELECT COUNT(*) AS n FROM facts").get() as { n: number }
-      ).n;
+      const factCount1 = countCollection(storage, MEMORY_STORAGE_KEYS.facts);
       const rel1 = await s.getRelationship(SCOPE);
 
       // Re-run the correction.
@@ -286,9 +282,7 @@ describe("promoteSession — idempotency, correction rerun", () => {
         now: NOW,
       });
       const ids2 = active2.map((f) => f.id).sort();
-      const factCount2 = (
-        handle.prepare("SELECT COUNT(*) AS n FROM facts").get() as { n: number }
-      ).n;
+      const factCount2 = countCollection(storage, MEMORY_STORAGE_KEYS.facts);
       const rel2 = await s.getRelationship(SCOPE);
 
       // No resurrected retraction fact, no duplicated update row.
@@ -300,8 +294,6 @@ describe("promoteSession — idempotency, correction rerun", () => {
 
       // Relationship session count unchanged across the two correction runs.
       expect(rel2!.sessionCount).toBe(rel1!.sessionCount);
-    } finally {
-      s.close();
     }
   });
 });

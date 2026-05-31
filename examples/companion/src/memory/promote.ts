@@ -6,20 +6,21 @@
  * Idempotency layers (a re-run with the same inputs is safe):
  *   1. Sessions:      saveSession is an id-keyed upsert.
  *   2. Facts:         each fact id is a deterministic structured hash ([M4]),
- *                     so upsertFact (ON CONFLICT DO UPDATE) re-writes the same
- *                     row instead of duplicating it. A retraction re-run finds
- *                     its target already inactive → NOOP (decideMerge owns this).
- *   3. Relationship:  the dedicated finalized_at marker (read here, enforced
- *                     atomically inside finalizeSession) gates the single
- *                     relationship advance per session.
+ *                     so upsertFact re-writes the same record instead of
+ *                     duplicating it. A retraction re-run finds its target
+ *                     already inactive → NOOP (decideMerge owns this).
+ *   3. Relationship:  the dedicated finalize-once marker (read here, enforced
+ *                     inside finalizeSession) gates the single relationship
+ *                     advance per session.
  *
- * [M14] Concurrency assumption. The relationship count is exactly-once even
- * across different scopes finalizing at the same time, because finalizeSession
- * does the marker write + relationship upsert in one synchronous SQLite
- * transaction. The FACT path, however, is correct only under the (unenforced)
- * one-active-session-per-scope assumption: two sessions promoting facts for the
- * same scope concurrently could race on retrieve/merge. We do NOT claim the
- * fact path is concurrency-safe.
+ * [M14] Concurrency assumption. finalizeSession advances the relationship
+ * exactly once because JS is single-threaded within a tab: the marker write and
+ * the relationship update run back-to-back with no interleaving, and a failed
+ * relationship write rolls the marker back so a retry completes the advance. The
+ * FACT path is correct only under the (unenforced) one-active-session-per-scope
+ * assumption: two sessions promoting facts for the same scope concurrently (e.g.
+ * two browser tabs sharing localStorage) could race on retrieve/merge. We do NOT
+ * claim the fact path is concurrency-safe.
  */
 
 import { extractFacts } from "./extract-facts";
@@ -41,7 +42,7 @@ import type {
 
 /**
  * The store contract promoteSession needs: the frozen MemoryStore interface
- * intersected with the two concrete ledger capabilities. SqliteMemoryStore
+ * intersected with the two concrete ledger capabilities. LocalStorageMemoryStore
  * satisfies this; the MemoryStore interface itself stays untouched.
  */
 type PromotionStore = MemoryStore & {

@@ -11,7 +11,12 @@ export type {
 
 export { createFakeEmbedder } from "./embedding";
 
-export { SqliteMemoryStore } from "./sqlite-memory-store";
+export {
+  LocalStorageMemoryStore,
+  createInMemoryStorage,
+  MEMORY_STORAGE_KEYS,
+} from "./local-storage-memory-store";
+export type { KeyValueStorage } from "./local-storage-memory-store";
 
 export {
   cosineSimilarity,
@@ -48,5 +53,3 @@ export {
 } from "./render-memory";
 
 export { buildMemoryInstructionBlock } from "./build-memory-block";
-
-export { getCompanionDbPath } from "./db-path";
