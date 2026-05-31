@@ -1,8 +1,11 @@
 # Charivo Companion
 
 A minimal companion demo that greets you by name, starts an OpenAI Realtime
-session, and lets you talk to a Live2D character (Hiyori) via voice and text.
-The character is rendered with realtime lip-sync and motion/gaze tool control,
+session, and lets you talk to a Live2D character (Hiyori) in a full-bleed
+immersive voice-first stage — optional captions, no typed-message input (the
+realtime transport still supports typed messages internally, but the UI no
+longer exposes a text box). The character is rendered with realtime lip-sync
+and motion/gaze tool control,
 all wired through the `@charivo/core` `Charivo` orchestrator. There is no
 dedicated TTS/STT stack — the OpenAI Realtime API handles audio directly.
 
@@ -10,13 +13,14 @@ Live demo: https://charivo-companion.vercel.app/
 
 ## What it does
 
-- Shows an intro gate on first visit: an emotional headline asks the user for
-  their own name before the avatar appears. Pressing **Meet her** renders the
-  Live2D canvas and connects realtime in a single action — there is no separate
-  Connect step.
+- Shows an immersive two-column intro gate on first visit (collapses to one
+  column on small screens): an eyebrow line, an emotional headline, a
+  sub-heading, a single name field, and a **Meet her** button. Pressing **Meet
+  her** renders the Live2D canvas and connects realtime in a single action —
+  there is no separate Connect step.
 - Persists the user's name in `localStorage` (`charivo:companion:user-name`).
-  On revisit the name-entry intro is skipped and the avatar renders immediately,
-  but the user taps **Meet her again** once to connect — a deliberate user gesture
+  On revisit the intro gate is skipped and the avatar renders immediately,
+  but the user taps **Wake her** once to connect — a deliberate user gesture
   so audio and lip-sync unlock correctly on iOS/Safari.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
 - Builds a personalized memory block from the browser-local store at cold-start
@@ -34,13 +38,18 @@ Live demo: https://charivo-companion.vercel.app/
   Charivo event bus. (The bundled Hiyori model exposes motion groups and gaze but
   no expression entries; expression tool control activates automatically for
   models that provide them.)
-- Post-gate controls: **Disconnect** (disabled while connecting or already
-  disconnected), **Meet her again** to reconnect after a Disconnect or a failed
-  connect (one `start()` attempt per arming; shown only when disconnected and
-  not connecting), and **Change name** to fully reset identity (clears the
-  stored name, disconnects if needed, and returns to the intro; disabled while
-  connecting). Disconnect/interrupt/type-a-message remain available while
-  connected. The intro's **Meet her** replaced the former standalone Connect button.
+- Post-gate UX: a full-bleed Main stage with the Live2D canvas centered in a
+  glass "character tile" with halos/glow, set against a time-of-day ambient
+  gradient. A minimal top bar shows a connection status dot, the companion
+  name ("Hiyori"), and a status label. A bottom-center voice orb is the
+  primary interaction surface. Optional captions (off by default) are shown
+  attributed to the companion. A right slide-in Settings panel has two tabs:
+  - **You & her** — rename yourself (takes effect the next time she wakes, not
+    mid-session), a "start over with a new name" full reset that clears stored
+    identity and returns to the intro (disabled while connecting), a captions
+    toggle, and a connection control (**Let her rest** / **Wake her**).
+  - **Memory** — list, add, and delete stored facts in the browser-local
+    memory store.
 
 ## `composeInstructions` seam
 
@@ -201,17 +210,28 @@ examples/companion/src/app
   hooks/
     useRealtimeSession.ts    ← drives Charivo orchestrator; wires Live2D renderer +
                                realtime manager; captures turns; reads/promotes the local store
+  components/
+    Icon.tsx                 ← shared SVG icon wrapper
+    AmbientBackground.tsx    ← time-of-day gradient backdrop
+    TopBar.tsx               ← connection dot + companion name + status label
+    VoiceOrb.tsx             ← bottom-center voice interaction surface
+    Captions.tsx             ← optional companion-attributed caption overlay
+    CharacterPresence.tsx    ← glass character tile with halos/glow around the Live2D canvas
+    IntroScreen.tsx          ← two-column intro gate (eyebrow/headline/sub/name field/Meet her)
+    SettingsPanel.tsx        ← right slide-in panel; "You & her" + "Memory" tabs
   lib/
     compose-instructions.ts
-    user-name-store.ts        ← loadUserName/saveUserName/clearUserName/sanitizeUserName;
-                                 key charivo:companion:user-name; max 40 chars
+    hearth-theme.ts          ← ambient gradient + theme tokens for the Hearth UX
+    memory-facts.ts          ← helpers for listing/adding/deleting facts in the local store
+    user-name-store.ts       ← loadUserName/saveUserName/clearUserName/sanitizeUserName;
+                                key charivo:companion:user-name; max 40 chars
   layout.tsx
   globals.css
   page.tsx                   ← intro gate (Meet her → mounts canvas + arms connect intent,
                                  auto-connects when rendererReady); revisit skips gate,
-                                 renders avatar, connects on Meet her again tap (iOS-safe
-                                 audio unlock); post-gate controls: Disconnect,
-                                 Meet her again, Change name
+                                 renders avatar, user taps Wake her (iOS-safe audio unlock);
+                                 post-gate: full-bleed stage with TopBar, VoiceOrb, Captions,
+                                 CharacterPresence, and slide-in SettingsPanel
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)
