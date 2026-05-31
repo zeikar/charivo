@@ -72,6 +72,34 @@ pnpm --filter ./examples/companion dev
 
 Then open `http://localhost:3001`.
 
+## Memory flow
+
+`node:sqlite` is server-only, so the store never reaches the browser — the
+client talks to it through **two HTTP routes only**. The client decides *when*
+to read/write; the server decides *what* to extract, merge, and persist.
+
+```text
+browser (useRealtimeSession.ts)              Next server (Node runtime)
+  collects turns, schedules writes,    POST   /api/memory          (read)
+  injects memory into the session    ◄─────►  /api/memory/promote  (write)
+        ▲ one realtime session                  getCompanionStore()
+        │ (voice + typed text)                    └ SqliteMemoryStore
+```
+
+- **Read (inject).** On `start()`, `POST /api/memory { scope }` returns a memory
+  block that is composed into `startSession({ instructions })`. After the first
+  user utterance, a single `POST /api/memory { scope, query }` refreshes it via
+  `updateSession(...)` — never per turn.
+- **Write (promote).** Every turn (voice transcript or typed text) is appended to
+  a cumulative transcript. A write-job scheduler ([trigger.ts](./src/memory/trigger.ts))
+  fires a checkpoint every 10 turns and a final write on session end, each a
+  `POST /api/memory/promote { scope, sessionId, turns, finalize }`. The transcript
+  is cumulative and `promoteSession` is idempotent (deterministic fact ids + a
+  finalize-once ledger), so resent payloads never double-count.
+
+Both calls carry `scope = { userId, characterId }`, and neither route imports the
+realtime stack — so a future non-realtime chat could reuse them unchanged.
+
 ## API Routes
 
 - `POST /api/realtime`
