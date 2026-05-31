@@ -179,3 +179,7 @@ require a module resolution mode that understands package exports:
 
 `@charivo/render-live2d` vendors parts of the Live2D Cubism SDK for Web.
 If you ship or republish that package, review the Live2D license terms before release.
+
+---
+
+**Built with [HyperClaude](http://zeikar.dev/hyperclaude/)** — *Claude builds, Codex critiques.*
