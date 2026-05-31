@@ -1,8 +1,10 @@
 # Charivo Companion
 
 A minimal companion demo that starts an OpenAI Realtime session and lets you
-talk to a character via voice and text. It intentionally has no Live2D renderer
-and no dedicated TTS/STT stack.
+talk to a Live2D character (Hiyori) via voice and text. The character is
+rendered with realtime lip-sync and expression/motion/gaze tool control, all
+wired through the `@charivo/core` `Charivo` orchestrator. There is no dedicated
+TTS/STT stack — the OpenAI Realtime API handles audio directly.
 
 Live demo: https://charivo-companion.vercel.app/
 
@@ -16,6 +18,11 @@ Live demo: https://charivo-companion.vercel.app/
   carries across sessions in the same browser.
 - Composes per-session instructions through `composeInstructions([...])` before
   calling `startSession({ instructions })`.
+- Renders a Live2D avatar (Hiyori) via `@charivo/render` + `@charivo/render-live2d`,
+  with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
+  `createAvatarControlTools`, `createAvatarResultProjector`,
+  `buildAvatarControlInstructions`) driving expressions/motions/gaze through the
+  shared Charivo event bus.
 - Renders connection state, the latest assistant transcript, and controls to
   connect, disconnect, interrupt, and type a message.
 
@@ -27,15 +34,18 @@ instruction blocks are assembled before the session starts:
 ```ts
 composeInstructions([
   buildRealtimeSessionConfig({ character }).instructions, // persona block
-  COMPANION_DEMO_GUIDANCE, // demo-guidance block
+  COMPANION_DEMO_GUIDANCE,                               // demo-guidance block
+  buildAvatarControlInstructions(catalog),               // avatar control block
+  memoryBlock,                                           // memory block
 ]);
 ```
 
-Today the function joins a persona block (derived from the character definition
-via `buildRealtimeSessionConfig`), a demo-guidance block that keeps replies
-short and natural for a live voice demo, and an optional memory block built from
-the browser-local store. Later subtasks can insert additional blocks at this
-seam without touching the call site.
+The function joins a persona block (derived from the character definition via
+`buildRealtimeSessionConfig`), a demo-guidance block that keeps replies short
+and natural for a live voice demo, an avatar-control instruction block
+(`buildAvatarControlInstructions` from `@charivo/realtime-avatar`) that tells
+the model what expressions/motions/gaze tools are available, and an optional
+memory block built from the browser-local store.
 
 ## Environment
 
@@ -77,7 +87,7 @@ extract → merge → persist pipeline against a `localStorage`-backed store.
 
 ```text
 browser (useRealtimeSession.ts)
-  one realtime session (voice + typed text)
+  one realtime session (voice + typed text), driven by Charivo orchestrator
         │
         ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)
         │                     → composeInstructions → startSession({ instructions })
@@ -99,11 +109,24 @@ browser (useRealtimeSession.ts)
   and `promoteSession` is idempotent (deterministic fact ids + a finalize-once
   ledger), so resent payloads never double-count.
 
+The five realtime events the memory seams subscribe to (`realtime:state`,
+`realtime:assistant:start`, `realtime:assistant:delta`, `realtime:assistant:done`,
+`realtime:user:transcript`) now ride Charivo's internal event bus via
+`charivo.on(...)` instead of a standalone `EventBus`. The read/inject and
+write/promote logic itself is unchanged.
+
 Memory is keyed by `scope = { userId, characterId }`. `userId` is a fixed
 placeholder (no auth) — isolation comes from `localStorage` being per-browser —
 while `characterId` partitions memory per character. The realtime stack is only
 imported by the client hook, so a future non-realtime chat could reuse the same
 store + pipeline unchanged.
+
+**Persona vs memory scope.** The character now presents as **Hiyori**
+(`DEFAULT_CHARACTER.name = "Hiyori"`), but the memory scope `characterId`
+deliberately stays `"companion-default"` so existing browser-local memory is
+preserved across this change. The Live2D model is selected by a separate
+`LIVE2D_MODEL_PATH` constant (`/live2d/Hiyori/Hiyori.model3.json`), not by the
+character id or name. Model assets live at `examples/companion/public/live2d/Hiyori/`.
 
 ## API Routes
 
@@ -137,12 +160,13 @@ examples/companion/src/app
   api/
     realtime/route.ts
   hooks/
-    useRealtimeSession.ts    ← captures turns; reads/promotes the local store
+    useRealtimeSession.ts    ← drives Charivo orchestrator; wires Live2D renderer +
+                               realtime manager; captures turns; reads/promotes the local store
   lib/
     compose-instructions.ts
   layout.tsx
   globals.css
-  page.tsx
+  page.tsx                   ← mounts a 300×300 canvas; passes it to useRealtimeSession
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)
