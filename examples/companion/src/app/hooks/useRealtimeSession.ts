@@ -141,6 +141,10 @@ export function useRealtimeSession(
     getAvailableExpressions?: () => string[];
     getAvailableMotionGroups?: () => Record<string, number>;
   } | null>(null);
+  // True once the render effect has finished initialize() + loadModel(). start()
+  // guards on this so a Connect before the model is ready cannot build a session
+  // with an empty avatar catalog.
+  const rendererReadyRef = useRef(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const firstUtteranceHandledRef = useRef(false);
 
@@ -197,13 +201,15 @@ export function useRealtimeSession(
       });
   };
 
-  // Single owner of resource teardown so the four cleanup paths (stop, mid-start
-  // unmount guard, start() catch, unmount effect) cannot drift. Touches only refs
-  // — never UI state, the scheduler's memory finalization, or pendingFailedWriteRef.
-  // Each step is guarded so a null ref is a no-op and one step's error cannot mask
-  // another.
-  // surfaceErrors: true (user-initiated stop) logs unconditionally via console.error;
-  // omitted/false (cleanup paths) logs dev-only via console.warn. Never rethrows.
+  // Single owner of SESSION (realtime) teardown so the cleanup paths (stop,
+  // mid-start unmount guard, start() catch, unmount effect) cannot drift. Stops
+  // the realtime manager and detaches it from the persistent Charivo, but leaves
+  // the renderer + Charivo alive — those are owned by the render effect and
+  // persist across connect/disconnect so the avatar stays on screen. Touches only
+  // session refs — never UI state, the scheduler's memory finalization, or
+  // pendingFailedWriteRef. Each step is guarded so a null ref is a no-op. Never
+  // rethrows. surfaceErrors: true (user-initiated stop) logs unconditionally via
+  // console.error; omitted/false (cleanup paths) logs dev-only via console.warn.
   const teardownSession = async (options?: { surfaceErrors?: boolean }) => {
     const surfaceErrors = options?.surfaceErrors ?? false;
     unsubscribeRef.current?.();
@@ -221,15 +227,21 @@ export function useRealtimeSession(
         );
       }
     });
+    // Detach realtime from the persistent Charivo; the renderer stays attached so
+    // the avatar remains rendered across disconnect/reconnect.
+    charivoRef.current?.detachRealtime();
+    managerRef.current = null;
+  };
+
+  // Render teardown — owned by the render effect (mount/unmount only). Destroys
+  // the render manager (which destroys the renderer) and clears the render +
+  // Charivo refs. Guarded so a null ref is a no-op and it never rethrows.
+  const teardownRender = async () => {
+    rendererReadyRef.current = false;
     try {
       await renderManagerRef.current?.destroy();
     } catch (error) {
-      if (surfaceErrors) {
-        console.error(
-          "[realtime-session] renderManager.destroy during teardown failed",
-          error,
-        );
-      } else if (process.env.NODE_ENV !== "production") {
+      if (process.env.NODE_ENV !== "production") {
         console.warn(
           "[realtime-session] renderManager.destroy during teardown failed",
           error,
@@ -237,39 +249,93 @@ export function useRealtimeSession(
       }
     }
     charivoRef.current = null;
-    managerRef.current = null;
     renderManagerRef.current = null;
     rendererRef.current = null;
   };
 
+  // Build the Live2D renderer + Charivo orchestrator on mount — independent of
+  // the realtime session — so the avatar is visible immediately on page load and
+  // persists across connect/disconnect (mirrors examples/web). The realtime
+  // manager is attached/detached per session in start()/stop(). The render
+  // packages are browser-only, so they are dynamically imported; Charivo is a
+  // static import.
   useEffect(() => {
     mountedRef.current = true;
+    let disposed = false;
+
+    if (canvas) {
+      void (async () => {
+        try {
+          const [{ Live2DRenderer }, { createRenderManager }] =
+            await Promise.all([
+              import("@charivo/render-live2d"),
+              import("@charivo/render"),
+            ]);
+          if (disposed) return;
+          const renderer = new Live2DRenderer({ canvas });
+          const renderManager = createRenderManager(renderer, {
+            canvas,
+            mouseTracking: "document",
+          });
+          rendererRef.current = renderer;
+          renderManagerRef.current = renderManager;
+          // One Charivo instance owns the internal bus; attaching the renderer
+          // here (and the realtime manager later, in start()) wires lip-sync +
+          // avatar control automatically.
+          const charivo = new Charivo();
+          charivo.setCharacter(resolvedCharacter);
+          charivo.attachRenderer(renderManager);
+          charivoRef.current = charivo;
+          await renderManager.initialize();
+          await renderManager.loadModel?.(LIVE2D_MODEL_PATH);
+          if (disposed) {
+            await teardownRender();
+            return;
+          }
+          rendererReadyRef.current = true;
+        } catch (error) {
+          console.error(
+            "[realtime-session] Failed to initialize Live2D renderer",
+            error,
+          );
+          await teardownRender();
+        }
+      })();
+    }
+
     return () => {
       mountedRef.current = false;
+      disposed = true;
+      // Stop recording further turns, then finalize memory through the scheduler
+      // so it cannot overlap an in-flight checkpoint (one-in-flight
+      // serialization). The write is a local promoteSession (localStorage, no
+      // network), so it resolves in a microtask — there is no request to cancel.
+      // stop() remains the primary finalize path (snapshot + retry while mounted).
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
-      // Unmount finalization routes through the scheduler so it cannot overlap
-      // an in-flight checkpoint (one-in-flight serialization). The write itself
-      // is a local promoteSession (localStorage, no network), so it resolves in
-      // a microtask — there is no request to cancel. stop() remains the primary
-      // finalize path (snapshot + retry while mounted).
       if (schedulerRef.current) {
         schedulerRef.current.onSessionEnd(sessionIdRef.current).catch(() => {});
         schedulerRef.current = null;
       }
       // Re-attempt any retained failed write from the previous stop() call.
       flushPendingFailedWrite();
-      void teardownSession();
+      // Tear down the session (realtime), then the renderer.
+      void (async () => {
+        await teardownSession();
+        await teardownRender();
+      })();
     };
-  }, []);
+  }, [canvas, resolvedCharacter]);
 
   const start = useCallback(async () => {
-    // Guard on the canvas before any connection-state mutation so a missing
-    // canvas cannot wedge the UI into a stuck "connecting" state.
-    if (!canvas) {
-      console.warn("[realtime-session] No canvas yet");
+    // The renderer + Charivo are built on mount (see the render effect). Guard on
+    // their readiness before any connection-state mutation so a not-yet-ready
+    // renderer cannot wedge the UI into a stuck "connecting" state.
+    const charivo = charivoRef.current;
+    if (!charivo || !rendererReadyRef.current) {
+      console.warn("[realtime-session] Renderer not ready yet");
       return;
     }
 
@@ -290,38 +356,19 @@ export function useRealtimeSession(
     recordUserUtteranceRef.current = null;
 
     try {
-      // Build the render + orchestrator stack before wiring events. The render
-      // packages are browser-only, so they are dynamically imported; Charivo is a
-      // static import.
-      const [
-        { Live2DRenderer },
-        { createRenderManager },
-        {
-          createAvatarControlTools,
-          createAvatarResultProjector,
-          buildAvatarControlInstructions,
-        },
-      ] = await Promise.all([
-        import("@charivo/render-live2d"),
-        import("@charivo/render"),
-        import("@charivo/realtime-avatar"),
-      ]);
+      // Avatar tooling is browser-only, so import it lazily. The renderer +
+      // Charivo already exist (built on mount); attach a fresh realtime manager
+      // to the same Charivo so lip-sync + avatar control are wired automatically.
+      const {
+        createAvatarControlTools,
+        createAvatarResultProjector,
+        buildAvatarControlInstructions,
+      } = await import("@charivo/realtime-avatar");
 
-      const renderer = new Live2DRenderer({ canvas });
-      const renderManager = createRenderManager(renderer, {
-        canvas,
-        mouseTracking: "document",
-      });
-      // Assign refs immediately so teardownSession can destroy them even if
-      // initialize() or loadModel() throws below.
-      rendererRef.current = renderer;
-      renderManagerRef.current = renderManager;
-      await renderManager.initialize();
-      await renderManager.loadModel?.(LIVE2D_MODEL_PATH);
-
+      const renderer = rendererRef.current;
       const catalog = {
-        expressions: renderer.getAvailableExpressions?.() ?? [],
-        motions: renderer.getAvailableMotionGroups?.() ?? {},
+        expressions: renderer?.getAvailableExpressions?.() ?? [],
+        motions: renderer?.getAvailableMotionGroups?.() ?? {},
       };
 
       const client = createRemoteRealtimeClient({
@@ -334,13 +381,7 @@ export function useRealtimeSession(
         resultProjectors: [createAvatarResultProjector()],
       });
 
-      // One Charivo instance owns the internal bus; attaching the renderer and the
-      // realtime manager wires lip-sync + avatar control automatically.
-      const charivo = new Charivo();
-      charivo.setCharacter(resolvedCharacter);
-      charivo.attachRenderer(renderManager);
       charivo.attachRealtime(manager);
-      charivoRef.current = charivo;
 
       // "local-user" is a fixed placeholder: there is no auth, so userId is not
       // a real identity. Isolation comes from localStorage being per-browser —
@@ -460,7 +501,7 @@ export function useRealtimeSession(
         memoryBlock,
       ]);
 
-      await renderManager.prepareAudio?.();
+      await renderManagerRef.current?.prepareAudio?.();
 
       await manager.startSession({
         provider: "openai",
@@ -473,7 +514,8 @@ export function useRealtimeSession(
       });
 
       // If the component unmounted while the connection was in-flight, tear the
-      // session down immediately so microphone/WebRTC/render resources are not leaked.
+      // session down immediately so microphone/WebRTC resources are not leaked.
+      // The renderer is owned by the render effect, whose cleanup runs separately.
       if (!mountedRef.current) {
         await teardownSession();
         return;
@@ -488,7 +530,7 @@ export function useRealtimeSession(
       setIsConnecting(false);
       setIsConnected(false);
     }
-  }, [resolvedCharacter, canvas]);
+  }, [resolvedCharacter]);
 
   const stop = useCallback(async () => {
     // Unsubscribe FIRST so no further turns are recorded, then flush the final
@@ -525,9 +567,10 @@ export function useRealtimeSession(
       }
     }
 
-    // Resource teardown happens exactly once, through the shared helper: it owns
-    // manager stop + render destroy + nulling managerRef/renderManagerRef/
-    // charivoRef/rendererRef. UI state is reset only after it has awaited.
+    // Session teardown happens exactly once, through the shared helper: it stops
+    // the realtime manager, detaches it from the persistent Charivo, and nulls
+    // managerRef. The renderer stays alive so the avatar remains on screen after
+    // disconnect. UI state is reset only after it has awaited.
     await teardownSession({ surfaceErrors: true });
 
     turnsRef.current = [];
