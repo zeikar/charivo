@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 import {
   loadUserName,
@@ -8,6 +8,23 @@ import {
   clearUserName,
   sanitizeUserName,
 } from "./lib/user-name-store";
+import {
+  type Phase,
+  type Tod,
+  type CssVars,
+  getTimeOfDay,
+  paletteFor,
+} from "./lib/hearth-theme";
+import { AmbientBackground } from "./components/AmbientBackground";
+import { CharacterPresence } from "./components/CharacterPresence";
+import { TopBar } from "./components/TopBar";
+import { VoiceOrb } from "./components/VoiceOrb";
+import { Captions } from "./components/Captions";
+import { IntroScreen } from "./components/IntroScreen";
+import { SettingsPanel } from "./components/SettingsPanel";
+
+// Mirrors the hook's DEFAULT_CHARACTER.name — the displayed companion name.
+const HER_NAME = "Hiyori";
 
 export default function Page() {
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -46,18 +63,19 @@ export default function Page() {
     };
   }, [hasMet]);
 
-  const {
-    isConnected,
-    isConnecting,
-    transcript,
-    start,
-    stop,
-    sendMessage,
-    interrupt,
-    rendererReady,
-  } = useRealtimeSession(canvas, undefined, userName);
+  const { isConnected, isConnecting, transcript, start, stop, rendererReady } =
+    useRealtimeSession(canvas, undefined, userName);
 
-  const [input, setInput] = useState("");
+  // Voice-first UI state.
+  const [phase, setPhase] = useState<Phase>("dormant");
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Deterministic SSR default ("evening"), then resolve the real time-of-day on
+  // the client to avoid an SSR/CSR hydration mismatch.
+  const [tod, setTod] = useState<Tod>("evening");
+  useEffect(() => {
+    setTod(getTimeOfDay());
+  }, []);
 
   // Returning visitor: land past the gate so the canvas mounts and the avatar
   // renders, but do NOT arm the connect intent here. The user taps "Meet her
@@ -118,130 +136,115 @@ export default function Page() {
     clearUserName();
   }
 
-  async function handleSend() {
-    const text = input.trim();
-    if (!text) return;
-    const ok = await sendMessage(text);
-    if (ok) setInput("");
-  }
+  // Public-surface-only phase derivation: the realtime:* events are internal to
+  // the hook, so phase is inferred solely from isConnecting/isConnected and
+  // transcript changes. The connected branch defaults to "listening" so the
+  // stage never stalls in "connecting" once connected, and the speaking-settle
+  // timer is always cleared before any non-connected phase so it cannot leak
+  // across disconnect/reconnect. "thinking" is omitted — there is no exposed
+  // signal for it.
+  const prevTranscriptRef = useRef("");
+  const speakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    function clearSpeakTimer(): void {
+      if (speakTimerRef.current) {
+        clearTimeout(speakTimerRef.current);
+        speakTimerRef.current = null;
+      }
+    }
+
+    if (isConnecting) {
+      clearSpeakTimer();
+      setPhase("connecting");
+      return;
+    } else if (!isConnected) {
+      clearSpeakTimer();
+      setPhase("dormant");
+      return;
+    } else {
+      const changed = transcript !== prevTranscriptRef.current;
+      prevTranscriptRef.current = transcript;
+      if (changed && transcript !== "") {
+        setPhase("speaking");
+        clearSpeakTimer();
+        speakTimerRef.current = setTimeout(() => {
+          setPhase("listening");
+          speakTimerRef.current = null;
+        }, 900);
+      } else if (!speakTimerRef.current) {
+        // No transcript change (or empty): land on "listening" immediately,
+        // unless a settle timer is mid-flight from a recent delta.
+        setPhase("listening");
+      }
+    }
+
+    return () => {
+      clearSpeakTimer();
+    };
+  }, [isConnecting, isConnected, transcript]);
+
+  // --level is set ONLY via the phase-* class on the stage root — never written
+  // from JS. The palette carries the time-of-day color tokens.
+  const palette = useMemo<CssVars>(() => paletteFor(tod), [tod]);
+
+  const topBarStatus = isConnecting
+    ? "connecting"
+    : isConnected
+      ? "connected"
+      : "dormant";
 
   if (!hasMet) {
-    const canMeet = sanitizeUserName(nameInput) !== "";
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#0a0a0a] via-[#0d0a12] to-[#0a0a0a] p-8">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center shadow-2xl backdrop-blur-sm">
-          <h1 className="bg-gradient-to-r from-rose-300 to-violet-300 bg-clip-text text-2xl font-semibold text-transparent">
-            Ready to meet her?
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-gray-400">
-            She&apos;s been waiting for you. Tell her your name, and that&apos;s
-            what she&apos;ll call you.
-          </p>
-
-          <input
-            type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleMeet()}
-            placeholder="What should she call you?"
-            className="mt-6 w-full rounded-lg border border-white/10 bg-black/40 px-4 py-3 text-center text-sm text-white placeholder-gray-600 outline-none focus:border-rose-400/40"
-          />
-
-          <button
-            onClick={handleMeet}
-            disabled={!canMeet}
-            className="mt-4 w-full rounded-lg bg-gradient-to-r from-rose-500 to-violet-500 px-4 py-3 text-sm font-medium text-white transition hover:from-rose-400 hover:to-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Meet her
-          </button>
-        </div>
-      </main>
+      <div
+        className="stage phase-dormant"
+        style={{ ...palette, overflow: "auto" }}
+      >
+        <AmbientBackground />
+        <IntroScreen
+          name={userName}
+          nameInput={nameInput}
+          onNameInput={setNameInput}
+          onMeet={handleMeet}
+        />
+      </div>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold">Charivo Companion</h1>
-        {userName && (
-          <span className="text-sm text-gray-400">Hi, {userName}</span>
-        )}
-        <button
-          onClick={handleChangeName}
-          disabled={isConnecting}
-          className="text-xs text-gray-500 underline-offset-2 hover:text-gray-300 hover:underline disabled:opacity-40"
-        >
-          Change name
-        </button>
-      </div>
-
-      <div ref={canvasContainerRef} className="h-[320px] w-[320px]" />
-
-      <p className="text-sm">
-        Status:{" "}
-        <span className="font-mono">
-          {isConnecting
-            ? "connecting"
-            : isConnected
-              ? "connected"
-              : "disconnected"}
-        </span>
-      </p>
-
-      <div className="flex gap-3">
-        <button
-          onClick={handleDisconnect}
-          disabled={isConnecting || !isConnected}
-          className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          Disconnect
-        </button>
-
-        {!isConnected && !isConnecting && (
-          <button
-            onClick={handleRetry}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Meet her again
-          </button>
-        )}
-
-        <button
-          onClick={interrupt}
-          disabled={!isConnected}
-          className="rounded bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
-        >
-          Interrupt
-        </button>
-      </div>
-
-      <div className="flex w-full max-w-lg gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message…"
-          disabled={!isConnected}
-          className="flex-1 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 disabled:opacity-50"
-        />
-        <button
-          onClick={handleSend}
-          disabled={!isConnected || !input.trim()}
-          className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
-
-      {transcript && (
-        <div className="w-full max-w-lg rounded border border-gray-700 bg-gray-900 p-4 text-sm">
-          <p className="mb-1 text-xs font-semibold uppercase text-gray-400">
-            Assistant
-          </p>
-          <p>{transcript}</p>
-        </div>
-      )}
-    </main>
+    <div className={`stage phase-${phase}`} style={palette}>
+      <AmbientBackground />
+      <CharacterPresence
+        canvasContainerRef={canvasContainerRef}
+        rendererReady={rendererReady}
+      />
+      <VoiceOrb phase={phase} />
+      <TopBar
+        name={HER_NAME}
+        status={topBarStatus}
+        onSettings={() => setSettingsOpen(true)}
+      />
+      <Captions show={captionsOn} line={transcript} name={HER_NAME} />
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        name={userName}
+        onRename={(next) => {
+          const clean = sanitizeUserName(next);
+          if (!clean) return;
+          saveUserName(clean);
+          setUserName(clean);
+        }}
+        onChangeName={() => {
+          setSettingsOpen(false);
+          void handleChangeName();
+        }}
+        captions={captionsOn}
+        onCaptions={setCaptionsOn}
+        status={topBarStatus}
+        onDisconnect={handleDisconnect}
+        onReconnect={handleRetry}
+      />
+    </div>
   );
 }
