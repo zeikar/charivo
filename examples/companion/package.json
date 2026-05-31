@@ -15,6 +15,9 @@
   "dependencies": {
     "@charivo/core": "workspace:*",
     "@charivo/realtime": "workspace:*",
+    "@charivo/realtime-avatar": "workspace:*",
+    "@charivo/render": "workspace:*",
+    "@charivo/render-live2d": "workspace:*",
     "@charivo/server": "workspace:*",
     "next": "15.5.9",
     "react": "19.1.0",
