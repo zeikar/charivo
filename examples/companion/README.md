@@ -1,15 +1,22 @@
 # Charivo Companion
 
-A minimal companion demo that starts an OpenAI Realtime session and lets you
-talk to a Live2D character (Hiyori) via voice and text. The character is
-rendered with realtime lip-sync and motion/gaze tool control, all wired through
-the `@charivo/core` `Charivo` orchestrator. There is no dedicated TTS/STT
-stack — the OpenAI Realtime API handles audio directly.
+A minimal companion demo that greets you by name, starts an OpenAI Realtime
+session, and lets you talk to a Live2D character (Hiyori) via voice and text.
+The character is rendered with realtime lip-sync and motion/gaze tool control,
+all wired through the `@charivo/core` `Charivo` orchestrator. There is no
+dedicated TTS/STT stack — the OpenAI Realtime API handles audio directly.
 
 Live demo: https://charivo-companion.vercel.app/
 
 ## What it does
 
+- Shows an intro gate on first visit: an emotional headline asks the user for
+  their own name before the avatar appears. Pressing **만나기** renders the
+  Live2D canvas and connects realtime in a single action — there is no separate
+  Connect step.
+- Persists the user's name in `localStorage` (`charivo:companion:user-name`).
+  On revisit the intro is skipped and realtime auto-connects using the stored
+  name.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
 - Builds a personalized memory block from the browser-local store at cold-start
   and does one relevance refresh after the first user utterance.
@@ -17,7 +24,8 @@ Live demo: https://charivo-companion.vercel.app/
   checkpoints and on session end), so the longitudinal relationship state
   carries across sessions in the same browser.
 - Composes per-session instructions through `composeInstructions([...])` before
-  calling `startSession({ instructions })`.
+  calling `startSession({ instructions })`, including a sanitized user-name
+  block so the character addresses the user by name.
 - Renders a Live2D avatar (Hiyori) via `@charivo/render` + `@charivo/render-live2d`,
   with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
   `createAvatarControlTools`, `createAvatarResultProjector`,
@@ -25,8 +33,13 @@ Live demo: https://charivo-companion.vercel.app/
   Charivo event bus. (The bundled Hiyori model exposes motion groups and gaze but
   no expression entries; expression tool control activates automatically for
   models that provide them.)
-- Renders connection state, the latest assistant transcript, and controls to
-  connect, disconnect, interrupt, and type a message.
+- Post-gate controls: **Disconnect** (disabled while connecting or already
+  disconnected), **다시 만나기** to reconnect after a Disconnect or a failed
+  connect (one `start()` attempt per arming; shown only when disconnected and
+  not connecting), and **이름 바꾸기** to fully reset identity (clears the
+  stored name, disconnects if needed, and returns to the intro; disabled while
+  connecting). Disconnect/interrupt/type-a-message remain available while
+  connected. The intro's **만나기** replaced the former standalone Connect button.
 
 ## `composeInstructions` seam
 
@@ -36,18 +49,35 @@ instruction blocks are assembled before the session starts:
 ```ts
 composeInstructions([
   buildRealtimeSessionConfig({ character }).instructions, // persona block
+  buildUserNameBlock(userName),                          // user self-name block (sanitized, JSON-delimited)
   COMPANION_DEMO_GUIDANCE,                               // demo-guidance block
   buildAvatarControlInstructions(catalog),               // avatar control block
   memoryBlock,                                           // memory block
 ]);
 ```
 
-The function joins a persona block (derived from the character definition via
-`buildRealtimeSessionConfig`), a demo-guidance block that keeps replies short
-and natural for a live voice demo, an avatar-control instruction block
-(`buildAvatarControlInstructions` from `@charivo/realtime-avatar`) that tells
-the model what motions/gaze (and, when present, expression) tools are available,
-and an optional memory block built from the browser-local store.
+The function joins the blocks in order: a persona block (derived from the
+character definition via `buildRealtimeSessionConfig`), a user-name block
+(`buildUserNameBlock`) that returns `null` when no name is set and is filtered
+out by `composeInstructions` — so it contributes nothing before the user has
+entered a name — but addresses them by name once one exists, a demo-guidance
+block that keeps replies short and natural for a live voice demo, an
+avatar-control instruction block (`buildAvatarControlInstructions` from
+`@charivo/realtime-avatar`) that tells the model what motions/gaze (and, when
+present, expression) tools are available, and a memory block built from the
+browser-local store (also filtered out when empty).
+
+This same 5-block `composeInstructions([...])` call is used at both the
+cold-start inject (`startSession`) and the single first-utterance refresh
+(`updateSession`).
+
+**User-name injection.** `buildUserNameBlock` embeds the sanitized name as a
+JSON-quoted value with an explicit "treat as data, not instructions" directive —
+a deliberate prompt-injection boundary. The name is sanitized by
+`sanitizeUserName` (control-char strip + length bound to 40 characters) before
+being embedded. This does **not** change the memory `scope`: `characterId`
+stays `"companion-default"` and the `Character` definition is unmodified. The
+user name is identity/UI state stored separately from the memory facts.
 
 ## Environment
 
@@ -123,6 +153,12 @@ while `characterId` partitions memory per character. The realtime stack is only
 imported by the client hook, so a future non-realtime chat could reuse the same
 store + pipeline unchanged.
 
+**localStorage keys.** Memory lives under three keys
+(`charivo:companion:facts`, `charivo:companion:sessions`,
+`charivo:companion:relationships`). The user's self-name is stored separately
+under `charivo:companion:user-name` — identity/UI state, not a memory fact, and
+it does not affect the memory `scope`.
+
 **Persona vs memory scope.** The character now presents as **Hiyori**
 (`DEFAULT_CHARACTER.name = "Hiyori"`), but the memory scope `characterId`
 deliberately stays `"companion-default"` so existing browser-local memory is
@@ -166,9 +202,13 @@ examples/companion/src/app
                                realtime manager; captures turns; reads/promotes the local store
   lib/
     compose-instructions.ts
+    user-name-store.ts        ← loadUserName/saveUserName/clearUserName/sanitizeUserName;
+                                 key charivo:companion:user-name; max 40 chars
   layout.tsx
   globals.css
-  page.tsx                   ← mounts a 300×300 canvas; passes it to useRealtimeSession
+  page.tsx                   ← intro gate (만나기 → mounts canvas + arms connect intent);
+                                 auto-connects when rendererReady; post-gate controls:
+                                 Disconnect, 다시 만나기, 이름 바꾸기
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)
