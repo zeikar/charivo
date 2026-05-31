@@ -15,8 +15,9 @@ Live demo: https://charivo-companion.vercel.app/
   Live2D canvas and connects realtime in a single action — there is no separate
   Connect step.
 - Persists the user's name in `localStorage` (`charivo:companion:user-name`).
-  On revisit the intro is skipped and realtime auto-connects using the stored
-  name.
+  On revisit the name-entry intro is skipped and the avatar renders immediately,
+  but the user taps **다시 만나기** once to connect — a deliberate user gesture
+  so audio and lip-sync unlock correctly on iOS/Safari.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
 - Builds a personalized memory block from the browser-local store at cold-start
   and does one relevance refresh after the first user utterance.
@@ -206,9 +207,11 @@ examples/companion/src/app
                                  key charivo:companion:user-name; max 40 chars
   layout.tsx
   globals.css
-  page.tsx                   ← intro gate (만나기 → mounts canvas + arms connect intent);
-                                 auto-connects when rendererReady; post-gate controls:
-                                 Disconnect, 다시 만나기, 이름 바꾸기
+  page.tsx                   ← intro gate (만나기 → mounts canvas + arms connect intent,
+                                 auto-connects when rendererReady); revisit skips gate,
+                                 renders avatar, connects on 다시 만나기 tap (iOS-safe
+                                 audio unlock); post-gate controls: Disconnect,
+                                 다시 만나기, 이름 바꾸기
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)

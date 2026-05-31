@@ -59,15 +59,17 @@ export default function Page() {
 
   const [input, setInput] = useState("");
 
-  // Returning visitor: land past the gate with the connect intent armed so the
-  // revisit path auto-connects through the same auto-connect effect as a first
-  // meet. Client-only (localStorage), so SSR is unaffected.
+  // Returning visitor: land past the gate so the canvas mounts and the avatar
+  // renders, but do NOT arm the connect intent here. The user taps 다시 만나기
+  // (which calls handleRetry → setConnectRequested(true)) to connect — that tap
+  // is the user gesture that lets start() → prepareAudio() unlock
+  // AudioContext/lip-sync safely on iOS/Safari. Client-only (localStorage), so
+  // SSR is unaffected.
   useEffect(() => {
     const saved = loadUserName();
     if (saved) {
       setUserName(saved);
       setHasMet(true);
-      setConnectRequested(true);
     }
   }, []);
 
