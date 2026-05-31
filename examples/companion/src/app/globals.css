@@ -127,3 +127,861 @@ body {
     transform: translate(-50%, 0);
   }
 }
+
+/* ---- structural helpers -------------------------------------------------- */
+html,
+body,
+#root {
+  height: 100%;
+}
+.field {
+  display: contents;
+}
+
+/* ---- stage --------------------------------------------------------------- */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  --level: 0.06;
+  color: var(--text);
+  transition:
+    --bg1 0.9s ease,
+    --bg2 0.9s ease,
+    --bg3 0.9s ease,
+    --glow 0.9s ease,
+    --halo 0.9s ease,
+    --accent 0.9s ease,
+    --warm 0.9s ease,
+    --particle 0.9s ease,
+    --level 0.55s ease;
+}
+/* voice "level" is a per-phase intensity (no per-frame JS) — the continuous
+   motion comes from the CSS keyframe animations; this only sets how
+   bright/large the reactive layers sit, ramped smoothly via @property. */
+.stage.phase-connecting {
+  --level: 0.12;
+}
+.stage.phase-listening {
+  --level: 0.18;
+}
+.stage.phase-thinking {
+  --level: 0.34;
+}
+.stage.phase-speaking {
+  --level: 0.62;
+}
+
+/* ---- ambient background -------------------------------------------------- */
+.amb {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.amb-base {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    125% 105% at 50% 80%,
+    var(--bg1) 0%,
+    var(--bg2) 44%,
+    var(--bg3) 100%
+  );
+}
+.amb-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    46% 46% at 50% 58%,
+    color-mix(in oklch, var(--glow) 28%, transparent) 0%,
+    transparent 66%
+  );
+  opacity: calc(0.34 + var(--level) * 0.5);
+  transition: opacity 0.25s ease;
+  mix-blend-mode: screen;
+}
+.amb-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    95% 85% at 50% 50%,
+    transparent 52%,
+    color-mix(in oklch, var(--bg3) 88%, black) 100%
+  );
+}
+.amb-motes {
+  position: absolute;
+  inset: 0;
+}
+.mote {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--particle) 0%, transparent 70%);
+  filter: blur(0.4px);
+  animation: drift var(--dur) ease-in-out var(--delay) infinite;
+}
+
+/* ---- character presence -------------------------------------------------- */
+.stage-fig {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.stage-fig.align-left {
+  justify-content: flex-start;
+  padding-left: 4vw;
+}
+.stage-fig.align-right {
+  justify-content: flex-end;
+  padding-right: 4vw;
+}
+
+.fig-wrap {
+  position: relative;
+  height: 86%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.fig-floor {
+  position: absolute;
+  bottom: -2%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 14%;
+  background: radial-gradient(
+    50% 100% at 50% 100%,
+    color-mix(in oklch, var(--glow) 55%, transparent),
+    transparent 72%
+  );
+  filter: blur(14px);
+  opacity: calc(0.5 + var(--level) * 0.5);
+}
+
+/* breathing aura rings (read --level) */
+.halo {
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, 0) scale(calc(1 + var(--level) * 0.14));
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--halo) 60%, transparent) 0%,
+    transparent 66%
+  );
+  mix-blend-mode: screen;
+  transition: transform 0.18s ease-out;
+  animation: breathe 7s ease-in-out infinite;
+}
+.halo-1 {
+  width: 46vh;
+  height: 46vh;
+  opacity: calc(0.4 + var(--level) * 0.5);
+}
+.halo-2 {
+  width: 64vh;
+  height: 64vh;
+  opacity: calc(0.22 + var(--level) * 0.32);
+  animation-delay: -2.3s;
+}
+.halo-3 {
+  width: 84vh;
+  height: 84vh;
+  opacity: calc(0.12 + var(--level) * 0.22);
+  animation-delay: -4.6s;
+}
+.halo.dim {
+  opacity: 0.26 !important;
+}
+
+.fig-rim {
+  position: absolute;
+  bottom: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34vh;
+  height: 76%;
+  background: linear-gradient(
+    to top,
+    color-mix(in oklch, var(--warm) 50%, transparent) 0%,
+    color-mix(in oklch, var(--warm) 18%, transparent) 45%,
+    transparent 82%
+  );
+  filter: blur(26px);
+  opacity: calc(0.45 + var(--level) * 0.35);
+  border-radius: 50% 50% 40% 40%;
+}
+.fig-rim.dim {
+  opacity: 0.3;
+}
+
+.fig-mount {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  animation: float 8s ease-in-out infinite;
+  pointer-events: auto;
+}
+
+/* the visible portrait tile — flex-centers its canvas mount */
+.fig-tile {
+  position: relative;
+  width: 42vh;
+  height: 80vh;
+  border-radius: 34px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(
+      80% 42% at 50% 20%,
+      color-mix(in oklch, var(--glow) 18%, transparent),
+      transparent 66%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--bg2) 78%, transparent),
+      color-mix(in oklch, var(--bg3) 90%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--text) 16%, transparent),
+    inset 0 0 0 1px color-mix(in oklch, var(--text) 10%, transparent),
+    inset 0 -80px 120px color-mix(in oklch, var(--bg3) 60%, black),
+    0 40px 110px color-mix(in oklch, var(--bg3) 80%, black);
+  backdrop-filter: blur(3px);
+}
+
+/* canvas mount — centers the renderer canvas inside fig-tile */
+.fig-canvas-mount {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fig-canvas-mount canvas {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
+
+/* loading state placeholder — disappears once a render is active */
+.fig-tile.loading::after {
+  content: "waking…";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-size: clamp(18px, 2.4vw, 26px);
+  color: color-mix(in oklch, var(--text) 55%, transparent);
+  animation: blink 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* invisible full-stage tap target to "speak" to her */
+.talk-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---- top bar ------------------------------------------------------------- */
+.topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 26px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--bg3) 55%, transparent),
+    transparent
+  );
+}
+.topbar-id {
+  display: flex;
+  align-items: baseline;
+  gap: 15px;
+}
+.topbar-id .conn-dot {
+  align-self: center;
+}
+.topbar-name {
+  font-family: var(--serif);
+  font-size: 24px;
+  letter-spacing: 0.3px;
+  color: var(--text);
+  line-height: 1;
+}
+.topbar-status {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sub);
+  white-space: nowrap;
+}
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sub);
+  box-shadow: 0 0 0 0 transparent;
+}
+.conn-connected {
+  background: var(--accent);
+  animation: pulseDot 2.4s ease-in-out infinite;
+}
+.conn-connecting {
+  background: var(--accent);
+  animation: blink 1s ease-in-out infinite;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklch, var(--text) 14%, transparent);
+  background: color-mix(in oklch, var(--bg3) 40%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+}
+.icon-btn:hover {
+  background: color-mix(in oklch, var(--text) 12%, transparent);
+  transform: translateY(-1px);
+}
+.icon-btn.solid {
+  background: var(--accent);
+  color: var(--bg3);
+  border-color: transparent;
+}
+.icon-btn.solid:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- captions ------------------------------------------------------------ */
+.caption {
+  position: absolute;
+  left: 50%;
+  bottom: 17%;
+  z-index: 5;
+  transform: translate(-50%, 10px);
+  width: min(78vw, 720px);
+  text-align: center;
+  opacity: 0;
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+  pointer-events: none;
+}
+.caption.in {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.caption-name {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent) 85%, white);
+  margin-bottom: 8px;
+}
+.caption-text {
+  font-family: var(--serif);
+  font-size: clamp(22px, 3.4vw, 34px);
+  line-height: 1.32;
+  color: var(--text);
+  text-shadow: 0 2px 24px color-mix(in oklch, var(--bg3) 80%, black);
+  text-wrap: balance;
+}
+
+/* ---- voice hint (bottom) ------------------------------------------------- */
+.voicehint {
+  position: absolute;
+  left: 50%;
+  bottom: 5.5%;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.vh-orb {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+}
+.vh-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(calc(1 + var(--level) * 1.1));
+  box-shadow: 0 0 calc(8px + var(--level) * 26px)
+    color-mix(in oklch, var(--accent) 80%, transparent);
+  transition: transform 0.12s ease-out;
+}
+.vh-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in oklch, var(--accent) 50%, transparent);
+  opacity: calc(0.2 + var(--level) * 0.8);
+  transform: scale(calc(0.7 + var(--level) * 0.8));
+  transition:
+    transform 0.12s ease-out,
+    opacity 0.12s ease-out;
+}
+.phase-speaking .vh-ring {
+  animation: ripple 1.6s ease-out infinite;
+}
+.vh-label {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--sub);
+}
+
+/* ---- intro --------------------------------------------------------------- */
+.intro {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+}
+.intro-figure {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.intro-figure .halo {
+  bottom: 6%;
+}
+.intro-mount {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  animation: float 8s ease-in-out infinite;
+}
+.intro-copy {
+  padding: 0 9vw 0 2vw;
+  max-width: 560px;
+}
+.intro-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent) 88%, white);
+  margin-bottom: 18px;
+}
+.intro-title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(40px, 6vw, 76px);
+  line-height: 1.02;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.intro-sub {
+  margin-top: 18px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--sub);
+  max-width: 38ch;
+}
+.intro-field {
+  margin-top: 32px;
+  display: flex;
+  gap: 10px;
+  max-width: 440px;
+}
+.intro-input {
+  flex: 1;
+  font-family: var(--ui);
+  font-size: 16px;
+  padding: 15px 18px;
+  border-radius: 14px;
+  background: color-mix(in oklch, var(--bg3) 45%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text) 16%, transparent);
+  color: var(--text);
+  outline: none;
+  backdrop-filter: blur(8px);
+  transition: border-color 0.2s;
+}
+.intro-input::placeholder {
+  color: color-mix(in oklch, var(--text) 40%, transparent);
+}
+.intro-input:focus {
+  border-color: color-mix(in oklch, var(--accent) 60%, transparent);
+}
+.intro-btn {
+  font-family: var(--ui);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 26px;
+  border-radius: 14px;
+  border: 0;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg3);
+  white-space: nowrap;
+  transition:
+    filter 0.2s,
+    transform 0.2s,
+    opacity 0.2s;
+}
+.intro-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.intro-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.intro-foot {
+  margin-top: 18px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: color-mix(in oklch, var(--sub) 80%, transparent);
+}
+
+/* ---- settings sheet ------------------------------------------------------ */
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: color-mix(in oklch, var(--bg3) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.42s ease;
+}
+.sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  width: min(420px, 92vw);
+  background: color-mix(in oklch, var(--bg2) 82%, black);
+  border-left: 1px solid color-mix(in oklch, var(--text) 12%, transparent);
+  box-shadow: -30px 0 80px color-mix(in oklch, var(--bg3) 70%, black);
+  transform: translateX(100%);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 24px 8px;
+}
+.sheet-title {
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 400;
+  color: var(--text);
+}
+.sheet-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px 24px 12px;
+}
+.sheet-tabs button {
+  font-family: var(--ui);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--sub);
+  border: 1px solid color-mix(in oklch, var(--text) 12%, transparent);
+  transition: all 0.2s;
+}
+.sheet-tabs button.on {
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+  color: var(--text);
+  border-color: transparent;
+}
+.sheet-body {
+  padding: 8px 24px 28px;
+  overflow-y: auto;
+}
+.set-group {
+  padding: 18px 0;
+  border-top: 1px solid color-mix(in oklch, var(--text) 9%, transparent);
+}
+.set-group:first-child {
+  border-top: 0;
+}
+.set-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.set-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--sub);
+}
+.set-inline {
+  display: flex;
+  gap: 8px;
+}
+.set-input {
+  flex: 1;
+  font-family: var(--ui);
+  font-size: 14px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--bg3) 55%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text) 14%, transparent);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.set-input::placeholder {
+  color: color-mix(in oklch, var(--text) 38%, transparent);
+}
+.set-input:focus {
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+}
+.set-btn {
+  font-family: var(--ui);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 0;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg3);
+  transition:
+    filter 0.2s,
+    opacity 0.2s;
+}
+.set-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.set-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.set-btn.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid color-mix(in oklch, var(--text) 20%, transparent);
+}
+.set-btn.wide {
+  width: 100%;
+  padding: 13px 0;
+}
+.set-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toggle {
+  flex: none;
+  width: 46px;
+  height: 27px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: color-mix(in oklch, var(--text) 16%, transparent);
+  border: 0;
+  position: relative;
+  transition: background 0.25s;
+}
+.toggle.on {
+  background: var(--accent);
+}
+.toggle .knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.25s;
+}
+.toggle.on .knob {
+  transform: translateX(19px);
+  background: var(--bg3);
+}
+
+.mem-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mem-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mem-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--bg3) 40%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text) 8%, transparent);
+}
+.mem-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.mem-text {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.mem-tag {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sub);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--text) 8%, transparent);
+}
+.mem-del {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  color: var(--sub);
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+.mem-del:hover {
+  color: oklch(0.72 0.16 25);
+  background: color-mix(in oklch, oklch(0.72 0.16 25) 14%, transparent);
+}
+.mem-empty {
+  font-size: 13px;
+  color: var(--sub);
+  padding: 16px 0;
+  text-align: center;
+}
+
+/* ---- responsive (app / phone) ------------------------------------------- */
+@media (max-width: 760px) {
+  .intro {
+    grid-template-columns: 1fr;
+  }
+  .intro-figure {
+    position: absolute;
+    inset: 0;
+    opacity: 0.5;
+  }
+  .intro-figure .halo {
+    bottom: 30%;
+  }
+  .intro-copy {
+    position: relative;
+    z-index: 2;
+    padding: 0 28px;
+    align-self: end;
+    margin-bottom: 12vh;
+    max-width: none;
+    background: linear-gradient(
+      to top,
+      color-mix(in oklch, var(--bg3) 70%, transparent) 30%,
+      transparent
+    );
+    padding-top: 80px;
+  }
+  .intro-field {
+    max-width: none;
+  }
+  .fig-tile {
+    height: 62vh;
+    width: 46vh;
+    max-width: 82vw;
+    border-radius: 26px;
+  }
+  .topbar {
+    padding: 18px 18px;
+  }
+  .topbar-name {
+    font-size: 21px;
+  }
+  .topbar-status {
+    display: none;
+  }
+  .caption {
+    bottom: 20%;
+    width: 86vw;
+  }
+  .stage-fig.align-left,
+  .stage-fig.align-right {
+    padding: 0;
+    justify-content: center;
+  }
+}
+@media (max-width: 420px) {
+  .intro-field {
+    flex-direction: column;
+  }
+  .intro-btn {
+    padding: 14px;
+  }
+}
