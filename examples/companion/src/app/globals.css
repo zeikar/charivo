@@ -1,6 +1,129 @@
 @import "tailwindcss";
 
+/* Hearth design tokens — animatable color tokens crossfade when time-of-day changes */
+@property --bg1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #2a1f16;
+}
+@property --bg2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1a130d;
+}
+@property --bg3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #0a0706;
+}
+@property --glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d9a066;
+}
+@property --halo {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d9a066;
+}
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d9a066;
+}
+@property --warm {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e0b070;
+}
+@property --particle {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e6c089;
+}
+@property --level {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:root {
+  --ui: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --serif: var(--font-instrument), Georgia, serif;
+}
+
+/* overflow is owned per-branch (the .stage hides it, the intro scrolls) — see Task 3/7 */
 body {
-  background: #0a0a0a;
-  color: #ededed;
+  font-family: var(--ui);
+  background: #0a0706;
+  color: #f5efe7;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate(0, 0) scale(0.85);
+  }
+  50% {
+    transform: translate(var(--drift), -26px) scale(1.15);
+  }
+  100% {
+    transform: translate(0, 0) scale(0.85);
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translate(-50%, 0) scale(calc(1 + var(--level) * 0.14));
+  }
+  50% {
+    transform: translate(-50%, -1.5%) scale(calc(1.05 + var(--level) * 0.14));
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.4%);
+  }
+}
+@keyframes pulseDot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--accent) 50%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes ripple {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+@keyframes capIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
