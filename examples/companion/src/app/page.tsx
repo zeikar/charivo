@@ -1,9 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 
 export default function Page() {
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const nextCanvas = document.createElement("canvas");
+    nextCanvas.width = 300;
+    nextCanvas.height = 300;
+
+    container.replaceChildren(nextCanvas);
+    setCanvas(nextCanvas);
+
+    return () => {
+      setCanvas((currentCanvas) =>
+        currentCanvas === nextCanvas ? null : currentCanvas,
+      );
+
+      if (container.contains(nextCanvas)) {
+        container.removeChild(nextCanvas);
+      }
+    };
+  }, []);
+
   const {
     isConnected,
     isConnecting,
@@ -12,7 +39,7 @@ export default function Page() {
     stop,
     sendMessage,
     interrupt,
-  } = useRealtimeSession();
+  } = useRealtimeSession(canvas);
 
   const [input, setInput] = useState("");
 
@@ -26,6 +53,8 @@ export default function Page() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
       <h1 className="text-2xl font-bold">Charivo Companion</h1>
+
+      <div ref={canvasContainerRef} className="h-[320px] w-[320px]" />
 
       <p className="text-sm">
         Status:{" "}

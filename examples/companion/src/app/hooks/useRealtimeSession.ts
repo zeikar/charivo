@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EventBus, type Character, type RealtimeState } from "@charivo/core";
+import {
+  Charivo,
+  type Character,
+  type RealtimeState,
+  type RenderManager,
+} from "@charivo/core";
 import {
   createRealtimeManager,
   buildRealtimeSessionConfig,
@@ -23,10 +28,16 @@ Favor subtle reactions over big repeated motions unless the moment clearly calls
 
 const DEFAULT_CHARACTER: Character = {
   id: "companion-default",
-  name: "Companion",
-  description: "A helpful and friendly companion.",
-  personality: "warm, concise, and attentive",
+  name: "Hiyori",
+  description: "A thoughtful and gentle character with a calm demeanor",
+  personality:
+    "Soft-spoken, empathetic, and caring. Takes time to listen and respond thoughtfully. Uses polite and soothing language, creating a comfortable atmosphere.",
+  voice: { voiceId: "marin", rate: 1.0, pitch: 1.2, volume: 0.8 },
 };
+
+// The single field that selects the rendered model. Decoupled from Character.id
+// (which is the stable memory scope key) and from Character.name (presentation).
+const LIVE2D_MODEL_PATH = "/live2d/Hiyori/Hiyori.model3.json";
 
 // Read (inject): build the memory block directly from the browser-local store.
 // The whole memory engine is pure TS and runs client-side — no server round
@@ -98,6 +109,7 @@ export interface UseRealtimeSessionResult {
 }
 
 export function useRealtimeSession(
+  canvas: HTMLCanvasElement | null,
   character?: Character,
 ): UseRealtimeSessionResult {
   const resolvedCharacter = useMemo(
@@ -119,7 +131,16 @@ export function useRealtimeSession(
   const managerRef = useRef<ReturnType<typeof createRealtimeManager> | null>(
     null,
   );
-  const eventBusRef = useRef<EventBus | null>(null);
+  // Charivo owns the internal EventBus; the renderer + realtime manager are
+  // both attached to it so lip-sync and avatar control are wired automatically.
+  const charivoRef = useRef<Charivo | null>(null);
+  const renderManagerRef = useRef<RenderManager | null>(null);
+  // The Live2D renderer handle is kept so the avatar control catalog can be read
+  // off it (expressions / motion groups) after the model loads.
+  const rendererRef = useRef<{
+    getAvailableExpressions?: () => string[];
+    getAvailableMotionGroups?: () => Record<string, number>;
+  } | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const firstUtteranceHandledRef = useRef(false);
 
@@ -176,6 +197,29 @@ export function useRealtimeSession(
       });
   };
 
+  // Single owner of resource teardown so the four cleanup paths (stop, mid-start
+  // unmount guard, start() catch, unmount effect) cannot drift. Touches only refs
+  // — never UI state, the scheduler's memory finalization, or pendingFailedWriteRef.
+  // Each step is guarded so a null ref is a no-op and one step's error cannot mask
+  // another.
+  const teardownSession = async () => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    schedulerRef.current = null;
+    recordUserUtteranceRef.current = null;
+    firstUtteranceHandledRef.current = false;
+    await managerRef.current?.stopSession().catch(() => {});
+    try {
+      await renderManagerRef.current?.destroy();
+    } catch {
+      // Ignore render teardown errors so they cannot mask other cleanup.
+    }
+    charivoRef.current = null;
+    managerRef.current = null;
+    renderManagerRef.current = null;
+    rendererRef.current = null;
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -195,22 +239,18 @@ export function useRealtimeSession(
       }
       // Re-attempt any retained failed write from the previous stop() call.
       flushPendingFailedWrite();
-      if (managerRef.current) {
-        managerRef.current.stopSession().catch((error: unknown) => {
-          if (process.env.NODE_ENV !== "production") {
-            console.warn(
-              "[realtime-session] stopSession on unmount failed",
-              error,
-            );
-          }
-        });
-        managerRef.current = null;
-      }
-      eventBusRef.current = null;
+      void teardownSession();
     };
   }, []);
 
   const start = useCallback(async () => {
+    // Guard on the canvas before any connection-state mutation so a missing
+    // canvas cannot wedge the UI into a stuck "connecting" state.
+    if (!canvas) {
+      console.warn("[realtime-session] No canvas yet");
+      return;
+    }
+
     if (isConnectingRef.current || isConnectedRef.current) {
       console.warn("[realtime-session] Already connecting or connected");
       return;
@@ -228,14 +268,55 @@ export function useRealtimeSession(
     recordUserUtteranceRef.current = null;
 
     try {
+      // Build the render + orchestrator stack before wiring events. The render
+      // packages are browser-only, so they are dynamically imported; Charivo is a
+      // static import.
+      const [
+        { Live2DRenderer },
+        { createRenderManager },
+        {
+          createAvatarControlTools,
+          createAvatarResultProjector,
+          buildAvatarControlInstructions,
+        },
+      ] = await Promise.all([
+        import("@charivo/render-live2d"),
+        import("@charivo/render"),
+        import("@charivo/realtime-avatar"),
+      ]);
+
+      const renderer = new Live2DRenderer({ canvas });
+      const renderManager = createRenderManager(renderer, {
+        canvas,
+        mouseTracking: "document",
+      });
+      await renderManager.initialize();
+      await renderManager.loadModel?.(LIVE2D_MODEL_PATH);
+      rendererRef.current = renderer;
+      renderManagerRef.current = renderManager;
+
+      const catalog = {
+        expressions: renderer.getAvailableExpressions?.() ?? [],
+        motions: renderer.getAvailableMotionGroups?.() ?? {},
+      };
+
       const client = createRemoteRealtimeClient({
         apiEndpoint: "/api/realtime",
         debug: process.env.NODE_ENV !== "production",
       });
 
-      const manager = createRealtimeManager(client);
-      const eventBus = new EventBus();
-      manager.setEventEmitter!(eventBus);
+      const manager = createRealtimeManager(client, {
+        tools: createAvatarControlTools(catalog),
+        resultProjectors: [createAvatarResultProjector()],
+      });
+
+      // One Charivo instance owns the internal bus; attaching the renderer and the
+      // realtime manager wires lip-sync + avatar control automatically.
+      const charivo = new Charivo();
+      charivo.setCharacter(resolvedCharacter);
+      charivo.attachRenderer(renderManager);
+      charivo.attachRealtime(manager);
+      charivoRef.current = charivo;
 
       // "local-user" is a fixed placeholder: there is no auth, so userId is not
       // a real identity. Isolation comes from localStorage being per-browser —
@@ -312,6 +393,7 @@ export function useRealtimeSession(
             const instructions = composeInstructions([
               personaInstructions,
               COMPANION_DEMO_GUIDANCE,
+              buildAvatarControlInstructions(catalog),
               refreshedBlock,
             ]);
             await manager.updateSession({ instructions });
@@ -330,29 +412,31 @@ export function useRealtimeSession(
       recordUserUtteranceRef.current = (text: string) =>
         onUserTranscript({ text });
 
-      eventBus.on("realtime:state", onState);
-      eventBus.on("realtime:assistant:start", onAssistantStart);
-      eventBus.on("realtime:assistant:delta", onDelta);
-      eventBus.on("realtime:assistant:done", onDone);
-      eventBus.on("realtime:user:transcript", onUserTranscript);
+      charivo.on("realtime:state", onState);
+      charivo.on("realtime:assistant:start", onAssistantStart);
+      charivo.on("realtime:assistant:delta", onDelta);
+      charivo.on("realtime:assistant:done", onDone);
+      charivo.on("realtime:user:transcript", onUserTranscript);
 
       unsubscribeRef.current = () => {
-        eventBus.off("realtime:state", onState);
-        eventBus.off("realtime:assistant:start", onAssistantStart);
-        eventBus.off("realtime:assistant:delta", onDelta);
-        eventBus.off("realtime:assistant:done", onDone);
-        eventBus.off("realtime:user:transcript", onUserTranscript);
+        charivo.off("realtime:state", onState);
+        charivo.off("realtime:assistant:start", onAssistantStart);
+        charivo.off("realtime:assistant:delta", onDelta);
+        charivo.off("realtime:assistant:done", onDone);
+        charivo.off("realtime:user:transcript", onUserTranscript);
       };
 
       managerRef.current = manager;
-      eventBusRef.current = eventBus;
 
       const memoryBlock = await readMemoryBlock(scope);
       const instructions = composeInstructions([
         personaInstructions,
         COMPANION_DEMO_GUIDANCE,
+        buildAvatarControlInstructions(catalog),
         memoryBlock,
       ]);
+
+      await renderManager.prepareAudio?.();
 
       await manager.startSession({
         provider: "openai",
@@ -364,29 +448,23 @@ export function useRealtimeSession(
         inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
       });
 
-      // If the component unmounted while the connection was in-flight, stop the
-      // session immediately so microphone/WebRTC resources are not leaked.
+      // If the component unmounted while the connection was in-flight, tear the
+      // session down immediately so microphone/WebRTC/render resources are not leaked.
       if (!mountedRef.current) {
-        manager.stopSession().catch((error: unknown) => {
-          if (process.env.NODE_ENV !== "production") {
-            console.warn(
-              "[realtime-session] stopSession after unmounted start failed",
-              error,
-            );
-          }
-        });
+        await teardownSession();
         return;
       }
 
       logSession("session started");
     } catch (error) {
+      await teardownSession();
       console.error("[realtime-session] Failed to start session:", error);
       isConnectingRef.current = false;
       isConnectedRef.current = false;
       setIsConnecting(false);
       setIsConnected(false);
     }
-  }, [resolvedCharacter]);
+  }, [resolvedCharacter, canvas]);
 
   const stop = useCallback(async () => {
     // Unsubscribe FIRST so no further turns are recorded, then flush the final
@@ -423,17 +501,10 @@ export function useRealtimeSession(
       }
     }
 
-    const manager = managerRef.current;
-    managerRef.current = null;
-    eventBusRef.current = null;
-
-    if (manager) {
-      try {
-        await manager.stopSession();
-      } catch (error) {
-        console.error("[realtime-session] Failed to stop session:", error);
-      }
-    }
+    // Resource teardown happens exactly once, through the shared helper: it owns
+    // manager stop + render destroy + nulling managerRef/renderManagerRef/
+    // charivoRef/rendererRef. UI state is reset only after it has awaited.
+    await teardownSession();
 
     turnsRef.current = [];
     isConnectedRef.current = false;
