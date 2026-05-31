@@ -2,9 +2,9 @@
 
 A minimal companion demo that starts an OpenAI Realtime session and lets you
 talk to a Live2D character (Hiyori) via voice and text. The character is
-rendered with realtime lip-sync and expression/motion/gaze tool control, all
-wired through the `@charivo/core` `Charivo` orchestrator. There is no dedicated
-TTS/STT stack — the OpenAI Realtime API handles audio directly.
+rendered with realtime lip-sync and motion/gaze tool control, all wired through
+the `@charivo/core` `Charivo` orchestrator. There is no dedicated TTS/STT
+stack — the OpenAI Realtime API handles audio directly.
 
 Live demo: https://charivo-companion.vercel.app/
 
@@ -21,8 +21,10 @@ Live demo: https://charivo-companion.vercel.app/
 - Renders a Live2D avatar (Hiyori) via `@charivo/render` + `@charivo/render-live2d`,
   with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
   `createAvatarControlTools`, `createAvatarResultProjector`,
-  `buildAvatarControlInstructions`) driving expressions/motions/gaze through the
-  shared Charivo event bus.
+  `buildAvatarControlInstructions`) driving motions/gaze through the shared
+  Charivo event bus. (The bundled Hiyori model exposes motion groups and gaze but
+  no expression entries; expression tool control activates automatically for
+  models that provide them.)
 - Renders connection state, the latest assistant transcript, and controls to
   connect, disconnect, interrupt, and type a message.
 
@@ -44,8 +46,8 @@ The function joins a persona block (derived from the character definition via
 `buildRealtimeSessionConfig`), a demo-guidance block that keeps replies short
 and natural for a live voice demo, an avatar-control instruction block
 (`buildAvatarControlInstructions` from `@charivo/realtime-avatar`) that tells
-the model what expressions/motions/gaze tools are available, and an optional
-memory block built from the browser-local store.
+the model what motions/gaze (and, when present, expression) tools are available,
+and an optional memory block built from the browser-local store.
 
 ## Environment
 

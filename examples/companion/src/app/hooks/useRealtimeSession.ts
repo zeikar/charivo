@@ -202,17 +202,39 @@ export function useRealtimeSession(
   // — never UI state, the scheduler's memory finalization, or pendingFailedWriteRef.
   // Each step is guarded so a null ref is a no-op and one step's error cannot mask
   // another.
-  const teardownSession = async () => {
+  // surfaceErrors: true (user-initiated stop) logs unconditionally via console.error;
+  // omitted/false (cleanup paths) logs dev-only via console.warn. Never rethrows.
+  const teardownSession = async (options?: { surfaceErrors?: boolean }) => {
+    const surfaceErrors = options?.surfaceErrors ?? false;
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
     schedulerRef.current = null;
     recordUserUtteranceRef.current = null;
     firstUtteranceHandledRef.current = false;
-    await managerRef.current?.stopSession().catch(() => {});
+    await managerRef.current?.stopSession().catch((error: unknown) => {
+      if (surfaceErrors) {
+        console.error("[realtime-session] Failed to stop session:", error);
+      } else if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "[realtime-session] stopSession during teardown failed",
+          error,
+        );
+      }
+    });
     try {
       await renderManagerRef.current?.destroy();
-    } catch {
-      // Ignore render teardown errors so they cannot mask other cleanup.
+    } catch (error) {
+      if (surfaceErrors) {
+        console.error(
+          "[realtime-session] renderManager.destroy during teardown failed",
+          error,
+        );
+      } else if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "[realtime-session] renderManager.destroy during teardown failed",
+          error,
+        );
+      }
     }
     charivoRef.current = null;
     managerRef.current = null;
@@ -290,10 +312,12 @@ export function useRealtimeSession(
         canvas,
         mouseTracking: "document",
       });
-      await renderManager.initialize();
-      await renderManager.loadModel?.(LIVE2D_MODEL_PATH);
+      // Assign refs immediately so teardownSession can destroy them even if
+      // initialize() or loadModel() throws below.
       rendererRef.current = renderer;
       renderManagerRef.current = renderManager;
+      await renderManager.initialize();
+      await renderManager.loadModel?.(LIVE2D_MODEL_PATH);
 
       const catalog = {
         expressions: renderer.getAvailableExpressions?.() ?? [],
@@ -504,7 +528,7 @@ export function useRealtimeSession(
     // Resource teardown happens exactly once, through the shared helper: it owns
     // manager stop + render destroy + nulling managerRef/renderManagerRef/
     // charivoRef/rendererRef. UI state is reset only after it has awaited.
-    await teardownSession();
+    await teardownSession({ surfaceErrors: true });
 
     turnsRef.current = [];
     isConnectedRef.current = false;
