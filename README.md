@@ -16,7 +16,7 @@ Live demos:
 
 Documentation:
 
-- [https://zeikar.github.io/charivo/](https://zeikar.github.io/charivo/)
+- [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
 - [ROADMAP.md](./ROADMAP.md): Amadeus product roadmap and current phase status
 
 ## Quick Start
@@ -116,7 +116,7 @@ App
 - browser adapters live on explicit subpaths such as `@charivo/llm/remote` and `@charivo/realtime/openai-agents`.
 - `@charivo/server/*` holds server-side providers and credentials.
 
-See the [Architecture guide](https://zeikar.github.io/charivo/architecture/) for
+See the [Architecture guide](https://zeikar.dev/charivo/architecture/) for
 event wiring, package roles, and detailed layering.
 
 ## Package Map

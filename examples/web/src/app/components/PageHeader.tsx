@@ -77,7 +77,7 @@ export function PageHeader() {
           ⭐ GitHub
         </a>
         <a
-          href="https://zeikar.github.io/charivo/"
+          href="https://zeikar.dev/charivo/"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Read the Charivo documentation"
