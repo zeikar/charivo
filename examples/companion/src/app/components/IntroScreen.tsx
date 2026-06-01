@@ -3,9 +3,10 @@
 // Immersive intro / greeting gate. Not a form on a card — a dim room you step
 // into. The real character (dormant, dimmed) glows softly to one side behind a
 // single warm prompt; you give your name to wake her. This renders only the
-// copy/form — the live avatar is the page's shared CharacterPresence layer
+// copy/form — the live avatar is the page’s shared CharacterPresence layer
 // behind it, so she is already present (dim) before she wakes.
 
+import type { CompanionCharacter } from "../lib/character-catalog";
 import { MAX_USER_NAME_LENGTH, sanitizeUserName } from "../lib/user-name-store";
 
 export function IntroScreen({
@@ -13,17 +14,49 @@ export function IntroScreen({
   nameInput,
   onNameInput,
   onMeet,
+  character,
+  onPrevCharacter,
+  onNextCharacter,
 }: {
   name: string | null;
   nameInput: string;
   onNameInput: (v: string) => void;
   onMeet: () => void;
+  character: CompanionCharacter;
+  onPrevCharacter: () => void;
+  onNextCharacter: () => void;
 }) {
   const returning = !!name;
   const canMeet = sanitizeUserName(nameInput) !== "";
 
   return (
     <div className="intro">
+      <div className="intro-picker">
+        <button
+          type="button"
+          className="intro-arrow intro-arrow-left"
+          aria-label="Previous character"
+          onClick={onPrevCharacter}
+        >
+          &#8249;
+        </button>
+
+        <div className="intro-pick-card">
+          <p className="intro-pick-eyebrow">choose who&rsquo;s waiting</p>
+          <p className="intro-pick-name">{character.name}</p>
+          <p className="intro-pick-desc">{character.description}</p>
+        </div>
+
+        <button
+          type="button"
+          className="intro-arrow intro-arrow-right"
+          aria-label="Next character"
+          onClick={onNextCharacter}
+        >
+          &#8250;
+        </button>
+      </div>
+
       <div className="intro-copy">
         <p className="intro-eyebrow">
           {returning ? "she stirs as you arrive" : "someone has been waiting"}
