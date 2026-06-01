@@ -5,17 +5,16 @@
 
 import { getClientMemoryStore } from "@/memory/client-store";
 import { createFakeEmbedder } from "@/memory/embedding";
-import type { MemoryFact } from "@/memory/types";
-import { SCOPE } from "./hearth-theme";
+import type { MemoryFact, MemoryScope } from "@/memory/types";
 
 /** A memory fact reduced to just what the settings UI renders. */
 export type MemoryFactView = { id: string; text: string; kind: string };
 
-/** List the active facts for the current scope, reduced to the UI view. */
-export async function listFacts(): Promise<MemoryFactView[]> {
+/** List the active facts for the given scope, reduced to the UI view. */
+export async function listFacts(scope: MemoryScope): Promise<MemoryFactView[]> {
   const store = getClientMemoryStore();
   const facts = await store.retrieve({
-    scope: SCOPE,
+    scope,
     budgetTokens: Number.MAX_SAFE_INTEGER,
     now: Date.now(),
   });
@@ -23,14 +22,14 @@ export async function listFacts(): Promise<MemoryFactView[]> {
 }
 
 /** Add a user-taught fact. Trims input; an empty value is a no-op (no throw). */
-export async function addFact(text: string): Promise<void> {
+export async function addFact(scope: MemoryScope, text: string): Promise<void> {
   const trimmed = text.trim();
   if (trimmed === "") return;
 
   const now = Date.now();
   const fact: MemoryFact = {
     id: `user_${crypto.randomUUID()}`,
-    scope: SCOPE,
+    scope,
     text: trimmed,
     kind: "other",
     embedding: await createFakeEmbedder().embed(trimmed),

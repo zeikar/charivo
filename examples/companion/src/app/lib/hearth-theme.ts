@@ -69,9 +69,3 @@ export function paletteFor(tod: Tod): CssVars {
     "--sub": HEARTH_PALETTE.sub,
   };
 }
-
-// Mirror of the scope hardcoded in useRealtimeSession; keep in sync.
-export const SCOPE = {
-  userId: "local-user",
-  characterId: "companion-default",
-} as const;

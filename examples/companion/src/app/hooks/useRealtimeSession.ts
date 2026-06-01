@@ -14,6 +14,8 @@ import {
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { composeInstructions } from "../lib/compose-instructions";
 import { sanitizeUserName } from "../lib/user-name-store";
+import { makeMemoryScope } from "../lib/memory-scope";
+import { DEFAULT_CHARACTER_ID } from "../lib/character-catalog";
 import { createWriteJobScheduler } from "@/memory/trigger";
 import { getClientMemoryStore } from "@/memory/client-store";
 import { createFakeEmbedder } from "@/memory/embedding";
@@ -417,7 +419,7 @@ export function useRealtimeSession(
       // a real identity. Isolation comes from localStorage being per-browser —
       // each browser profile has its own memory namespace. characterId still
       // partitions memory per character. See examples/companion/README.md.
-      const scope = { userId: "local-user", characterId: resolvedCharacter.id };
+      const scope = makeMemoryScope(resolvedCharacter.id);
       scopeRef.current = scope;
       const personaInstructions = buildRealtimeSessionConfig({
         character: resolvedCharacter,
@@ -591,10 +593,7 @@ export function useRealtimeSession(
         // survives a reconnect (which overwrites sessionIdRef/turnsRef).
         // The live refs are always cleared below regardless.
         pendingFailedWriteRef.current = {
-          scope: scopeRef.current ?? {
-            userId: "local-user",
-            characterId: "companion-default",
-          },
+          scope: scopeRef.current ?? makeMemoryScope(DEFAULT_CHARACTER_ID),
           sessionId: sessionIdRef.current,
           startedAt: startedAtRef.current,
           turns: [...turnsRef.current],

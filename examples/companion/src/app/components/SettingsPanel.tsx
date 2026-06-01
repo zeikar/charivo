@@ -15,6 +15,8 @@ import {
   listFacts,
   type MemoryFactView,
 } from "../lib/memory-facts";
+import { makeMemoryScope } from "../lib/memory-scope";
+import { DEFAULT_CHARACTER_ID } from "../lib/character-catalog";
 
 type Status = "dormant" | "connecting" | "connected";
 
@@ -59,7 +61,8 @@ export function SettingsPanel({
     setMemLoading(true);
     (async () => {
       try {
-        const facts = await listFacts();
+        // TODO(task 5b): use the selected character's scope (thread characterId prop)
+        const facts = await listFacts(makeMemoryScope(DEFAULT_CHARACTER_ID));
         if (!cancelled) setMem(facts);
       } catch (error) {
         console.warn("[settings] listFacts failed", error);
@@ -74,7 +77,8 @@ export function SettingsPanel({
 
   async function refreshMem() {
     try {
-      setMem(await listFacts());
+      // TODO(task 5b): use the selected character's scope (thread characterId prop)
+      setMem(await listFacts(makeMemoryScope(DEFAULT_CHARACTER_ID)));
     } catch (error) {
       console.warn("[settings] listFacts failed", error);
     }
@@ -90,7 +94,8 @@ export function SettingsPanel({
     const text = adding.trim();
     if (text === "") return;
     try {
-      await addFact(text);
+      // TODO(task 5b): use the selected character's scope (thread characterId prop)
+      await addFact(makeMemoryScope(DEFAULT_CHARACTER_ID), text);
       setAdding("");
       await refreshMem();
     } catch (error) {
