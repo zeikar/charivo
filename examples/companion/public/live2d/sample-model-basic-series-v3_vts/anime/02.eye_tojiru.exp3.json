@@ -1,0 +1,12 @@
+{
+	"Type": "Live2D Expression",
+	"FadeInTime": 0,
+	"FadeOutTime": 0,
+	"Parameters": [
+		{
+			"Id": "sabunn",
+			"Value": 6,
+			"Blend": "Add"
+		}
+	]
+}

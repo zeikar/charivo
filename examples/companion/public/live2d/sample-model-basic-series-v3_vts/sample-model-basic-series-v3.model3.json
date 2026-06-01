@@ -1,0 +1,94 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "sample-model-basic-series-v3.moc3",
+		"Textures": [
+			"sample-model-basic-series-v3.4096/texture_00.png"
+		],
+		"Physics": "sample-model-basic-series-v3.physics3.json",
+		"DisplayInfo": "sample-model-basic-series-v3.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "01.eye_smile",
+				"File": "anime/01.eye_smile.exp3.json"
+			},
+			{
+				"Name": "02.eye_tojiru",
+				"File": "anime/02.eye_tojiru.exp3.json"
+			},
+			{
+				"Name": "03.eye_bikkuri",
+				"File": "anime/03.eye_bikkuri.exp3.json"
+			},
+			{
+				"Name": "04.eye_heart",
+				"File": "anime/04.eye_heart.exp3.json"
+			},
+			{
+				"Name": "05.eye_kirakira",
+				"File": "anime/05.eye_kirakira.exp3.json"
+			},
+			{
+				"Name": "06.eye_namida",
+				"File": "anime/06.eye_namida.exp3.json"
+			},
+			{
+				"Name": "07.eye_guruguru",
+				"File": "anime/07.eye_guruguru.exp3.json"
+			},
+			{
+				"Name": "08.mark_hatena",
+				"File": "anime/08.mark_hatena.exp3.json"
+			},
+			{
+				"Name": "09.mark_bikkuri",
+				"File": "anime/09.mark_bikkuri.exp3.json"
+			},
+			{
+				"Name": "10.mark_ase",
+				"File": "anime/10.mark_ase.exp3.json"
+			},
+			{
+				"Name": "11.mark_okori",
+				"File": "anime/11.mark_okori.exp3.json"
+			},
+			{
+				"Name": "12.mark_hatto",
+				"File": "anime/12.mark_hatto.exp3.json"
+			},
+			{
+				"Name": "01.face_aozame",
+				"File": "anime/01.face_aozame.exp3.json"
+			}
+		],
+		"Motions": {
+			"": [
+				{
+					"File": "anime/01.byebye.motion3.json"
+				},
+				{
+					"File": "anime/02.heart.motion3.json"
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamMouthForm",
+				"ParamMouthOpenY"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	],
+	"HitAreas": []
+}

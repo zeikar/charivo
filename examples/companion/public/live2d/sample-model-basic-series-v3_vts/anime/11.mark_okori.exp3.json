@@ -1,0 +1,12 @@
+{
+	"Type": "Live2D Expression",
+	"FadeInTime": 0,
+	"FadeOutTime": 0,
+	"Parameters": [
+		{
+			"Id": "mark",
+			"Value": 4,
+			"Blend": "Add"
+		}
+	]
+}

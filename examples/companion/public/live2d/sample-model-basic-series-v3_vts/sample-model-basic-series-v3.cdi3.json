@@ -1,0 +1,223 @@
+{
+	"Version": 3,
+	"Parameters": [
+		{
+			"Id": "ParamAngleX",
+			"GroupId": "",
+			"Name": "角度 X"
+		},
+		{
+			"Id": "ParamAngleY",
+			"GroupId": "",
+			"Name": "角度 Y"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "",
+			"Name": "角度 Z"
+		},
+		{
+			"Id": "ParamEyeLOpen",
+			"GroupId": "",
+			"Name": "左目　開閉"
+		},
+		{
+			"Id": "ParamEyeROpen",
+			"GroupId": "",
+			"Name": "右目　開閉"
+		},
+		{
+			"Id": "ParamEyeLSmile",
+			"GroupId": "",
+			"Name": "笑顔"
+		},
+		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "",
+			"Name": "目玉 X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "",
+			"Name": "目玉 Y"
+		},
+		{
+			"Id": "ParamBrowLForm",
+			"GroupId": "",
+			"Name": "左眉　変形"
+		},
+		{
+			"Id": "ParamBrowRForm",
+			"GroupId": "",
+			"Name": "右眉　変形"
+		},
+		{
+			"Id": "ParamMouthForm",
+			"GroupId": "",
+			"Name": "口　変形"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "",
+			"Name": "口　開閉"
+		},
+		{
+			"Id": "ParamBodyAngleX",
+			"GroupId": "",
+			"Name": "体の回転　X"
+		},
+		{
+			"Id": "ParamBodyAngleY",
+			"GroupId": "",
+			"Name": "体の回転　Y"
+		},
+		{
+			"Id": "ParamBodyAngleZ",
+			"GroupId": "",
+			"Name": "体の回転　Z"
+		},
+		{
+			"Id": "ParamBreath",
+			"GroupId": "",
+			"Name": "呼吸"
+		},
+		{
+			"Id": "ParamHairFront",
+			"GroupId": "",
+			"Name": "髪揺れ　前"
+		},
+		{
+			"Id": "ParamHairSide",
+			"GroupId": "",
+			"Name": "髪揺れ　横"
+		},
+		{
+			"Id": "ParamHairBack",
+			"GroupId": "",
+			"Name": "髪揺れ　後"
+		},
+		{
+			"Id": "Rudeage",
+			"GroupId": "ParamGroup",
+			"Name": "右うであげ"
+		},
+		{
+			"Id": "Rbyebye",
+			"GroupId": "ParamGroup",
+			"Name": "右バイバイ"
+		},
+		{
+			"Id": "Ludeage",
+			"GroupId": "ParamGroup",
+			"Name": "左うであげ"
+		},
+		{
+			"Id": "Lbyebye",
+			"GroupId": "ParamGroup",
+			"Name": "左バイバイ"
+		},
+		{
+			"Id": "heart_anime",
+			"GroupId": "ParamGroup",
+			"Name": "ハートアニメ"
+		},
+		{
+			"Id": "mark",
+			"GroupId": "ParamGroup",
+			"Name": "マーク"
+		},
+		{
+			"Id": "sabunn",
+			"GroupId": "ParamGroup",
+			"Name": "表情差分"
+		},
+		{
+			"Id": "aozame",
+			"GroupId": "ParamGroup",
+			"Name": "あおざめ"
+		}
+	],
+	"ParameterGroups": [
+		{
+			"Id": "ParamGroup",
+			"GroupId": "",
+			"Name": "キーバインド"
+		}
+	],
+	"Parts": [
+		{
+			"Id": "Part12",
+			"Name": "マーク"
+		},
+		{
+			"Id": "Part",
+			"Name": "横髪"
+		},
+		{
+			"Id": "Part2",
+			"Name": "左眉"
+		},
+		{
+			"Id": "Part3",
+			"Name": "右眉"
+		},
+		{
+			"Id": "Part4",
+			"Name": "前髪"
+		},
+		{
+			"Id": "Part7",
+			"Name": "鼻"
+		},
+		{
+			"Id": "Part8",
+			"Name": "お口"
+		},
+		{
+			"Id": "Part17",
+			"Name": "表情差分"
+		},
+		{
+			"Id": "Part5",
+			"Name": "左目"
+		},
+		{
+			"Id": "Part6",
+			"Name": "右目"
+		},
+		{
+			"Id": "Part9",
+			"Name": "顔（輪郭・耳・頬）"
+		},
+		{
+			"Id": "Part10",
+			"Name": "体"
+		},
+		{
+			"Id": "Part11",
+			"Name": "後髪"
+		},
+		{
+			"Id": "udemask",
+			"Name": "うでマスク"
+		}
+	],
+	"CombinedParameters": [
+		[
+			"ParamAngleX",
+			"ParamAngleY"
+		],
+		[
+			"ParamEyeBallX",
+			"ParamEyeBallY"
+		],
+		[
+			"ParamMouthForm",
+			"ParamMouthOpenY"
+		],
+		[
+			"ParamBodyAngleX",
+			"ParamBodyAngleY"
+		]
+	]
+}
