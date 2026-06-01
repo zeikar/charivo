@@ -245,36 +245,66 @@ export function useRealtimeSession(
     managerRef.current = null;
   };
 
-  // Render teardown — owned by the render effect (mount/unmount only). Destroys
-  // the render manager (which destroys the renderer) and clears the render +
-  // Charivo refs. Guarded so a null ref is a no-op and it never rethrows.
-  const teardownRender = async () => {
-    rendererReadyRef.current = false;
-    setRendererReady(false);
-    try {
-      await renderManagerRef.current?.destroy();
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.warn(
-          "[realtime-session] renderManager.destroy during teardown failed",
-          error,
-        );
-      }
-    }
-    charivoRef.current = null;
-    renderManagerRef.current = null;
-    rendererRef.current = null;
-  };
-
   // Build the Live2D renderer + Charivo orchestrator on mount — independent of
   // the realtime session — so the avatar is visible immediately on page load and
   // persists across connect/disconnect (mirrors examples/web). The realtime
   // manager is attached/detached per session in start()/stop(). The render
   // packages are browser-only, so they are dynamically imported; Charivo is a
   // static import.
+  //
+  // The effect captures its own renderer/renderManager/charivo locals and only
+  // tears down THOSE specific instances. Shared refs are cleared only when they
+  // still point to this effect's instances (guarded assign) so a stale cleanup
+  // from a previous character-switch can never destroy the newer effect's objects.
   useEffect(() => {
     mountedRef.current = true;
     let disposed = false;
+
+    // Reset readiness synchronously so the UI shows "loading" during the switch
+    // and a stale late-finishing path cannot leave readiness true with a
+    // destroyed manager.
+    rendererReadyRef.current = false;
+    setRendererReady(false);
+
+    // Per-effect instance locals live here (effect scope, not IIFE scope) so
+    // BOTH the async load path AND the cleanup return can call teardownThisRender.
+    // The renderer local is assigned after construction (see IIFE below) to avoid
+    // the narrow ref-shape vs. full Renderer type incompatibility at the
+    // createRenderManager call site.
+    let rendererInstance: NonNullable<(typeof rendererRef)["current"]> | null =
+      null;
+    let renderManager: (typeof renderManagerRef)["current"] = null;
+    let charivo: Charivo | null = null;
+
+    // Per-effect teardown: destroys THIS effect's renderManager and clears the
+    // shared refs only when they still point to this effect's instances so a
+    // stale cleanup from a previous character-switch can never null the NEW
+    // effect's refs or clobber global readiness.
+    const teardownThisRender = async () => {
+      // Only clear global readiness when this effect still owns the current
+      // render manager — a stale disposed/cleanup path must not flip readiness
+      // false after a newer character has already loaded and set it true.
+      const ownsCurrent = renderManagerRef.current === renderManager;
+      if (ownsCurrent) {
+        rendererReadyRef.current = false;
+        setRendererReady(false);
+      }
+      // Always destroy this effect's own manager regardless of ownership.
+      try {
+        await renderManager?.destroy();
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[realtime-session] renderManager.destroy during teardown failed",
+            error,
+          );
+        }
+      }
+      if (charivoRef.current === charivo) charivoRef.current = null;
+      if (renderManagerRef.current === renderManager)
+        renderManagerRef.current = null;
+      if (rendererRef.current === rendererInstance) rendererRef.current = null;
+    };
 
     if (canvas) {
       void (async () => {
@@ -286,7 +316,8 @@ export function useRealtimeSession(
             ]);
           if (disposed) return;
           const renderer = new Live2DRenderer({ canvas });
-          const renderManager = createRenderManager(renderer, {
+          rendererInstance = renderer;
+          renderManager = createRenderManager(renderer, {
             canvas,
             mouseTracking: "document",
           });
@@ -295,28 +326,32 @@ export function useRealtimeSession(
           // One Charivo instance owns the internal bus; attaching the renderer
           // here (and the realtime manager later, in start()) wires lip-sync +
           // avatar control automatically.
-          const charivo = new Charivo();
+          charivo = new Charivo();
           charivo.setCharacter(resolvedCharacter);
           charivo.attachRenderer(renderManager);
           charivoRef.current = charivo;
           await renderManager.initialize();
           await renderManager.loadModel?.(resolvedCharacter.modelPath);
           if (disposed) {
-            await teardownRender();
+            await teardownThisRender();
             return;
           }
-          rendererReadyRef.current = true;
-          setRendererReady(true);
+          // Only mark ready if this effect is still the current one.
+          if (renderManagerRef.current === renderManager) {
+            rendererReadyRef.current = true;
+            setRendererReady(true);
+          }
         } catch (error) {
           console.error(
             "[realtime-session] Failed to initialize Live2D renderer",
             error,
           );
-          // rendererReady stays false after teardownRender, so the auto-connect
-          // effect never fires. In-UI recovery is a page reload — the render
-          // effect only re-runs on [canvas, resolvedCharacter], so there is no
-          // automatic retry path. This is a deliberate demo simplification.
-          await teardownRender();
+          // rendererReady stays false after teardownThisRender, so the
+          // auto-connect effect never fires. In-UI recovery is a page reload —
+          // the render effect only re-runs on [canvas, resolvedCharacter], so
+          // there is no automatic retry path. This is a deliberate demo
+          // simplification.
+          await teardownThisRender();
         }
       })();
     }
@@ -339,10 +374,12 @@ export function useRealtimeSession(
       }
       // Re-attempt any retained failed write from the previous stop() call.
       flushPendingFailedWrite();
-      // Tear down the session (realtime), then the renderer.
+      // Tear down the session (realtime), then the renderer for this effect.
+      // teardownThisRender uses guarded identity checks so a stale cleanup from
+      // a previous character-switch never nulls the NEW effect's refs.
       void (async () => {
         await teardownSession();
-        await teardownRender();
+        await teardownThisRender();
       })();
     };
   }, [canvas, resolvedCharacter]);
