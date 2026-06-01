@@ -20,7 +20,11 @@ import {
   DEFAULT_CHARACTER_ID,
   getCharacterById,
 } from "./lib/character-catalog";
-import { loadCharacterId, saveCharacterId } from "./lib/character-store";
+import {
+  loadCharacterId,
+  saveCharacterId,
+  clearCharacterId,
+} from "./lib/character-store";
 import { AmbientBackground } from "./components/AmbientBackground";
 import { CharacterPresence } from "./components/CharacterPresence";
 import { TopBar } from "./components/TopBar";
@@ -153,8 +157,8 @@ export default function Page() {
 
   // "Change name" is a full identity reset: it clears the connect intent, tears
   // down any live session, unmounts the canvas (→ teardownRender → rendererReady
-  // false), and clears the stored name so a reload before re-confirming shows
-  // the intro again.
+  // false), and clears the stored name AND selected character so a reload before
+  // re-confirming shows the intro picker again at the default character.
   async function handleChangeName(): Promise<void> {
     setConnectRequested(false);
     if (isConnected) {
@@ -164,6 +168,8 @@ export default function Page() {
     setUserName(null);
     setNameInput("");
     clearUserName();
+    clearCharacterId();
+    setCharacterId(DEFAULT_CHARACTER_ID);
   }
 
   // Public-surface-only phase derivation: the realtime:* events are internal to
