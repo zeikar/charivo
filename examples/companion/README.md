@@ -258,3 +258,13 @@ examples/companion/src/memory
   local-storage-memory-store.ts ← localStorage-backed MemoryStore
   client-store.ts               ← getClientMemoryStore (browser-local store singleton)
 ```
+
+## Credits
+
+The bundled Live2D models are the property of their respective creators and are
+included only to demonstrate Charivo:
+
+- **Hiyori** (Hiyori Momose) — Live2D sample model, © Live2D Inc.
+- **Yuki** — _Basic Series Ver3_ by **papa屋 (papaya)**, distributed free on
+  [Booth](https://booth.pm/ko/items/5107332). Copyright remains with the
+  original creator; this demo does not claim authorship.

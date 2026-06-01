@@ -25,6 +25,8 @@ const HIYORI: CompanionCharacter = {
   modelPath: "/live2d/Hiyori/Hiyori.model3.json",
 };
 
+// Model: "Basic Series Ver3" by papa屋 (papaya) — free on Booth
+// (https://booth.pm/ko/items/5107332). © the original creator; see README "Credits".
 const GENKI: CompanionCharacter = {
   id: "companion-genki", // memory-scope key — never change
   name: "Yuki", // seed: display name
