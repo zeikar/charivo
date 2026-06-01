@@ -1,8 +1,8 @@
 # Charivo Companion
 
 A minimal companion demo that greets you by name, starts an OpenAI Realtime
-session, and lets you talk to a Live2D character (Hiyori) in a full-bleed
-immersive voice-first stage — optional captions, no typed-message input (the
+session, and lets you pick a companion and talk to that Live2D character in a
+full-bleed immersive voice-first stage — optional captions, no typed-message input (the
 realtime transport still supports typed messages internally, but the UI no
 longer exposes a text box). The character is rendered with realtime lip-sync
 and motion/gaze tool control,
@@ -16,7 +16,10 @@ Live demo: https://charivo-companion.vercel.app/
 - Shows an immersive intro gate on first visit: an eyebrow line, an emotional
   headline, a sub-heading, a single name field, and a **Meet her** button, laid
   out to the right of the **real, dimmed Live2D avatar** (collapsing to the
-  bottom over the centered avatar on small screens). The canvas mounts on load,
+  bottom over the centered avatar on small screens). Left/right arrows beside the
+  avatar pick the companion before you meet her — each character shows its name
+  and a one-line blurb — and the choice **locks** once you meet her (changed only
+  via Settings → "Start over"). The canvas mounts on load,
   so she is already present — dormant and darkened — behind the prompt. Pressing
   **Meet her** wakes her (she brightens and slides center) and connects realtime
   in a single action — there is no separate Connect step.
@@ -33,18 +36,18 @@ Live demo: https://charivo-companion.vercel.app/
 - Composes per-session instructions through `composeInstructions([...])` before
   calling `startSession({ instructions })`, including a sanitized user-name
   block so the character addresses the user by name.
-- Renders a Live2D avatar (Hiyori) via `@charivo/render` + `@charivo/render-live2d`,
+- Renders the selected Live2D avatar via `@charivo/render` + `@charivo/render-live2d`,
   with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
   `createAvatarControlTools`, `createAvatarResultProjector`,
   `buildAvatarControlInstructions`) driving motions/gaze through the shared
-  Charivo event bus. (The bundled Hiyori model exposes motion groups and gaze but
-  no expression entries; expression tool control activates automatically for
-  models that provide them.)
+  Charivo event bus. (Bundled models vary — Hiyori exposes motion groups and gaze
+  but no expression entries, while the alternate model adds expressions;
+  expression tool control activates automatically for models that provide them.)
 - Post-gate UX: a full-bleed Main stage with the Live2D avatar centered
   directly on the time-of-day ambient gradient — no glass tile, just the
   character, grounded by halos/floor/rim glow. A minimal top bar shows a
-  connection status dot, the companion
-  name ("Hiyori"), and a status label. A bottom-center voice orb is the
+  connection status dot, the selected companion's
+  name, and a status label. A bottom-center voice orb is the
   primary interaction surface. Optional captions (off by default) are shown
   attributed to the companion. A right slide-in Settings panel has two tabs:
   - **You & her** — rename yourself (takes effect the next time she wakes, not
@@ -172,12 +175,22 @@ store + pipeline unchanged.
 under `charivo:companion:user-name` — identity/UI state, not a memory fact, and
 it does not affect the memory `scope`.
 
-**Persona vs memory scope.** The character now presents as **Hiyori**
-(`DEFAULT_CHARACTER.name = "Hiyori"`), but the memory scope `characterId`
-deliberately stays `"companion-default"` so existing browser-local memory is
-preserved across this change. The Live2D model is selected by a separate
-`LIVE2D_MODEL_PATH` constant (`/live2d/Hiyori/Hiyori.model3.json`), not by the
-character id or name. Model assets live at `examples/companion/public/live2d/Hiyori/`.
+**Character selection.** The intro picker chooses one of the characters in
+`src/app/lib/character-catalog.ts` (Hiyori, calm/gentle; plus a bright, playful
+alternate). Each catalog entry carries its own `id`, `name`, a one-line
+`description` (the picker blurb), a long `personality` (the persona prompt),
+`voice`, and `modelPath` — so persona, voice, and the rendered Live2D model all
+follow the selected character (the model loads from `character.modelPath`, not a
+fixed constant). The selection persists under `charivo:companion:character-id`
+and is **locked** once you meet her; the Settings "Start over" reset clears it
+and returns to the picker at the default character.
+
+**Per-character memory scope.** Memory is partitioned by the selected
+character's `id` (the `characterId` in the scope). The single `makeMemoryScope`
+helper (`src/app/lib/memory-scope.ts`) is the one source of truth, used by BOTH
+the realtime session AND the Settings memory list, so each character keeps its
+own isolated browser-local memory. Model assets live under
+`examples/companion/public/live2d/`.
 
 ## API Routes
 
