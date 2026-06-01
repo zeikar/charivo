@@ -6,7 +6,10 @@
 // copy/form — the live avatar is the page’s shared CharacterPresence layer
 // behind it, so she is already present (dim) before she wakes.
 
-import type { CompanionCharacter } from "../lib/character-catalog";
+import {
+  CHARACTER_CATALOG,
+  type CompanionCharacter,
+} from "../lib/character-catalog";
 import { MAX_USER_NAME_LENGTH, sanitizeUserName } from "../lib/user-name-store";
 
 export function IntroScreen({
@@ -45,6 +48,19 @@ export function IntroScreen({
           <p className="intro-pick-eyebrow">choose who&rsquo;s waiting</p>
           <p className="intro-pick-name">{character.name}</p>
           <p className="intro-pick-desc">{character.description}</p>
+          {CHARACTER_CATALOG.length > 1 && (
+            <div className="intro-pick-dots" aria-hidden="true">
+              {CHARACTER_CATALOG.map((c) => (
+                <span
+                  key={c.id}
+                  className={
+                    "intro-pick-dot" +
+                    (c.id === character.id ? " is-active" : "")
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         <button

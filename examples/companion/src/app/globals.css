@@ -751,6 +751,26 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* position dots — which companion of the catalog is selected */
+.intro-pick-dots {
+  margin-top: 12px;
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+}
+.intro-pick-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--text) 28%, transparent);
+  transition:
+    background 0.2s,
+    transform 0.2s;
+}
+.intro-pick-dot.is-active {
+  background: color-mix(in oklch, var(--accent) 85%, white);
+  transform: scale(1.25);
+}
 
 /* ---- settings sheet ------------------------------------------------------ */
 .sheet-scrim {
