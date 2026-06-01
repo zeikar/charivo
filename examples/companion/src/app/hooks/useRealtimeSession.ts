@@ -113,6 +113,10 @@ export function useRealtimeSession(
   canvas: HTMLCanvasElement | null,
   character?: CompanionCharacter,
   userName: string | null = null,
+  // Gate model construction until the host has hydrated the selected character
+  // from storage, so a returning non-default user never sees the default model
+  // load first and then swap. Defaults to true for callers that don't gate.
+  enabled = true,
 ): UseRealtimeSessionResult {
   const resolvedCharacter = useMemo(
     () => character ?? getCharacterById(DEFAULT_CHARACTER_ID),
@@ -306,7 +310,7 @@ export function useRealtimeSession(
       if (rendererRef.current === rendererInstance) rendererRef.current = null;
     };
 
-    if (canvas) {
+    if (canvas && enabled) {
       void (async () => {
         try {
           const [{ Live2DRenderer }, { createRenderManager }] =
@@ -382,7 +386,7 @@ export function useRealtimeSession(
         await teardownThisRender();
       })();
     };
-  }, [canvas, resolvedCharacter]);
+  }, [canvas, resolvedCharacter, enabled]);
 
   const start = useCallback(async () => {
     // The renderer + Charivo are built on mount (see the render effect). Guard on

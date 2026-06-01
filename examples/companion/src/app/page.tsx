@@ -85,7 +85,7 @@ export default function Page() {
   const character = getCharacterById(characterId);
 
   const { isConnected, isConnecting, transcript, start, stop, rendererReady } =
-    useRealtimeSession(canvas, character, userName);
+    useRealtimeSession(canvas, character, userName, hydrated);
 
   // Voice-first UI state.
   const [phase, setPhase] = useState<Phase>("dormant");
