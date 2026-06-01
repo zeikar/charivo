@@ -37,6 +37,14 @@ import { LAppPal } from "./lapppal";
 import { CubismModelHost } from "./model-host";
 import { TextureInfo } from "./lapptexturemanager";
 import { LAppWavFileHandler } from "./lappwavfilehandler";
+import { PoseRestore } from "./pose-restore";
+
+/**
+ * Seconds over which parameters ease back to their default (rest) pose when a
+ * motion finishes and the model has no "Idle" group to take over. Roughly
+ * matches a motion fade so the settle reads as smooth rather than a snap.
+ */
+const IDLE_RESTORE_SECONDS = 0.5;
 
 export class LAppModel extends CubismUserModel {
   private modelSetting: ICubismModelSetting | null = null;
@@ -49,6 +57,10 @@ export class LAppModel extends CubismUserModel {
   private ready = false;
   private wavHandler = new LAppWavFileHandler();
   private _userTimeSeconds = 0;
+
+  // Eases parameters back to their defaults when a finished motion has no "Idle"
+  // group to take over, so a one-shot gesture does not leave a residual pose.
+  private readonly _poseRestore = new PoseRestore(IDLE_RESTORE_SECONDS);
   private realtimeLipSyncRms = 0;
   private useRealtimeLipSync = false;
 
@@ -150,15 +162,25 @@ export class LAppModel extends CubismUserModel {
     this._model.loadParameters();
 
     if (this._motionManager.isFinished()) {
-      this.startRandomMotion(
+      const idleHandle = this.startRandomMotion(
         LAppDefine.MotionGroupIdle,
         LAppDefine.PriorityIdle,
       );
+      // Models without an "Idle" group would otherwise freeze on the finished
+      // motion's last pose (load/saveParameters bakes it in). Ease parameters
+      // back to their defaults so the body settles to rest. Models that DO have
+      // an idle motion get a valid handle and never reach this branch.
+      if (idleHandle === InvalidMotionQueueEntryHandleValue) {
+        this._poseRestore.step(this._model, deltaTimeSeconds);
+      } else {
+        this._poseRestore.reset();
+      }
     } else {
       motionUpdated = this._motionManager.updateMotion(
         this._model,
         deltaTimeSeconds,
       );
+      this._poseRestore.reset();
     }
     this._model.saveParameters();
 
