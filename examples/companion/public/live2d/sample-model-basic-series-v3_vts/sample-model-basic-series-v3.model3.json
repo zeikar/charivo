@@ -62,12 +62,18 @@
 			}
 		],
 		"Motions": {
-			"Reaction": [
+			"Wave": [
 				{
-					"File": "anime/01.byebye.motion3.json"
-				},
+					"File": "anime/01.byebye.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
+				}
+			],
+			"Heart": [
 				{
-					"File": "anime/02.heart.motion3.json"
+					"File": "anime/02.heart.motion3.json",
+					"FadeInTime": 0.5,
+					"FadeOutTime": 0.5
 				}
 			]
 		}
