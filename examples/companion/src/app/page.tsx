@@ -15,6 +15,12 @@ import {
   getTimeOfDay,
   paletteFor,
 } from "./lib/hearth-theme";
+import {
+  CHARACTER_CATALOG,
+  DEFAULT_CHARACTER_ID,
+  getCharacterById,
+} from "./lib/character-catalog";
+import { loadCharacterId, saveCharacterId } from "./lib/character-store";
 import { AmbientBackground } from "./components/AmbientBackground";
 import { CharacterPresence } from "./components/CharacterPresence";
 import { TopBar } from "./components/TopBar";
@@ -22,9 +28,6 @@ import { VoiceOrb } from "./components/VoiceOrb";
 import { Captions } from "./components/Captions";
 import { IntroScreen } from "./components/IntroScreen";
 import { SettingsPanel } from "./components/SettingsPanel";
-
-// Mirrors the hook's DEFAULT_CHARACTER.name — the displayed companion name.
-const HER_NAME = "Hiyori";
 
 export default function Page() {
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
@@ -37,6 +40,12 @@ export default function Page() {
   const [connectRequested, setConnectRequested] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
+
+  // Selected character id + hydration gate. Both reads (userName + characterId)
+  // live in one effect to make the lock race-free: we know we're past SSR before
+  // we render any actionable picker UI.
+  const [characterId, setCharacterId] = useState<string>(DEFAULT_CHARACTER_ID);
+  const [hydrated, setHydrated] = useState(false);
 
   // Mount the canvas once on load — independent of the intro gate — so the
   // avatar (rendered by the render effect in useRealtimeSession) is already
@@ -67,8 +76,12 @@ export default function Page() {
     };
   }, []);
 
+  // Resolve the stable catalog reference directly — getCharacterById returns the
+  // module-level constant, so no useMemo needed.
+  const character = getCharacterById(characterId);
+
   const { isConnected, isConnecting, transcript, start, stop, rendererReady } =
-    useRealtimeSession(canvas, undefined, userName);
+    useRealtimeSession(canvas, character, userName);
 
   // Voice-first UI state.
   const [phase, setPhase] = useState<Phase>("dormant");
@@ -81,18 +94,20 @@ export default function Page() {
     setTod(getTimeOfDay());
   }, []);
 
-  // Returning visitor: land past the gate (the canvas already mounted on load,
-  // so the avatar is rendered), but do NOT arm the connect intent here. The user taps "Meet her
-  // again" (which calls handleRetry → setConnectRequested(true)) to connect —
-  // that tap is the user gesture that lets start() → prepareAudio() unlock
-  // AudioContext/lip-sync safely on iOS/Safari. Client-only (localStorage), so
-  // SSR is unaffected.
+  // Combined client-only hydration: both localStorage reads + the hydrated flag
+  // live in one effect to make the lock race-free. The returning-visitor
+  // setHasMet(true) behavior is preserved exactly — the user must tap
+  // "Meet her again" (handleRetry) to reconnect; that gesture unlocks
+  // AudioContext/lip-sync safely on iOS/Safari. SSR is unaffected.
   useEffect(() => {
     const saved = loadUserName();
     if (saved) {
       setUserName(saved);
       setHasMet(true);
     }
+    const savedChar = loadCharacterId();
+    if (savedChar) setCharacterId(savedChar);
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -124,6 +139,17 @@ export default function Page() {
   function handleRetry(): void {
     setConnectRequested(true);
   }
+
+  const cycleCharacter = (dir: 1 | -1) => {
+    const idx = CHARACTER_CATALOG.findIndex((c) => c.id === characterId);
+    const base = idx === -1 ? 0 : idx;
+    const next =
+      CHARACTER_CATALOG[
+        (base + dir + CHARACTER_CATALOG.length) % CHARACTER_CATALOG.length
+      ];
+    setCharacterId(next.id);
+    saveCharacterId(next.id);
+  };
 
   // "Change name" is a full identity reset: it clears the connect intent, tears
   // down any live session, unmounts the canvas (→ teardownRender → rendererReady
@@ -213,25 +239,18 @@ export default function Page() {
         align={hasMet ? "center" : "left"}
         dim={phase === "dormant"}
       />
-      {!hasMet ? (
-        <IntroScreen
-          name={userName}
-          nameInput={nameInput}
-          onNameInput={setNameInput}
-          onMeet={handleMeet}
-        />
-      ) : (
+      {hasMet ? (
         <>
           <VoiceOrb
             phase={phase}
             onTalk={!isConnected && !isConnecting ? handleRetry : undefined}
           />
           <TopBar
-            name={HER_NAME}
+            name={character.name}
             status={topBarStatus}
             onSettings={() => setSettingsOpen(true)}
           />
-          <Captions show={captionsOn} line={transcript} name={HER_NAME} />
+          <Captions show={captionsOn} line={transcript} name={character.name} />
           <SettingsPanel
             open={settingsOpen}
             onClose={() => setSettingsOpen(false)}
@@ -251,9 +270,20 @@ export default function Page() {
             status={topBarStatus}
             onDisconnect={handleDisconnect}
             onReconnect={handleRetry}
+            characterId={character.id}
           />
         </>
-      )}
+      ) : hydrated ? (
+        <IntroScreen
+          name={userName}
+          nameInput={nameInput}
+          onNameInput={setNameInput}
+          onMeet={handleMeet}
+          character={character}
+          onPrevCharacter={() => cycleCharacter(-1)}
+          onNextCharacter={() => cycleCharacter(1)}
+        />
+      ) : null}
     </div>
   );
 }
