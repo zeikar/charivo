@@ -451,13 +451,20 @@ export function useRealtimeSession(
         void scheduler.onTurn(sessionId, turns.length);
       };
 
+      // realtime:state fires on every internal state change — including each
+      // assistant text delta — so log only on actual connection transitions to
+      // avoid spamming the dev console with repeated "state connected" lines.
+      let lastLoggedConn: RealtimeState["connection"] | null = null;
       const onState = (data: { state: RealtimeState }) => {
         const conn = data.state.connection;
         isConnectedRef.current = conn === "connected";
         isConnectingRef.current = conn === "connecting";
         setIsConnected(conn === "connected");
         setIsConnecting(conn === "connecting");
-        logSession("state", conn);
+        if (conn !== lastLoggedConn) {
+          lastLoggedConn = conn;
+          logSession("state", conn);
+        }
       };
 
       // Reset transcript at the start of each new response so interrupted
