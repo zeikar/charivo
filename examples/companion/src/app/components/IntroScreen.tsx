@@ -1,10 +1,10 @@
 "use client";
 
 // Immersive intro / greeting gate. Not a form on a card — a dim room you step
-// into. Her presence glows softly behind a single warm prompt; you give your
-// name to wake her. Wired to the page's name state (no internal value), and the
-// figure tile is intentionally empty ambience: the live canvas only mounts
-// after she has met you (driven by the page, not here).
+// into. The real character (dormant, dimmed) glows softly to one side behind a
+// single warm prompt; you give your name to wake her. This renders only the
+// copy/form — the live avatar is the page's shared CharacterPresence layer
+// behind it, so she is already present (dim) before she wakes.
 
 import { MAX_USER_NAME_LENGTH, sanitizeUserName } from "../lib/user-name-store";
 
@@ -24,17 +24,6 @@ export function IntroScreen({
 
   return (
     <div className="intro">
-      <div className="intro-figure">
-        <div className="halo halo-3 dim" />
-        <div className="halo halo-2 dim" />
-        <div className="halo halo-1 dim" />
-        <div className="fig-rim dim" />
-        <div className="intro-mount">
-          {/* Empty glass tile only — no canvas, no loading shimmer. */}
-          <div className="fig-tile" />
-        </div>
-      </div>
-
       <div className="intro-copy">
         <p className="intro-eyebrow">
           {returning ? "she stirs as you arrive" : "someone has been waiting"}

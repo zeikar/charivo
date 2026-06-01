@@ -13,11 +13,13 @@ Live demo: https://charivo-companion.vercel.app/
 
 ## What it does
 
-- Shows an immersive two-column intro gate on first visit (collapses to one
-  column on small screens): an eyebrow line, an emotional headline, a
-  sub-heading, a single name field, and a **Meet her** button. Pressing **Meet
-  her** renders the Live2D canvas and connects realtime in a single action —
-  there is no separate Connect step.
+- Shows an immersive intro gate on first visit: an eyebrow line, an emotional
+  headline, a sub-heading, a single name field, and a **Meet her** button, laid
+  out to the right of the **real, dimmed Live2D avatar** (collapsing to the
+  bottom over the centered avatar on small screens). The canvas mounts on load,
+  so she is already present — dormant and darkened — behind the prompt. Pressing
+  **Meet her** wakes her (she brightens and slides center) and connects realtime
+  in a single action — there is no separate Connect step.
 - Persists the user's name in `localStorage` (`charivo:companion:user-name`).
   On revisit the intro gate is skipped and the avatar renders immediately,
   but the user taps **Wake her** once to connect — a deliberate user gesture
@@ -38,9 +40,10 @@ Live demo: https://charivo-companion.vercel.app/
   Charivo event bus. (The bundled Hiyori model exposes motion groups and gaze but
   no expression entries; expression tool control activates automatically for
   models that provide them.)
-- Post-gate UX: a full-bleed Main stage with the Live2D canvas centered in a
-  glass "character tile" with halos/glow, set against a time-of-day ambient
-  gradient. A minimal top bar shows a connection status dot, the companion
+- Post-gate UX: a full-bleed Main stage with the Live2D avatar centered
+  directly on the time-of-day ambient gradient — no glass tile, just the
+  character, grounded by halos/floor/rim glow. A minimal top bar shows a
+  connection status dot, the companion
   name ("Hiyori"), and a status label. A bottom-center voice orb is the
   primary interaction surface. Optional captions (off by default) are shown
   attributed to the companion. A right slide-in Settings panel has two tabs:
@@ -216,8 +219,9 @@ examples/companion/src/app
     TopBar.tsx               ← connection dot + companion name + status label
     VoiceOrb.tsx             ← bottom-center voice interaction surface
     Captions.tsx             ← optional companion-attributed caption overlay
-    CharacterPresence.tsx    ← glass character tile with halos/glow around the Live2D canvas
-    IntroScreen.tsx          ← two-column intro gate (eyebrow/headline/sub/name field/Meet her)
+    CharacterPresence.tsx    ← panel-less Live2D avatar with halos/floor/rim glow (align + dim props)
+    IntroScreen.tsx          ← intro copy/form (eyebrow/headline/sub/name field/Meet her); the dim
+                               avatar behind it is the shared CharacterPresence layer, not part of this
     SettingsPanel.tsx        ← right slide-in panel; "You & her" + "Memory" tabs
   lib/
     compose-instructions.ts
@@ -227,11 +231,11 @@ examples/companion/src/app
                                 key charivo:companion:user-name; max 40 chars
   layout.tsx
   globals.css
-  page.tsx                   ← intro gate (Meet her → mounts canvas + arms connect intent,
-                                 auto-connects when rendererReady); revisit skips gate,
-                                 renders avatar, user taps Wake her (iOS-safe audio unlock);
-                                 post-gate: full-bleed stage with TopBar, VoiceOrb, Captions,
-                                 CharacterPresence, and slide-in SettingsPanel
+  page.tsx                   ← single stage tree; canvas mounts on load so the avatar renders
+                                 (dimmed) during the intro. Meet her → arms connect intent + brightens
+                                 her (auto-connects when rendererReady); revisit skips the intro, user
+                                 taps Wake her (iOS-safe audio unlock); post-gate adds TopBar, VoiceOrb,
+                                 Captions, and slide-in SettingsPanel over the shared CharacterPresence
 examples/companion/src/memory
   render-memory.ts              ← renderMemoryBlock, selectMemoryForRender
   build-memory-block.ts         ← buildMemoryInstructionBlock (render + select combined)

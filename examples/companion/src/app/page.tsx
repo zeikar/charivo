@@ -38,8 +38,12 @@ export default function Page() {
   const [userName, setUserName] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
 
+  // Mount the canvas once on load — independent of the intro gate — so the
+  // avatar (rendered by the render effect in useRealtimeSession) is already
+  // present, dimmed, during the intro and simply brightens when she wakes. The
+  // CharacterPresence layer is always in the tree, so its container ref exists
+  // on first commit.
   useEffect(() => {
-    if (!hasMet) return;
     const container = canvasContainerRef.current;
     if (!container) {
       return;
@@ -61,7 +65,7 @@ export default function Page() {
         container.removeChild(nextCanvas);
       }
     };
-  }, [hasMet]);
+  }, []);
 
   const { isConnected, isConnecting, transcript, start, stop, rendererReady } =
     useRealtimeSession(canvas, undefined, userName);
@@ -77,8 +81,8 @@ export default function Page() {
     setTod(getTimeOfDay());
   }, []);
 
-  // Returning visitor: land past the gate so the canvas mounts and the avatar
-  // renders, but do NOT arm the connect intent here. The user taps "Meet her
+  // Returning visitor: land past the gate (the canvas already mounted on load,
+  // so the avatar is rendered), but do NOT arm the connect intent here. The user taps "Meet her
   // again" (which calls handleRetry → setConnectRequested(true)) to connect —
   // that tap is the user gesture that lets start() → prepareAudio() unlock
   // AudioContext/lip-sync safely on iOS/Safari. Client-only (localStorage), so
@@ -194,60 +198,62 @@ export default function Page() {
       ? "connected"
       : "dormant";
 
-  if (!hasMet) {
-    return (
-      <div
-        className="stage phase-dormant"
-        style={{ ...palette, overflow: "auto" }}
-      >
-        <AmbientBackground />
-        <IntroScreen
-          name={userName}
-          nameInput={nameInput}
-          onNameInput={setNameInput}
-          onMeet={handleMeet}
-        />
-      </div>
-    );
-  }
-
+  // Single stage tree across intro and main so the avatar canvas mounts once and
+  // persists: pre-meet she sits dimmed to the left behind the intro copy, and on
+  // meet she slides center. `dim` tracks the dormant phase, so she is darkened
+  // whenever she is asleep — both pre-meet and disconnected on the main stage —
+  // and brightens (via the CSS fade) the moment she starts connecting. Pre-meet
+  // phase is always "dormant", so `phase-${phase}` carries the intro look too.
   return (
     <div className={`stage phase-${phase}`} style={palette}>
       <AmbientBackground />
       <CharacterPresence
         canvasContainerRef={canvasContainerRef}
         rendererReady={rendererReady}
+        align={hasMet ? "center" : "left"}
+        dim={phase === "dormant"}
       />
-      <VoiceOrb
-        phase={phase}
-        onTalk={!isConnected && !isConnecting ? handleRetry : undefined}
-      />
-      <TopBar
-        name={HER_NAME}
-        status={topBarStatus}
-        onSettings={() => setSettingsOpen(true)}
-      />
-      <Captions show={captionsOn} line={transcript} name={HER_NAME} />
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        name={userName}
-        onRename={(next) => {
-          const clean = sanitizeUserName(next);
-          if (!clean) return;
-          saveUserName(clean);
-          setUserName(clean);
-        }}
-        onChangeName={() => {
-          setSettingsOpen(false);
-          void handleChangeName();
-        }}
-        captions={captionsOn}
-        onCaptions={setCaptionsOn}
-        status={topBarStatus}
-        onDisconnect={handleDisconnect}
-        onReconnect={handleRetry}
-      />
+      {!hasMet ? (
+        <IntroScreen
+          name={userName}
+          nameInput={nameInput}
+          onNameInput={setNameInput}
+          onMeet={handleMeet}
+        />
+      ) : (
+        <>
+          <VoiceOrb
+            phase={phase}
+            onTalk={!isConnected && !isConnecting ? handleRetry : undefined}
+          />
+          <TopBar
+            name={HER_NAME}
+            status={topBarStatus}
+            onSettings={() => setSettingsOpen(true)}
+          />
+          <Captions show={captionsOn} line={transcript} name={HER_NAME} />
+          <SettingsPanel
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            name={userName}
+            onRename={(next) => {
+              const clean = sanitizeUserName(next);
+              if (!clean) return;
+              saveUserName(clean);
+              setUserName(clean);
+            }}
+            onChangeName={() => {
+              setSettingsOpen(false);
+              void handleChangeName();
+            }}
+            captions={captionsOn}
+            onCaptions={setCaptionsOn}
+            status={topBarStatus}
+            onDisconnect={handleDisconnect}
+            onReconnect={handleRetry}
+          />
+        </>
+      )}
     </div>
   );
 }

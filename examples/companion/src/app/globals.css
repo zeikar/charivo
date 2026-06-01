@@ -52,7 +52,8 @@
   --serif: var(--font-instrument), Georgia, serif;
 }
 
-/* overflow is owned per-branch (the .stage hides it, the intro scrolls) — see Task 3/7 */
+/* The .stage hides overflow (immersive full-bleed); the intro overlay owns its
+   own scroll so the copy can't be clipped on short screens (see .intro). */
 body {
   font-family: var(--ui);
   background: #0a0706;
@@ -233,9 +234,11 @@ body,
   justify-content: center;
   pointer-events: none;
 }
+/* intro pose: confine her to the left half (centered there) so the intro copy
+   sits clear on the right. Mobile overrides this back to center (see @media). */
 .stage-fig.align-left {
-  justify-content: flex-start;
-  padding-left: 4vw;
+  justify-content: center;
+  padding-right: 50%;
 }
 .stage-fig.align-right {
   justify-content: flex-end;
@@ -280,7 +283,9 @@ body,
     transparent 66%
   );
   mix-blend-mode: screen;
-  transition: transform 0.18s ease-out;
+  transition:
+    transform 0.18s ease-out,
+    opacity 0.8s ease;
   animation: breathe 7s ease-in-out infinite;
 }
 .halo-1 {
@@ -300,7 +305,9 @@ body,
   opacity: calc(0.12 + var(--level) * 0.22);
   animation-delay: -4.6s;
 }
-.halo.dim {
+/* dormant pre-meet look: muted halos/rim and a darkened avatar that brighten
+   (via the transitions on .halo / .fig-rim / .fig-canvas-mount) when she wakes. */
+.stage-fig.dim .halo {
   opacity: 0.26 !important;
 }
 
@@ -320,8 +327,9 @@ body,
   filter: blur(26px);
   opacity: calc(0.45 + var(--level) * 0.35);
   border-radius: 50% 50% 40% 40%;
+  transition: opacity 0.8s ease;
 }
-.fig-rim.dim {
+.stage-fig.dim .fig-rim {
   opacity: 0.3;
 }
 
@@ -335,33 +343,15 @@ body,
   pointer-events: auto;
 }
 
-/* the visible portrait tile — flex-centers its canvas mount */
+/* the character mount — flex-centers the Live2D canvas. No glass box: she
+   floats directly on the ambient stage, grounded only by the halos/floor/rim. */
 .fig-tile {
   position: relative;
   width: 42vh;
   height: 80vh;
-  border-radius: 34px;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    radial-gradient(
-      80% 42% at 50% 20%,
-      color-mix(in oklch, var(--glow) 18%, transparent),
-      transparent 66%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, var(--bg2) 78%, transparent),
-      color-mix(in oklch, var(--bg3) 90%, transparent)
-    );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklch, var(--text) 16%, transparent),
-    inset 0 0 0 1px color-mix(in oklch, var(--text) 10%, transparent),
-    inset 0 -80px 120px color-mix(in oklch, var(--bg3) 60%, black),
-    0 40px 110px color-mix(in oklch, var(--bg3) 80%, black);
-  backdrop-filter: blur(3px);
 }
 
 /* canvas mount — centers the renderer canvas inside fig-tile */
@@ -371,6 +361,13 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
+  transition:
+    filter 0.8s ease,
+    opacity 0.8s ease;
+}
+.stage-fig.dim .fig-canvas-mount {
+  filter: brightness(0.62) saturate(0.85);
+  opacity: 0.92;
 }
 .fig-canvas-mount canvas {
   max-width: 100%;
@@ -577,6 +574,9 @@ body,
 }
 
 /* ---- intro --------------------------------------------------------------- */
+/* copy-only overlay — the live avatar (dimmed) is the shared CharacterPresence
+   layer behind this. The copy sits in the right column; the empty left column
+   leaves the dim character (align-left) showing through. */
 .intro {
   position: absolute;
   inset: 0;
@@ -584,26 +584,10 @@ body,
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: center;
-}
-.intro-figure {
-  position: relative;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.intro-figure .halo {
-  bottom: 6%;
-}
-.intro-mount {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  height: 100%;
-  animation: float 8s ease-in-out infinite;
+  overflow-y: auto;
 }
 .intro-copy {
+  grid-column: 2;
   padding: 0 9vw 0 2vw;
   max-width: 560px;
 }
@@ -927,15 +911,8 @@ body,
   .intro {
     grid-template-columns: 1fr;
   }
-  .intro-figure {
-    position: absolute;
-    inset: 0;
-    opacity: 0.5;
-  }
-  .intro-figure .halo {
-    bottom: 30%;
-  }
   .intro-copy {
+    grid-column: 1;
     position: relative;
     z-index: 2;
     padding: 0 28px;
@@ -953,10 +930,9 @@ body,
     max-width: none;
   }
   .fig-tile {
-    height: 62vh;
-    width: 46vh;
-    max-width: 82vw;
-    border-radius: 26px;
+    height: 84vh;
+    width: 64vh;
+    max-width: 94vw;
   }
   .topbar {
     padding: 18px 18px;
@@ -964,8 +940,8 @@ body,
   .topbar-name {
     font-size: 21px;
   }
-  .topbar-status {
-    display: none;
+  .topbar-id {
+    gap: 10px;
   }
   .caption {
     bottom: 20%;
