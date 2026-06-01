@@ -31,7 +31,7 @@ const GENKI: CompanionCharacter = {
   description: "A bright, playful spark who turns every moment into fun.", // seed: short card blurb
   personality:
     "Energetic, cheerful, and a little teasing — but always warm. Loves to laugh and keep things lively, turning even quiet moments into something fun. Speaks with enthusiasm and a playful edge, yet genuinely cares about the person she's talking with.", // seed: persona-instruction prompt
-  voice: { voiceId: "cedar", rate: 1.0, pitch: 1.2, volume: 0.8 },
+  voice: { voiceId: "sage", rate: 1.0, pitch: 1.2, volume: 0.8 },
   modelPath:
     "/live2d/sample-model-basic-series-v3_vts/sample-model-basic-series-v3.model3.json",
 };
