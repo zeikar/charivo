@@ -669,6 +669,89 @@ body,
   color: color-mix(in oklch, var(--sub) 80%, transparent);
 }
 
+/* ---- intro character picker ---------------------------------------------- */
+/* Occupies grid-column 1 (the avatar half) inside .intro. Uses absolute
+   positioning to fill that column so arrows can be pinned to the avatar's
+   flanks and the card sits near the bottom of the avatar. */
+.intro-picker {
+  position: relative;
+  grid-column: 1;
+  align-self: stretch;
+  pointer-events: none;
+}
+.intro-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklch, var(--text) 18%, transparent);
+  background: color-mix(in oklch, var(--bg3) 44%, transparent);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+  z-index: 3;
+}
+.intro-arrow:hover {
+  background: color-mix(in oklch, var(--text) 14%, transparent);
+  transform: translateY(calc(-50% - 1px));
+}
+.intro-arrow:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+}
+/* Pin left arrow to the left edge of the avatar's ~21vw column center region */
+.intro-arrow-left {
+  left: clamp(8px, 4vw, 32px);
+}
+.intro-arrow-right {
+  right: clamp(8px, 4vw, 32px);
+}
+.intro-pick-card {
+  position: absolute;
+  bottom: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  width: max-content;
+  max-width: min(38ch, 46vw);
+}
+.intro-pick-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in oklch, var(--accent) 82%, white);
+  margin-bottom: 6px;
+}
+.intro-pick-name {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(26px, 3.4vw, 44px);
+  line-height: 1.08;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+.intro-pick-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---- settings sheet ------------------------------------------------------ */
 .sheet-scrim {
   position: absolute;
@@ -951,6 +1034,29 @@ body,
   .stage-fig.align-right {
     padding: 0;
     justify-content: center;
+  }
+  /* On mobile the grid collapses to 1 col; .intro-picker fills a row above the
+     copy. Use a fixed height so arrows have a stable vertical anchor and the
+     card doesn't collide with the copy gradient below. */
+  .intro-picker {
+    height: 54vh;
+    grid-column: 1;
+  }
+  .intro-arrow {
+    top: 52%;
+  }
+  .intro-arrow-left {
+    left: 16px;
+  }
+  .intro-arrow-right {
+    right: 16px;
+  }
+  .intro-pick-card {
+    bottom: 6%;
+    max-width: 80vw;
+  }
+  .intro-pick-desc {
+    white-space: normal;
   }
 }
 @media (max-width: 420px) {
