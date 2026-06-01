@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-live2d",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Live2D rendering engine for Charivo",
   "type": "module",
   "main": "dist/renderer.js",
