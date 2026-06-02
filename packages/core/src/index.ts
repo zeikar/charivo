@@ -411,7 +411,9 @@ export class Charivo {
     this.detachTTS();
     this.detachSTT();
     this.detachLLM();
-    this.detachRenderer();
+    // renderManager was already destroyed+disconnected in the guarded block above;
+    // bypass detachRenderer() here to avoid a second disconnect() call.
+    this.renderManager = undefined;
     this.character = undefined;
     this.isRealtimeMode = false;
     this.eventBus.clear();

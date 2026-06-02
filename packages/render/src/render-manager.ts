@@ -124,6 +124,10 @@ export class RenderManager implements IRenderManager {
       return;
     }
 
+    // Stop any in-progress lip-sync before removing listeners so the RMS
+    // callback cannot fire into the renderer after the bus is cleared.
+    this.stopRealtimeLipSync();
+
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
     this.eventBus.off("tts:lipsync:update", this.handleTtsLipsyncUpdate);

@@ -127,8 +127,15 @@ export class TTSManagerImpl implements TTSManager {
     // Emit audio start event
     this.startAudioSession(dummyAudio);
 
+    // Compute the effective rate using the same clamp the Web Speech player applies,
+    // so the lip-sync simulation speed matches the actual playback rate.
+    const effectiveRate =
+      options?.rate !== undefined
+        ? Math.max(0.1, Math.min(10, options.rate))
+        : 1;
+
     // Start simulated lip sync using dedicated component
-    this.webSimulator.startSimulation(text, options?.rate || 1);
+    this.webSimulator.startSimulation(text, effectiveRate);
 
     // Delegate to player and wait for completion
     try {

@@ -436,6 +436,18 @@ describe("Charivo", () => {
     expect(renderManager.destroy).toHaveBeenCalledTimes(1);
   });
 
+  it("dispose() calls destroy on the render manager but does not call disconnect a second time after destroy", async () => {
+    const renderManager = new StubRenderManager();
+    const charivo = new Charivo();
+
+    charivo.attachRenderer(renderManager);
+    await charivo.dispose();
+
+    // destroy handles disconnect internally; dispose must not issue a second disconnect
+    expect(renderManager.destroy).toHaveBeenCalledTimes(1);
+    expect(renderManager.disconnect).toHaveBeenCalledTimes(0);
+  });
+
   it("continues best-effort dispose when stt recording probe throws", async () => {
     const calls: string[] = [];
     const renderManager = new StubRenderManager();

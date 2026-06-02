@@ -218,6 +218,35 @@ describe("RenderManager", () => {
     expect(renderer.lookAt).toHaveBeenCalledTimes(2);
   });
 
+  it("disconnect stops an in-progress realtime lip-sync so the renderer gets no more RMS updates", () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new EventBus();
+
+    manager.setEventBus(bus);
+
+    const audio = document.createElement("audio");
+    bus.emit("tts:audio:start", { audioElement: audio });
+
+    // Lip-sync is now active: renderer should have been told true
+    expect(renderer.setRealtimeLipSync).toHaveBeenCalledWith(true);
+
+    renderer.setRealtimeLipSync.mockClear();
+    renderer.updateRealtimeLipSyncRms.mockClear();
+    stopSpy.mockClear();
+
+    manager.disconnect();
+
+    // lip-sync must be stopped and renderer told false
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    expect(renderer.setRealtimeLipSync).toHaveBeenCalledWith(false);
+
+    // Any subsequent RMS updates (stale callbacks) must not reach the renderer
+    renderer.updateRealtimeLipSyncRms.mockClear();
+    bus.emit("tts:lipsync:update", { rms: 0.9 });
+    expect(renderer.updateRealtimeLipSyncRms).not.toHaveBeenCalled();
+  });
+
   it("suspends mouse tracking briefly after explicit gaze actions", async () => {
     vi.useFakeTimers();
 

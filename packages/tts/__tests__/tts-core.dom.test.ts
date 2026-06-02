@@ -144,6 +144,18 @@ describe("TTSManagerImpl", () => {
     expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
   });
 
+  it("clamps rate: 0 to 0.1 for the web speech lip-sync simulation", async () => {
+    const player = new WebPlayer();
+    const manager = createTTSManager(player);
+    const startSpy = vi
+      .spyOn(WebSpeechLipSyncSimulator.prototype, "startSimulation")
+      .mockImplementation(() => undefined);
+
+    await manager.speak("hello", { rate: 0 });
+
+    expect(startSpy).toHaveBeenCalledWith("hello", 0.1);
+  });
+
   it("prefers explicit playback capabilities over constructor-name inference", async () => {
     const player = new ExplicitAudioPlayerWithWebName();
     const emitter = { emit: vi.fn() };
