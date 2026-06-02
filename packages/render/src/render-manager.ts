@@ -1,6 +1,7 @@
 import {
   subscribeBrowserLifecycle,
   type Character,
+  type EventMap,
   type GazeCoordinates,
   type Message,
   type MotionSelection,
@@ -51,6 +52,44 @@ export class RenderManager implements IRenderManager {
   private mouseTrackingSuspendedUntil = 0;
   private lastExpression?: { expressionId: string; at: number };
   private lastMotion?: { group: string; index: number; at: number };
+  private eventBus?: CharivoEventBus;
+
+  // Stable handler references so they can be removed by reference in disconnect()
+  private readonly handleTtsAudioStart = (
+    data: EventMap["tts:audio:start"],
+  ): void => {
+    this.startRealtimeLipSync(data.audioElement);
+  };
+
+  private readonly handleTtsAudioEnd = (
+    _data: EventMap["tts:audio:end"],
+  ): void => {
+    this.stopRealtimeLipSync();
+  };
+
+  private readonly handleTtsLipsyncUpdate = (
+    data: EventMap["tts:lipsync:update"],
+  ): void => {
+    this.updateLipSync(data.rms);
+  };
+
+  private readonly handleRealtimeExpression = (
+    data: EventMap["realtime:expression"],
+  ): void => {
+    this.applyExpression(data.expressionId);
+  };
+
+  private readonly handleRealtimeMotion = (
+    data: EventMap["realtime:motion"],
+  ): void => {
+    this.applyMotion({ group: data.group, index: data.index });
+  };
+
+  private readonly handleRealtimeGaze = (
+    data: EventMap["realtime:gaze"],
+  ): void => {
+    this.applyGaze(data);
+  };
 
   constructor(
     renderer: Renderer,
@@ -63,32 +102,35 @@ export class RenderManager implements IRenderManager {
    * 이벤트 버스 연결
    */
   setEventBus(eventBus: CharivoEventBus): void {
-    eventBus.on("tts:audio:start", (data) => {
-      this.startRealtimeLipSync(data.audioElement);
-    });
+    // Defensive self-clear: avoid double-registering if called again
+    if (this.eventBus) {
+      this.disconnect();
+    }
 
-    eventBus.on("tts:audio:end", () => {
-      this.stopRealtimeLipSync();
-    });
+    this.eventBus = eventBus;
+    eventBus.on("tts:audio:start", this.handleTtsAudioStart);
+    eventBus.on("tts:audio:end", this.handleTtsAudioEnd);
+    eventBus.on("tts:lipsync:update", this.handleTtsLipsyncUpdate);
+    eventBus.on("realtime:expression", this.handleRealtimeExpression);
+    eventBus.on("realtime:motion", this.handleRealtimeMotion);
+    eventBus.on("realtime:gaze", this.handleRealtimeGaze);
+  }
 
-    eventBus.on("tts:lipsync:update", (data) => {
-      this.updateLipSync(data.rms);
-    });
+  /**
+   * 이벤트 버스 리스너 제거. 연결된 버스가 없으면 아무것도 하지 않으며 여러 번 호출해도 안전합니다.
+   */
+  disconnect(): void {
+    if (!this.eventBus) {
+      return;
+    }
 
-    eventBus.on("realtime:expression", (data) => {
-      this.applyExpression(data.expressionId);
-    });
-
-    eventBus.on("realtime:motion", (data) => {
-      this.applyMotion({
-        group: data.group,
-        index: data.index,
-      });
-    });
-
-    eventBus.on("realtime:gaze", (data) => {
-      this.applyGaze(data);
-    });
+    this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
+    this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
+    this.eventBus.off("tts:lipsync:update", this.handleTtsLipsyncUpdate);
+    this.eventBus.off("realtime:expression", this.handleRealtimeExpression);
+    this.eventBus.off("realtime:motion", this.handleRealtimeMotion);
+    this.eventBus.off("realtime:gaze", this.handleRealtimeGaze);
+    this.eventBus = undefined;
   }
 
   /**
@@ -166,6 +208,7 @@ export class RenderManager implements IRenderManager {
    * 정리
    */
   async destroy(): Promise<void> {
+    this.disconnect();
     this.unbindBrowserLifecycleEvents();
     this.cleanupMouseTracking?.();
     this.cleanupMouseTracking = undefined;

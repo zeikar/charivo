@@ -32,6 +32,7 @@ class StubRenderManager implements RenderManager {
   );
   setCharacter = vi.fn((_character: Character) => undefined);
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
+  disconnect = vi.fn(() => undefined);
 }
 
 class StubTTSManager implements TTSManager {
@@ -256,6 +257,29 @@ describe("Charivo", () => {
     expect(charivo.getHistory()).toHaveLength(0);
     expect(charivo.isRealtimeModeEnabled()).toBe(false);
     expect(renderManager.destroy).not.toHaveBeenCalled();
+  });
+
+  it("detachRenderer disconnects without destroying the manager", () => {
+    const renderManager = new StubRenderManager();
+    const charivo = new Charivo();
+
+    charivo.attachRenderer(renderManager);
+    charivo.detachRenderer();
+
+    expect(renderManager.disconnect).toHaveBeenCalledTimes(1);
+    expect(renderManager.destroy).not.toHaveBeenCalled();
+  });
+
+  it("attachRenderer disconnects the previously-attached manager before replacing it", () => {
+    const managerA = new StubRenderManager();
+    const managerB = new StubRenderManager();
+    const charivo = new Charivo();
+
+    charivo.attachRenderer(managerA);
+    charivo.attachRenderer(managerB);
+
+    expect(managerA.disconnect).toHaveBeenCalledTimes(1);
+    expect(managerB.setEventBus).toHaveBeenCalledTimes(1);
   });
 
   it("emits tts:error when synthesis fails and skips detached tts", async () => {

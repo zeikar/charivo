@@ -193,6 +193,31 @@ describe("RenderManager", () => {
     expect(renderer.render).toHaveBeenCalledWith(message, character);
   });
 
+  it("disconnect removes bus listeners (teardown, idempotency, re-wireable)", () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new EventBus();
+
+    manager.setEventBus(bus);
+
+    // First gaze emit — listener is wired
+    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    expect(renderer.lookAt).toHaveBeenCalledTimes(1);
+
+    // After disconnect the listener must be gone
+    manager.disconnect();
+    bus.emit("realtime:gaze", { x: 0, y: 1 });
+    expect(renderer.lookAt).toHaveBeenCalledTimes(1); // still 1, not 2
+
+    // disconnect a second time must not throw (idempotent)
+    expect(() => manager.disconnect()).not.toThrow();
+
+    // Re-wiring must work: setEventBus again and emit
+    manager.setEventBus(bus);
+    bus.emit("realtime:gaze", { x: 0.5, y: 0.5 });
+    expect(renderer.lookAt).toHaveBeenCalledTimes(2);
+  });
+
   it("suspends mouse tracking briefly after explicit gaze actions", async () => {
     vi.useFakeTimers();
 

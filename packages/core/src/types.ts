@@ -234,6 +234,8 @@ export interface RenderManager {
   setCharacter(character: Character): void;
   render(message: Message, character?: Character): Promise<void>;
   setEventBus(eventBus: CharivoEventBus): void;
+  /** Removes all event-bus listeners registered by setEventBus. */
+  disconnect(): void;
   prepareAudio?(): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(

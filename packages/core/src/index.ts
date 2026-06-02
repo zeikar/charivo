@@ -33,6 +33,11 @@ export class Charivo {
    * Automatically connects the event bus and sets the current character if available.
    */
   attachRenderer(renderManager: RenderManager): void {
+    // Disconnect the currently-attached manager before replacing it (fixes replace leak)
+    if (this.renderManager && this.renderManager !== renderManager) {
+      this.renderManager.disconnect();
+    }
+
     this.renderManager = renderManager;
     this.connectRenderManagerEventBus(renderManager);
 
@@ -105,6 +110,7 @@ export class Charivo {
    * Detach the render manager without destroying it.
    */
   detachRenderer(): void {
+    this.renderManager?.disconnect();
     this.renderManager = undefined;
   }
 
