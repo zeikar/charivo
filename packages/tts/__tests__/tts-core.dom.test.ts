@@ -149,6 +149,80 @@ describe("TTSManagerImpl", () => {
   });
 });
 
+describe("TTSManagerImpl stop() failure cleanup", () => {
+  const OriginalAudio = globalThis.Audio;
+
+  beforeEach(() => {
+    MockAudio.instances = [];
+    globalThis.Audio = MockAudio as unknown as typeof Audio;
+  });
+
+  afterEach(() => {
+    globalThis.Audio = OriginalAudio;
+    vi.restoreAllMocks();
+  });
+
+  it("runs cleanup and emits tts:audio:end even when ttsPlayer.stop() throws", async () => {
+    // Player whose stop resolves once (absorbed by speak's internal stop call)
+    // then rejects on the explicit manager.stop() under test.
+    class NonFinalizingAudio extends MockAudio {
+      // Override play: resolves without firing onended so the session stays active.
+      play = vi.fn(async () => undefined);
+    }
+
+    const player = new RemotePlayerWithAudio();
+    player.stop = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("player stop failed"));
+
+    // Replace generateAudio to return minimal data; audio is created via NonFinalizingAudio.
+    player.generateAudio = vi.fn(async () => new Uint8Array([1, 2, 3]));
+
+    // Install MockAudio variant whose play doesn't auto-finalize.
+    globalThis.Audio = NonFinalizingAudio as unknown as typeof Audio;
+
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter(emitter);
+
+    // Spy on URL.revokeObjectURL before speak() creates the blob URL.
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
+
+    // Start speaking but do NOT await — onended never fires, session stays active.
+    // Attach the rejection handler immediately: stop() clears currentAudio and
+    // orphans this promise, so suppress the unhandled rejection up front (airtight).
+    const speaking = manager.speak("hello", {});
+    speaking.catch(() => undefined);
+
+    // Wait deterministically for the session to become active.
+    await vi.waitFor(() =>
+      expect(emitter.emit).toHaveBeenCalledWith(
+        "tts:audio:start",
+        expect.anything(),
+      ),
+    );
+
+    // Capture the created audio instance.
+    const audio = MockAudio.instances[0]! as NonFinalizingAudio;
+    expect(audio).toBeDefined();
+
+    // Act: stop() should reject with a CharivoProviderError.
+    await expect(manager.stop()).rejects.toMatchObject({
+      code: "CHARIVO_PROVIDER_ERROR",
+      name: "CharivoProviderError",
+    });
+
+    // Assert cleanup ran despite the rejection:
+    // (a) audio.pause was called
+    expect(audio.pause).toHaveBeenCalled();
+    // (b) blob URL was revoked
+    expect(revokeSpy).toHaveBeenCalled();
+    // (c) tts:audio:end was emitted
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+  });
+});
+
 describe("tts capabilities", () => {
   it("resolves playback mode from explicit player capabilities", () => {
     expect(getTTSPlaybackMode(new WebPlayer())).toBe("web-speech");

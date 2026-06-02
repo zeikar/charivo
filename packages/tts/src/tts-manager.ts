@@ -82,21 +82,21 @@ export class TTSManagerImpl implements TTSManager {
     } catch (error) {
       console.warn("⚠️ TTS Manager: Failed to stop player cleanly", error);
       throw toCharivoError("provider", error, "Failed to stop TTS");
-    }
+    } finally {
+      if (this.currentAudio) {
+        this.currentAudio.onended = null;
+        this.currentAudio.onerror = null;
+        this.currentAudio.pause();
+        this.currentAudio = null;
+      }
 
-    if (this.currentAudio) {
-      this.currentAudio.onended = null;
-      this.currentAudio.onerror = null;
-      this.currentAudio.pause();
-      this.currentAudio = null;
-    }
+      if (this.currentAudioUrl) {
+        URL.revokeObjectURL(this.currentAudioUrl);
+        this.currentAudioUrl = null;
+      }
 
-    if (this.currentAudioUrl) {
-      URL.revokeObjectURL(this.currentAudioUrl);
-      this.currentAudioUrl = null;
+      this.endAudioSession();
     }
-
-    this.endAudioSession();
   }
 
   /**
