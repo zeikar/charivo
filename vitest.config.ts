@@ -11,6 +11,7 @@ export default defineConfig({
       ...configDefaults.exclude,
       "tests/live-realtime/**",
       "tests/webrtc-smoke/**",
+      "tests/cascade-smoke/**",
     ],
     coverage: {
       provider: "v8",
