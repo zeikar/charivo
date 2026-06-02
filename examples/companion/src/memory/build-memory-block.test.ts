@@ -12,7 +12,6 @@ import type {
   MemoryFact,
   MemoryQuery,
   MemoryScope,
-  RelationshipState,
   SessionRecord,
 } from "./types";
 
@@ -58,7 +57,6 @@ interface MemoryReadStore {
     scope: MemoryScope,
     limit: number,
   ): Promise<{ id: string; endedAt: number | null; summary: string }[]>;
-  getRelationship(scope: MemoryScope): Promise<RelationshipState | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,16 +162,6 @@ describe("buildMemoryInstructionBlock — cold-start (real store)", () => {
     };
     await store.saveSession(session);
 
-    const rel: RelationshipState = {
-      scope: SCOPE,
-      rapport: 0.6,
-      sessionCount: 2,
-      lastSeenAt: NOW - 1_000,
-      addressStyle: "casual",
-      flags: {},
-    };
-    await store.putRelationship(rel);
-
     const result = await buildMemoryInstructionBlock({
       store,
       scope: SCOPE,
@@ -212,9 +200,6 @@ describe("buildMemoryInstructionBlock — refresh spy (queryEmbedding threading)
         _limit: number,
       ): Promise<{ id: string; endedAt: number | null; summary: string }[]> {
         return Promise.resolve([]);
-      },
-      getRelationship(_scope: MemoryScope): Promise<RelationshipState | null> {
-        return Promise.resolve(null);
       },
     };
 

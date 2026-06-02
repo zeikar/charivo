@@ -1,17 +1,10 @@
-import type {
-  MemoryFact,
-  MemoryQuery,
-  MemoryScope,
-  RelationshipState,
-} from "./types";
+import type { MemoryFact, MemoryQuery, MemoryScope } from "./types";
 import {
   MEMORY_TOKEN_BUDGET,
   MAX_SUMMARIES,
   selectMemoryForRender,
   renderMemoryBlock,
-  renderRelationshipBlock,
 } from "./render-memory";
-import { composeInstructions } from "../app/lib/compose-instructions";
 
 // Module-local structural type — NOT exported from the barrel.
 interface MemoryReadStore {
@@ -20,7 +13,6 @@ interface MemoryReadStore {
     scope: MemoryScope,
     limit: number,
   ): Promise<{ id: string; endedAt: number | null; summary: string }[]>;
-  getRelationship(scope: MemoryScope): Promise<RelationshipState | null>;
 }
 
 export async function buildMemoryInstructionBlock(args: {
@@ -38,15 +30,10 @@ export async function buildMemoryInstructionBlock(args: {
 
   const recent = await args.store.getRecentSummaries(args.scope, MAX_SUMMARIES);
 
-  const rel = await args.store.getRelationship(args.scope);
-
   const sel = selectMemoryForRender({
     facts,
     summaries: recent.map((r) => r.summary),
   });
 
-  return composeInstructions([
-    renderMemoryBlock(sel.facts, sel.summaries),
-    renderRelationshipBlock(rel),
-  ]);
+  return renderMemoryBlock(sel.facts, sel.summaries);
 }
