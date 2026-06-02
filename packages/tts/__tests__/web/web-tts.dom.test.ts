@@ -49,6 +49,23 @@ describe("WebTTSPlayer", () => {
     expect(utterance.voice).toEqual(voice);
   });
 
+  it("applies pitch: 0 and volume: 0 without silently ignoring them", async () => {
+    vi.useFakeTimers();
+
+    const player = new WebTTSPlayer();
+
+    const playPromise = player.speak("mute", { pitch: 0, volume: 0 });
+
+    await vi.runAllTimersAsync();
+    await playPromise;
+
+    expect(speech.speak).toHaveBeenCalledTimes(1);
+    const utterance = speech.speak.mock
+      .calls[0]![0] as SpeechSynthesisUtterance;
+    expect(utterance.pitch).toBe(0);
+    expect(utterance.volume).toBe(0);
+  });
+
   it("stops active speech", async () => {
     speech.speaking = true;
     speech.getVoices.mockReturnValue([]);

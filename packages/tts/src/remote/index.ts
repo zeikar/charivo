@@ -71,7 +71,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
     return new Promise((resolve, reject) => {
       const audio = new Audio(audioUrl);
 
-      if (options?.volume) {
+      if (options?.volume !== undefined) {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 

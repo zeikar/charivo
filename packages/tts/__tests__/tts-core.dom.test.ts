@@ -100,6 +100,18 @@ describe("TTSManagerImpl", () => {
     expect(MockAudio.instances[0]?.volume).toBe(0.4);
   });
 
+  it("applies volume: 0 (mute) without silently ignoring it", async () => {
+    const player = new RemotePlayerWithAudio();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+
+    manager.setEventEmitter(emitter);
+
+    await manager.speak("mute", { volume: 0 });
+
+    expect(MockAudio.instances[0]?.volume).toBe(0);
+  });
+
   it("falls back to player.speak when generateAudio is unavailable", async () => {
     const player = new RemotePlayerWithoutAudio();
     const emitter = { emit: vi.fn() };

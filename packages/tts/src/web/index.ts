@@ -50,11 +50,11 @@ export class WebTTSPlayer implements TTSPlayer {
       const utterance = new SpeechSynthesisUtterance(text);
 
       if (options) {
-        if (options.rate)
+        if (options.rate !== undefined)
           utterance.rate = Math.max(0.1, Math.min(10, options.rate));
-        if (options.pitch)
+        if (options.pitch !== undefined)
           utterance.pitch = Math.max(0, Math.min(2, options.pitch));
-        if (options.volume)
+        if (options.volume !== undefined)
           utterance.volume = Math.max(0, Math.min(1, options.volume));
         if (options.voice) {
           const selectedVoice = this.findVoice(options.voice);

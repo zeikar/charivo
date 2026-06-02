@@ -182,7 +182,7 @@ export class TTSManagerImpl implements TTSManager {
       this.currentAudio = audio;
       this.currentAudioUrl = audioUrl;
 
-      if (options?.volume) {
+      if (options?.volume !== undefined) {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 
