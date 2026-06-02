@@ -1,5 +1,11 @@
 # @charivo/core
 
+## 0.13.0
+
+### Minor Changes
+
+- 5a86dee: The `RenderManager` interface gains `disconnect()`, and `Charivo.detachRenderer()`/`attachRenderer()` now disconnect the (previous) manager's bus listeners.
+
 ## 0.12.0
 
 ### Minor Changes
