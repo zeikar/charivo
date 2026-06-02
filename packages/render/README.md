@@ -72,4 +72,5 @@ Charivo events. In the default flow it listens for:
 - `realtime:gaze`
 
 This manager consumes the full bus because it needs subscription access, not
-just event emission.
+just event emission. `RenderManager` also exposes `disconnect()` to remove the
+listeners registered by `setEventBus`; `destroy()` calls it automatically.

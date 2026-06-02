@@ -65,7 +65,9 @@ events yourself.
 `setEventEmitter(...)`.
 
 Rendering subscribes to upstream events, so it needs the full event bus
-contract. This split is part of the public design.
+contract. This split is part of the public design. Detaching or replacing the
+renderer tears down its bus subscriptions via `disconnect()`, so a detached
+manager stops reacting to events without being destroyed.
 
 ## Model Loading
 
