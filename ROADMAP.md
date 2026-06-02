@@ -1,7 +1,7 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
-Updated: 2026-05-29
+Updated: 2026-06-03
 
 ## Purpose
 
@@ -50,11 +50,14 @@ What already exists:
 - live smoke coverage for WebRTC prompt evaluation and voice latency trends
 - app-layer instruction composition for product-specific acting guidance
 
-What is still missing is product quality, not basic plumbing:
+A cross-session memory model with promotion rules, a typed relationship-state
+model, and a precision-first memory eval now exist in `examples/companion`
+(Phase 3). What is still missing is product quality, not basic plumbing:
 
-- a memory model and promotion rules
-- an explicit persona and relationship-state model
-- evaluation thresholds that are good enough to defend regressions
+- a persona model where tone and recall actually vary by relationship state
+  (today persona is still a prompt paragraph)
+- evaluation breadth beyond memory precision (persona consistency, tool misuse)
+  and an explicit release-readiness bar
 
 ## Phase Status
 
@@ -168,9 +171,18 @@ Goal:
 Create continuity across sessions.
 
 Status:
-Architecture decided (2026-05-29); design decisions recorded (2026-05-29).
-Implementation next, decomposed into ordered subtasks under
-`.hyperclaude/tasks/` and run one at a time via `/hyperclaude:hyper-auto`.
+Complete (2026-06-03). Memory shipped in `examples/companion`: extraction,
+policy filter, merge (ADD/UPDATE/DELETE/NOOP), promotion, scored retrieval,
+typed relationship state, and instruction injection — plus a deterministic,
+precision-first memory eval harness (`pnpm --filter companion eval:memory`,
+8 scenarios + a broken-extraction sensitivity check; see
+[docs/history/memory-eval-2026-05.md](docs/history/memory-eval-2026-05.md)).
+
+One design decision shifted in implementation: persistence landed as a
+**browser-local `LocalStorageMemoryStore`** (per-browser continuity) rather than
+the originally planned server-side SQLite. The `MemoryStore` boundary is
+preserved, so a server-side SQLite/Postgres + `pgvector` backend remains a
+later drop-in. The decisions below are kept as the design record.
 
 Decisions (2026-05-29):
 
@@ -235,11 +247,13 @@ Implementation bias:
 - avoid pushing unstable memory abstractions into core too early
 - do not let the agent write directly to long-term memory without filtering
 
-Exit criteria:
+Exit criteria (met):
 
 - the system can remember recent context and user facts across sessions
-- incorrect memories can be corrected
-- memory precision can be measured
+  (browser-local, per-browser)
+- incorrect memories can be corrected (soft `invalidAt` / `supersededBy`
+  supersede, plus spoken-retraction detection in post-session extraction)
+- memory precision can be measured (the precision-first eval harness)
 
 ### Phase 4. Persona And State Model
 
@@ -270,12 +284,17 @@ Define whether the system is reliable enough to iterate on confidently, and
 eventually safe enough to consider public release.
 
 Status:
-Not started.
+Started. Two evaluation surfaces already exist: the precision-first memory eval
+([docs/history/memory-eval-2026-05.md](docs/history/memory-eval-2026-05.md)) and
+the live voice-latency / interruption smoke coverage. The remaining outputs
+(persona-consistency and tool-misuse evals, a release bar, and the IP / asset /
+voice-similarity review) are not started.
 
 Required outputs:
 
 - repeatable evaluation scenarios for latency, interruption recovery, memory
   precision, tool misuse, and persona consistency
+  (latency + memory precision exist; tool misuse + persona consistency remain)
 - a minimum operating bar for release decisions
 - explicit review of IP, asset licensing, and voice-similarity risk
 
@@ -286,17 +305,20 @@ Exit criteria:
 
 ## Immediate Focus
 
-Phases 0–2 are complete (Phase 1 is substantially complete; its `setIdleMode`
-question is decided). The near-term priority is now Phase 3 (Memory): cross-
-session continuity.
+Phases 0–3 are complete (Phase 1 is substantially complete; its `setIdleMode`
+question is decided). The near-term priority is now Phase 4 (Persona And State
+Model): making tone and recall vary by relationship state rather than resting on
+a single prompt paragraph.
 
 Current focus areas:
 
-- design the memory schema (short/medium/long-term layers)
-- define promotion rules (summaries, facts, relationship updates) and retrieval
-  rules for what gets injected into future sessions
-- include a correction/deletion path from the start
-- build it in the app/server layer first, not in core packages
+- define a baseline persona model that consumes the typed relationship state
+  (`rapport`, `sessionCount`, `addressStyle`, `flags`) already tracked in
+  `examples/companion`
+- vary tone and recall behavior by relationship/situational state
+- add persona-consistency and tool-misuse evals alongside the existing memory
+  eval (Phase 5)
+- keep persona logic in the app/server layer, not in core packages
 
 ## Package Map
 
@@ -305,13 +327,14 @@ Current focus areas:
 Minimal framework demo — the reference for "how to use Charivo." Kept lean; it
 does not carry product-specific persona/memory logic.
 
-### `examples/companion` (planned)
+### `examples/companion`
 
 The product-validation surface (the "Amadeus-like" target, unbranded for now —
-see Phase 3 Decisions). Memory, persona, relationship state, and session
-archives live here in the app/server layer, built extraction-ready so a stable
-memory mechanism can later graduate to a thin core package. Turn UX, reconnect
-behavior, memory experiments, and persona iteration become visible here first.
+see Phase 3 Decisions). Built and live (https://charivo-companion.vercel.app/).
+Memory, relationship state, character catalog, and the memory eval live here in
+the app layer, built extraction-ready so a stable memory mechanism can later
+graduate to a thin core package. Persona depth (Phase 4), turn UX, reconnect
+behavior, and memory experiments iterate here first.
 
 ### `@charivo/realtime/openai-agents`
 
