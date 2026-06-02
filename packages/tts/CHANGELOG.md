@@ -1,5 +1,13 @@
 # @charivo/tts
 
+## 0.3.4
+
+### Patch Changes
+
+- 5a86dee: `stop()` cleanup now runs in `finally` so a player error no longer leaks audio/URL; explicit `pitch`/`volume` of `0` are now honored via nullish checks (plus `rate: 0` on the Web Speech path, where it clamps to the valid minimum).
+- Updated dependencies [5a86dee]
+  - @charivo/core@0.13.0
+
 ## 0.3.3
 
 ### Patch Changes

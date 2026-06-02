@@ -1,5 +1,16 @@
 # @charivo/render
 
+## 0.4.0
+
+### Minor Changes
+
+- 5a86dee: RenderManager now exposes `disconnect()` and tears down its event-bus listeners on detach/replace/destroy, fixing leaked/duplicate renderer calls.
+
+### Patch Changes
+
+- Updated dependencies [5a86dee]
+  - @charivo/core@0.13.0
+
 ## 0.3.4
 
 ### Patch Changes
