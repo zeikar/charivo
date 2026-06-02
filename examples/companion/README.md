@@ -28,8 +28,10 @@ Live demo: https://charivo-companion.vercel.app/
   but the user taps **Wake her** once to connect — a deliberate user gesture
   so audio and lip-sync unlock correctly on iOS/Safari.
 - Connects to OpenAI Realtime over WebRTC through a `POST /api/realtime` route.
-- Builds a personalized memory block from the browser-local store at cold-start
-  and does one relevance refresh after the first user utterance.
+- Builds a personalized memory block (facts + recent-session summaries) plus a
+  separate relationship block (tone/address-style/session-count) from the
+  browser-local store at cold-start, and does one relevance refresh after the
+  first user utterance.
 - Captures conversation turns and promotes them back into the local store (at
   checkpoints and on session end), so the longitudinal relationship state
   carries across sessions in the same browser.
@@ -68,7 +70,8 @@ composeInstructions([
   buildUserNameBlock(userName),                          // user self-name block (sanitized, JSON-delimited)
   COMPANION_DEMO_GUIDANCE,                               // demo-guidance block
   buildAvatarControlInstructions(catalog),               // avatar control block
-  memoryBlock,                                           // memory block
+  memoryBlock,                                           // memory block (facts + recent-session summaries)
+  renderRelationshipBlock(relationshipState),            // relationship block (tone/address/session-count; "" and dropped for a first meeting)
 ]);
 ```
 
@@ -80,10 +83,13 @@ entered a name — but addresses them by name once one exists, a demo-guidance
 block that keeps replies short and natural for a live voice demo, an
 avatar-control instruction block (`buildAvatarControlInstructions` from
 `@charivo/realtime-avatar`) that tells the model what motions/gaze (and, when
-present, expression) tools are available, and a memory block built from the
-browser-local store (also filtered out when empty).
+present, expression) tools are available, a memory block (facts + recent-session
+summaries) built from the browser-local store (also filtered out when empty),
+and a relationship block rendered from the longitudinal `RelationshipState` via
+`renderRelationshipBlock` (tone/address-style/session-count — empty and dropped
+for a first meeting).
 
-This same 5-block `composeInstructions([...])` call is used at both the
+This same 6-block `composeInstructions([...])` call is used at both the
 cold-start inject (`startSession`) and the single first-utterance refresh
 (`updateSession`).
 
@@ -137,7 +143,8 @@ extract → merge → persist pipeline against a `localStorage`-backed store.
 browser (useRealtimeSession.ts)
   one realtime session (voice + typed text), driven by Charivo orchestrator
         │
-        ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)
+        ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)  (facts + summaries)
+        │                   + renderRelationshipBlock(getRelationship(scope))  (relationship)
         │                     → composeInstructions → startSession({ instructions })
         │
         └─ write (promote) → promoteSession(store, transcript, …)
@@ -146,10 +153,14 @@ browser (useRealtimeSession.ts)
                                 └ LocalStorageMemoryStore  (window.localStorage)
 ```
 
-- **Read (inject).** On `start()`, `buildMemoryInstructionBlock({ store, scope })`
-  builds a memory block that is composed into `startSession({ instructions })`.
-  After the first user utterance, a single rebuild with a `queryEmbedding`
-  refreshes it via `updateSession(...)` — never per turn.
+- **Read (inject).** On `start()`, two blocks are composed into
+  `startSession({ instructions })`: a memory block from
+  `buildMemoryInstructionBlock({ store, scope })` (facts + recent-session
+  summaries) and a relationship block from
+  `renderRelationshipBlock(getRelationship(scope))` (tone/address-style/
+  session-count). After the first user utterance, a single rebuild with a
+  `queryEmbedding` refreshes the memory block (and re-reads the relationship)
+  via `updateSession(...)` — never per turn.
 - **Write (promote).** Every turn (voice transcript or typed text) is appended to
   a cumulative transcript. A write-job scheduler ([trigger.ts](./src/memory/trigger.ts))
   fires a checkpoint every 10 turns and a final write on session end, each a
