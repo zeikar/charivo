@@ -21,6 +21,7 @@ import { createFakeEmbedder } from "@/memory/embedding";
 import { createServerExtractor } from "@/memory/server-extractor";
 import { promoteSession } from "@/memory/promote";
 import { buildMemoryInstructionBlock } from "@/memory/build-memory-block";
+import { renderRelationshipBlock } from "@/memory/render-memory";
 import type { Turn } from "@/memory/promotion-types";
 
 const COMPANION_DEMO_GUIDANCE = `
@@ -58,6 +59,23 @@ async function readMemoryBlock(
     });
   } catch (error) {
     console.warn("[realtime-session] readMemoryBlock failed", error);
+    return "";
+  }
+}
+
+// Read (inject): render the longitudinal relationship line directly from the
+// browser-local store, mirroring readMemoryBlock's path. Returns "" on any
+// failure (or for a first meeting, via renderRelationshipBlock) so a hiccup
+// never blocks the session; composeInstructions's .filter(Boolean) drops "".
+async function readRelationshipBlock(scope: {
+  userId: string;
+  characterId: string;
+}): Promise<string> {
+  try {
+    const state = await getClientMemoryStore().getRelationship(scope);
+    return renderRelationshipBlock(state);
+  } catch (error) {
+    console.warn("[realtime-session] readRelationshipBlock failed", error);
     return "";
   }
 }
@@ -521,12 +539,14 @@ export function useRealtimeSession(
         void (async () => {
           try {
             const refreshedBlock = await readMemoryBlock(scope, data.text);
+            const relationshipBlock = await readRelationshipBlock(scope);
             const instructions = composeInstructions([
               personaInstructions,
               buildUserNameBlock(userNameRef.current),
               COMPANION_DEMO_GUIDANCE,
               buildAvatarControlInstructions(catalog),
               refreshedBlock,
+              relationshipBlock,
             ]);
             await manager.updateSession({ instructions });
           } catch (error) {
@@ -561,6 +581,7 @@ export function useRealtimeSession(
       managerRef.current = manager;
 
       const memoryBlock = await readMemoryBlock(scope);
+      const relationshipBlock = await readRelationshipBlock(scope);
       const userNameBlock = buildUserNameBlock(userNameRef.current);
       const instructions = composeInstructions([
         personaInstructions,
@@ -568,6 +589,7 @@ export function useRealtimeSession(
         COMPANION_DEMO_GUIDANCE,
         buildAvatarControlInstructions(catalog),
         memoryBlock,
+        relationshipBlock,
       ]);
 
       await renderManagerRef.current?.prepareAudio?.();
