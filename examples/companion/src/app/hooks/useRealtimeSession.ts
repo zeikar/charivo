@@ -5,6 +5,7 @@ import { Charivo, type RealtimeState, type RenderManager } from "@charivo/core";
 import { createRealtimeManager } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { buildSessionInstructions } from "../lib/build-session-instructions";
+import { COMPANION_DEMO_GUIDANCE } from "../lib/demo-guidance";
 import { sanitizeUserName } from "../lib/user-name-store";
 import { makeMemoryScope } from "../lib/memory-scope";
 import {
@@ -23,11 +24,6 @@ import { renderSituationalContext } from "../lib/situational-context";
 import type { Turn } from "@/memory/promotion-types";
 import type { RelationshipState } from "@/memory/types";
 import { renderPersonaInstructions } from "../lib/persona";
-
-const COMPANION_DEMO_GUIDANCE = `
-Keep replies short and natural for a live voice demo.
-Favor subtle reactions over big repeated motions unless the moment clearly calls for emphasis.
-`.trim();
 
 // Builds the optional user-name instruction block. Returns null (so
 // composeInstructions's .filter(Boolean) drops it) when no name is set. The
