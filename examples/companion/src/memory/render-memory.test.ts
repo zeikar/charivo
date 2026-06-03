@@ -7,6 +7,7 @@ import {
   renderRelationshipBlock,
   selectMemoryForRender,
 } from "./render-memory";
+import { DIRECTIVE } from "./relationship-guidance";
 import { estimateTokens } from "./scoring";
 import type { MemoryFact, MemoryScope, RelationshipState } from "./types";
 
@@ -372,5 +373,36 @@ describe("renderRelationshipBlock", () => {
     // But rapport and session count still appear
     expect(result).toContain("warm");
     expect(result).toContain("2");
+  });
+
+  it("high-rapport returning state → block contains rapport_high_proactive_recall directive, excludes rapport_low_restraint directive", () => {
+    const state: RelationshipState = {
+      scope: SCOPE,
+      rapport: 0.5, // >= RAPPORT_WARM_MIN (0.3) → high-rapport directive (selector uses >=)
+      sessionCount: 3, // > EARLY_RETURNING_MAX (1)
+      lastSeenAt: NOW,
+      addressStyle: "casual",
+      flags: {},
+    };
+    const result = renderRelationshipBlock(state);
+    expect(result).toContain(DIRECTIVE.rapport_high_proactive_recall);
+    expect(result).not.toContain(DIRECTIVE.rapport_low_restraint);
+  });
+
+  it("sessionCount <= 0 state → empty string with NO directive lines", () => {
+    const state: RelationshipState = {
+      scope: SCOPE,
+      rapport: 0.8,
+      sessionCount: 0,
+      lastSeenAt: NOW,
+      addressStyle: "casual",
+      flags: {},
+    };
+    const result = renderRelationshipBlock(state);
+    expect(result).toBe("");
+    // Explicitly: no directive copy leaks through
+    expect(result).not.toContain(DIRECTIVE.rapport_high_proactive_recall);
+    expect(result).not.toContain(DIRECTIVE.restraint_no_overrecall);
+    expect(result).not.toContain(DIRECTIVE.uncertainty_hedge);
   });
 });
