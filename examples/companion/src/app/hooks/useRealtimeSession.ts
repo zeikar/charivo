@@ -7,7 +7,7 @@ import {
   buildRealtimeSessionConfig,
 } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
-import { composeInstructions } from "../lib/compose-instructions";
+import { buildSessionInstructions } from "../lib/build-session-instructions";
 import { sanitizeUserName } from "../lib/user-name-store";
 import { makeMemoryScope } from "../lib/memory-scope";
 import {
@@ -545,15 +545,15 @@ export function useRealtimeSession(
               now: now.getTime(),
             });
             const situationalBlock = renderSituationalContext(now);
-            const instructions = composeInstructions([
-              personaInstructions,
-              buildUserNameBlock(userNameRef.current),
-              COMPANION_DEMO_GUIDANCE,
-              buildAvatarControlInstructions(catalog),
-              refreshedBlock,
+            const instructions = buildSessionInstructions({
+              persona: personaInstructions,
+              userNameBlock: buildUserNameBlock(userNameRef.current),
+              demoGuidance: COMPANION_DEMO_GUIDANCE,
+              avatarBlock: buildAvatarControlInstructions(catalog),
+              memoryBlock: refreshedBlock,
               relationshipBlock,
               situationalBlock,
-            ]);
+            });
             await manager.updateSession({ instructions });
           } catch (error) {
             console.warn(
@@ -593,15 +593,15 @@ export function useRealtimeSession(
         now: now.getTime(),
       });
       const situationalBlock = renderSituationalContext(now);
-      const instructions = composeInstructions([
-        personaInstructions,
+      const instructions = buildSessionInstructions({
+        persona: personaInstructions,
         userNameBlock,
-        COMPANION_DEMO_GUIDANCE,
-        buildAvatarControlInstructions(catalog),
+        demoGuidance: COMPANION_DEMO_GUIDANCE,
+        avatarBlock: buildAvatarControlInstructions(catalog),
         memoryBlock,
         relationshipBlock,
         situationalBlock,
-      ]);
+      });
 
       await renderManagerRef.current?.prepareAudio?.();
 

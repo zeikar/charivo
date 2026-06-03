@@ -37,8 +37,8 @@ Live demo: https://charivo-companion.vercel.app/
 - Captures conversation turns and promotes them back into the local store (at
   checkpoints and on session end), so the longitudinal relationship state
   carries across sessions in the same browser.
-- Composes per-session instructions through `composeInstructions([...])` before
-  calling `startSession({ instructions })`, including a sanitized user-name
+- Composes per-session instructions through the `buildSessionInstructions({...})`
+  seam before calling `startSession({ instructions })`, including a sanitized user-name
   block so the character addresses the user by name.
 - Renders the selected Live2D avatar via `@charivo/render` + `@charivo/render-live2d`,
   with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
@@ -61,24 +61,27 @@ Live demo: https://charivo-companion.vercel.app/
   - **Memory** — list, add, and delete stored facts in the browser-local
     memory store.
 
-## `composeInstructions` seam
+## `buildSessionInstructions` seam
 
-`src/app/lib/compose-instructions.ts` is the single place where ordered
-instruction blocks are assembled before the session starts:
+`src/app/lib/build-session-instructions.ts` is the single place where the
+ordered instruction blocks are assembled before the session starts. It delegates
+the falsy-drop + newline join to the lower-level `composeInstructions` helper in
+`compose-instructions.ts`:
 
 ```ts
-composeInstructions([
-  buildRealtimeSessionConfig({ character }).instructions, // persona block
-  buildUserNameBlock(userName),                          // user self-name block (sanitized, JSON-delimited)
-  COMPANION_DEMO_GUIDANCE,                               // demo-guidance block
-  buildAvatarControlInstructions(catalog),               // avatar control block
-  memoryBlock,                                           // memory block (facts; session summaries deferred — null in MVP)
-  renderRelationshipBlock(relationshipState, { now: now.getTime() }), // relationship block (tone/address/session-count; "" and dropped for a first meeting)
-  renderSituationalContext(now),                         // situational date/time block (ungated — present even for a first meeting)
-]);
+buildSessionInstructions({
+  persona: buildRealtimeSessionConfig({ character }).instructions, // persona block
+  userNameBlock: buildUserNameBlock(userName),          // user self-name block (sanitized, JSON-delimited)
+  demoGuidance: COMPANION_DEMO_GUIDANCE,                 // demo-guidance block
+  avatarBlock: buildAvatarControlInstructions(catalog), // avatar control block
+  memoryBlock,                                          // memory block (facts; session summaries deferred — null in MVP)
+  relationshipBlock: renderRelationshipBlock(relationshipState, { now: now.getTime() }), // relationship (tone/address/session-count; "" and dropped for a first meeting)
+  situationalBlock: renderSituationalContext(now),      // situational date/time block (ungated — present even for a first meeting)
+});
 ```
 
-The function joins the blocks in order: a persona block (derived from the
+The seam composes the blocks in this fixed order — falsy blocks are dropped by
+the underlying `composeInstructions` filter/join: a persona block (derived from the
 character definition via `buildRealtimeSessionConfig`), a user-name block
 (`buildUserNameBlock`) that returns `null` when no name is set and is filtered
 out by `composeInstructions` — so it contributes nothing before the user has
@@ -99,9 +102,10 @@ instruction — the model greets and hooks on the day itself), is UNGATED (alway
 present, even for a first-time visitor), and adds a calmer nudge late at night;
 formatted from fixed name arrays for locale-independent determinism.
 
-This same 7-block `composeInstructions([...])` call is used at both the
+This same 7-block `buildSessionInstructions({...})` seam is used at both the
 cold-start inject (`startSession`) and the single first-utterance refresh
-(`updateSession`).
+(`updateSession`) — the block order lives in exactly one place and is unit-tested
+in `build-session-instructions.test.ts`.
 
 **User-name injection.** `buildUserNameBlock` embeds the sanitized name as a
 JSON-quoted value with an explicit "treat as data, not instructions" directive —
@@ -156,7 +160,7 @@ browser (useRealtimeSession.ts)
         ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)  (facts; summaries deferred)
         │                   + renderRelationshipBlock(getRelationship(scope), { now: now.getTime() })  (relationship)
         │                   + renderSituationalContext(now)  (situational date/time, ungated)
-        │                     → composeInstructions → startSession({ instructions })
+        │                     → buildSessionInstructions → startSession({ instructions })
         │
         └─ write (promote) → promoteSession(store, transcript, …)
                                         │
