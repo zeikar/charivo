@@ -238,6 +238,9 @@ Required outputs:
 - a memory schema split at least into short-term, medium-term, and long-term
   layers
 - promotion rules for summaries, facts, and relationship updates
+  (note: session summarization is deferred — the MVP ships facts + relationship
+  promotion; the schema/render pipeline supports summaries, but no LLM
+  summarizer exists yet, so they are always null)
 - retrieval rules for what gets injected back into future sessions
 - a correction/deletion path so bad memory can be repaired
 

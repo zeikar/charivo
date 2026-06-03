@@ -242,7 +242,7 @@ describe("buildMemoryInstructionBlock — empty store", () => {
     });
   });
 
-  it("returns empty string when store has no facts, summaries, or relationship", async () => {
+  it("returns empty string when store has no facts or summaries", async () => {
     const result = await buildMemoryInstructionBlock({
       store,
       scope: SCOPE,
