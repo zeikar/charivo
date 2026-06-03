@@ -1,5 +1,11 @@
 import type { MemoryFact, RelationshipState } from "./types";
 import { estimateTokens } from "./scoring";
+import {
+  RAPPORT_WARM_MIN,
+  RAPPORT_STRAINED_MAX,
+  selectDirectiveIds,
+  renderGuidanceFromIds,
+} from "./relationship-guidance";
 
 /** Fixed product-policy memory budget in tokens. */
 export const MEMORY_TOKEN_BUDGET = 600;
@@ -58,6 +64,7 @@ export function renderMemoryBlock(
  */
 export function renderRelationshipBlock(
   state: RelationshipState | null,
+  ctx?: { now?: number },
 ): string {
   if (state === null || state.sessionCount <= 0) return "";
 
@@ -68,9 +75,9 @@ export function renderRelationshipBlock(
   }
 
   const rapportDescriptor =
-    state.rapport > 0.3
+    state.rapport > RAPPORT_WARM_MIN
       ? "warm"
-      : state.rapport < -0.3
+      : state.rapport < RAPPORT_STRAINED_MAX
         ? "strained"
         : "neutral";
   parts.push(`Rapport is ${rapportDescriptor}.`);
@@ -80,7 +87,9 @@ export function renderRelationshipBlock(
     `You have spoken across ${state.sessionCount} prior ${sessionWord}.`,
   );
 
-  return parts.join(" ");
+  const base = parts.join(" ");
+  const guidance = renderGuidanceFromIds(selectDirectiveIds(state, ctx));
+  return guidance ? `${base}\n${guidance}` : base;
 }
 
 /**
