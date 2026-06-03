@@ -28,6 +28,56 @@ export const STALE_AFTER_MS = 14 * 24 * 60 * 60 * 1000;
 export const EARLY_RETURNING_MAX = 1;
 
 // ---------------------------------------------------------------------------
+// Bucket types
+// ---------------------------------------------------------------------------
+
+export type RapportBucket = "low" | "neutral" | "warm";
+export type CadenceBucket =
+  | "first-meeting"
+  | "early"
+  | "returning-after-gap"
+  | "established";
+
+// ---------------------------------------------------------------------------
+// Single source of bucket truth — consumed by BOTH selectDirectiveIds (below)
+// and the p4-03 persona-hook selector.
+// ---------------------------------------------------------------------------
+
+/**
+ * Classify a RelationshipState into rapport and cadence buckets.
+ *
+ * PURE: no clock reads, no I/O. ctx.now is injected by the caller.
+ * Defines the canonical bucket boundaries consumed by selectDirectiveIds
+ * (below) and the p4-03 persona-hook selector.
+ */
+export function classifyRelationship(
+  state: RelationshipState,
+  ctx: { now: number },
+): { rapport: RapportBucket; cadence: CadenceBucket } {
+  let rapport: RapportBucket;
+  if (state.rapport < RAPPORT_STRAINED_MAX) {
+    rapport = "low";
+  } else if (state.rapport > RAPPORT_WARM_MIN) {
+    rapport = "warm";
+  } else {
+    rapport = "neutral";
+  }
+
+  let cadence: CadenceBucket;
+  if (state.sessionCount <= 0) {
+    cadence = "first-meeting";
+  } else if (state.sessionCount <= EARLY_RETURNING_MAX) {
+    cadence = "early";
+  } else if (ctx.now - state.lastSeenAt > STALE_AFTER_MS) {
+    cadence = "returning-after-gap";
+  } else {
+    cadence = "established";
+  }
+
+  return { rapport, cadence };
+}
+
+// ---------------------------------------------------------------------------
 // Policy: directive copy table
 // ---------------------------------------------------------------------------
 
@@ -68,15 +118,13 @@ export function selectDirectiveIds(
   // First meeting: no relationship directives.
   if (state.sessionCount <= 0) return [];
 
+  const { rapport, cadence } = classifyRelationship(state, ctx);
   const ids: DirectiveId[] = [];
 
   // Rapport axis.
-  if (state.rapport < RAPPORT_STRAINED_MAX) {
+  if (rapport === "low") {
     ids.push("rapport_low_restraint");
-  } else if (
-    state.rapport > RAPPORT_WARM_MIN &&
-    state.sessionCount > EARLY_RETURNING_MAX
-  ) {
+  } else if (rapport === "warm" && state.sessionCount > EARLY_RETURNING_MAX) {
     // Prohibited-overreaction invariant: never emit proactive recall for early
     // returning users (sessionCount <= EARLY_RETURNING_MAX) even if rapport is
     // already high — they haven't earned that familiarity yet.
@@ -84,9 +132,9 @@ export function selectDirectiveIds(
   }
 
   // Cadence axis.
-  if (state.sessionCount <= EARLY_RETURNING_MAX) {
+  if (cadence === "early") {
     ids.push("cadence_early_no_intimacy");
-  } else if (ctx.now - state.lastSeenAt > STALE_AFTER_MS) {
+  } else if (cadence === "returning-after-gap") {
     ids.push("cadence_returning_after_gap");
   }
 
