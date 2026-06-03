@@ -10,6 +10,11 @@ const patterns: RegExp[] = [
   /\b(setExpression|playMotion|lookAt)\b/,
   // JSON-ish arg fragments - catches 'I will set { "expressionId": "Smile" } now.'
   /"?(expressionId|group|index)"?\s*[:=]/,
+  // lookAt gaze-payload - catches '{ "x": 1, "y": 0 }' or '(x: 0.5, y: -0.3)'.
+  // Two patterns cover both key orders (JSON key order is not semantic).
+  // Each requires BOTH coordinates as numbers so a lone "x" or "y" in prose never fires.
+  /"?x"?\s*[:=]\s*-?[\d.]+\s*[,;]?\s*"?y"?\s*[:=]\s*-?[\d.]+/i,
+  /"?y"?\s*[:=]\s*-?[\d.]+\s*[,;]?\s*"?x"?\s*[:=]\s*-?[\d.]+/i,
   // bracketed action notes - catches "[looks left] Over there."
   // the looks? etc. plural forms are REQUIRED - \blook\b alone FAILS on "looks" because the word boundary sits before the s
   /\[[^\]]*\b(looks?|smiles?|waves?|gaz(?:e|es|ing)|glanc(?:e|es|ing)|motions?|expressions?)\b[^\]]*\]/i,

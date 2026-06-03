@@ -50,9 +50,10 @@ The same file asserts handler behavior for each tool:
 [`tool-leakage.test.ts`](../../examples/companion/src/eval/tool-misuse/tool-leakage.test.ts)
 exercises the pure
 [`detectToolLeakage(text)`](../../examples/companion/src/eval/tool-misuse/tool-leakage.ts)
-function over a 9-row table of clean vs dirty strings — 4 clean (normal
-spoken text), 5 dirty (literal tool names, JSON-ish arg fragments, bracketed
-action notes, parenthetical annotations). No model, no network.
+function over a 13-row table of clean vs dirty strings — 5 clean (normal
+spoken text, including a lone-x over-fire guard), 8 dirty (literal tool
+names, JSON-ish arg fragments, lookAt coordinate payloads in both key
+orders, bracketed action notes, parenthetical annotations). No model, no network.
 
 ## What Is Deferred (Needs Model Output)
 
