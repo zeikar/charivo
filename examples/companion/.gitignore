@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local runtime DB (companion memory)
 /.data/
+
+# persona eval run artifacts (transcripts, scores)
+/.eval-runs/
