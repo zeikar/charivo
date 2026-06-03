@@ -70,7 +70,7 @@ the falsy-drop + newline join to the lower-level `composeInstructions` helper in
 
 ```ts
 buildSessionInstructions({
-  persona: renderPersonaInstructions(character, relationshipState, { now }), // core base + invariants + state hook
+  persona: renderPersonaInstructions(character, relationshipState, { now: now.getTime() }), // core base + invariants + state hook
   userNameBlock: buildUserNameBlock(userName),          // user self-name block (sanitized, JSON-delimited)
   demoGuidance: COMPANION_DEMO_GUIDANCE,                 // demo-guidance block
   avatarBlock: buildAvatarControlInstructions(catalog), // avatar control block
