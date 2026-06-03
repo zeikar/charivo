@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Charivo, type RealtimeState, type RenderManager } from "@charivo/core";
-import {
-  createRealtimeManager,
-  buildRealtimeSessionConfig,
-} from "@charivo/realtime";
+import { createRealtimeManager } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { buildSessionInstructions } from "../lib/build-session-instructions";
 import { sanitizeUserName } from "../lib/user-name-store";
@@ -24,6 +21,8 @@ import { buildMemoryInstructionBlock } from "@/memory/build-memory-block";
 import { renderRelationshipBlock } from "@/memory/render-memory";
 import { renderSituationalContext } from "../lib/situational-context";
 import type { Turn } from "@/memory/promotion-types";
+import type { RelationshipState } from "@/memory/types";
+import { renderPersonaInstructions } from "../lib/persona";
 
 const COMPANION_DEMO_GUIDANCE = `
 Keep replies short and natural for a live voice demo.
@@ -64,20 +63,19 @@ async function readMemoryBlock(
   }
 }
 
-// Read (inject): render the longitudinal relationship line directly from the
-// browser-local store, mirroring readMemoryBlock's path. Returns "" on any
-// failure (or for a first meeting, via renderRelationshipBlock) so a hiccup
-// never blocks the session; composeInstructions's .filter(Boolean) drops "".
-async function readRelationshipBlock(
-  scope: { userId: string; characterId: string },
-  ctx: { now: number },
-): Promise<string> {
+// Read the raw relationship snapshot once so BOTH the relationship block and
+// the persona hook reflect the SAME state. Returns null on any failure so a
+// store hiccup never skips the whole instruction refresh — memory + situational
+// still compose (same resilience the old readRelationshipBlock provided).
+async function readRelationshipState(scope: {
+  userId: string;
+  characterId: string;
+}): Promise<RelationshipState | null> {
   try {
-    const state = await getClientMemoryStore().getRelationship(scope);
-    return renderRelationshipBlock(state, ctx);
+    return await getClientMemoryStore().getRelationship(scope);
   } catch (error) {
-    console.warn("[realtime-session] readRelationshipBlock failed", error);
-    return "";
+    console.warn("[realtime-session] readRelationshipState failed", error);
+    return null;
   }
 }
 
@@ -467,9 +465,6 @@ export function useRealtimeSession(
       // partitions memory per character. See examples/companion/README.md.
       const scope = makeMemoryScope(resolvedCharacter.id);
       scopeRef.current = scope;
-      const personaInstructions = buildRealtimeSessionConfig({
-        character: resolvedCharacter,
-      }).instructions;
 
       // Fresh write-job scheduler per session. runJob promotes the cumulative
       // transcript into the browser-local store; the scheduler coalesces fires
@@ -540,10 +535,20 @@ export function useRealtimeSession(
         void (async () => {
           try {
             const now = new Date();
+            const nowMs = now.getTime();
             const refreshedBlock = await readMemoryBlock(scope, data.text);
-            const relationshipBlock = await readRelationshipBlock(scope, {
-              now: now.getTime(),
-            });
+            const relationshipState = await readRelationshipState(scope);
+            const relationshipBlock = renderRelationshipBlock(
+              relationshipState,
+              {
+                now: nowMs,
+              },
+            );
+            const personaInstructions = renderPersonaInstructions(
+              resolvedCharacter,
+              relationshipState,
+              { now: nowMs },
+            );
             const situationalBlock = renderSituationalContext(now);
             const instructions = buildSessionInstructions({
               persona: personaInstructions,
@@ -588,10 +593,17 @@ export function useRealtimeSession(
 
       const userNameBlock = buildUserNameBlock(userNameRef.current);
       const now = new Date();
+      const nowMs = now.getTime();
       const memoryBlock = await readMemoryBlock(scope);
-      const relationshipBlock = await readRelationshipBlock(scope, {
-        now: now.getTime(),
+      const relationshipState = await readRelationshipState(scope);
+      const relationshipBlock = renderRelationshipBlock(relationshipState, {
+        now: nowMs,
       });
+      const personaInstructions = renderPersonaInstructions(
+        resolvedCharacter,
+        relationshipState,
+        { now: nowMs },
+      );
       const situationalBlock = renderSituationalContext(now);
       const instructions = buildSessionInstructions({
         persona: personaInstructions,
