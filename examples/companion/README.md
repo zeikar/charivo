@@ -31,8 +31,9 @@ Live demo: https://charivo-companion.vercel.app/
 - Builds a personalized memory block (facts; session summaries are deferred —
   no LLM summarizer in the MVP, so they are always null) plus a separate
   relationship block (tone/address-style/session-count) from the browser-local
-  store at cold-start, and does one relevance refresh after the first user
-  utterance.
+  store at cold-start, and also composes an UNGATED situational date/time block
+  (present even for a first meeting); does one relevance refresh after the first
+  user utterance.
 - Captures conversation turns and promotes them back into the local store (at
   checkpoints and on session end), so the longitudinal relationship state
   carries across sessions in the same browser.
@@ -73,6 +74,7 @@ composeInstructions([
   buildAvatarControlInstructions(catalog),               // avatar control block
   memoryBlock,                                           // memory block (facts; session summaries deferred — null in MVP)
   renderRelationshipBlock(relationshipState),            // relationship block (tone/address/session-count; "" and dropped for a first meeting)
+  renderSituationalContext(now),                         // situational date/time block (ungated — present even for a first meeting)
 ]);
 ```
 
@@ -90,9 +92,14 @@ null, but the render pipeline supports them for when one is added) built from
 the browser-local store (also filtered out when empty),
 and a relationship block rendered from the longitudinal `RelationshipState` via
 `renderRelationshipBlock` (tone/address-style/session-count — empty and dropped
-for a first meeting).
+for a first meeting), and a situational block rendered via
+`renderSituationalContext(now)` from the session's single `now` value that
+injects the user's local weekday + date + clock time as a bare fact (no greeting
+instruction — the model greets and hooks on the day itself), is UNGATED (always
+present, even for a first-time visitor), and adds a calmer nudge late at night;
+formatted from fixed name arrays for locale-independent determinism.
 
-This same 6-block `composeInstructions([...])` call is used at both the
+This same 7-block `composeInstructions([...])` call is used at both the
 cold-start inject (`startSession`) and the single first-utterance refresh
 (`updateSession`).
 
@@ -148,6 +155,7 @@ browser (useRealtimeSession.ts)
         │
         ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)  (facts; summaries deferred)
         │                   + renderRelationshipBlock(getRelationship(scope))  (relationship)
+        │                   + renderSituationalContext(now)  (situational date/time, ungated)
         │                     → composeInstructions → startSession({ instructions })
         │
         └─ write (promote) → promoteSession(store, transcript, …)
@@ -156,14 +164,16 @@ browser (useRealtimeSession.ts)
                                 └ LocalStorageMemoryStore  (window.localStorage)
 ```
 
-- **Read (inject).** On `start()`, two blocks are composed into
+- **Read (inject).** On `start()`, three blocks are composed into
   `startSession({ instructions })`: a memory block from
   `buildMemoryInstructionBlock({ store, scope })` (facts; session summaries are
-  deferred — always null in the MVP) and a relationship block from
+  deferred — always null in the MVP), a relationship block from
   `renderRelationshipBlock(getRelationship(scope))` (tone/address-style/
-  session-count). After the first user utterance, a single rebuild with a
-  `queryEmbedding` refreshes the memory block (and re-reads the relationship)
-  via `updateSession(...)` — never per turn.
+  session-count), and a situational block from `renderSituationalContext(now)`
+  (local weekday + date + clock time; ungated, always present). After the first
+  user utterance, a single rebuild with a `queryEmbedding` refreshes the memory
+  block (and re-reads the relationship and situational, each sharing the same
+  per-site `now`) via `updateSession(...)` — never per turn.
 - **Write (promote).** Every turn (voice transcript or typed text) is appended to
   a cumulative transcript. A write-job scheduler ([trigger.ts](./src/memory/trigger.ts))
   fires a checkpoint every 10 turns and a final write on session end, each a
