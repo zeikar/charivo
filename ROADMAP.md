@@ -265,7 +265,17 @@ Make the system feel specifically like Amadeus rather than like a memory-backed
 assistant.
 
 Status:
-Not started.
+In progress (2026-06-03). Relationship- and situational-state guidance shipped in
+`examples/companion`: the longitudinal relationship block (rapport / session
+cadence / address style) is injected into the live session and deepened into
+explicit directives — restraint at low rapport, proactive recall when warm,
+"first meeting" vs "it's been a while" framing — plus an ungated situational
+date/time block and explicit prohibited-overreaction / uncertainty / restraint
+rules, all locked by deterministic mapping tests. The first exit criterion (the
+same topic varies by relationship + situational state) is substantially met. The
+second — character consistency not resting on a single prompt paragraph —
+remains: the persona is still one `personality` string. That is the final Phase 4
+piece (structured persona: invariant traits + state-conditional guidance).
 
 Required outputs:
 
@@ -309,16 +319,20 @@ Exit criteria:
 ## Immediate Focus
 
 Phases 0–3 are complete (Phase 1 is substantially complete; its `setIdleMode`
-question is decided). The near-term priority is now Phase 4 (Persona And State
-Model): making tone and recall vary by relationship state rather than resting on
-a single prompt paragraph.
+question is decided). Phase 4 is in progress: tone and recall now vary by
+relationship + situational state (shipped in `examples/companion`). The remaining
+Phase 4 piece is the structured persona — making character consistency rest on
+invariant traits + state-conditional guidance rather than a single `personality`
+string.
 
 Current focus areas:
 
-- define a baseline persona model that consumes the typed relationship state
-  (`rapport`, `sessionCount`, `addressStyle`, `flags`) already tracked in
-  `examples/companion`
-- vary tone and recall behavior by relationship/situational state
+- structure the persona: invariant traits + state-conditional guidance that
+  consumes the typed relationship state (`rapport`, `sessionCount`,
+  `addressStyle`, `flags`) already tracked in `examples/companion`, so
+  consistency does not rest on one prompt paragraph (the remaining Phase 4 exit
+  criterion)
+- (done) vary tone and recall behavior by relationship/situational state
 - add persona-consistency and tool-misuse evals alongside the existing memory
   eval (Phase 5)
 - keep persona logic in the app/server layer, not in core packages
