@@ -70,7 +70,7 @@ the falsy-drop + newline join to the lower-level `composeInstructions` helper in
 
 ```ts
 buildSessionInstructions({
-  persona: buildRealtimeSessionConfig({ character }).instructions, // persona block
+  persona: renderPersonaInstructions(character, relationshipState, { now }), // core base + invariants + state hook
   userNameBlock: buildUserNameBlock(userName),          // user self-name block (sanitized, JSON-delimited)
   demoGuidance: COMPANION_DEMO_GUIDANCE,                 // demo-guidance block
   avatarBlock: buildAvatarControlInstructions(catalog), // avatar control block
@@ -81,8 +81,15 @@ buildSessionInstructions({
 ```
 
 The seam composes the blocks in this fixed order — falsy blocks are dropped by
-the underlying `composeInstructions` filter/join: a persona block (derived from the
-character definition via `buildRealtimeSessionConfig`), a user-name block
+the underlying `composeInstructions` filter/join: a persona block built by
+`renderPersonaInstructions` — the character's invariant identity (core base from
+`buildRealtimeSessionConfig` plus the structured `voice`/`values` invariants from
+the app-layer `persona` field, always present), plus a per-character state hook
+selected from the same p4-02 relationship buckets (`classifyRelationship`) so
+persona flavor varies with relationship state while the character-agnostic
+relationship directives still inject **separately** via the `relationshipBlock`
+(no double-injection — character consistency no longer rests on the one
+`personality` paragraph). A user-name block
 (`buildUserNameBlock`) that returns `null` when no name is set and is filtered
 out by `composeInstructions` — so it contributes nothing before the user has
 entered a name — but addresses them by name once one exists, a demo-guidance
@@ -207,9 +214,10 @@ it does not affect the memory `scope`.
 `src/app/lib/character-catalog.ts` (Hiyori, calm/gentle; plus a bright, playful
 alternate). Each catalog entry carries its own `id`, `name`, a one-line
 `description` (the picker blurb), a long `personality` (the persona prompt),
-`voice`, and `modelPath` — so persona, voice, and the rendered Live2D model all
-follow the selected character (the model loads from `character.modelPath`, not a
-fixed constant). The selection persists under `charivo:companion:character-id`
+`voice`, `modelPath`, and an optional `persona` (structured invariants +
+per-bucket state hooks; see `persona.ts`) — so persona, voice, and the rendered
+Live2D model all follow the selected character (the model loads from
+`character.modelPath`, not a fixed constant). The selection persists under `charivo:companion:character-id`
 and is **locked** once you meet her; the Settings "Start over" reset clears it
 and returns to the picker at the default character.
 

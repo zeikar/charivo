@@ -81,3 +81,35 @@ no presentation or theme code and read no clock internally.
 ## No changeset
 
 `examples/companion` is changeset-ignored; this is a docs/example change only.
+
+## p4-03 — Structured persona
+
+`StructuredPersona = { invariants: { voice, values[] }, stateHooks: Partial<Record<PersonaHookKey, string>> }`
+added as an optional field on `CompanionCharacter` (app layer only — no `@charivo/*` change).
+Defined in `src/app/lib/persona.ts`. Both Hiyori and Yuki are populated.
+
+`PersonaHookKey` mirrors the p4-02 bucket values that carry per-character flavor:
+`"rapport:low" | "rapport:warm" | "cadence:early" | "cadence:returning-after-gap"`.
+
+The state hook selector calls `classifyRelationship(state, ctx)` directly — **reusing the p4-02
+bucket constants as the single source of truth** — and picks at most one hook per session.
+First-meeting guard: `cadence === "first-meeting"` returns null before evaluating any candidate
+(mirrors `selectDirectiveIds`'s `<= 0` guard). The hook **complements** (never duplicates) the
+character-agnostic `DIRECTIVE` guidance; the relationship block still injects separately.
+
+`renderPersonaInstructions(character, state, ctx)` composes: base instructions
+(`buildRealtimeSessionConfig`) + always-on invariant lines + the selected state hook (when
+applicable). Falls back to bare base instructions for characters without a `persona` field —
+they render exactly as before.
+
+Both compose sites in `useRealtimeSession.ts` read relationship state **once** via
+`readRelationshipState(scope)` and feed the same snapshot to BOTH
+`renderPersonaInstructions` and `renderRelationshipBlock` — one read per site, no
+double-injection.
+
+Deterministic unit tests gate the structured-persona path: hook variance per bucket and
+invariant presence are mechanically verified. Model-output "feel" eval (does she actually
+sound softer at low rapport?) is deferred to Phase 5 — no eval harness ships in p4-03.
+
+No core change (no `@charivo/*` edit). No changeset — `examples/companion` is
+changeset-ignored.
