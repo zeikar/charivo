@@ -96,7 +96,14 @@ async function generateCandidate(
         { role: "user", content: args.userTurn },
       ],
     });
-    return (resp.choices[0]?.message?.content ?? "").trim();
+    const content = (resp.choices[0]?.message?.content ?? "").trim();
+    if (content === "") {
+      const finishReason = resp.choices[0]?.finish_reason ?? "unknown";
+      throw new Error(
+        `[eval] persona generation returned empty for ${args.scenarioId} (finish_reason: ${finishReason})`,
+      );
+    }
+    return content;
   } catch (err) {
     throw new Error(
       `[eval] persona generation failed for ${args.scenarioId}: ${String(err)}`,
@@ -124,13 +131,11 @@ export function writeArtifact(args: {
   runStartedAt: string;
   model: string;
   records: CaptureRecord[];
-  outDir?: string;
 }): string {
-  const outDir = args.outDir ?? DEFAULT_OUT_DIR;
-  mkdirSync(outDir, { recursive: true });
+  mkdirSync(DEFAULT_OUT_DIR, { recursive: true });
 
   const filename = `persona-${args.runStartedAt.replace(/[:.]/g, "-")}.md`;
-  const filePath = `${outDir}${filename}`;
+  const filePath = `${DEFAULT_OUT_DIR}${filename}`;
 
   const lines: string[] = [];
 
@@ -215,9 +220,10 @@ export function writeArtifact(args: {
  * Sequential generation (not Promise.all) for predictable cost/rate-limit
  * and stable artifact ordering.
  */
-export async function runCapture(args?: {
-  outDir?: string;
-}): Promise<{ artifactPath: string; recordCount: number }> {
+export async function runCapture(): Promise<{
+  artifactPath: string;
+  recordCount: number;
+}> {
   // Validate scenario bucket consistency before spending on API calls.
   validateScenarioBuckets();
 
@@ -268,7 +274,6 @@ export async function runCapture(args?: {
     runStartedAt: new Date().toISOString(),
     model,
     records,
-    outDir: args?.outDir,
   });
 
   return { artifactPath, recordCount: records.length };

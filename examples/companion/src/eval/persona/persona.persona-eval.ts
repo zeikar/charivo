@@ -24,7 +24,7 @@ describe("persona feel — live capture (advisory)", () => {
   it.skipIf(!ENABLED)(
     "captures persona transcripts for Claude to judge",
     async () => {
-      const { artifactPath, recordCount } = await runCapture({});
+      const { artifactPath, recordCount } = await runCapture();
       console.log(
         `[eval] persona artifact written: ${artifactPath} (${recordCount} captures)`,
       );
