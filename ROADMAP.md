@@ -299,17 +299,19 @@ Define whether the system is reliable enough to iterate on confidently, and
 eventually safe enough to consider public release.
 
 Status:
-Started. Two evaluation surfaces already exist: the precision-first memory eval
-([docs/history/memory-eval-2026-05.md](docs/history/memory-eval-2026-05.md)) and
-the live voice-latency / interruption smoke coverage. The remaining outputs
-(persona-consistency and tool-misuse evals, a release bar, and the IP / asset /
-voice-similarity review) are not started.
+Started. Three evaluation surfaces already exist: the precision-first memory eval
+([docs/history/memory-eval-2026-05.md](docs/history/memory-eval-2026-05.md)), the
+advisory persona-consistency model-feel eval
+([docs/history/persona-eval-2026-06.md](docs/history/persona-eval-2026-06.md)),
+and the live voice-latency / interruption smoke coverage. The remaining outputs
+(tool-misuse eval, a release bar, and the IP / asset / voice-similarity review)
+are not started.
 
 Required outputs:
 
 - repeatable evaluation scenarios for latency, interruption recovery, memory
   precision, tool misuse, and persona consistency
-  (latency + memory precision exist; tool misuse + persona consistency remain)
+  (latency + memory precision + persona-consistency exist; tool misuse remains)
 - a minimum operating bar for release decisions
 - explicit review of IP, asset licensing, and voice-similarity risk
 
