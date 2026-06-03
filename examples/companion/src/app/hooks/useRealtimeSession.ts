@@ -70,7 +70,7 @@ async function readMemoryBlock(
 // never blocks the session; composeInstructions's .filter(Boolean) drops "".
 async function readRelationshipBlock(
   scope: { userId: string; characterId: string },
-  ctx?: { now?: number },
+  ctx: { now: number },
 ): Promise<string> {
   try {
     const state = await getClientMemoryStore().getRelationship(scope);

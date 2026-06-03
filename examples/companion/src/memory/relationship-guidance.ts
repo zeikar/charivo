@@ -58,12 +58,12 @@ export type DirectiveId = keyof typeof DIRECTIVE;
  * Returns [] for a first meeting (sessionCount <= 0): no relationship directives
  * apply before any history exists.
  *
- * Pass ctx.now (epoch-ms) to enable the gap-detection directive. When ctx.now
- * is absent the gap directive is never emitted (deterministic default).
+ * ctx.now (epoch-ms) is required so gap guidance is never silently skipped.
+ * Nothing reads the clock internally — the caller threads now in.
  */
 export function selectDirectiveIds(
   state: RelationshipState,
-  ctx?: { now?: number },
+  ctx: { now: number },
 ): DirectiveId[] {
   // First meeting: no relationship directives.
   if (state.sessionCount <= 0) return [];
@@ -71,10 +71,10 @@ export function selectDirectiveIds(
   const ids: DirectiveId[] = [];
 
   // Rapport axis.
-  if (state.rapport <= RAPPORT_STRAINED_MAX) {
+  if (state.rapport < RAPPORT_STRAINED_MAX) {
     ids.push("rapport_low_restraint");
   } else if (
-    state.rapport >= RAPPORT_WARM_MIN &&
+    state.rapport > RAPPORT_WARM_MIN &&
     state.sessionCount > EARLY_RETURNING_MAX
   ) {
     // Prohibited-overreaction invariant: never emit proactive recall for early
@@ -86,11 +86,7 @@ export function selectDirectiveIds(
   // Cadence axis.
   if (state.sessionCount <= EARLY_RETURNING_MAX) {
     ids.push("cadence_early_no_intimacy");
-  } else if (
-    ctx?.now !== undefined &&
-    ctx.now - state.lastSeenAt > STALE_AFTER_MS
-  ) {
-    // Gap directive only when a clock reference is supplied — deterministic when absent.
+  } else if (ctx.now - state.lastSeenAt > STALE_AFTER_MS) {
     ids.push("cadence_returning_after_gap");
   }
 

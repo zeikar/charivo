@@ -35,7 +35,7 @@ Directive IDs (the `DIRECTIVE` map, `as const`; typed as `DirectiveId`):
 - `restraint_no_overrecall` — do not force-recall facts for the sake of it
 - `uncertainty_hedge` — hedge when memory confidence is low
 
-`selectDirectiveIds(state, ctx?)` picks the applicable ids from the state;
+`selectDirectiveIds(state, ctx: { now: number })` picks the applicable ids from the state (clock is required — gap guidance is never silently skipped);
 `renderGuidanceFromIds(ids)` renders them to text; `renderRelationshipBlock`
 appends these directives after the p4-01 address/rapport/session lines.
 Still gated: returns `""` when `sessionCount <= 0` (first meeting).

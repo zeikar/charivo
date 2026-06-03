@@ -97,9 +97,9 @@ describe("relationship block injection (composition + de-duplication)", () => {
   });
 
   it("omits the relationship block for a first meeting (no relationship stored)", async () => {
-    expect(renderRelationshipBlock(await store.getRelationship(SCOPE))).toBe(
-      "",
-    );
+    expect(
+      renderRelationshipBlock(await store.getRelationship(SCOPE), { now: NOW }),
+    ).toBe("");
 
     const out = await compose(store);
     // The "" relationship block (and the "" memory block) were dropped by
@@ -118,9 +118,9 @@ describe("relationship block injection (composition + de-duplication)", () => {
       flags: {},
     });
 
-    expect(renderRelationshipBlock(await store.getRelationship(SCOPE))).toBe(
-      "",
-    );
+    expect(
+      renderRelationshipBlock(await store.getRelationship(SCOPE), { now: NOW }),
+    ).toBe("");
 
     const out = await compose(store);
     expect(out).toBe(["You are a companion.", "Be brief.", SITU].join("\n"));

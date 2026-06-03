@@ -51,17 +51,17 @@ const GAP: DirectiveId = "cadence_returning_after_gap";
 describe("selectDirectiveIds", () => {
   it("returns [] when sessionCount === 0 (self-guard)", () => {
     const state = makeState({ sessionCount: 0 });
-    expect(selectDirectiveIds(state)).toEqual([]);
+    expect(selectDirectiveIds(state, { now: NOW })).toEqual([]);
   });
 
   it("returns [] when sessionCount < 0 (self-guard)", () => {
     const state = makeState({ sessionCount: -3 });
-    expect(selectDirectiveIds(state)).toEqual([]);
+    expect(selectDirectiveIds(state, { now: NOW })).toEqual([]);
   });
 
   it("sessionCount === 1 → contains cadence_early_no_intimacy, excludes rapport_high_proactive_recall", () => {
     const state = makeState({ sessionCount: 1, rapport: 0.5 });
-    const ids = selectDirectiveIds(state);
+    const ids = selectDirectiveIds(state, { now: NOW });
     expect(ids).toContain(EARLY);
     expect(ids).not.toContain(HIGH);
   });
@@ -71,7 +71,7 @@ describe("selectDirectiveIds", () => {
       rapport: RAPPORT_STRAINED_MAX - 0.2,
       sessionCount: 3,
     });
-    const ids = selectDirectiveIds(state);
+    const ids = selectDirectiveIds(state, { now: NOW });
     expect(ids).toContain(LOW);
     expect(ids).not.toContain(HIGH);
   });
@@ -81,10 +81,32 @@ describe("selectDirectiveIds", () => {
       rapport: RAPPORT_WARM_MIN + 0.2,
       sessionCount: EARLY_RETURNING_MAX + 4,
     });
-    const ids = selectDirectiveIds(state);
+    const ids = selectDirectiveIds(state, { now: NOW });
     expect(ids).toContain(HIGH);
     expect(ids).toContain(RESTRAINT);
     expect(ids).toContain(HEDGE);
+  });
+
+  describe("exact-boundary rapport thresholds", () => {
+    it("rapport === RAPPORT_WARM_MIN (0.3) with sessionCount > EARLY_RETURNING_MAX → excludes rapport_high_proactive_recall", () => {
+      // Selector is strict (>), so the boundary value itself is neutral — no HIGH directive.
+      const state = makeState({
+        rapport: RAPPORT_WARM_MIN,
+        sessionCount: EARLY_RETURNING_MAX + 2,
+      });
+      const ids = selectDirectiveIds(state, { now: NOW });
+      expect(ids).not.toContain(HIGH);
+    });
+
+    it("rapport === RAPPORT_STRAINED_MAX (-0.3) with sessionCount > 1 → excludes rapport_low_restraint", () => {
+      // Selector is strict (<), so the boundary value itself is neutral — no LOW directive.
+      const state = makeState({
+        rapport: RAPPORT_STRAINED_MAX,
+        sessionCount: 3,
+      });
+      const ids = selectDirectiveIds(state, { now: NOW });
+      expect(ids).not.toContain(LOW);
+    });
   });
 
   describe("cadence-gap determinism", () => {
@@ -105,17 +127,6 @@ describe("selectDirectiveIds", () => {
         lastSeenAt: NOW,
       });
       const ids = selectDirectiveIds(state, { now: NOW });
-      expect(ids).not.toContain(GAP);
-    });
-
-    it("ctx absent entirely → excludes cadence_returning_after_gap regardless of lastSeenAt", () => {
-      const state = makeState({
-        sessionCount: 5,
-        rapport: 0.0,
-        lastSeenAt: NOW - STALE_AFTER_MS - 1,
-      });
-      // No ctx passed at all
-      const ids = selectDirectiveIds(state);
       expect(ids).not.toContain(GAP);
     });
   });

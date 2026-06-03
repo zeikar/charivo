@@ -260,7 +260,7 @@ describe("selectMemoryForRender", () => {
 
 describe("renderRelationshipBlock", () => {
   it("returns empty string for null state", () => {
-    expect(renderRelationshipBlock(null)).toBe("");
+    expect(renderRelationshipBlock(null, { now: NOW })).toBe("");
   });
 
   it("returns empty string for state with sessionCount === 0", () => {
@@ -272,7 +272,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: {},
     };
-    expect(renderRelationshipBlock(state)).toBe("");
+    expect(renderRelationshipBlock(state, { now: NOW })).toBe("");
   });
 
   it("returns empty string for state with sessionCount < 0", () => {
@@ -284,7 +284,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: {},
     };
-    expect(renderRelationshipBlock(state)).toBe("");
+    expect(renderRelationshipBlock(state, { now: NOW })).toBe("");
   });
 
   it("surfaces address style, rapport descriptor, and session count for populated state", () => {
@@ -296,7 +296,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "formal",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).toContain("formal");
     expect(result).toContain("warm");
     expect(result).toContain("3");
@@ -311,7 +311,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).toContain("strained");
   });
 
@@ -324,7 +324,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).toContain("neutral");
   });
 
@@ -337,7 +337,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: { has_been_thanked: true, declined_personal_questions: false },
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).not.toContain("has_been_thanked");
     expect(result).not.toContain("declined_personal_questions");
     // also should not contain literal "true" or "false" flag values
@@ -354,8 +354,8 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "formal",
       flags: { some_flag: true },
     };
-    const first = renderRelationshipBlock(state);
-    const second = renderRelationshipBlock(state);
+    const first = renderRelationshipBlock(state, { now: NOW });
+    const second = renderRelationshipBlock(state, { now: NOW });
     expect(first).toBe(second);
   });
 
@@ -368,7 +368,7 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "unknown",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).not.toContain("Address the user");
     // But rapport and session count still appear
     expect(result).toContain("warm");
@@ -378,13 +378,13 @@ describe("renderRelationshipBlock", () => {
   it("high-rapport returning state → block contains rapport_high_proactive_recall directive, excludes rapport_low_restraint directive", () => {
     const state: RelationshipState = {
       scope: SCOPE,
-      rapport: 0.5, // >= RAPPORT_WARM_MIN (0.3) → high-rapport directive (selector uses >=)
+      rapport: 0.5, // > RAPPORT_WARM_MIN (0.3) → high-rapport directive
       sessionCount: 3, // > EARLY_RETURNING_MAX (1)
       lastSeenAt: NOW,
       addressStyle: "casual",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).toContain(DIRECTIVE.rapport_high_proactive_recall);
     expect(result).not.toContain(DIRECTIVE.rapport_low_restraint);
   });
@@ -398,11 +398,27 @@ describe("renderRelationshipBlock", () => {
       addressStyle: "casual",
       flags: {},
     };
-    const result = renderRelationshipBlock(state);
+    const result = renderRelationshipBlock(state, { now: NOW });
     expect(result).toBe("");
     // Explicitly: no directive copy leaks through
     expect(result).not.toContain(DIRECTIVE.rapport_high_proactive_recall);
     expect(result).not.toContain(DIRECTIVE.restraint_no_overrecall);
     expect(result).not.toContain(DIRECTIVE.uncertainty_hedge);
+  });
+
+  it("rapport === RAPPORT_WARM_MIN (0.3) boundary → descriptor is 'neutral' and rapport_high_proactive_recall is absent (no contradiction)", () => {
+    // At the exact boundary the descriptor (strict >) labels rapport as "neutral"
+    // and the selector (also strict >) must NOT emit the high-rapport directive.
+    const state: RelationshipState = {
+      scope: SCOPE,
+      rapport: 0.3, // === RAPPORT_WARM_MIN
+      sessionCount: 3, // > EARLY_RETURNING_MAX
+      lastSeenAt: NOW,
+      addressStyle: "casual",
+      flags: {},
+    };
+    const result = renderRelationshipBlock(state, { now: NOW });
+    expect(result).toContain("neutral");
+    expect(result).not.toContain(DIRECTIVE.rapport_high_proactive_recall);
   });
 });

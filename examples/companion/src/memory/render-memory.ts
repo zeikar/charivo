@@ -61,10 +61,12 @@ export function renderMemoryBlock(
 /**
  * Render longitudinal relationship state into a terse instruction-shaped line.
  * Returns "" for null or first-ever meeting (sessionCount <= 0).
+ *
+ * ctx.now (epoch-ms) is required so gap guidance is never silently skipped.
  */
 export function renderRelationshipBlock(
   state: RelationshipState | null,
-  ctx?: { now?: number },
+  ctx: { now: number },
 ): string {
   if (state === null || state.sessionCount <= 0) return "";
 

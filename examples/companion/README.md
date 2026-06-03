@@ -73,7 +73,7 @@ composeInstructions([
   COMPANION_DEMO_GUIDANCE,                               // demo-guidance block
   buildAvatarControlInstructions(catalog),               // avatar control block
   memoryBlock,                                           // memory block (facts; session summaries deferred — null in MVP)
-  renderRelationshipBlock(relationshipState),            // relationship block (tone/address/session-count; "" and dropped for a first meeting)
+  renderRelationshipBlock(relationshipState, { now: now.getTime() }), // relationship block (tone/address/session-count; "" and dropped for a first meeting)
   renderSituationalContext(now),                         // situational date/time block (ungated — present even for a first meeting)
 ]);
 ```
@@ -154,7 +154,7 @@ browser (useRealtimeSession.ts)
   one realtime session (voice + typed text), driven by Charivo orchestrator
         │
         ├─ read (inject)  → buildMemoryInstructionBlock(store, scope, …)  (facts; summaries deferred)
-        │                   + renderRelationshipBlock(getRelationship(scope))  (relationship)
+        │                   + renderRelationshipBlock(getRelationship(scope), { now: now.getTime() })  (relationship)
         │                   + renderSituationalContext(now)  (situational date/time, ungated)
         │                     → composeInstructions → startSession({ instructions })
         │
@@ -168,7 +168,7 @@ browser (useRealtimeSession.ts)
   `startSession({ instructions })`: a memory block from
   `buildMemoryInstructionBlock({ store, scope })` (facts; session summaries are
   deferred — always null in the MVP), a relationship block from
-  `renderRelationshipBlock(getRelationship(scope))` (tone/address-style/
+  `renderRelationshipBlock(getRelationship(scope), { now: now.getTime() })` (tone/address-style/
   session-count), and a situational block from `renderSituationalContext(now)`
   (local weekday + date + clock time; ungated, always present). After the first
   user utterance, a single rebuild with a `queryEmbedding` refreshes the memory
