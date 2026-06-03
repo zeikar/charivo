@@ -52,12 +52,13 @@ What already exists:
 
 A cross-session memory model with promotion rules, a typed relationship-state
 model, and a precision-first memory eval now exist in `examples/companion`
-(Phase 3). What is still missing is product quality, not basic plumbing:
+(Phase 3). The persona model (Phase 4) and the evaluation + readiness surface
+(Phase 5) are now in place as well:
 
-- a persona model where tone and recall actually vary by relationship state
-  (today persona is still a prompt paragraph)
-- evaluation breadth beyond memory precision (persona consistency, tool misuse)
-  and an explicit release-readiness bar
+- persona where tone and recall vary by relationship state (p4-02 / p4-03), no
+  longer a single prompt paragraph
+- evaluation breadth beyond memory precision — persona consistency and
+  tool-misuse evals — plus an explicit release-readiness bar
 
 ## Phase Status
 
@@ -299,44 +300,50 @@ Define whether the system is reliable enough to iterate on confidently, and
 eventually safe enough to consider public release.
 
 Status:
-Started. Three evaluation surfaces already exist: the precision-first memory eval
+Complete. All five evaluation surfaces exist: the precision-first memory eval
 ([docs/history/memory-eval-2026-05.md](docs/history/memory-eval-2026-05.md)), the
 advisory persona-consistency model-feel eval
 ([docs/history/persona-eval-2026-06.md](docs/history/persona-eval-2026-06.md)),
-and the live voice-latency / interruption smoke coverage. The remaining outputs
-(tool-misuse eval, a release bar, and the IP / asset / voice-similarity review)
-are not started.
+the live voice-latency / interruption smoke coverage, and the Tier-1
+deterministic tool-misuse eval
+([docs/history/avatar-tool-misuse-eval-2026-06.md](docs/history/avatar-tool-misuse-eval-2026-06.md)).
+The release bar ([docs/release-bar.md](docs/release-bar.md)) is written. A full
+IP / asset / voice-similarity review is deferred to a public-release decision
+(see the Note below): the current demo is non-commercial and attributes its
+bundled assets, and the release bar makes that review a precondition of any
+public or commercial release.
 
 Required outputs:
 
 - repeatable evaluation scenarios for latency, interruption recovery, memory
-  precision, tool misuse, and persona consistency
-  (latency + memory precision + persona-consistency exist; tool misuse remains)
+  precision, tool misuse, and persona consistency (all exist)
 - a minimum operating bar for release decisions
-- explicit review of IP, asset licensing, and voice-similarity risk
+  ([docs/release-bar.md](docs/release-bar.md))
+- explicit review of IP, asset licensing, and voice-similarity risk (deferred to
+  a public-release decision; gated by the release bar as a precondition — see the
+  Note)
 
-Exit criteria:
+Exit criteria (met):
 
-- regressions are detectable
+- regressions are detectable (memory, persona, tool-misuse, and latency evals)
 - release decisions can be justified against explicit criteria
+  ([docs/release-bar.md](docs/release-bar.md))
 
 ## Immediate Focus
 
-Phases 0–4 are complete (Phase 1 is substantially complete; its `setIdleMode`
-question is decided). Phase 4 is done: tone and recall vary by relationship +
-situational state (p4-02), and the structured persona — invariant traits +
-state-conditional guidance — is shipped in `persona.ts` (p4-03), satisfying both
-Phase 4 exit criteria.
+Phases 0–5 are complete. Phase 4 shipped the structured persona (invariant
+traits + state-conditional guidance in `persona.ts`, p4-03) on top of
+relationship/situational state (p4-02). Phase 5 closed the evaluation surface
+(memory, persona, tool-misuse, and latency/interruption evals) and the release
+bar; a full IP / asset / voice-similarity review is deferred to a public-release
+decision, gated by that bar.
 
-Current focus areas:
+The roadmap's phase work is done; what remains is a v1 release decision, run
+against the [release bar](docs/release-bar.md) and the v1 Definition section
+below.
 
-- (done) vary tone and recall behavior by relationship/situational state (p4-02)
-- (done) structure the persona: invariant traits + state-conditional guidance
-  that consumes the typed relationship state (`rapport`, `sessionCount`,
-  `addressStyle`, `flags`) already tracked in `examples/companion` (p4-03)
-- add persona-consistency and tool-misuse evals alongside the existing memory
-  eval (Phase 5)
-- keep persona logic in the app/server layer, not in core packages
+Standing constraint: keep persona and eval logic in the app/server layer, not in
+core packages.
 
 ## Package Map
 
