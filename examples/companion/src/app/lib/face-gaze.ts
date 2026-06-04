@@ -13,7 +13,7 @@ export const NEUTRAL_GAZE: GazeCoordinates = { x: 0, y: 0 };
  * Convert a MediaPipe VIDEO-mode bounding box (raw-frame pixel-space) to
  * normalized gaze coordinates in [-1, 1] x [-1, 1].
  *
- * Raw unmirrored frame; user body-left -> nx>0.5 -> positive gaze x (avatar looks to its right). No CSS mirror is assumed; the sign is validated against the raw bounding box. When the user moves their face to their own left, the avatar's gaze goes to the avatar's right (positive x).
+ * Mirrored (selfie) feed: the user's body-left lands in the LEFT half (nx<0.5), so the X sign is negated to follow the user like a mirror. user body-left -> nx<0.5 -> -(nx*2-1) > 0 -> positive gaze x (avatar looks to its right). Sign validated against the live webcam feed. When the user moves their face to their own left, the avatar's gaze goes to the avatar's right (positive x).
  */
 export function boundingBoxToGaze(
   box: FaceBox,
@@ -30,7 +30,7 @@ export function boundingBoxToGaze(
   const nx = cx / videoW;
   const ny = cy / videoH;
 
-  const x = nx * 2 - 1;
+  const x = -(nx * 2 - 1);
   const y = -(ny * 2 - 1);
 
   return {

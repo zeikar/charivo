@@ -19,10 +19,10 @@ describe("boundingBoxToGaze", () => {
     expect(result.y).toBeCloseTo(0, 9);
   });
 
-  it("box centered in right half (nx>0.5) -> positive x", () => {
+  it("box centered in left half (nx<0.5, user body-left in mirrored feed) -> positive x", () => {
     // When the user moves their face to their own left, the avatar's gaze goes to the avatar's right (positive x).
     const result = boundingBoxToGaze(
-      { originX: 70, originY: 40, width: 10, height: 10 },
+      { originX: 20, originY: 40, width: 10, height: 10 },
       100,
       100,
     );
@@ -39,9 +39,10 @@ describe("boundingBoxToGaze", () => {
   });
 
   it("out-of-range box clamps to +/-1", () => {
-    // Center well outside the frame.
+    // Center well outside the frame (off the left + bottom). With the negated X
+    // sign, a far-left center clamps to +1; the far-bottom center clamps to -1.
     const result = boundingBoxToGaze(
-      { originX: 200, originY: 200, width: 20, height: 20 },
+      { originX: -200, originY: 200, width: 20, height: 20 },
       100,
       100,
     );
