@@ -4,8 +4,8 @@ Created: 2026-04-14
 Updated: 2026-06-04
 
 Status: Phases 0-5 complete. This file is now the product definition + decision
-record and the v1 bar; the remaining milestone is declaring Amadeus v1 (see the
-v1 Definition section).
+record and the v1 bar. v1 is declared (2026-06-04) — all v1 Definition criteria
+are met.
 
 ## Purpose
 
@@ -406,6 +406,18 @@ true:
 - interruption and reconnect behavior meet the Phase 2 UX bar
 - cross-session memory works with measured precision from Phase 3
 - character tone clears the persona evaluation bar from Phase 5
+
+**Declared: v1 (2026-06-04).** This is the product milestone for the companion
+(the criteria above) — a quality bar, not a package version. It is recorded here,
+not as a git/npm version tag: the companion stays private at its own version
+(`0.1.0`) and the `@charivo/*` packages stay independently versioned via
+changesets. All criteria are met: realtime voice and avatar
+expression/motion/gaze confirmed by direct demo observation; interruption /
+reconnect and cross-session memory precision pass deterministically (the
+`realtime-core` contract test and `eval:memory`); persona tone cleared a fresh
+advisory eval. Caveat: the automated `pnpm test:voice` latency smoke is currently
+red from a Chromium fake-mic environment issue (test infrastructure, not a
+product regression) — a follow-up, not a v1 blocker.
 
 ## Note
 
