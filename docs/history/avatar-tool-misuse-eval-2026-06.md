@@ -151,4 +151,4 @@ pnpm vitest run examples/companion/src/eval/tool-misuse
 - Prior art:
   - [`docs/history/avatar-prompt-eval-2026-04.md`](avatar-prompt-eval-2026-04.md)
   - [`tests/webrtc-smoke/realtime-avatar-prompt.spec.ts`](../../tests/webrtc-smoke/realtime-avatar-prompt.spec.ts)
-- Phase 5 roadmap: [`ROADMAP.md`](../../ROADMAP.md)
+- Phase 5 roadmap: [`ROADMAP.md`](ROADMAP.md)

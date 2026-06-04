@@ -112,4 +112,4 @@ flagged for human review and is never a CI gate.
 - Structural tests: see [Two Layers of Coverage](#two-layers-of-coverage) above.
 - Capture harness:
   [`persona-capture.ts`](../../examples/companion/src/eval/persona/persona-capture.ts)
-- Phase 4 / Phase 5 roadmap: [`ROADMAP.md`](../../ROADMAP.md)
+- Phase 4 / Phase 5 roadmap: [`ROADMAP.md`](ROADMAP.md)

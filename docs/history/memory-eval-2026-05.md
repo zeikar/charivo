@@ -111,4 +111,4 @@ are logged with the `[eval]` prefix.
   [`local-storage-memory-store.ts`](../../examples/companion/src/memory/local-storage-memory-store.ts),
   [`render-memory.ts`](../../examples/companion/src/memory/render-memory.ts),
   [`scoring.ts`](../../examples/companion/src/memory/scoring.ts)
-- Phase 3 / Phase 5 roadmap: [`ROADMAP.md`](../../ROADMAP.md)
+- Phase 3 / Phase 5 roadmap: [`ROADMAP.md`](ROADMAP.md)

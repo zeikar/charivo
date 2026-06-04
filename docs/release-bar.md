@@ -8,7 +8,7 @@ good and safe enough to ship?" gate. This is distinct from
 hygiene checklist (verify, changesets, versioning, docs). Use both: the bar
 decides _whether_ to release; the checklist governs _how_ to publish.
 
-Closes the Phase 5 exit criterion in [ROADMAP.md](../ROADMAP.md): release
+Closes the Phase 5 exit criterion in [ROADMAP.md](history/ROADMAP.md): release
 decisions can now be justified against explicit criteria.
 
 ## Release scopes

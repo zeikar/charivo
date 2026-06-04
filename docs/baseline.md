@@ -7,7 +7,7 @@ are compared against — not a user guide (it is intentionally outside the
 published docs site). Keep it compact. Re-record the numbers when the stack or
 fixture changes, and note the date.
 
-Closes the Phase 0 exit criteria in [ROADMAP.md](../ROADMAP.md): response-start
+Closes the Phase 0 exit criteria in [ROADMAP.md](history/ROADMAP.md): response-start
 latency is recorded, and interruption-recovery / lip-sync expectations are
 stated explicitly enough to compare against.
 

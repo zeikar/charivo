@@ -17,7 +17,7 @@ Live demos:
 Documentation:
 
 - [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
-- [ROADMAP.md](./ROADMAP.md): Amadeus product roadmap and current phase status
+- [ROADMAP.md](./docs/history/ROADMAP.md): completed Amadeus product roadmap + v1 record (archived)
 
 ## Quick Start
 
