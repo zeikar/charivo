@@ -10,6 +10,7 @@ import type {
   Character,
   CharivoEventBus,
   CharivoEventEmitter,
+  GazeCoordinates,
   LLMClient,
   Message,
   RealtimeManager,
@@ -31,6 +32,7 @@ class StubRenderManager implements RenderManager {
     async (_message: Message, _character?: Character) => undefined,
   );
   setCharacter = vi.fn((_character: Character) => undefined);
+  setLocalGaze = vi.fn((_coords: GazeCoordinates) => false);
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
   disconnect = vi.fn(() => undefined);
 }

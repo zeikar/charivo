@@ -287,4 +287,159 @@ describe("RenderManager", () => {
       clientY: 78,
     });
   });
+
+  it("setLocalGaze applies, looks at the coords, and suspends mouse cursor tracking", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const canvas = document.createElement("canvas");
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+      configurable: true,
+    });
+
+    const manager = createRenderManager(renderer, {
+      canvas,
+      mouseTracking: "document",
+    });
+
+    await manager.initialize();
+
+    const coords: GazeCoordinates = { x: 0.3, y: -0.2 };
+    expect(manager.setLocalGaze(coords)).toBe(true);
+    expect(renderer.lookAt).toHaveBeenCalledWith(coords);
+
+    // Local-gaze window suppresses the mouse cursor target right after.
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 12, clientY: 34 }),
+    );
+    expect(renderer.updateViewWithMouse).not.toHaveBeenCalled();
+
+    // After the local-gaze window elapses, the cursor target resumes.
+    await vi.advanceTimersByTimeAsync(700);
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 56, clientY: 78 }),
+    );
+    expect(renderer.updateViewWithMouse).toHaveBeenCalledWith({
+      clientX: 56,
+      clientY: 78,
+    });
+  });
+
+  it("setLocalGaze no-ops on a renderer without lookAt and does not open the local-gaze window", async () => {
+    class NoGazeRenderer implements Renderer {
+      initialize = vi.fn(async () => undefined);
+      destroy = vi.fn(async () => undefined);
+      render = vi.fn(
+        async (_message: Message, _character?: Character) => undefined,
+      );
+      updateViewWithMouse = vi.fn(
+        (_coords: { clientX: number; clientY: number }) => undefined,
+      );
+      handleMouseTap = vi.fn(
+        (_coords: { clientX: number; clientY: number }) => undefined,
+      );
+    }
+
+    const renderer = new NoGazeRenderer();
+    const canvas = document.createElement("canvas");
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+      configurable: true,
+    });
+
+    const manager = createRenderManager(renderer, {
+      canvas,
+      mouseTracking: "document",
+    });
+
+    await manager.initialize();
+
+    expect(manager.setLocalGaze({ x: 0.1, y: 0.1 })).toBe(false);
+
+    // No local-gaze window means the cursor target still runs.
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 9, clientY: 9 }),
+    );
+    expect(renderer.updateViewWithMouse).toHaveBeenCalledWith({
+      clientX: 9,
+      clientY: 9,
+    });
+  });
+
+  it("setLocalGaze yields to an active AI gaze window", () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new EventBus();
+
+    manager.setEventBus(bus);
+
+    // Open the AI gaze window.
+    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    expect(renderer.lookAt).toHaveBeenCalledTimes(1);
+    renderer.lookAt.mockClear();
+
+    // Within the 1200ms AI window, local gaze yields.
+    expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(false);
+    expect(renderer.lookAt).not.toHaveBeenCalled();
+  });
+
+  it("setLocalGaze does not yield to its own local-gaze window", () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+
+    // Two back-to-back applies (no AI window): both must apply.
+    expect(manager.setLocalGaze({ x: 0.1, y: 0.1 })).toBe(true);
+    expect(manager.setLocalGaze({ x: 0.2, y: 0.2 })).toBe(true);
+    expect(renderer.lookAt).toHaveBeenCalledTimes(2);
+  });
+
+  it("taps survive a webcam local-gaze window but yield to the AI gaze window; cursor yields to webcam", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const canvas = document.createElement("canvas");
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      value: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+      configurable: true,
+    });
+
+    const manager = createRenderManager(renderer, {
+      canvas,
+      mouseTracking: "document",
+    });
+    const bus = new EventBus();
+
+    await manager.initialize();
+    manager.setEventBus(bus);
+
+    // Open a local-gaze window (no AI window).
+    expect(manager.setLocalGaze({ x: 0.3, y: 0.3 })).toBe(true);
+
+    // A tap still fires while webcam gaze is active.
+    document.dispatchEvent(
+      new MouseEvent("pointerdown", { clientX: 20, clientY: 20 }),
+    );
+    expect(renderer.handleMouseTap).toHaveBeenCalledWith({
+      clientX: 20,
+      clientY: 20,
+    });
+
+    // The cursor target is suppressed by the local-gaze window.
+    document.dispatchEvent(
+      new MouseEvent("pointermove", { clientX: 30, clientY: 30 }),
+    );
+    expect(renderer.updateViewWithMouse).not.toHaveBeenCalled();
+
+    renderer.handleMouseTap.mockClear();
+
+    // Open the AI gaze window: now taps yield too.
+    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    document.dispatchEvent(
+      new MouseEvent("pointerdown", { clientX: 40, clientY: 40 }),
+    );
+    expect(renderer.handleMouseTap).not.toHaveBeenCalled();
+  });
 });

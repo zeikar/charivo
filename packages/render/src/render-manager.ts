@@ -18,6 +18,7 @@ import {
 } from "./mouse-tracking";
 
 const GAZE_MOUSE_SUSPEND_MS = 1_200;
+const LOCAL_GAZE_SUSPEND_MS = 700;
 const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
 
@@ -50,6 +51,7 @@ export class RenderManager implements IRenderManager {
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
   private mouseTrackingSuspendedUntil = 0;
+  private localGazeSuspendUntil = 0;
   private lastExpression?: { expressionId: string; at: number };
   private lastMotion?: { group: string; index: number; at: number };
   private eventBus?: CharivoEventBus;
@@ -174,7 +176,7 @@ export class RenderManager implements IRenderManager {
             mouseTrackableRenderer.updateViewWithMouse(coords);
           },
           handleMouseTap: (coords) => {
-            if (this.isMouseTrackingSuspended()) {
+            if (this.isAiGazeActive()) {
               return;
             }
 
@@ -206,6 +208,19 @@ export class RenderManager implements IRenderManager {
 
     await this.renderer.render(message, targetCharacter);
     this.messageCallback?.(message, targetCharacter);
+  }
+
+  /** Local-presence gaze (webcam), a peer of mouse-tracking. Yields to the AI
+   *  gaze window (isAiGazeActive); while applying, suspends mouse CURSOR tracking
+   *  (updateViewWithMouse, NOT taps) via a separate local-gaze window so the
+   *  static document mouse cursor target does not fight the webcam. Returns true
+   *  when applied, false on no-op (AI owns the avatar, or the renderer has no lookAt). */
+  setLocalGaze(coords: GazeCoordinates): boolean {
+    if (this.isAiGazeActive()) return false; // yield to AI gaze ONLY
+    if (!this.hasGazeControl(this.renderer)) return false;
+    this.renderer.lookAt(coords);
+    this.localGazeSuspendUntil = Date.now() + LOCAL_GAZE_SUSPEND_MS; // beat mouse
+    return true;
   }
 
   /**
@@ -378,8 +393,12 @@ export class RenderManager implements IRenderManager {
     }, durationMs);
   }
 
-  private isMouseTrackingSuspended(): boolean {
+  private isAiGazeActive(): boolean {
     return Date.now() < this.mouseTrackingSuspendedUntil;
+  }
+
+  private isMouseTrackingSuspended(): boolean {
+    return this.isAiGazeActive() || Date.now() < this.localGazeSuspendUntil;
   }
 
   private isMouseTrackable(
