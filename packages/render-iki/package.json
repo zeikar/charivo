@@ -1,0 +1,47 @@
+{
+  "name": "@charivo/render-iki",
+  "version": "0.0.0",
+  "description": "Iki-engine rendering adapter for Charivo (local dogfood; consumes the unpublished @iki engine)",
+  "private": true,
+  "type": "module",
+  "main": "dist/renderer.js",
+  "module": "dist/renderer.js",
+  "types": "dist/src/renderer.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/renderer.d.ts",
+      "import": "./dist/renderer.js",
+      "default": "./dist/renderer.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build:local": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
+    "typecheck:local": "tsc --noEmit",
+    "dev:local": "tsup --watch"
+  },
+  "dependencies": {
+    "@charivo/core": "workspace:*",
+    "@charivo/render": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeikar/charivo.git",
+    "directory": "packages/render-iki"
+  },
+  "author": {
+    "name": "Zeikar",
+    "url": "https://github.com/zeikar"
+  },
+  "homepage": "https://github.com/zeikar/charivo#readme",
+  "bugs": {
+    "url": "https://github.com/zeikar/charivo/issues"
+  }
+}
