@@ -269,6 +269,8 @@ export default function Page() {
     clearUserName();
     clearCharacterId();
     setCharacterId(DEFAULT_CHARACTER_ID);
+    setGazeTrackingOn(false);
+    setGazeStatus("idle");
   }
 
   // Public-surface-only phase derivation: the realtime:* events are internal to

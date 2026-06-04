@@ -71,9 +71,11 @@ avatar's gaze to follow the user's head position.
 - **On-device inference.** Face detection runs entirely in the browser via
   [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
   WASM. No video frames are ever uploaded — all processing stays local.
-- **One-time model download.** On first enable, the browser fetches the
-  MediaPipe WASM binary and face-landmarker model weights from a third-party
-  CDN (`cdn.jsdelivr.net`). Subsequent visits use the browser cache.
+- **One-time model download.** On first enable, the browser fetches two
+  third-party assets: the MediaPipe WASM runtime from jsDelivr
+  (`cdn.jsdelivr.net`) and the BlazeFace short-range face-detection model
+  weights from Google Cloud Storage (`storage.googleapis.com`). Subsequent
+  visits use the browser cache.
 - **Self-hosting.** For production deployments, place the WASM and model files
   under `public/` and point the landmarker at the local URL. This avoids the
   CDN dependency and is the recommended follow-up for any non-demo use.

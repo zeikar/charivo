@@ -234,7 +234,7 @@ export interface RenderManager {
   setCharacter(character: Character): void;
   render(message: Message, character?: Character): Promise<void>;
   /** Local-presence gaze (webcam), peer of mouse-tracking. Returns true when applied. */
-  setLocalGaze(coords: GazeCoordinates): boolean;
+  setLocalGaze?(coords: GazeCoordinates): boolean;
   setEventBus(eventBus: CharivoEventBus): void;
   /** Removes all event-bus listeners registered by setEventBus. */
   disconnect(): void;
