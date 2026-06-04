@@ -1,7 +1,11 @@
 # Amadeus Roadmap
 
 Created: 2026-04-14
-Updated: 2026-06-03
+Updated: 2026-06-04
+
+Status: Phases 0-5 complete. This file is now the product definition + decision
+record and the v1 bar; the remaining milestone is declaring Amadeus v1 (see the
+v1 Definition section).
 
 ## Purpose
 
