@@ -23,7 +23,12 @@ export default defineConfig({
       args: [
         "--use-fake-ui-for-media-stream",
         "--use-fake-device-for-media-stream",
-        `--use-file-for-fake-audio-capture=${wavPath}%noloop`,
+        // Loop the canned WAV (no %noloop): the realtime session can take >2.5s
+        // to go active, and the fixture's speech is at ~0.6-2.5s. Playing once
+        // let the speech finish before audio streamed to the server, so server
+        // VAD never heard a turn and no response came. Looping guarantees a
+        // speech window lands after the session is active.
+        `--use-file-for-fake-audio-capture=${wavPath}`,
         "--autoplay-policy=no-user-gesture-required",
         "--mute-audio",
       ],

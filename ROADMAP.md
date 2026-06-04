@@ -415,9 +415,11 @@ changesets. All criteria are met: realtime voice and avatar
 expression/motion/gaze confirmed by direct demo observation; interruption /
 reconnect and cross-session memory precision pass deterministically (the
 `realtime-core` contract test and `eval:memory`); persona tone cleared a fresh
-advisory eval. Caveat: the automated `pnpm test:voice` latency smoke is currently
-red from a Chromium fake-mic environment issue (test infrastructure, not a
-product regression) — a follow-up, not a v1 blocker.
+advisory eval. (The `pnpm test:voice` latency smoke had briefly gone red from a
+Chromium fake-mic timing race — the canned WAV played once and finished before
+the session went active; fixed 2026-06-04 by looping the fixture so server VAD
+hears the turn. It now passes: baseline ~3690ms, e2e ~2523ms with live avatar
+tool calls.)
 
 ## Note
 

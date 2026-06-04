@@ -37,6 +37,16 @@ post-VAD latency.
 | `realtime-voice-baseline.spec.ts` (tool-free) | ~2834ms | `raw − fixed` ≈ −166ms (approximate; drift/overlap makes it go slightly negative) |
 | `realtime-voice-e2e.spec.ts` (avatar tools) | ~2707ms | includes tool-selection overhead |
 
+**Update (2026-06-04).** The fake-mic WAV now **loops** (the `%noloop` suffix was
+removed from `playwright.voice.config.ts`): the realtime session can take >2.5s to
+go active, and the fixture's speech is at ~0.6–2.5s, so a single play let the
+speech finish before audio reached the server — server VAD never heard a turn and
+no response came (the smoke timed out). Looping guarantees a speech window lands
+after the session is active. Side effect: the raw delta now carries "wait for the
+next loop's speech" jitter, so it reads a touch higher. Fresh single runs after
+the fix: baseline ~3690ms, e2e ~2523ms. Treat the raw number as a trend, and the
+`raw − fixed cost` subtraction below as even rougher under looping.
+
 **Anchor.** On the canned fixture, expect raw session-start→assistant-start in
 the **~2.5–3.5s** band locally. Single runs are nondeterministic — re-run a few
 times and compare the trend, not one number. The specs only *assert*
