@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Charivo, type RealtimeState, type RenderManager } from "@charivo/core";
+import {
+  Charivo,
+  type GazeCoordinates,
+  type RealtimeState,
+  type RenderManager,
+} from "@charivo/core";
 import { createRealtimeManager } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { buildSessionInstructions } from "../lib/build-session-instructions";
@@ -120,6 +125,7 @@ export interface UseRealtimeSessionResult {
   stop: () => Promise<void>;
   sendMessage: (text: string) => Promise<boolean>;
   interrupt: () => Promise<void>;
+  setLocalGaze: (coords: GazeCoordinates) => boolean;
 }
 
 export function useRealtimeSession(
@@ -724,6 +730,12 @@ export function useRealtimeSession(
     }
   }, []);
 
+  const setLocalGaze = useCallback(
+    (coords: GazeCoordinates): boolean =>
+      renderManagerRef.current?.setLocalGaze(coords) ?? false,
+    [],
+  );
+
   return {
     isConnected,
     isConnecting,
@@ -733,5 +745,6 @@ export function useRealtimeSession(
     stop,
     sendMessage,
     interrupt,
+    setLocalGaze,
   };
 }

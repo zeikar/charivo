@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
+import { useFaceGaze, type GazeStatus } from "./hooks/useFaceGaze";
+import { NEUTRAL_GAZE, createGazeSmoother } from "./lib/face-gaze";
+import type { GazeCoordinates } from "@charivo/core";
 import {
   loadUserName,
   saveUserName,
@@ -84,8 +87,108 @@ export default function Page() {
   // module-level constant, so no useMemo needed.
   const character = getCharacterById(characterId);
 
-  const { isConnected, isConnecting, transcript, start, stop, rendererReady } =
-    useRealtimeSession(canvas, character, userName, hydrated);
+  const {
+    isConnected,
+    isConnecting,
+    transcript,
+    start,
+    stop,
+    rendererReady,
+    setLocalGaze,
+  } = useRealtimeSession(canvas, character, userName, hydrated);
+
+  // Gaze tracking state (toggled in Task 6 via SettingsPanel).
+  const [gazeTrackingOn, setGazeTrackingOn] = useState(false);
+  const [gazeStatus, setGazeStatus] = useState<GazeStatus>("idle");
+  // Holds the last gaze that was actually accepted by setLocalGaze (i.e. it
+  // returned true). Used as the start point of the ease-to-neutral on face-lost
+  // or tracking toggle-off, so we always ease from the real on-screen position.
+  const lastGazeRef = useRef<GazeCoordinates>(NEUTRAL_GAZE);
+  // Stores the rAF handle of any running ease-to-neutral so we can cancel it
+  // when a new face arrives or tracking is toggled back on.
+  const decayHandleRef = useRef<number>(0);
+
+  // Push a gaze sample to the renderer. Updates lastGazeRef ONLY when the
+  // renderer accepted it (true = local-gaze window is active). Cancels any
+  // in-flight ease first so a returning face immediately takes over from wherever
+  // the ease left off.
+  const pushGaze = useCallback(
+    (c: GazeCoordinates) => {
+      if (decayHandleRef.current) {
+        cancelAnimationFrame(decayHandleRef.current);
+        decayHandleRef.current = 0;
+      }
+      if (setLocalGaze(c)) lastGazeRef.current = c;
+    },
+    [setLocalGaze],
+  );
+
+  // Ease the avatar back to neutral over ~300 ms using the same EMA smoother as
+  // the live detection path. Starts from lastGazeRef.current (the last accepted
+  // on-screen position) so the motion is always smooth regardless of when the
+  // face was lost. Calls pushGaze on each step so LOCAL_GAZE_SUSPEND_MS stays
+  // refreshed through the ease and mouse does not snap mid-ease.
+  const onFaceLost = useCallback(() => {
+    if (decayHandleRef.current) {
+      cancelAnimationFrame(decayHandleRef.current);
+      decayHandleRef.current = 0;
+    }
+    // alpha=0.12 gives ~300 ms convergence at 60 fps (ln(0.01)/ln(0.88) ~ 37 frames).
+    const smoother = createGazeSmoother({ alpha: 0.12 });
+    // Seed the smoother from the last accepted position so the first step starts
+    // from the real on-screen gaze rather than zero.
+    smoother(lastGazeRef.current);
+
+    const EPSILON = 0.01;
+    const step = () => {
+      const next = smoother(NEUTRAL_GAZE);
+      const close = Math.abs(next.x) < EPSILON && Math.abs(next.y) < EPSILON;
+      if (close) {
+        pushGaze(NEUTRAL_GAZE);
+        decayHandleRef.current = 0;
+        return;
+      }
+      pushGaze(next);
+      decayHandleRef.current = requestAnimationFrame(step);
+    };
+    decayHandleRef.current = requestAnimationFrame(step);
+  }, [pushGaze]);
+
+  // When tracking is toggled off, ease back to neutral once so the avatar
+  // visibly relaxes. Guard avoids firing on initial mount (gazeTrackingOn starts
+  // false; we only want the ease when it transitions false after having been true).
+  const wasGazeOnRef = useRef(false);
+  useEffect(() => {
+    if (gazeTrackingOn) {
+      wasGazeOnRef.current = true;
+    } else if (wasGazeOnRef.current) {
+      onFaceLost();
+    }
+  }, [gazeTrackingOn, onFaceLost]);
+
+  // Cancel any running ease on unmount.
+  useEffect(() => {
+    return () => {
+      if (decayHandleRef.current) {
+        cancelAnimationFrame(decayHandleRef.current);
+        decayHandleRef.current = 0;
+      }
+    };
+  }, []);
+
+  // Wire the face-gaze hook. Camera only runs while the session is connected so
+  // there is a renderer present. When enabled flips false the hook tears down the
+  // camera and emits onStatus("idle") automatically.
+  useFaceGaze({
+    enabled: gazeTrackingOn && isConnected,
+    onGaze: pushGaze,
+    onFaceLost,
+    onStatus: setGazeStatus,
+  });
+
+  // Suppress unused-var warnings until Task 6 wires SettingsPanel props.
+  void gazeStatus;
+  void setGazeTrackingOn;
 
   // Voice-first UI state.
   const [phase, setPhase] = useState<Phase>("dormant");
