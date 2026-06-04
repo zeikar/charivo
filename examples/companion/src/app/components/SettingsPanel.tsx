@@ -16,6 +16,7 @@ import {
   type MemoryFactView,
 } from "../lib/memory-facts";
 import { makeMemoryScope } from "../lib/memory-scope";
+import { type GazeStatus } from "../hooks/useFaceGaze";
 
 type Status = "dormant" | "connecting" | "connected";
 
@@ -27,6 +28,9 @@ export function SettingsPanel({
   onChangeName,
   captions,
   onCaptions,
+  gazeTracking,
+  onGazeTracking,
+  gazeStatus,
   status,
   onDisconnect,
   onReconnect,
@@ -39,6 +43,9 @@ export function SettingsPanel({
   onChangeName: () => void;
   captions: boolean;
   onCaptions: (v: boolean) => void;
+  gazeTracking: boolean;
+  onGazeTracking: (v: boolean) => void;
+  gazeStatus: GazeStatus;
   status: Status;
   onDisconnect: () => void;
   onReconnect: () => void;
@@ -196,6 +203,42 @@ export function SettingsPanel({
                   className={"toggle" + (captions ? " on" : "")}
                   onClick={() => onCaptions(!captions)}
                   aria-label="Toggle captions"
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+            </section>
+
+            <section className="set-group">
+              <div className="set-row">
+                <div>
+                  <label className="set-label">Let her look back at you</label>
+                  <p className="set-hint">
+                    Uses your webcam to follow your face. Your video stays on
+                    your device and is never uploaded. (Turning this on
+                    downloads the face-detection model once.) Off by default.
+                  </p>
+                  {gazeStatus === "denied" && (
+                    <p className="set-hint" style={{ marginTop: 6 }}>
+                      Camera permission is blocked - allow it in your browser to
+                      use this.
+                    </p>
+                  )}
+                  {gazeStatus === "unavailable" && (
+                    <p className="set-hint" style={{ marginTop: 6 }}>
+                      No camera was found on this device.
+                    </p>
+                  )}
+                  {gazeStatus === "error" && (
+                    <p className="set-hint" style={{ marginTop: 6 }}>
+                      Couldn&apos;t start the camera.
+                    </p>
+                  )}
+                </div>
+                <button
+                  className={"toggle" + (gazeTracking ? " on" : "")}
+                  onClick={() => onGazeTracking(!gazeTracking)}
+                  aria-label="Toggle face gaze"
                 >
                   <span className="knob" />
                 </button>

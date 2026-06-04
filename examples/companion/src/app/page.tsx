@@ -186,10 +186,6 @@ export default function Page() {
     onStatus: setGazeStatus,
   });
 
-  // Suppress unused-var warnings until Task 6 wires SettingsPanel props.
-  void gazeStatus;
-  void setGazeTrackingOn;
-
   // Voice-first UI state.
   const [phase, setPhase] = useState<Phase>("dormant");
   const [captionsOn, setCaptionsOn] = useState(false);
@@ -359,6 +355,14 @@ export default function Page() {
             status={topBarStatus}
             onSettings={() => setSettingsOpen(true)}
           />
+          {(gazeStatus === "starting" || gazeStatus === "live") && (
+            <div className="gaze-indicator">
+              <span className="gaze-dot" />
+              <span className="gaze-label">
+                {gazeStatus === "starting" ? "Starting camera..." : "Camera on"}
+              </span>
+            </div>
+          )}
           <Captions show={captionsOn} line={transcript} name={character.name} />
           <SettingsPanel
             open={settingsOpen}
@@ -376,6 +380,9 @@ export default function Page() {
             }}
             captions={captionsOn}
             onCaptions={setCaptionsOn}
+            gazeTracking={gazeTrackingOn}
+            onGazeTracking={setGazeTrackingOn}
+            gazeStatus={gazeStatus}
             status={topBarStatus}
             onDisconnect={handleDisconnect}
             onReconnect={handleRetry}
