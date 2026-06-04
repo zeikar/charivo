@@ -60,6 +60,16 @@ The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly
 tear down typed character, TTS, and realtime events without duck typing.
 
+### `RenderManager` public methods
+
+Beyond the event-bus contract, `RenderManager` exposes optional public methods
+for driving avatar state from the app layer:
+
+- `setLocalGaze(coords: GazeCoordinates): boolean` — drives local-presence gaze
+  (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
+  avatar (the `realtime:gaze` suspend window is active) or when the renderer has
+  no `lookAt`.
+
 ## Errors
 
 Public methods throw typed errors exported from `@charivo/core`:

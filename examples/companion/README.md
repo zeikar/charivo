@@ -61,6 +61,28 @@ Live demo: https://charivo-companion.vercel.app/
   - **Memory** — list, add, and delete stored facts in the browser-local
     memory store.
 
+## Webcam gaze (experimental, opt-in, on-device)
+
+The companion has **optional** webcam-based face tracking that drives the
+avatar's gaze to follow the user's head position.
+
+- **Off by default.** The webcam is never accessed unless the user explicitly
+  enables it.
+- **On-device inference.** Face detection runs entirely in the browser via
+  [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
+  WASM. No video frames are ever uploaded — all processing stays local.
+- **One-time model download.** On first enable, the browser fetches the
+  MediaPipe WASM binary and face-landmarker model weights from a third-party
+  CDN (`cdn.jsdelivr.net`). Subsequent visits use the browser cache.
+- **Self-hosting.** For production deployments, place the WASM and model files
+  under `public/` and point the landmarker at the local URL. This avoids the
+  CDN dependency and is the recommended follow-up for any non-demo use.
+- **Gaze arbitration.** Webcam face position is fed to
+  `renderManager.setLocalGaze(coords)`. AI gaze (`realtime:gaze`) takes
+  priority over webcam, which in turn takes priority over mouse cursor. See
+  [Rendering — Gaze Drivers](../../docs/guide/rendering.md#gaze-drivers) for
+  the full arbitration model.
+
 ## `buildSessionInstructions` seam
 
 `src/app/lib/build-session-instructions.ts` is the single place where the

@@ -84,6 +84,25 @@ If the renderer exposes optional methods such as `playExpression`,
 `playMotionByGroup`, `lookAt`, or model catalog getters, `@charivo/render` will use
 them automatically.
 
+## Gaze Drivers
+
+The render manager arbitrates between three gaze drivers:
+
+1. **AI gaze** — driven by the `realtime:gaze` event from the realtime model's
+   look intent. Owns the avatar's gaze while the AI suspend window is active.
+2. **Local-presence gaze** — driven by calling `renderManager.setLocalGaze(coords)` from
+   the app layer (e.g. webcam face tracking). Suspends mouse cursor tracking
+   through a separate local-gaze window while active.
+3. **Mouse cursor** — the default continuous mouse-tracking path.
+
+**Priority for cursor-follow:** AI (`realtime:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
+
+**Deliberate taps** yield only to the AI window — local-presence does not
+suppress them.
+
+`setLocalGaze` returns `false` (no-op) while AI gaze owns the avatar or when
+the renderer has no `lookAt`.
+
 ## Alternatives
 
 - Use `@charivo/render/stub` for tests or demos that do not need real rendering.

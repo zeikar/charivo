@@ -74,3 +74,36 @@ Charivo events. In the default flow it listens for:
 This manager consumes the full bus because it needs subscription access, not
 just event emission. `RenderManager` also exposes `disconnect()` to remove the
 listeners registered by `setEventBus`; `destroy()` calls it automatically.
+
+## Local-Presence Gaze
+
+`RenderManager` exposes a public method for driving gaze from a local-presence
+source such as webcam face tracking:
+
+```ts
+renderManager.setLocalGaze({ x: 0.3, y: -0.1 }); // returns boolean
+```
+
+**What it does:**
+
+- Calls the renderer's `lookAt` with the supplied coordinates.
+- Briefly suspends mouse cursor tracking (the `updateViewWithMouse` path) via a
+  separate local-gaze window, so the webcam/local-presence driver beats the
+  cursor while the window is active.
+
+**What it does NOT do:**
+
+- It does not open the AI gaze suspend window used by `realtime:gaze`.
+- It does not suppress deliberate taps — tap-driven gaze yields only to the AI
+  window, not to the local-gaze window.
+
+**Returns `false` (no-op) when:**
+
+- AI gaze currently owns the avatar (the `realtime:gaze` suspend window is
+  active), or
+- the renderer has no `lookAt` method.
+
+**Gaze driver priority:**
+
+- Cursor-follow: AI (`realtime:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
+- Deliberate taps: AI (`realtime:gaze`) > tap (local-presence does not suppress taps)
