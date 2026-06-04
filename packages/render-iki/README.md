@@ -23,12 +23,20 @@ the engine at `../iki` relative to the charivo repo root (i.e. `iki` and
 └── iki/
 ```
 
+This package also resolves `@charivo/core` and `@charivo/render` via their
+**built** `dist` declarations (not source). Both must be built before
+`build:local` can succeed.
+
 ```bash
-# in the iki repo, build the engine + format packages first
+# 1. in the iki repo, build the engine + format packages
 pnpm install
 pnpm build            # or: pnpm --filter @iki/engine build && pnpm --filter @iki/format build
 
-# then, in the charivo repo, build this adapter
+# 2. in the charivo repo, build the workspace deps that this adapter consumes
+#    (run from the charivo repo root)
+pnpm build            # or: pnpm --filter @charivo/core build && pnpm --filter @charivo/render build
+
+# 3. then build this adapter
 pnpm --filter @charivo/render-iki build:local
 ```
 
