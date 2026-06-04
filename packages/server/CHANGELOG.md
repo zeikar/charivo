@@ -1,5 +1,12 @@
 # @charivo/server
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [f82ba6f]
+  - @charivo/core@0.14.0
+
 ## 0.3.1
 
 ### Patch Changes
