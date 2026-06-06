@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>render-iki test</title>
+    <style>
+      :root {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 24px;
+        background: #6b7280;
+        color: #f3f4f6;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 600;
+      }
+      #avatar {
+        width: 420px;
+        height: 420px;
+        background: #4b5563;
+        border-radius: 12px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      button {
+        padding: 8px 14px;
+        font-size: 13px;
+        border: 0;
+        border-radius: 8px;
+        background: #111827;
+        color: #f9fafb;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1f2937;
+      }
+      #status {
+        font-size: 12px;
+        color: #e5e7eb;
+        min-height: 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>charivo RenderManager → @charivo/render-iki → iki engine</h1>
+    <canvas id="avatar"></canvas>
+    <div class="row">
+      <button id="speak">▶ Simulate speech (lip-sync)</button>
+      <button id="gazeL">◀ Gaze left</button>
+      <button id="gazeC">● Center</button>
+      <button id="gazeR">Gaze right ▶</button>
+      <button id="gazeUp">▲ Gaze up</button>
+    </div>
+    <div id="status">booting…</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

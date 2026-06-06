@@ -1,0 +1,16 @@
+{
+  "name": "@charivo/iki-test",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local test harness: drive an .iki model through charivo's RenderManager + @charivo/render-iki",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^5.4.20"
+  }
+}

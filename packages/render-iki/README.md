@@ -71,6 +71,13 @@ await renderManager.loadModel?.("/iki/hiyori.iki.json");
 (The package-name import resolves to `dist/` only after
 `pnpm --filter @charivo/render-iki build:local` has run with the sibling built.)
 
+## Try it
+
+A runnable local harness lives in [`examples/iki-test`](../../examples/iki-test) —
+it drives a sample `.iki` model through charivo's `RenderManager` + this adapter
+(idle breath/blink, mouse-follow gaze, simulated lip-sync). With the `../iki`
+sibling present, run `pnpm --filter @charivo/iki-test dev` and open the Vite URL.
+
 ## Public surface
 
 - `initialize()` — create the WebGL player (requires a canvas).
