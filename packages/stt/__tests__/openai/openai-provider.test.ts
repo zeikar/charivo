@@ -40,7 +40,7 @@ describe("OpenAISTTProvider", () => {
   it("forwards configuration to the SDK", async () => {
     const provider = new OpenAISTTProvider({
       apiKey: "key",
-      defaultLanguage: "ko",
+      defaultLanguage: "en",
     });
 
     await provider.transcribe(new Blob(["audio"]), { language: "en" });

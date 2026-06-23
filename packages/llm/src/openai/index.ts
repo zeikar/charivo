@@ -5,16 +5,16 @@ import {
   OpenAILLMProvider,
 } from "./provider";
 
-// OpenAILLMConfig를 직접 사용
+// Use OpenAILLMConfig directly
 export type OpenAILLMClientConfig = OpenAILLMConfig;
 
 /**
- * OpenAI LLM Client - OpenAI provider를 래핑해서 클라이언트에서 직접 사용하는 Stateless 클라이언트
+ * OpenAI LLM Client - Stateless client that wraps the OpenAI provider for direct use on the client
  *
- * 로컬 개발이나 테스트 환경에서 사용. 프로덕션에서는 보안상 권장하지 않음.
- * API 키가 클라이언트에 노출되므로 서버 환경에서만 사용하거나 테스트용으로만 사용해야 함.
+ * For use in local development or test environments. Not recommended for production for security reasons.
+ * The API key is exposed to the client, so use it only in a server environment or for testing purposes.
  *
- * Stateless 설계: 세션 관리는 외부에서 담당하고, 이 클라이언트는 API 호출만 담당
+ * Stateless design: session management is handled externally, and this client only handles API calls
  */
 export class OpenAILLMClient implements LLMClient {
   private provider: OpenAILLMProvider;
@@ -31,7 +31,7 @@ export class OpenAILLMClient implements LLMClient {
   async call(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
-    // Provider를 사용해서 응답 생성
+    // Generate a response using the provider
     const assistantMessage = await this.provider.generateResponse(messages);
 
     return assistantMessage;

@@ -4,7 +4,7 @@ const openaiMocks = vi.hoisted(() => {
   const instances: Array<{ config: unknown }> = [];
   const createTranscription = vi.fn(
     async (_payload: { file: File; model: string; language?: string }) => ({
-      text: "안녕하세요",
+      text: "Hello",
     }),
   );
 
@@ -32,7 +32,7 @@ import { OpenAISTTProvider } from "@charivo/server/openai";
 beforeEach(() => {
   openaiMocks.createTranscription.mockClear();
   openaiMocks.instances.length = 0;
-  openaiMocks.createTranscription.mockResolvedValue({ text: "안녕하세요" });
+  openaiMocks.createTranscription.mockResolvedValue({ text: "Hello" });
 });
 
 afterEach(() => {
@@ -44,23 +44,23 @@ describe("OpenAISTTProvider", () => {
   it("uses the default language and creates a File payload from Blob input", async () => {
     const provider = new OpenAISTTProvider({
       apiKey: "key",
-      defaultLanguage: "ko",
+      defaultLanguage: "en",
     });
 
     const result = await provider.transcribe(new Blob(["audio"]));
 
-    expect(result).toBe("안녕하세요");
+    expect(result).toBe("Hello");
     expect(openaiMocks.createTranscription).toHaveBeenCalledWith({
       file: expect.any(File),
       model: "whisper-1",
-      language: "ko",
+      language: "en",
     });
   });
 
   it("lets explicit language override the default and accepts ArrayBuffer input", async () => {
     const provider = new OpenAISTTProvider({
       apiKey: "key",
-      defaultLanguage: "ko",
+      defaultLanguage: "en",
     });
 
     await provider.transcribe(new ArrayBuffer(8), { language: "en" });

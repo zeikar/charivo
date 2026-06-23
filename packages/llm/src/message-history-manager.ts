@@ -14,7 +14,7 @@ export interface AddMessageOptions {
 }
 
 /**
- * 메시지 히스토리 관리
+ * Message history management
  */
 export class MessageHistoryManager {
   private history: Message[] = [];
@@ -59,7 +59,7 @@ export class MessageHistoryManager {
   }
 
   getAll(): Message[] {
-    return [...this.history]; // 복사본 반환
+    return [...this.history]; // Return a copy
   }
 
   getRecent(maxMessages?: number): Message[] {

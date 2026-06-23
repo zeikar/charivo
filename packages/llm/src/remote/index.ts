@@ -12,7 +12,7 @@ export interface RemoteLLMConfig {
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Remote LLM Client - 서버 API를 호출하는 stateless 클라이언트
+ * Remote LLM Client - stateless client that calls the server API
  */
 export class RemoteLLMClient implements LLMClient {
   private apiEndpoint: string;

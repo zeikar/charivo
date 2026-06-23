@@ -14,10 +14,10 @@ export interface RemoteTTSConfig {
 const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Remote TTS Player - 원격 서버의 TTS API를 사용하는 Stateless TTS Player
+ * Remote TTS Player - Stateless TTS Player that uses a remote server's TTS API
  *
- * 서버에서 TTS를 처리하고 오디오 데이터를 받아옴
- * Stateless 설계: 오디오 재생과 립싱크는 TTS Manager에서 담당
+ * Processes TTS on the server and receives the audio data
+ * Stateless design: audio playback and lip-sync are handled by the TTS Manager
  */
 export class RemoteTTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
@@ -31,7 +31,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
   }
 
   /**
-   * Stateless 오디오 생성 (TTS Manager에서 사용)
+   * Stateless audio generation (used by the TTS Manager)
    */
   async generateAudio(
     text: string,
@@ -60,10 +60,10 @@ export class RemoteTTSPlayer implements TTSPlayer {
   }
 
   /**
-   * Legacy speak 메서드 (호환성을 위해 유지)
+   * Legacy speak method (kept for compatibility)
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
-    // 간단한 재생만 수행 (립싱크 없음)
+    // Perform simple playback only (no lip-sync)
     const audioBuffer = await this.generateAudio(text, options);
     const blob = new Blob([audioBuffer], { type: "audio/wav" });
     const audioUrl = URL.createObjectURL(blob);
@@ -90,7 +90,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
   }
 
   async stop(): Promise<void> {
-    // Stateless이므로 특별한 정리 작업 없음
+    // Stateless, so no special cleanup is needed
   }
 
   setVoice(voice: string): void {

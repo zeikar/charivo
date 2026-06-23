@@ -1,7 +1,7 @@
 import { Message } from "@charivo/core";
 
 /**
- * AI 응답 메시지 생성 헬퍼
+ * Helper for building AI response messages
  */
 export class ResponseMessageBuilder {
   static create(

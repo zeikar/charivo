@@ -1,7 +1,7 @@
 import { Character, Message } from "@charivo/core";
 
 /**
- * LLM 관련 검증 유틸리티
+ * LLM-related validation utilities
  */
 export class LLMValidators {
   static validateCharacterSet(

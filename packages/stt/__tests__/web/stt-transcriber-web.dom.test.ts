@@ -61,20 +61,20 @@ describe("WebSTTTranscriber", () => {
     });
 
     const transcriber = new WebSTTTranscriber();
-    await transcriber.startRecording({ language: "ko-KR" });
+    await transcriber.startRecording({ language: "en-US" });
 
     const recognition = MockSpeechRecognition.instances[0]!;
-    expect(recognition.lang).toBe("ko-KR");
+    expect(recognition.lang).toBe("en-US");
 
     recognition.onresult?.({
       resultIndex: 0,
-      results: [speechResult("안녕", true), speechResult("하세요", true)],
+      results: [speechResult("Hello", true), speechResult("world", true)],
     } as unknown as Event);
 
     const stopPromise = transcriber.stopRecording();
     recognition.onend?.(new Event("end"));
 
-    await expect(stopPromise).resolves.toBe("안녕 하세요");
+    await expect(stopPromise).resolves.toBe("Hello world");
   });
 
   it("rejects repeated starts while recording", async () => {

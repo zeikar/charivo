@@ -191,19 +191,19 @@ export interface LLMAdapter {
   clearHistory(): void;
 }
 
-// LLM 제공자 (서버사이드에서 LLM 응답 생성)
+// LLM provider (generates LLM responses server-side)
 export interface LLMProvider {
   generateResponse(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string>;
 }
 
-// 단순한 LLM 호출 클라이언트 (stateless)
+// Simple LLM call client (stateless)
 export interface LLMClient {
   call(messages: Array<{ role: string; content: string }>): Promise<string>;
 }
 
-// LLM 매니저 (세션 관리, 히스토리, 캐릭터 관리)
+// LLM manager (session management, history, character management)
 export interface LLMManager {
   setCharacter(character: Character): void;
   getCharacter(): Character | null;
@@ -212,7 +212,7 @@ export interface LLMManager {
   generateResponse(message: Message): Promise<string>;
 }
 
-// Renderer 인터페이스 (stateless renderer)
+// Renderer interface (stateless renderer)
 export interface Renderer {
   initialize(): Promise<void>;
   destroy(): Promise<void>;
@@ -227,7 +227,7 @@ export interface Renderer {
   getAvailableMotionGroups?(): Record<string, number>;
 }
 
-// Render 매니저 (세션 관리, 립싱크, 모션 제어)
+// Render manager (session management, lip-sync, motion control)
 export interface RenderManager {
   initialize(): Promise<void>;
   destroy(): Promise<void>;
@@ -254,7 +254,7 @@ export interface TTSOptions {
 
 export type TTSPlaybackMode = "audio" | "web-speech";
 
-// TTS 플레이어 (브라우저에서 음성 재생)
+// TTS player (plays audio in the browser)
 export interface TTSPlayer {
   /**
    * Explicit playback mode for the manager. Prefer setting this on concrete
@@ -273,13 +273,13 @@ export interface TTSPlayer {
   generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
 }
 
-// TTS 제공자 (오디오 데이터 생성)
+// TTS provider (generates audio data)
 export interface TTSProvider {
   generateSpeech(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
   setVoice(voice: string): void;
 }
 
-// TTS Manager - TTS 세션의 상태 관리를 담당하는 인터페이스
+// TTS Manager - interface responsible for managing the state of a TTS session
 export interface TTSManager {
   speak(text: string, options?: TTSOptions): Promise<void>;
   stop(): Promise<void>;

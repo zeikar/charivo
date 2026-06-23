@@ -12,14 +12,14 @@ export interface LLMManagerOptions {
 }
 
 /**
- * LLM Manager - LLM 세션의 상태 관리를 담당하는 클래스
+ * LLM Manager - Class responsible for managing the state of an LLM session
  *
- * 역할:
- * - 캐릭터 설정 및 관리
- * - 메시지 히스토리 관리
- * - LLM 클라이언트와의 통신
- * - 메시지 형식 변환
- * - 프롬프트 생성
+ * Responsibilities:
+ * - Character configuration and management
+ * - Message history management
+ * - Communication with the LLM client
+ * - Message format conversion
+ * - Prompt generation
  */
 export class LLMManager {
   private readonly historyManager: MessageHistoryManager;
@@ -38,11 +38,11 @@ export class LLMManager {
   }
 
   /**
-   * 캐릭터 설정
-   * 캐릭터가 변경되는 경우에만 히스토리를 초기화합니다.
+   * Set the character
+   * Clears the history only when the character changes.
    */
   setCharacter(character: Character): void {
-    // 캐릭터가 변경되는 경우에만 히스토리 초기화
+    // Clear the history only when the character changes
     if (this.character?.id !== character.id) {
       this.historyManager.clear();
     }
@@ -50,28 +50,28 @@ export class LLMManager {
   }
 
   /**
-   * 현재 설정된 캐릭터 반환
+   * Return the currently configured character
    */
   getCharacter(): Character | null {
     return this.character;
   }
 
   /**
-   * 히스토리 초기화
+   * Clear the history
    */
   clearHistory(): void {
     this.historyManager.clear();
   }
 
   /**
-   * 현재 히스토리 반환
+   * Return the current history
    */
   getHistory(): Message[] {
     return this.historyManager.getAll();
   }
 
   /**
-   * 메시지 응답 생성
+   * Generate a response to a message
    */
   async generateResponse(message: Message): Promise<string> {
     try {
@@ -86,34 +86,34 @@ export class LLMManager {
     // remain intact during the API call.
     this.historyManager.add(message, { prune: false });
 
-    // 히스토리 메시지 가져오기
+    // Get the history messages
     const historyMessages = this.getHistoryForApiCall();
 
-    // LLM API 형식으로 변환 (시스템 프롬프트 포함)
+    // Convert to LLM API format (including the system prompt)
     const apiMessages = this.prepareApiMessages(historyMessages);
 
     try {
-      // LLM 클라이언트를 통해 응답 생성
+      // Generate a response via the LLM client
       const assistantMessage = await this.llmClient.call(apiMessages);
 
-      // AI 응답 메시지 생성 및 히스토리에 추가
+      // Build the AI response message and add it to the history
       const responseMessage = ResponseMessageBuilder.create(
         assistantMessage,
-        this.character!.id, // validateCharacterSet 후 character는 non-null 보장됨
+        this.character!.id, // character is guaranteed non-null after validateCharacterSet
       );
       this.historyManager.add(responseMessage, { prune: false });
       this.historyManager.pruneToMax();
 
       return assistantMessage;
     } catch (error) {
-      // 에러가 발생하면 마지막 메시지를 히스토리에서 제거
+      // On error, remove the last message from the history
       this.historyManager.removeLast();
       throw toCharivoError("provider", error);
     }
   }
 
   /**
-   * LLM API 호출을 위한 메시지 준비
+   * Prepare messages for the LLM API call
    */
   private prepareApiMessages(
     messages: Message[],
@@ -142,7 +142,7 @@ export class LLMManager {
 }
 
 /**
- * LLM Manager 생성 헬퍼 함수
+ * Helper function to create an LLM Manager
  */
 export function createLLMManager(
   llmClient: LLMClient,

@@ -17,7 +17,7 @@ describe("examples/web /api/stt route", () => {
   });
 
   it("passes the optional language hint to the provider", async () => {
-    transcribe.mockResolvedValue("안녕하세요");
+    transcribe.mockResolvedValue("Hello");
 
     const formData = new FormData();
     formData.append(
@@ -26,7 +26,7 @@ describe("examples/web /api/stt route", () => {
         type: "audio/webm",
       }),
     );
-    formData.append("language", "ko");
+    formData.append("language", "en");
 
     const request = new Request("http://localhost/api/stt", {
       method: "POST",
@@ -35,10 +35,10 @@ describe("examples/web /api/stt route", () => {
     const response = await POST(request as never);
 
     expect(transcribe).toHaveBeenCalledWith(expect.any(Blob), {
-      language: "ko",
+      language: "en",
     });
     await expect(response.json()).resolves.toEqual({
-      transcription: "안녕하세요",
+      transcription: "Hello",
     });
   });
 });

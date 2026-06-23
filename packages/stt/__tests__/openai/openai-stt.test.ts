@@ -7,7 +7,7 @@ const recorder = {
 };
 
 const provider = {
-  transcribe: vi.fn(async () => "안녕하세요"),
+  transcribe: vi.fn(async () => "Hello"),
 };
 
 const providerMocks = vi.hoisted(() => ({
@@ -30,17 +30,17 @@ beforeEach(() => {
   recorder.isRecording.mockReset();
   recorder.isRecording.mockReturnValue(false);
   provider.transcribe.mockClear();
-  provider.transcribe.mockResolvedValue("안녕하세요");
+  provider.transcribe.mockResolvedValue("Hello");
   providerMocks.createOpenAISTTProvider.mockClear();
 });
 
 describe("OpenAISTTTranscriber", () => {
   it("creates the provider with browser mode enabled", () => {
-    new OpenAISTTTranscriber({ apiKey: "key", defaultLanguage: "ko" });
+    new OpenAISTTTranscriber({ apiKey: "key", defaultLanguage: "en" });
 
     expect(providerMocks.createOpenAISTTProvider).toHaveBeenCalledWith({
       apiKey: "key",
-      defaultLanguage: "ko",
+      defaultLanguage: "en",
       dangerouslyAllowBrowser: true,
     });
   });
@@ -48,13 +48,13 @@ describe("OpenAISTTTranscriber", () => {
   it("stores recording options and forwards them on stop", async () => {
     const transcriber = new OpenAISTTTranscriber({ apiKey: "key" });
 
-    await transcriber.startRecording({ language: "ko" });
+    await transcriber.startRecording({ language: "en" });
     const result = await transcriber.stopRecording();
 
-    expect(result).toBe("안녕하세요");
+    expect(result).toBe("Hello");
     expect(recorder.start).toHaveBeenCalledTimes(1);
     expect(provider.transcribe).toHaveBeenCalledWith(expect.any(Blob), {
-      language: "ko",
+      language: "en",
     });
   });
 

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // LLM Provider를 사용해서 응답 생성
+    // Generate a response using the LLM Provider
     const assistantMessage = await llmProvider.generateResponse(messages);
 
     return NextResponse.json({

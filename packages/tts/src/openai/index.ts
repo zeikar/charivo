@@ -5,16 +5,16 @@ import {
   OpenAITTSProvider,
 } from "./provider";
 
-// OpenAITTSConfig를 직접 사용 (확장할 내용이 없으므로)
+// Use OpenAITTSConfig directly (nothing to extend)
 export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 
 /**
- * OpenAI TTS Player - OpenAI provider를 래핑한 Stateless TTS Player
+ * OpenAI TTS Player - Stateless TTS Player that wraps the OpenAI provider
  *
- * 로컬 개발이나 테스트 환경에서 사용. 프로덕션에서는 보안상 권장하지 않음.
- * API 키가 클라이언트에 노출되므로 서버 환경에서만 사용하거나 테스트용으로만 사용해야 함.
+ * For use in local development or test environments. Not recommended for production for security reasons.
+ * The API key is exposed to the client, so use it only in a server environment or for testing purposes.
  *
- * Stateless 설계: 오디오 재생과 립싱크는 TTS Manager에서 담당
+ * Stateless design: audio playback and lip-sync are handled by the TTS Manager
  */
 export class OpenAITTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
@@ -31,7 +31,7 @@ export class OpenAITTSPlayer implements TTSPlayer {
   }
 
   /**
-   * Stateless 오디오 생성 (TTS Manager에서 사용)
+   * Stateless audio generation (used by the TTS Manager)
    */
   async generateAudio(
     text: string,
@@ -41,10 +41,10 @@ export class OpenAITTSPlayer implements TTSPlayer {
   }
 
   /**
-   * Legacy speak 메서드 (호환성을 위해 유지)
+   * Legacy speak method (kept for compatibility)
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
-    // 간단한 재생만 수행 (립싱크 없음)
+    // Perform simple playback only (no lip-sync)
     const audioBuffer = await this.generateAudio(text, options);
     const blob = new Blob([audioBuffer], { type: "audio/mp3" });
     const audioUrl = URL.createObjectURL(blob);
@@ -71,7 +71,7 @@ export class OpenAITTSPlayer implements TTSPlayer {
   }
 
   async stop(): Promise<void> {
-    // Stateless이므로 특별한 정리 작업 없음
+    // Stateless, so no special cleanup is needed
   }
 
   setVoice(voice: string): void {

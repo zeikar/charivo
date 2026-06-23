@@ -3,8 +3,8 @@ import type { CharivoEventEmitter } from "@charivo/core";
 /**
  * Web Speech Lip Sync Simulator
  *
- * Web Speech API용 텍스트 기반 립싱크 시뮬레이션
- * 단어의 모음 개수와 길이를 기반으로 입 움직임을 시뮬레이션
+ * Text-based lip-sync simulation for the Web Speech API
+ * Simulates mouth movement based on the number of vowels and length of each word
  */
 export class WebSpeechLipSyncSimulator {
   private intervals: number[] = [];
@@ -15,7 +15,7 @@ export class WebSpeechLipSyncSimulator {
   }
 
   /**
-   * 텍스트 기반 립싱크 시뮬레이션 시작
+   * Start text-based lip-sync simulation
    */
   startSimulation(text: string, rate: number = 1): void {
     this.clearIntervals();
@@ -45,7 +45,7 @@ export class WebSpeechLipSyncSimulator {
   }
 
   /**
-   * 페이드 아웃 효과 생성
+   * Create fade-out effect
    */
   private createFadeEffect(intensity: number, duration: number): void {
     const fadeSteps = 3;
@@ -66,7 +66,7 @@ export class WebSpeechLipSyncSimulator {
   }
 
   /**
-   * 시뮬레이션 중지
+   * Stop simulation
    */
   stopSimulation(): void {
     this.clearIntervals();
@@ -77,7 +77,7 @@ export class WebSpeechLipSyncSimulator {
   }
 
   /**
-   * 인터벌 정리
+   * Clear intervals
    */
   private clearIntervals(): void {
     this.intervals.forEach((id) => clearTimeout(id));
@@ -85,7 +85,7 @@ export class WebSpeechLipSyncSimulator {
   }
 
   /**
-   * 리소스 정리
+   * Dispose resources
    */
   dispose(): void {
     this.stopSimulation();

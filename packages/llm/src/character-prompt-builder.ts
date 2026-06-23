@@ -1,7 +1,7 @@
 import { Character } from "@charivo/core";
 
 /**
- * 캐릭터 정보를 시스템 프롬프트로 변환하는 유틸리티
+ * Utility for converting character information into a system prompt
  */
 export class CharacterPromptBuilder {
   static buildSystemPrompt(character: Character): string {

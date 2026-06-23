@@ -1,10 +1,10 @@
 import { TTSPlayer, TTSOptions } from "@charivo/core";
 
 /**
- * Web TTS Player - Web Speech API를 사용하는 Stateless TTS Player
+ * Web TTS Player - Stateless TTS Player that uses the Web Speech API
  *
- * 브라우저 내장 TTS 기능을 사용
- * Stateless 설계: 립싱크 시뮬레이션은 TTS Manager에서 담당
+ * Uses the browser's built-in TTS feature
+ * Stateless design: lip-sync simulation is handled by the TTS Manager
  */
 export class WebTTSPlayer implements TTSPlayer {
   readonly playbackMode = "web-speech" as const;
@@ -39,7 +39,7 @@ export class WebTTSPlayer implements TTSPlayer {
   }
 
   /**
-   * Simple speak 메서드 (TTS Manager에서 립싱크 처리)
+   * Simple speak method (lip-sync is handled by the TTS Manager)
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
     return new Promise((resolve, reject) => {

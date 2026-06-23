@@ -18,7 +18,7 @@ const sttManager = createSTTManager(
   createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" }),
 );
 
-await sttManager.start({ language: "ko" });
+await sttManager.start({ language: "en" });
 const text = await sttManager.stop();
 ```
 

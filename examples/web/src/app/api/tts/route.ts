@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TTS 생성
+    // TTS generation
     const audioBuffer = await ttsProvider.generateSpeech(text, {
       voice,
       rate: speed,

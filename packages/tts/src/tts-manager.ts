@@ -14,14 +14,14 @@ import {
 } from "./tts-utils";
 
 /**
- * TTS Manager - TTS 세션의 상태 관리를 담당하는 클래스
+ * TTS Manager - Class responsible for managing the state of a TTS session
  *
- * 역할:
- * - TTS Player 관리 및 래핑
- * - 오디오 재생 및 제어
- * - 립싱크 처리 (Web Speech 시뮬레이션, Audio는 Live2D SDK에서 자동 처리)
- * - 이벤트 발생 (tts:audio:start, tts:lipsync:update, tts:audio:end)
- * - 세션 상태 관리
+ * Responsibilities:
+ * - TTS Player management and wrapping
+ * - Audio playback and control
+ * - Lip-sync handling (Web Speech simulation; Audio is handled automatically by the Live2D SDK)
+ * - Event emission (tts:audio:start, tts:lipsync:update, tts:audio:end)
+ * - Session state management
  */
 export class TTSManagerImpl implements TTSManager {
   private ttsPlayer: TTSPlayer;
@@ -31,7 +31,7 @@ export class TTSManagerImpl implements TTSManager {
   private playbackMode: TTSPlaybackMode;
   private isAudioSessionActive = false;
 
-  // Web Speech 립싱크 시뮬레이션만 필요
+  // Only the Web Speech lip-sync simulation is needed
   private webSimulator: WebSpeechLipSyncSimulator;
 
   constructor(ttsPlayer: TTSPlayer) {
@@ -43,7 +43,7 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * 이벤트 발신자 설정
+   * Set the event emitter
    */
   setEventEmitter(eventEmitter: CharivoEventEmitter): void {
     this.eventEmitter = eventEmitter;
@@ -53,7 +53,7 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * 텍스트 음성 변환 및 재생
+   * Convert text to speech and play it
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
     try {
@@ -72,7 +72,7 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * 현재 재생 중인 음성 중지
+   * Stop the currently playing speech
    */
   async stop(): Promise<void> {
     this.webSimulator.stopSimulation();
@@ -100,21 +100,21 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * 음성 설정
+   * Set the voice
    */
   setVoice(voice: string): void {
     this.ttsPlayer.setVoice(voice);
   }
 
   /**
-   * 지원 여부 확인
+   * Check support
    */
   isSupported(): boolean {
     return this.ttsPlayer.isSupported();
   }
 
   /**
-   * Web Speech API 처리 (시뮬레이션 립싱크)
+   * Handle the Web Speech API (simulated lip-sync)
    */
   private async handleWebSpeech(
     text: string,
@@ -147,7 +147,7 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * Audio-based TTS 처리 (실시간 오디오 분석)
+   * Handle audio-based TTS (real-time audio analysis)
    */
   private async handleAudioSpeech(
     text: string,
@@ -168,7 +168,7 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * Stateless 오디오 처리
+   * Stateless audio handling
    */
   private async handleStatelessAudio(
     text: string,
@@ -249,7 +249,7 @@ export class TTSManagerImpl implements TTSManager {
 }
 
 /**
- * TTS Manager 생성 헬퍼 함수
+ * Helper function to create a TTS Manager
  */
 export function createTTSManager(ttsPlayer: TTSPlayer): TTSManager {
   return new TTSManagerImpl(ttsPlayer);

@@ -32,10 +32,10 @@ describe("RemoteSTTTranscriber", () => {
       async (_input: RequestInfo | URL, init?: RequestInit) => {
         const formData = init?.body as FormData;
 
-        expect(formData.get("language")).toBe("ko");
+        expect(formData.get("language")).toBe("en");
         expect(formData.get("audio")).toBeInstanceOf(File);
 
-        return new Response(JSON.stringify({ transcription: "안녕하세요" }), {
+        return new Response(JSON.stringify({ transcription: "Hello" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
@@ -45,10 +45,10 @@ describe("RemoteSTTTranscriber", () => {
     globalThis.fetch = fetchMock as typeof fetch;
 
     const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
-    await transcriber.startRecording({ language: "ko" });
+    await transcriber.startRecording({ language: "en" });
     const result = await transcriber.stopRecording();
 
-    expect(result).toBe("안녕하세요");
+    expect(result).toBe("Hello");
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/stt",
       expect.objectContaining({ method: "POST" }),

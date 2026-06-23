@@ -1,11 +1,11 @@
 import { Message } from "@charivo/core";
 
 /**
- * 메시지 형식 변환 유틸리티
+ * Message format conversion utility
  */
 export class MessageConverter {
   /**
-   * Charivo Message를 OpenAI 형식으로 변환
+   * Convert a Charivo Message to the OpenAI format
    */
   static toOpenAIFormat(
     messages: Message[],
@@ -17,7 +17,7 @@ export class MessageConverter {
   }
 
   /**
-   * 시스템 프롬프트와 메시지들을 OpenAI 형식으로 결합
+   * Combine the system prompt and messages into the OpenAI format
    */
   static combineWithSystemPrompt(
     systemPrompt: string,

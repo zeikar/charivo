@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       defaultModel: "whisper-1",
     });
 
-    // FormData에서 audio 파일 읽기
+    // Read the audio file from FormData
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;
     const language = formData.get("language");
@@ -28,12 +28,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // File을 Blob으로 변환
+    // Convert the File to a Blob
     const audioBlob = new Blob([await audioFile.arrayBuffer()], {
       type: audioFile.type,
     });
 
-    // STT 변환
+    // STT transcription
     const transcription = await sttProvider.transcribe(audioBlob, {
       language: typeof language === "string" ? language : undefined,
     });

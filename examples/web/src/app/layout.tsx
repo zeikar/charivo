@@ -59,7 +59,7 @@ export const metadata: Metadata = {
     images: ["https://dogimg.vercel.app/api/og?url=https://charivo.vercel.app"],
     creator: "@zeikar_dev",
   },
-  manifest: "/manifest.json", // PWA manifest (옵션)
+  manifest: "/manifest.json", // PWA manifest (optional)
   category: "developer",
   other: {
     "msapplication-TileColor": "#3b82f6",

@@ -34,7 +34,7 @@ charivo.attachSTT(
   createSTTManager(createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" })),
 );
 
-await charivo.getSTTManager()?.start({ language: "ko" });
+await charivo.getSTTManager()?.start({ language: "en" });
 const text = await charivo.getSTTManager()?.stop();
 ```
 
@@ -80,7 +80,7 @@ const provider = createOpenAISTTProvider({
 });
 
 const text = await provider.transcribe(audioBlob, {
-  language: "ko",
+  language: "en",
 });
 ```
 

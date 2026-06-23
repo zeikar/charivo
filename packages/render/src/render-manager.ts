@@ -23,19 +23,19 @@ const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
 
 /**
- * Render Manager - 렌더링 세션의 상태 관리를 담당하는 클래스
+ * Render Manager - Class responsible for managing the state of a rendering session
  *
- * 역할:
- * - 렌더러 관리 및 래핑
- * - 이벤트 버스 연결 및 이벤트 처리
- * - 립싱크 처리 및 조율
- * - 모션 및 표현 제어
- * - 마우스 추적 관리
- * - 캐릭터 설정 관리
- * - 메시지 렌더링 조율
+ * Responsibilities:
+ * - Renderer management and wrapping
+ * - Event bus connection and event handling
+ * - Lip-sync handling and coordination
+ * - Motion and expression control
+ * - Mouse tracking management
+ * - Character configuration management
+ * - Message rendering coordination
  *
- * RenderManager는 어떤 Renderer든 받을 수 있으며,
- * 렌더러가 지원하는 기능(motion, lipsync, mouse tracking 등)을 선택적으로 사용합니다.
+ * RenderManager can accept any Renderer and
+ * optionally uses the features the renderer supports (motion, lipsync, mouse tracking, etc.).
  */
 export interface RenderManagerOptions {
   canvas?: HTMLCanvasElement;
@@ -101,7 +101,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 이벤트 버스 연결
+   * Connect the event bus
    */
   setEventBus(eventBus: CharivoEventBus): void {
     // Defensive self-clear: avoid double-registering if called again
@@ -119,7 +119,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 이벤트 버스 리스너 제거. 연결된 버스가 없으면 아무것도 하지 않으며 여러 번 호출해도 안전합니다.
+   * Remove the event bus listeners. Does nothing if no bus is connected, and is safe to call multiple times.
    */
   disconnect(): void {
     if (!this.eventBus) {
@@ -140,7 +140,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 메시지 콜백 설정
+   * Set the message callback
    */
   setMessageCallback(
     callback: (message: Message, character?: Character) => void,
@@ -149,14 +149,14 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 캐릭터 설정
+   * Set the character
    */
   setCharacter(character: Character): void {
     this.character = character;
   }
 
   /**
-   * 렌더러 초기화
+   * Initialize the renderer
    */
   async initialize(): Promise<void> {
     this.bindBrowserLifecycleEvents();
@@ -192,7 +192,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 모델 로드 (렌더러가 지원하는 경우)
+   * Load the model (if the renderer supports it)
    */
   async loadModel(modelPath: string): Promise<void> {
     if (this.renderer.loadModel) {
@@ -201,7 +201,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 메시지 렌더링
+   * Render a message
    */
   async render(message: Message, character?: Character): Promise<void> {
     const targetCharacter = character || this.character || undefined;
@@ -224,7 +224,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 정리
+   * Clean up
    */
   async destroy(): Promise<void> {
     this.disconnect();
@@ -242,7 +242,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 실시간 립싱크 시작
+   * Start real-time lip-sync
    */
   private startRealtimeLipSync(audioElement?: HTMLAudioElement): void {
     if (this.renderer.setRealtimeLipSync) {
@@ -261,7 +261,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 실시간 립싱크 중지
+   * Stop real-time lip-sync
    */
   private stopRealtimeLipSync(): void {
     this.lipSync.stop();
@@ -272,7 +272,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * 립싱크 RMS 업데이트
+   * Update the lip-sync RMS
    */
   private updateLipSync(rms: number): void {
     if (this.renderer.updateRealtimeLipSyncRms) {
@@ -456,7 +456,7 @@ export class RenderManager implements IRenderManager {
 }
 
 /**
- * Render Manager 생성 헬퍼 함수
+ * Helper function to create a Render Manager
  */
 export function createRenderManager(
   renderer: Renderer,

@@ -61,20 +61,20 @@ interface SpeechRecognition extends EventTarget {
 }
 
 /**
- * Web STT Transcriber - Web Speech API를 사용하는 STT Transcriber
+ * Web STT Transcriber - STT Transcriber that uses the Web Speech API
  *
- * 브라우저 내장 음성 인식 기능을 사용
- * 녹음 없이 실시간으로 음성을 텍스트로 변환
+ * Uses the browser's built-in speech recognition
+ * Converts speech to text in real time without recording
  *
- * 장점:
- * - API 키 불필요
- * - 무료
- * - 실시간 인식
- * - MediaRecorder 불필요 (마이크 직접 청취)
+ * Advantages:
+ * - No API key required
+ * - Free
+ * - Real-time recognition
+ * - No MediaRecorder required (listens to the microphone directly)
  *
- * 제약사항:
- * - 브라우저 지원 필요 (Chrome, Edge 등)
- * - 인터넷 연결 필요 (대부분의 브라우저에서)
+ * Limitations:
+ * - Requires browser support (Chrome, Edge, etc.)
+ * - Requires an internet connection (in most browsers)
  */
 export class WebSTTTranscriber implements STTTranscriber {
   private recognition: SpeechRecognition | null = null;

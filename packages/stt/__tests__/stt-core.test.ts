@@ -13,11 +13,11 @@ describe("STTManagerImpl", () => {
 
     manager.setEventEmitter(emitter);
 
-    await manager.start({ language: "ko" });
+    await manager.start({ language: "en" });
 
-    expect(transcriber.startRecording).toHaveBeenCalledWith({ language: "ko" });
+    expect(transcriber.startRecording).toHaveBeenCalledWith({ language: "en" });
     expect(emitter.emit).toHaveBeenCalledWith("stt:start", {
-      options: { language: "ko" },
+      options: { language: "en" },
     });
   });
 

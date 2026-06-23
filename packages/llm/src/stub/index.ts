@@ -27,7 +27,7 @@ export class StubLLMClient implements LLMClient {
   async call(
     _messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
-    // 실제 API 호출을 시뮬레이션하기 위한 딜레이
+    // Delay to simulate a real API call
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     const response = this.responses[this.responseIndex % this.responses.length];

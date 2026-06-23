@@ -19,7 +19,7 @@ export function getTTSAudioMimeType(player: TTSPlayer): string {
 }
 
 /**
- * TTS Player가 generateAudio 메서드를 지원하는지 확인
+ * Check whether the TTS Player supports the generateAudio method
  */
 export function supportsGenerateAudio(
   player: TTSPlayer,

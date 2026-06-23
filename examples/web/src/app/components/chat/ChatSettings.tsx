@@ -197,7 +197,8 @@ export function ChatSettings({
               )}
               {selectedLLM?.corsWarning && (
                 <div className="text-xs text-yellow-700 dark:text-yellow-400 mt-1.5 p-1.5 bg-yellow-50 dark:bg-yellow-900/20 rounded">
-                  ⚠️ CORS 이슈로 브라우저에서 직접 연결이 차단될 수 있습니다.
+                  ⚠️ Direct connection from the browser may be blocked due to
+                  CORS issues.
                 </div>
               )}
               {llmError && (
