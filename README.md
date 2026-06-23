@@ -171,6 +171,7 @@ as the [Quick Start](#quick-start) LLM/TTS clients). The rest of the wiring
 (renderer, character, `startSession`) is identical to the example above.
 
 ```ts
+import { createRealtimeManager } from "@charivo/realtime";
 import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
 
 // Dev/demo only: this key is exposed in the browser. Never ship it to production.
