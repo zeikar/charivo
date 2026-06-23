@@ -75,6 +75,30 @@ session active and drives reconnect attempts internally. During that window
 `state.session.status` stays `"active"` while `state.connection` moves back to
 `"connecting"`.
 
+## No-server dev (OpenAI Agents transport)
+
+For local development you can skip the server route: pass an OpenAI API key to
+the direct Agents transport client and it mints a short-lived realtime client
+secret in the browser, mirroring `@charivo/llm/openai` and `@charivo/tts/openai`.
+
+```ts
+import { createRealtimeManager } from "@charivo/realtime";
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
+
+// Dev/testing only: the API key is exposed in the browser.
+const client = createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." });
+const manager = createRealtimeManager(client);
+
+await manager.startSession({ provider: "openai", model: "gpt-realtime-mini" });
+```
+
+`createOpenAIRealtimeAgentsClient` option precedence is `sessionBootstrap` >
+`apiEndpoint` > `apiKey`. The `apiKey` path is dev/testing only and additionally
+requires microphone permission, a secure context (`localhost` or `https`), and a
+user gesture to start; the minted client secret is short-lived (re-minted per
+session). For production, use the server-mediated `@charivo/realtime/remote`
+client shown above.
+
 ## Exports
 
 - `createRealtimeManager(client, options?)`

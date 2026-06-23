@@ -167,6 +167,23 @@ Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
 - `@charivo/realtime/openai-agents`
 - current OpenAI Agents SDK transport client and adapter
 - useful when you need to own the underlying browser client directly
+- dev/testing only: pass `apiKey` to mint an ephemeral client secret in the browser (no server), mirroring `@charivo/llm/openai` / `@charivo/tts/openai`
+
+```ts
+import { createRealtimeManager } from "@charivo/realtime";
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
+
+// Dev/testing only — the key is exposed in the browser.
+const manager = createRealtimeManager(
+  createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." }),
+);
+```
+
+Option precedence is `sessionBootstrap` > `apiEndpoint` > `apiKey`. The `apiKey`
+path additionally needs microphone permission, a secure context
+(`localhost`/`https`), and a user gesture to start; the minted secret is
+short-lived and re-minted per session. Use the server-mediated
+[Provider Route](#provider-route) below for production.
 
 ### Legacy Low-Level OpenAI Transport
 
@@ -235,6 +252,10 @@ If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can
 still pass those fields explicitly when they need deterministic provider
 configuration. For pricing information on the available models, see [OpenAI's pricing page](https://openai.com/api/pricing/).
+
+For local development without a server, the direct Agents transport can mint the
+client secret in the browser via `apiKey` — see
+[OpenAI Agents SDK Transport](#openai-agents-sdk-transport) (dev/testing only).
 
 ## Alternatives
 

@@ -162,6 +162,31 @@ tools and result projector from `@charivo/realtime-avatar`. See
 [Companion demo](https://charivo-companion.vercel.app/) for realtime voice with
 cross-session memory.
 
+### No-server dev quick start
+
+For local development you can skip the server route entirely. Swap the remote
+client for the direct Agents transport client and pass an OpenAI API key — it
+mints a short-lived realtime client secret in the browser (the same dev pattern
+as the [Quick Start](#quick-start) LLM/TTS clients). The rest of the wiring
+(renderer, character, `startSession`) is identical to the example above.
+
+```ts
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
+
+// Dev/demo only: this key is exposed in the browser. Never ship it to production.
+charivo.attachRealtime(
+  createRealtimeManager(
+    createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." }),
+  ),
+);
+```
+
+This path is **dev/testing only** — the key is exposed in the browser. It also
+requires microphone permission, a secure context (`localhost` or `https`), and a
+user gesture (e.g. a button click) to start the session; the minted client
+secret is short-lived, so a fresh one is requested per session. For production,
+use the server-mediated `@charivo/realtime/remote` path shown above.
+
 ## Choosing Packages
 
 Use the remote/server-mediated path by default:
@@ -176,6 +201,7 @@ Direct browser packages are for local development, demos, and testing only:
 - `@charivo/llm/openai`
 - `@charivo/llm/openclaw`
 - `@charivo/realtime/openai`
+- `@charivo/realtime/openai-agents` (dev `apiKey` mints the client secret in-browser)
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
 
