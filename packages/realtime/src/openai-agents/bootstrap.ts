@@ -8,12 +8,14 @@ import {
   fetchWithTimeout,
   isRealtimeSessionBootstrap,
 } from "../internal/shared";
+import { createOpenAIRealtimeDevBootstrap } from "./dev-bootstrap";
 
 export interface RealtimeBootstrapLoaderOptions {
   apiEndpoint?: string;
   sessionBootstrap?: (
     request: RealtimeSessionRequest,
   ) => Promise<RealtimeSessionBootstrap>;
+  apiKey?: string;
 }
 
 export async function getOpenAIRealtimeAgentsBootstrap(
@@ -25,9 +27,13 @@ export async function getOpenAIRealtimeAgentsBootstrap(
   }
 
   const apiEndpoint = options.apiEndpoint;
+  if (!apiEndpoint && options.apiKey) {
+    return createOpenAIRealtimeDevBootstrap(options.apiKey)(request);
+  }
+
   if (!apiEndpoint) {
     throw new CharivoStateError(
-      "OpenAI agents realtime client requires apiEndpoint or sessionBootstrap",
+      "OpenAI agents realtime client requires sessionBootstrap, apiEndpoint, or apiKey",
     );
   }
 

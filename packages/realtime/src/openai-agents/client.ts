@@ -52,6 +52,13 @@ interface AssistantCompletionMetadata {
   responseId?: string;
 }
 
+/**
+ * @remarks
+ * `apiKey` is a dev/testing-only escape hatch. The key is exposed in the
+ * browser. For production, use `sessionBootstrap` or `apiEndpoint` instead.
+ * Intentional dev/test escape hatch: this direct browser client exposes
+ * credentials. For production, see docs/guide/choosing-packages.md#remote.
+ */
 export interface OpenAIRealtimeAgentsClientOptions
   extends RealtimeBootstrapLoaderOptions {
   debug?: boolean;
