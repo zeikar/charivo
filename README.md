@@ -21,6 +21,12 @@ Documentation:
 
 ## Quick Start
 
+This snippet runs entirely in the browser with no server — paste it in, drop in
+an OpenAI API key, and it works. It uses the direct browser clients
+(`@charivo/llm/openai`, `@charivo/tts/openai`), which are for local development
+and demos only. They expose your API key in the browser, so for production use
+the server-mediated path instead (see [Choosing Packages](#choosing-packages)).
+
 ```bash
 pnpm add \
   @charivo/core \
@@ -32,11 +38,14 @@ pnpm add \
 ```ts
 import { Charivo, CharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
-import { createRemoteLLMClient } from "@charivo/llm/remote";
+import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
-import { createRemoteTTSPlayer } from "@charivo/tts/remote";
+import { createOpenAITTSPlayer } from "@charivo/tts/openai";
 import { createRenderManager } from "@charivo/render";
 import { createLive2DRenderer } from "@charivo/render-live2d";
+
+// Dev/demo only: this key is shipped to the browser. Never do this in production.
+const OPENAI_API_KEY = "sk-...";
 
 const canvas = document.querySelector("canvas")!;
 
@@ -52,10 +61,10 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 charivo.attachRenderer(renderManager);
 charivo.attachLLM(
-  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  createLLMManager(createOpenAILLMClient({ apiKey: OPENAI_API_KEY })),
 );
 charivo.attachTTS(
-  createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
+  createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
 );
 
 charivo.setCharacter({
@@ -77,7 +86,8 @@ try {
 await charivo.dispose();
 ```
 
-For a complete app, see [`examples/web`](./examples/web).
+For a complete app with the production server-mediated path, see
+[`examples/web`](./examples/web).
 
 ## Realtime Voice
 
