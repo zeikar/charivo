@@ -4,6 +4,7 @@
 [![npm](https://img.shields.io/npm/v/@charivo/core.svg)](https://www.npmjs.com/package/@charivo/core)
 [![downloads](https://img.shields.io/npm/dm/@charivo/core.svg)](https://www.npmjs.com/package/@charivo/core)
 [![license: MIT](https://img.shields.io/npm/l/@charivo/core.svg)](./LICENSE)
+[![Built with HyperClaude](https://img.shields.io/badge/Built%20with-HyperClaude-D97757?logo=anthropic&logoColor=white)](http://zeikar.dev/hyperclaude/)
 
 Build Live2D AI characters that talk, react, and look at you.
 
