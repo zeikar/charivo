@@ -21,7 +21,8 @@ import {
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 
 // Mirrors toOpenAIRealtimeSession in packages/server/src/openai/realtime/index.ts.
-// Duplicated intentionally: browser clients must not import from @charivo/server.
+// Duplicated intentionally: browser clients must not import from @charivo/server
+// (the same self-contained pattern as the tts/stt OpenAI providers).
 function toClientSecretsSession(
   session: RealtimeSessionConfig,
 ): Record<string, unknown> {

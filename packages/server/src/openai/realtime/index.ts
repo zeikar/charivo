@@ -12,8 +12,10 @@ import {
 const DEFAULT_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_CLIENT_SECRETS_URL =
   "https://api.openai.com/v1/realtime/client_secrets";
-// Mirrors packages/realtime/src/openai/defaults.ts until the server/browser
-// OpenAI defaults consolidate under ROADMAP P0-ARCH-2.
+// OpenAI realtime defaults, intentionally duplicated with
+// packages/realtime/src/openai/defaults.ts. Strict layering keeps server and
+// browser providers self-contained (no shared module / cross-package dep) — the
+// same pattern the tts/stt OpenAI defaults follow.
 const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
 const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
