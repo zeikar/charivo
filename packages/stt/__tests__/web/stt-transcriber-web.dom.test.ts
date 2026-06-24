@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebSTTTranscriber } from "@charivo/stt/web";
-import { WebSTTTranscriber } from "../../src/web/web-stt-transcriber";
+import { createWebSTTTranscriber, isWebSTTSupported } from "@charivo/stt/web";
 
 class MockSpeechRecognition {
   static instances: MockSpeechRecognition[] = [];
@@ -46,9 +45,9 @@ describe("WebSTTTranscriber", () => {
     const warnSpy = vi
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
-    const transcriber = new WebSTTTranscriber();
 
-    expect(transcriber.isSupportedBrowser()).toBe(false);
+    expect(isWebSTTSupported()).toBe(false);
+    const transcriber = createWebSTTTranscriber();
     await expect(transcriber.startRecording()).rejects.toThrow(
       "Web Speech API is not supported in this browser. Please use a supported browser (Chrome, Edge, etc.) or switch to OpenAI/Remote transcriber.",
     );

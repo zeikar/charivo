@@ -25,6 +25,7 @@ const text = await sttManager.stop();
 ## Exports
 
 - `createSTTManager(transcriber)`
+- `isWebSTTSupported()` (from `@charivo/stt/web`) — SSR-safe check for Web Speech recognition support
 
 ## Event Bridge
 

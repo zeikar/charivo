@@ -199,9 +199,10 @@ export class WebSTTTranscriber implements STTTranscriber {
   }
 }
 
-function getSpeechRecognitionConstructor():
+export function getSpeechRecognitionConstructor():
   | SpeechRecognitionConstructor
   | undefined {
+  if (typeof window === "undefined") return undefined;
   const speechWindow = window as SpeechRecognitionWindow;
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
 }
