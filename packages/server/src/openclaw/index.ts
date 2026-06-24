@@ -1,1 +1,5 @@
-export * from "./llm";
+export {
+  type OpenClawLLMConfig,
+  OpenClawLLMProvider,
+  createOpenClawLLMProvider,
+} from "./llm";
