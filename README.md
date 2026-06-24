@@ -19,6 +19,26 @@ Documentation:
 - [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
 - [ROADMAP.md](./docs/history/ROADMAP.md): completed Amadeus product roadmap + v1 record (archived)
 
+## Try it locally
+
+Want to watch a full Live2D character talk before wiring your own app? The
+[`examples/web`](./examples/web) demo bundles the Live2D models and every
+modality. Clone the repo, add an OpenAI key, and run:
+
+```bash
+pnpm install
+cp examples/web/.env.example examples/web/.env.local   # then set OPENAI_API_KEY
+pnpm dev:web
+```
+
+Open <http://localhost:3000>. The in-app settings menu lets you compare the
+server-mediated (production) and browser-direct dev clients for chat, TTS, and
+STT; realtime voice always uses the server route in this demo.
+
+The snippets below are for adding Charivo to your own app, not for pasting into
+an empty file — a Live2D scene needs a canvas, the Cubism runtime, model assets,
+and a bundler, which the demo above already wires up.
+
 ## Quick Start
 
 This snippet runs entirely in the browser with no server — paste it in, drop in
@@ -92,8 +112,10 @@ For a complete app with the production server-mediated path, see
 ## Realtime Voice
 
 For low-latency, speech-to-speech conversation, attach a realtime manager
-instead of the LLM + TTS pair. The browser streams microphone audio to a server
-route and plays the model's voice back directly.
+instead of the LLM + TTS pair. Like the Quick Start above, this runs with no
+server: pass an OpenAI API key and the browser mints a short-lived realtime
+client secret directly, then streams microphone audio in and plays the model's
+voice back.
 
 ```bash
 pnpm add \
@@ -108,9 +130,12 @@ import {
   buildRealtimeSessionConfig,
   createRealtimeManager,
 } from "@charivo/realtime";
-import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
 import { createRenderManager } from "@charivo/render";
 import { createLive2DRenderer } from "@charivo/render-live2d";
+
+// Dev/demo only: this key is exposed in the browser. Never ship it to production.
+const OPENAI_API_KEY = "sk-...";
 
 const canvas = document.querySelector("canvas")!;
 
@@ -127,7 +152,7 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 charivo.attachRenderer(renderManager);
 charivo.attachRealtime(
   createRealtimeManager(
-    createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" }),
+    createOpenAIRealtimeAgentsClient({ apiKey: OPENAI_API_KEY }),
   ),
 );
 
@@ -138,7 +163,8 @@ charivo.setCharacter({
   voice: { voiceId: "marin" },
 });
 
-// Start a live microphone session (speech in, voice out).
+// Start a live mic session (speech in, voice out). Call this from a user
+// gesture (e.g. a button click), on localhost or https — the mic needs it.
 const realtime = charivo.getRealtimeManager()!;
 const base = buildRealtimeSessionConfig({
   character: charivo.getCharacter() ?? undefined,
@@ -156,37 +182,19 @@ await realtime.stopSession();
 await charivo.dispose();
 ```
 
+`createOpenAIRealtimeAgentsClient({ apiKey })` is **dev/testing only** — the key
+is exposed in the browser, and a live session needs microphone permission, a
+secure context (`localhost` or `https`), and a user gesture (e.g. a button
+click) to start; the minted client secret is short-lived, so a fresh one is
+requested per session. For production, swap the direct client for the
+server-mediated `@charivo/realtime/remote` client backed by a server route (see
+[Choosing Packages](#choosing-packages)).
+
 To let the live model drive avatar expressions and motions, register the avatar
 tools and result projector from `@charivo/realtime-avatar`. See
-[`examples/web`](./examples/web) for the full wiring and the
+[`examples/web`](./examples/web) for the full server wiring and the
 [Companion demo](https://charivo-companion.vercel.app/) for realtime voice with
 cross-session memory.
-
-### No-server dev quick start
-
-For local development you can skip the server route entirely. Swap the remote
-client for the direct Agents transport client and pass an OpenAI API key — it
-mints a short-lived realtime client secret in the browser (the same dev pattern
-as the [Quick Start](#quick-start) LLM/TTS clients). The rest of the wiring
-(renderer, character, `startSession`) is identical to the example above.
-
-```ts
-import { createRealtimeManager } from "@charivo/realtime";
-import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
-
-// Dev/demo only: this key is exposed in the browser. Never ship it to production.
-charivo.attachRealtime(
-  createRealtimeManager(
-    createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." }),
-  ),
-);
-```
-
-This path is **dev/testing only** — the key is exposed in the browser. It also
-requires microphone permission, a secure context (`localhost` or `https`), and a
-user gesture (e.g. a button click) to start the session; the minted client
-secret is short-lived, so a fresh one is requested per session. For production,
-use the server-mediated `@charivo/realtime/remote` path shown above.
 
 ## Choosing Packages
 

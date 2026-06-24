@@ -29,15 +29,18 @@ OPENCLAW_AGENT_ID=main
 
 ## Run
 
-From the repository root:
+From the repository root, after setting up `.env.local` above:
 
 ```bash
 pnpm install
-pnpm build
-pnpm --filter ./examples/web dev
+pnpm dev:web
 ```
 
 Then open `http://localhost:3000`.
+
+`pnpm dev:web` builds the workspace packages first, then starts the demo dev
+server. To run the steps yourself instead: `pnpm build` then
+`pnpm --filter ./examples/web dev`.
 
 ## API Routes
 
