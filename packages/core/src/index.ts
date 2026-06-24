@@ -10,9 +10,25 @@ import {
 import { toCharivoError, type CharivoError } from "./errors";
 
 export * from "./types";
-export * from "./bus";
-export * from "./browser-lifecycle";
-export * from "./errors";
+export { EventBus } from "./bus";
+export {
+  type BrowserLifecycleCallbacks,
+  subscribeBrowserLifecycle,
+} from "./browser-lifecycle";
+export {
+  type CharivoErrorCode,
+  type CharivoErrorOptions,
+  CharivoError,
+  CharivoStateError,
+  CharivoTimeoutError,
+  CharivoTransportError,
+  CharivoProviderError,
+  CharivoDisposeError,
+  type CharivoErrorKind,
+  isCharivoError,
+  getErrorMessage,
+  toCharivoError,
+} from "./errors";
 
 export class Charivo {
   private eventBus: EventBus;
