@@ -13,14 +13,14 @@ and real-time conversation. It separates orchestration, stateful managers,
 browser-side clients, and server-side providers so you can swap pieces without
 rewriting the whole stack.
 
-Live demos:
+![Charivo Demo](./docs/images/screenshot.png)
+
+## Live demos
 
 - Live2D web app — https://charivo.vercel.app/
 - Companion (Realtime voice + cross-session memory) — https://charivo-companion.vercel.app/
 
-![Charivo Demo](./docs/images/screenshot.png)
-
-Documentation:
+## Documentation
 
 - [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
 
