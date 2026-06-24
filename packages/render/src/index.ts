@@ -1,6 +1,3 @@
-// Lip sync utilities
-export { RealTimeLipSync } from "./lipsync";
-
 // Mouse tracking utilities
 export {
   setupMouseTracking,
@@ -13,7 +10,6 @@ export {
 
 // Render management
 export {
-  RenderManager,
   createRenderManager,
   type RenderManagerOptions,
 } from "./render-manager";

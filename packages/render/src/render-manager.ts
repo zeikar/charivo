@@ -461,6 +461,6 @@ export class RenderManager implements IRenderManager {
 export function createRenderManager(
   renderer: Renderer,
   options?: RenderManagerOptions,
-): RenderManager {
+): IRenderManager {
   return new RenderManager(renderer, options);
 }

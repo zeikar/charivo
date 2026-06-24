@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RealTimeLipSync, setupMouseTracking } from "../src";
+import { RealTimeLipSync } from "../src/lipsync";
+import { setupMouseTracking } from "../src";
 
 class MockAnalyser {
   fftSize = 0;
