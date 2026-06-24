@@ -1,5 +1,10 @@
 # Charivo
 
+[![CI](https://github.com/zeikar/charivo/actions/workflows/ci.yml/badge.svg)](https://github.com/zeikar/charivo/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@charivo/core.svg)](https://www.npmjs.com/package/@charivo/core)
+[![downloads](https://img.shields.io/npm/dm/@charivo/core.svg)](https://www.npmjs.com/package/@charivo/core)
+[![license: MIT](https://img.shields.io/npm/l/@charivo/core.svg)](./LICENSE)
+
 Build Live2D AI characters that talk, react, and look at you.
 
 Charivo is a modular TypeScript framework for voice, expression, motion, gaze,
