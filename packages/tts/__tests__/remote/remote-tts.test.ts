@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteTTSPlayer } from "@charivo/tts/remote";
+import { createRemoteTTSPlayer } from "@charivo/tts/remote";
 
 const originalFetch = globalThis.fetch;
 const originalAudio = globalThis.Audio;
@@ -46,7 +46,7 @@ describe("RemoteTTSPlayer", () => {
 
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
 
-    const player = new RemoteTTSPlayer({ apiEndpoint: "/api/tts" });
+    const player = createRemoteTTSPlayer({ apiEndpoint: "/api/tts" });
     const speakPromise = player.speak("hello", { volume: 2 });
 
     await flushAsync();
@@ -67,7 +67,7 @@ describe("RemoteTTSPlayer", () => {
   });
 
   it("stop does nothing (stateless player)", async () => {
-    const player = new RemoteTTSPlayer();
+    const player = createRemoteTTSPlayer();
 
     // stop() should not throw and should complete immediately
     await expect(player.stop()).resolves.toBeUndefined();
@@ -78,7 +78,7 @@ describe("RemoteTTSPlayer", () => {
       async () => new Response("fail", { status: 500, statusText: "Server" }),
     ) as typeof fetch;
 
-    const player = new RemoteTTSPlayer();
+    const player = createRemoteTTSPlayer();
     await expect(player.speak("hi")).rejects.toThrow("TTS API failed: Server");
   });
 
@@ -93,7 +93,10 @@ describe("RemoteTTSPlayer", () => {
         }),
     ) as typeof fetch;
 
-    const player = new RemoteTTSPlayer();
+    const player = createRemoteTTSPlayer();
+    if (!player.generateAudio) {
+      throw new Error("expected RemoteTTSPlayer to implement generateAudio");
+    }
     const request = player.generateAudio("hello");
     const expectation = expect(request).rejects.toThrow(
       "TTS request timed out after 30000ms",
@@ -120,7 +123,7 @@ describe("RemoteTTSPlayer", () => {
     globalThis.Audio = vi.fn(() => audioInstance) as unknown as typeof Audio;
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
 
-    const player = new RemoteTTSPlayer();
+    const player = createRemoteTTSPlayer();
     const speakPromise = player.speak("hello");
 
     await flushAsync();

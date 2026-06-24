@@ -1,4 +1,4 @@
-import { TTSPlayer, TTSOptions } from "@charivo/core";
+import { type TTSPlayer, TTSOptions } from "@charivo/core";
 
 /**
  * Web TTS Player - Stateless TTS Player that uses the Web Speech API
@@ -6,7 +6,7 @@ import { TTSPlayer, TTSOptions } from "@charivo/core";
  * Uses the browser's built-in TTS feature
  * Stateless design: lip-sync simulation is handled by the TTS Manager
  */
-export class WebTTSPlayer implements TTSPlayer {
+class WebTTSPlayer implements TTSPlayer {
   readonly playbackMode = "web-speech" as const;
   private synthesis: SpeechSynthesis;
   private voices: SpeechSynthesisVoice[] = [];
@@ -100,6 +100,6 @@ export class WebTTSPlayer implements TTSPlayer {
   }
 }
 
-export function createWebTTSPlayer(): WebTTSPlayer {
+export function createWebTTSPlayer(): TTSPlayer {
   return new WebTTSPlayer();
 }

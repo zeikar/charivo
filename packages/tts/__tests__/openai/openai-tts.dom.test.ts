@@ -14,7 +14,7 @@ vi.mock("../../src/openai/provider", () => ({
   createOpenAITTSProvider: providerMocks.createOpenAITTSProvider,
 }));
 
-import { OpenAITTSPlayer } from "@charivo/tts/openai";
+import { createOpenAITTSPlayer } from "@charivo/tts/openai";
 
 const originalAudio = globalThis.Audio;
 
@@ -49,7 +49,7 @@ describe("OpenAITTSPlayer", () => {
 
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
 
-    const player = new OpenAITTSPlayer({ apiKey: "key" });
+    const player = createOpenAITTSPlayer({ apiKey: "key" });
     const speakPromise = player.speak("hello", {
       voice: "alloy",
       rate: 1.2,
@@ -73,7 +73,7 @@ describe("OpenAITTSPlayer", () => {
   });
 
   it("delegates voice changes to provider", () => {
-    const player = new OpenAITTSPlayer({ apiKey: "key" });
+    const player = createOpenAITTSPlayer({ apiKey: "key" });
     player.setVoice("nova");
     expect(providerMocks.setVoice).toHaveBeenCalledWith("nova");
   });

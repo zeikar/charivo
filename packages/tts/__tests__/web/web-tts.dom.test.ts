@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WebTTSPlayer } from "@charivo/tts/web";
+import { createWebTTSPlayer } from "@charivo/tts/web";
 
 const speech = window.speechSynthesis as unknown as {
   speaking: boolean;
@@ -27,7 +27,7 @@ describe("WebTTSPlayer", () => {
     const voice = { name: "Alice", voiceURI: "alice" } as SpeechSynthesisVoice;
     speech.getVoices.mockReturnValue([voice]);
 
-    const player = new WebTTSPlayer();
+    const player = createWebTTSPlayer();
     player.setVoice("Alice"); // Set voice before speaking
 
     const playPromise = player.speak("hello", {
@@ -52,7 +52,7 @@ describe("WebTTSPlayer", () => {
   it("applies pitch: 0 and volume: 0 without silently ignoring them", async () => {
     vi.useFakeTimers();
 
-    const player = new WebTTSPlayer();
+    const player = createWebTTSPlayer();
 
     const playPromise = player.speak("mute", { pitch: 0, volume: 0 });
 
@@ -69,7 +69,7 @@ describe("WebTTSPlayer", () => {
   it("stops active speech", async () => {
     speech.speaking = true;
     speech.getVoices.mockReturnValue([]);
-    const player = new WebTTSPlayer();
+    const player = createWebTTSPlayer();
     await player.stop();
     expect(speech.cancel).toHaveBeenCalled();
   });
@@ -78,7 +78,7 @@ describe("WebTTSPlayer", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     speech.getVoices.mockReturnValue([]);
 
-    const player = new WebTTSPlayer();
+    const player = createWebTTSPlayer();
     player.setVoice("unknown");
 
     expect(warn).toHaveBeenCalledWith('Voice "unknown" not found');
@@ -86,7 +86,7 @@ describe("WebTTSPlayer", () => {
   });
 
   it("detects support based on speech synthesis availability", () => {
-    const player = new WebTTSPlayer();
+    const player = createWebTTSPlayer();
     expect(player.isSupported()).toBe(true);
   });
 });

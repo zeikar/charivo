@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  createTTSManager,
-  getTTSAudioMimeType,
-  getTTSPlaybackMode,
-  WebSpeechLipSyncSimulator,
-} from "../src";
+import { createTTSManager } from "../src";
+import { WebSpeechLipSyncSimulator } from "../src/web-speech-lipsync-simulator";
+import { getTTSAudioMimeType, getTTSPlaybackMode } from "../src/tts-utils";
 
 class MockAudio {
   static instances: MockAudio[] = [];

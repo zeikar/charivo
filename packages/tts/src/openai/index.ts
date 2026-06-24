@@ -1,4 +1,4 @@
-import { TTSPlayer, TTSOptions } from "@charivo/core";
+import { type TTSPlayer, TTSOptions } from "@charivo/core";
 import {
   createOpenAITTSProvider,
   OpenAITTSConfig,
@@ -16,7 +16,7 @@ export type OpenAITTSPlayerConfig = OpenAITTSConfig;
  *
  * Stateless design: audio playback and lip-sync are handled by the TTS Manager
  */
-export class OpenAITTSPlayer implements TTSPlayer {
+class OpenAITTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
   readonly audioMimeType = "audio/wav";
   private provider: OpenAITTSProvider;
@@ -85,6 +85,6 @@ export class OpenAITTSPlayer implements TTSPlayer {
 
 export function createOpenAITTSPlayer(
   config: OpenAITTSPlayerConfig,
-): OpenAITTSPlayer {
+): TTSPlayer {
   return new OpenAITTSPlayer(config);
 }

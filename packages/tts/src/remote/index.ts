@@ -2,7 +2,7 @@ import {
   CharivoProviderError,
   CharivoTimeoutError,
   CharivoTransportError,
-  TTSPlayer,
+  type TTSPlayer,
   TTSOptions,
 } from "@charivo/core";
 
@@ -19,7 +19,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * Processes TTS on the server and receives the audio data
  * Stateless design: audio playback and lip-sync are handled by the TTS Manager
  */
-export class RemoteTTSPlayer implements TTSPlayer {
+class RemoteTTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
   readonly audioMimeType = "audio/wav";
   private apiEndpoint: string;
@@ -102,9 +102,7 @@ export class RemoteTTSPlayer implements TTSPlayer {
   }
 }
 
-export function createRemoteTTSPlayer(
-  config?: RemoteTTSConfig,
-): RemoteTTSPlayer {
+export function createRemoteTTSPlayer(config?: RemoteTTSConfig): TTSPlayer {
   return new RemoteTTSPlayer(config);
 }
 
