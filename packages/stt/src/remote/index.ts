@@ -2,7 +2,7 @@ import {
   CharivoProviderError,
   CharivoTimeoutError,
   CharivoTransportError,
-  STTTranscriber,
+  type STTTranscriber,
   STTOptions,
 } from "@charivo/core";
 import { MediaRecorderHelper } from "../media-recorder-helper";
@@ -19,7 +19,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
  * Processes STT on the server and receives transcribed text
  * Handles recording internally using MediaRecorderHelper
  */
-export class RemoteSTTTranscriber implements STTTranscriber {
+class RemoteSTTTranscriber implements STTTranscriber {
   private apiEndpoint: string;
   private recorder: MediaRecorderHelper;
   private recordingOptions?: STTOptions;
@@ -78,7 +78,7 @@ export class RemoteSTTTranscriber implements STTTranscriber {
 
 export function createRemoteSTTTranscriber(
   config?: RemoteSTTConfig,
-): RemoteSTTTranscriber {
+): STTTranscriber {
   return new RemoteSTTTranscriber(config);
 }
 

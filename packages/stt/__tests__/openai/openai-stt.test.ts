@@ -22,7 +22,7 @@ vi.mock("../../src/openai/provider", () => ({
   createOpenAISTTProvider: providerMocks.createOpenAISTTProvider,
 }));
 
-import { OpenAISTTTranscriber } from "@charivo/stt/openai";
+import { createOpenAISTTTranscriber } from "@charivo/stt/openai";
 
 beforeEach(() => {
   recorder.start.mockClear();
@@ -36,7 +36,7 @@ beforeEach(() => {
 
 describe("OpenAISTTTranscriber", () => {
   it("creates the provider with browser mode enabled", () => {
-    new OpenAISTTTranscriber({ apiKey: "key", defaultLanguage: "en" });
+    createOpenAISTTTranscriber({ apiKey: "key", defaultLanguage: "en" });
 
     expect(providerMocks.createOpenAISTTProvider).toHaveBeenCalledWith({
       apiKey: "key",
@@ -46,7 +46,7 @@ describe("OpenAISTTTranscriber", () => {
   });
 
   it("stores recording options and forwards them on stop", async () => {
-    const transcriber = new OpenAISTTTranscriber({ apiKey: "key" });
+    const transcriber = createOpenAISTTTranscriber({ apiKey: "key" });
 
     await transcriber.startRecording({ language: "en" });
     const result = await transcriber.stopRecording();
@@ -60,14 +60,14 @@ describe("OpenAISTTTranscriber", () => {
 
   it("delegates isRecording to the recorder helper", () => {
     recorder.isRecording.mockReturnValue(true);
-    const transcriber = new OpenAISTTTranscriber({ apiKey: "key" });
+    const transcriber = createOpenAISTTTranscriber({ apiKey: "key" });
 
     expect(transcriber.isRecording()).toBe(true);
   });
 
   it("surfaces recorder errors", async () => {
     recorder.start.mockRejectedValueOnce(new Error("mic denied"));
-    const transcriber = new OpenAISTTTranscriber({ apiKey: "key" });
+    const transcriber = createOpenAISTTTranscriber({ apiKey: "key" });
 
     await expect(transcriber.startRecording()).rejects.toThrow("mic denied");
   });
@@ -76,7 +76,7 @@ describe("OpenAISTTTranscriber", () => {
     provider.transcribe.mockRejectedValueOnce(
       new Error("transcription failed"),
     );
-    const transcriber = new OpenAISTTTranscriber({ apiKey: "key" });
+    const transcriber = createOpenAISTTTranscriber({ apiKey: "key" });
 
     await transcriber.startRecording({ language: "en" });
 

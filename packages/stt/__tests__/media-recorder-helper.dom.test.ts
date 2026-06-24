@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MediaRecorderHelper } from "../src";
+import { MediaRecorderHelper } from "../src/media-recorder-helper";
 
 class MockTrack {
   stop = vi.fn(() => undefined);

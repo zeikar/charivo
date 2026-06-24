@@ -11,7 +11,7 @@ vi.mock("../../src/media-recorder-helper", () => ({
   MediaRecorderHelper: vi.fn(() => recorder),
 }));
 
-import { RemoteSTTTranscriber } from "@charivo/stt/remote";
+import { createRemoteSTTTranscriber } from "@charivo/stt/remote";
 
 const originalFetch = globalThis.fetch;
 const createAbortError = () => {
@@ -44,7 +44,7 @@ describe("RemoteSTTTranscriber", () => {
 
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    const transcriber = createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
     await transcriber.startRecording({ language: "en" });
     const result = await transcriber.stopRecording();
 
@@ -66,7 +66,7 @@ describe("RemoteSTTTranscriber", () => {
         }),
     ) as typeof fetch;
 
-    const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    const transcriber = createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
     await transcriber.startRecording();
     const request = transcriber.stopRecording();
     const expectation = expect(request).rejects.toThrow(
@@ -83,7 +83,7 @@ describe("RemoteSTTTranscriber", () => {
       throw new Error("network down");
     }) as typeof fetch;
 
-    const transcriber = new RemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    const transcriber = createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
     await transcriber.startRecording();
     const request = transcriber.stopRecording();
 

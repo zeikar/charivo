@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WebSTTTranscriber } from "@charivo/stt/web";
+import { createWebSTTTranscriber } from "@charivo/stt/web";
+import { WebSTTTranscriber } from "../../src/web/web-stt-transcriber";
 
 class MockSpeechRecognition {
   static instances: MockSpeechRecognition[] = [];
@@ -60,7 +61,7 @@ describe("WebSTTTranscriber", () => {
       configurable: true,
     });
 
-    const transcriber = new WebSTTTranscriber();
+    const transcriber = createWebSTTTranscriber();
     await transcriber.startRecording({ language: "en-US" });
 
     const recognition = MockSpeechRecognition.instances[0]!;
@@ -83,7 +84,7 @@ describe("WebSTTTranscriber", () => {
       configurable: true,
     });
 
-    const transcriber = new WebSTTTranscriber();
+    const transcriber = createWebSTTTranscriber();
     await transcriber.startRecording();
 
     await expect(transcriber.startRecording()).rejects.toThrow(
@@ -97,7 +98,7 @@ describe("WebSTTTranscriber", () => {
       configurable: true,
     });
 
-    const transcriber = new WebSTTTranscriber();
+    const transcriber = createWebSTTTranscriber();
     await expect(transcriber.stopRecording()).rejects.toThrow("Not recording");
   });
 
@@ -116,7 +117,7 @@ describe("WebSTTTranscriber", () => {
       configurable: true,
     });
 
-    const transcriber = new WebSTTTranscriber();
+    const transcriber = createWebSTTTranscriber();
 
     await expect(transcriber.startRecording()).rejects.toThrow(
       "Speech recognition error: network - bad connection",
@@ -129,7 +130,7 @@ describe("WebSTTTranscriber", () => {
       configurable: true,
     });
 
-    const transcriber = new WebSTTTranscriber();
+    const transcriber = createWebSTTTranscriber();
     await transcriber.startRecording();
 
     const recognition = MockSpeechRecognition.instances[0]!;

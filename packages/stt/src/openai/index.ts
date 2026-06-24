@@ -1,4 +1,4 @@
-import { STTTranscriber, STTOptions } from "@charivo/core";
+import { type STTTranscriber, STTOptions } from "@charivo/core";
 import { MediaRecorderHelper } from "../media-recorder-helper";
 import {
   createOpenAISTTProvider,
@@ -17,7 +17,7 @@ export type OpenAISTTTranscriberConfig = OpenAISTTConfig;
  *
  * Handles recording internally using MediaRecorderHelper
  */
-export class OpenAISTTTranscriber implements STTTranscriber {
+class OpenAISTTTranscriber implements STTTranscriber {
   private provider: OpenAISTTProvider;
   private recorder: MediaRecorderHelper;
   private recordingOptions?: STTOptions;
@@ -63,6 +63,6 @@ export class OpenAISTTTranscriber implements STTTranscriber {
 
 export function createOpenAISTTTranscriber(
   config: OpenAISTTTranscriberConfig,
-): OpenAISTTTranscriber {
+): STTTranscriber {
   return new OpenAISTTTranscriber(config);
 }
