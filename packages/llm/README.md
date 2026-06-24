@@ -53,14 +53,8 @@ Use `maxHistoryTurns: null` to opt out and keep unbounded history.
 
 ## Exports
 
-- `LLMManager`
 - `createLLMManager(client, options?)`
 - `LLMManagerOptions`
-- `CharacterPromptBuilder`
-- `MessageHistoryManager`
-- `MessageConverter`
-- `ResponseMessageBuilder`
-- `LLMValidators`
 
 ## Manager API
 

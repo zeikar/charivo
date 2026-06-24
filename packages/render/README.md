@@ -46,9 +46,7 @@ await renderManager.prepareAudio?.();
 
 ## Exports
 
-- `RenderManager`
 - `createRenderManager(renderer, options?)`
-- `RealTimeLipSync`
 - `setupMouseTracking(...)`
 
 ## Renderer Expectations

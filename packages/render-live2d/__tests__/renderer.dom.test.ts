@@ -197,7 +197,7 @@ vi.mock("../src/utils/resize", () => ({
   setupResponsiveResize: rendererMocks.setupResponsiveResize,
 }));
 
-import { Live2DRenderer } from "../src/renderer";
+import { Live2DRendererImpl } from "../src/live2d-renderer";
 import * as LAppDefine from "../src/cubism/lappdefine";
 
 const originalDevicePixelRatio = window.devicePixelRatio;
@@ -267,7 +267,7 @@ beforeEach(() => {
   globalThis.requestAnimationFrame = vi.fn(() => 101);
   globalThis.cancelAnimationFrame = vi.fn();
   (
-    Live2DRenderer as unknown as {
+    Live2DRendererImpl as unknown as {
       cubismStarted: boolean;
     }
   ).cubismStarted = false;
@@ -281,7 +281,7 @@ afterEach(() => {
   globalThis.requestAnimationFrame = originalRequestAnimationFrame;
   globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
   (
-    Live2DRenderer as unknown as {
+    Live2DRendererImpl as unknown as {
       cubismStarted: boolean;
     }
   ).cubismStarted = false;
@@ -291,7 +291,7 @@ afterEach(() => {
 
 describe("Live2DRenderer", () => {
   it("throws when initialized without a canvas", async () => {
-    const renderer = new Live2DRenderer();
+    const renderer = new Live2DRendererImpl();
 
     await expect(renderer.initialize()).rejects.toThrow(
       "Canvas element is required for Live2D rendering",
@@ -299,8 +299,8 @@ describe("Live2DRenderer", () => {
   });
 
   it("loads Cubism, creates the host, and only starts Cubism once", async () => {
-    const first = new Live2DRenderer({ canvas: createCanvasFixture() });
-    const second = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const first = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    const second = new Live2DRendererImpl({ canvas: createCanvasFixture() });
 
     await first.initialize();
     await second.initialize();
@@ -316,7 +316,7 @@ describe("Live2DRenderer", () => {
   });
 
   it("loads models after initialization and releases the previous model", async () => {
-    const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
 
     await expect(
       renderer.loadModel("/models/first.model3.json"),
@@ -341,7 +341,7 @@ describe("Live2DRenderer", () => {
 
   it("rebuilds the host and reloads the last model after WebGL context restore", async () => {
     const canvas = createCanvasFixture();
-    const renderer = new Live2DRenderer({ canvas });
+    const renderer = new Live2DRendererImpl({ canvas });
 
     await renderer.initialize();
     await renderer.loadModel("/models/hiyori.model3.json");
@@ -367,14 +367,14 @@ describe("Live2DRenderer", () => {
   });
 
   it("exposes empty expression and motion data when no ready model exists", () => {
-    const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
 
     expect(renderer.getAvailableExpressions()).toEqual([]);
     expect(renderer.getAvailableMotionGroups()).toEqual({});
   });
 
   it("guards lip-sync and expression controls on model readiness", async () => {
-    const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
     await renderer.initialize();
     await renderer.loadModel("/models/hiyori.model3.json");
 
@@ -417,7 +417,7 @@ describe("Live2DRenderer", () => {
       configurable: true,
     });
 
-    const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
     await renderer.initialize();
     await renderer.loadModel("/models/hiyori.model3.json");
 
@@ -451,7 +451,7 @@ describe("Live2DRenderer", () => {
   });
 
   it("destroys the render loop, model, host, and resize teardown", async () => {
-    const renderer = new Live2DRenderer({ canvas: createCanvasFixture() });
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
     await renderer.initialize();
     await renderer.loadModel("/models/hiyori.model3.json");
 

@@ -32,10 +32,6 @@ await ttsManager.speak("Hello", { voice: "marin" });
 ## Exports
 
 - `createTTSManager(player)`
-- `WebSpeechLipSyncSimulator`
-- `getTTSPlaybackMode(player)`
-- `getTTSAudioMimeType(player)`
-- `supportsGenerateAudio(player)`
 
 ## Event Bridge
 

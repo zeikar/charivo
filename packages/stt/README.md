@@ -24,9 +24,7 @@ const text = await sttManager.stop();
 
 ## Exports
 
-- `STTManagerImpl`
 - `createSTTManager(transcriber)`
-- `MediaRecorderHelper`
 
 ## Event Bridge
 

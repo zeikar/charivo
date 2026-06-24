@@ -332,13 +332,13 @@ export function useRealtimeSession(
     if (canvas && enabled) {
       void (async () => {
         try {
-          const [{ Live2DRenderer }, { createRenderManager }] =
+          const [{ createLive2DRenderer }, { createRenderManager }] =
             await Promise.all([
               import("@charivo/render-live2d"),
               import("@charivo/render"),
             ]);
           if (disposed) return;
-          const renderer = new Live2DRenderer({ canvas });
+          const renderer = createLive2DRenderer({ canvas });
           rendererInstance = renderer;
           renderManager = createRenderManager(renderer, {
             canvas,

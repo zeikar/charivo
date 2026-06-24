@@ -22,6 +22,7 @@ import {
 } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
 import { createTTSManager } from "@charivo/tts";
+import type { Live2DRenderer } from "@charivo/render-live2d";
 
 import type {
   LLMClientType,
@@ -39,13 +40,7 @@ import {
   shouldResetRealtimeUiState,
 } from "./realtime-ui";
 
-type Live2DRendererHandle = {
-  playExpression(expressionId: string): void;
-  playMotionByGroup(group: string, index: number): void;
-  lookAt(coords: GazeCoordinates): void;
-  getAvailableExpressions(): string[];
-  getAvailableMotionGroups(): Record<string, number>;
-};
+type Live2DRendererHandle = Live2DRenderer;
 
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
@@ -386,7 +381,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       try {
         const initialCharacter = currentCharacterRef.current;
         const [
-          { Live2DRenderer },
+          { createLive2DRenderer },
           { createRenderManager },
           { createLLMManager },
         ] = await Promise.all([
@@ -395,7 +390,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           import("@charivo/llm"),
         ]);
 
-        const renderer = new Live2DRenderer({ canvas });
+        const renderer = createLive2DRenderer({ canvas });
         rendererRef.current = renderer;
 
         renderManager = createRenderManager(renderer, {
