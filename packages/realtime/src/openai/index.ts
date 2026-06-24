@@ -1,1 +1,4 @@
-export * from "./client";
+export {
+  createOpenAIRealtimeClient,
+  type OpenAIRealtimeClientOptions,
+} from "./client";

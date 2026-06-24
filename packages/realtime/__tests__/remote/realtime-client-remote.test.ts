@@ -85,7 +85,7 @@ vi.mock("@charivo/realtime/openai", () => ({
   }),
 }));
 
-import { RemoteRealtimeClient } from "../../src/remote";
+import { RemoteRealtimeClient } from "../../src/remote/client";
 
 const originalFetch = globalThis.fetch;
 

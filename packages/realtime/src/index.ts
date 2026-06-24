@@ -1,5 +1,11 @@
 export * from "./types";
-export * from "./realtime-manager";
+export {
+  createRealtimeManager,
+  type RealtimeManagerOptions,
+  type RealtimeLogger,
+  type RealtimeToolResultProjector,
+  type RealtimeToolResultProjectorContext,
+} from "./realtime-manager";
 export {
   DEFAULT_REALTIME_AGENT_INSTRUCTIONS,
   buildRealtimeSessionConfig,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OpenAIRealtimeClient } from "@charivo/realtime/openai";
+import { OpenAIRealtimeClient } from "../../src/openai/client";
 import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import type { RealtimeTransportEvent } from "@charivo/realtime";
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
-import { OpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
+import { OpenAIRealtimeAgentsClient } from "../../src/openai-agents/client";
 import type { RealtimeTransportEvent } from "@charivo/realtime";
 
 type Listener = (...args: unknown[]) => void;
