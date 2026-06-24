@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { StubLLMClient, createStubLLMClient } from "@charivo/llm/stub";
+import { createStubLLMClient } from "@charivo/llm/stub";
 
 describe("StubLLMClient", () => {
   it("rotates through canned responses", async () => {
     vi.useFakeTimers();
-    const client = new StubLLMClient();
+    const client = createStubLLMClient();
 
     const firstCall = client.call([]);
     await vi.advanceTimersByTimeAsync(500);
@@ -17,7 +17,21 @@ describe("StubLLMClient", () => {
     vi.useRealTimers();
   });
 
-  it("provides a factory helper", () => {
-    expect(createStubLLMClient()).toBeInstanceOf(StubLLMClient);
+  it("creates independent client instances with their own rotation state", async () => {
+    vi.useFakeTimers();
+    const first = createStubLLMClient();
+    const second = createStubLLMClient();
+
+    const firstResult = first.call([]);
+    await vi.advanceTimersByTimeAsync(500);
+    const secondResult = second.call([]);
+    await vi.advanceTimersByTimeAsync(500);
+
+    // A fresh client starts its own rotation from the first canned response,
+    // so two independently created clients are not sharing a rotation index.
+    expect(await firstResult).toBe("Hello! I'm a test character.");
+    expect(await secondResult).toBe("Hello! I'm a test character.");
+
+    vi.useRealTimers();
   });
 });

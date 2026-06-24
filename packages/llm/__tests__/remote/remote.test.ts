@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CharivoTransportError } from "@charivo/core";
-import { RemoteLLMClient } from "@charivo/llm/remote";
+import { createRemoteLLMClient } from "@charivo/llm/remote";
 
 const originalFetch = globalThis.fetch;
 const createAbortError = () => {
@@ -26,7 +26,7 @@ describe("RemoteLLMClient", () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const client = new RemoteLLMClient({ apiEndpoint: "/api/chat" });
+    const client = createRemoteLLMClient({ apiEndpoint: "/api/chat" });
     const result = await client.call([{ role: "user", content: "hello" }]);
 
     expect(result).toBe("hi there");
@@ -49,7 +49,7 @@ describe("RemoteLLMClient", () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const client = new RemoteLLMClient();
+    const client = createRemoteLLMClient();
 
     await expect(client.call([])).rejects.toThrow("API call failed: nope");
     errorSpy.mockRestore();
@@ -67,7 +67,7 @@ describe("RemoteLLMClient", () => {
     );
     globalThis.fetch = fetchMock as typeof fetch;
 
-    const client = new RemoteLLMClient();
+    const client = createRemoteLLMClient();
     await expect(client.call([])).rejects.toThrow("bad request");
     errorSpy.mockRestore();
   });
@@ -83,7 +83,7 @@ describe("RemoteLLMClient", () => {
         }),
     ) as typeof fetch;
 
-    const client = new RemoteLLMClient();
+    const client = createRemoteLLMClient();
     const request = client.call([]);
     const expectation = expect(request).rejects.toThrow(
       "LLM request timed out after 30000ms",
@@ -99,7 +99,7 @@ describe("RemoteLLMClient", () => {
       throw new Error("network down");
     }) as typeof fetch;
 
-    const client = new RemoteLLMClient();
+    const client = createRemoteLLMClient();
     const request = client.call([]);
 
     await expect(request).rejects.toBeInstanceOf(CharivoTransportError);

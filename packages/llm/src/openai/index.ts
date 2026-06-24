@@ -1,4 +1,4 @@
-import { LLMClient } from "@charivo/core";
+import type { LLMClient } from "@charivo/core";
 import {
   createOpenAILLMProvider,
   OpenAILLMConfig,
@@ -16,7 +16,7 @@ export type OpenAILLMClientConfig = OpenAILLMConfig;
  *
  * Stateless design: session management is handled externally, and this client only handles API calls
  */
-export class OpenAILLMClient implements LLMClient {
+class OpenAILLMClient implements LLMClient {
   private provider: OpenAILLMProvider;
 
   constructor(config: OpenAILLMClientConfig) {
@@ -40,6 +40,6 @@ export class OpenAILLMClient implements LLMClient {
 
 export function createOpenAILLMClient(
   config: OpenAILLMClientConfig,
-): OpenAILLMClient {
+): LLMClient {
   return new OpenAILLMClient(config);
 }

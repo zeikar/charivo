@@ -14,7 +14,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 /**
  * Remote LLM Client - stateless client that calls the server API
  */
-export class RemoteLLMClient implements LLMClient {
+class RemoteLLMClient implements LLMClient {
   private apiEndpoint: string;
 
   constructor(config: RemoteLLMConfig = {}) {
@@ -59,9 +59,7 @@ export class RemoteLLMClient implements LLMClient {
   }
 }
 
-export function createRemoteLLMClient(
-  config?: RemoteLLMConfig,
-): RemoteLLMClient {
+export function createRemoteLLMClient(config?: RemoteLLMConfig): LLMClient {
   return new RemoteLLMClient(config);
 }
 

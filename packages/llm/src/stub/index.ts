@@ -1,4 +1,4 @@
-import { LLMClient } from "@charivo/core";
+import type { LLMClient } from "@charivo/core";
 
 /**
  * Stub LLM Client - Stateless client for testing
@@ -6,7 +6,7 @@ import { LLMClient } from "@charivo/core";
  * Returns predefined responses in rotation without making real API calls
  * Used in development and testing environments
  */
-export class StubLLMClient implements LLMClient {
+class StubLLMClient implements LLMClient {
   private responses: string[] = [
     "Hello! I'm a test character.",
     "The weather is really nice today!",
@@ -37,6 +37,6 @@ export class StubLLMClient implements LLMClient {
   }
 }
 
-export function createStubLLMClient(): StubLLMClient {
+export function createStubLLMClient(): LLMClient {
   return new StubLLMClient();
 }

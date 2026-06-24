@@ -1,4 +1,4 @@
-import { LLMClient } from "@charivo/core";
+import type { LLMClient } from "@charivo/core";
 import {
   createOpenClawLLMProvider,
   OpenClawLLMConfig,
@@ -16,7 +16,7 @@ export type OpenClawLLMClientConfig = OpenClawLLMConfig;
  *
  * Stateless design: session management is handled externally, and this client only handles API calls
  */
-export class OpenClawLLMClient implements LLMClient {
+class OpenClawLLMClient implements LLMClient {
   private provider: OpenClawLLMProvider;
 
   constructor(config: OpenClawLLMClientConfig) {
@@ -37,6 +37,6 @@ export class OpenClawLLMClient implements LLMClient {
 
 export function createOpenClawLLMClient(
   config: OpenClawLLMClientConfig,
-): OpenClawLLMClient {
+): LLMClient {
   return new OpenClawLLMClient(config);
 }

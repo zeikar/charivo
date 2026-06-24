@@ -15,7 +15,7 @@ vi.mock("../../src/openai/provider", () => ({
   createOpenAILLMProvider: providerMocks.createOpenAILLMProvider,
 }));
 
-import { OpenAILLMClient, createOpenAILLMClient } from "@charivo/llm/openai";
+import { createOpenAILLMClient } from "@charivo/llm/openai";
 
 describe("OpenAILLMClient", () => {
   beforeEach(() => {
@@ -25,7 +25,7 @@ describe("OpenAILLMClient", () => {
   });
 
   it("enforces browser usage via configuration", () => {
-    const client = new OpenAILLMClient({ apiKey: "test", model: "gpt-4o" });
+    createOpenAILLMClient({ apiKey: "test", model: "gpt-4o" });
 
     expect(providerMocks.createOpenAILLMProvider).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -34,8 +34,6 @@ describe("OpenAILLMClient", () => {
         dangerouslyAllowBrowser: true,
       }),
     );
-
-    expect(client).toBeInstanceOf(OpenAILLMClient);
   });
 
   it("delegates calls to the provider", async () => {

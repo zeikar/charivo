@@ -15,10 +15,7 @@ vi.mock("../../src/openclaw/provider", () => ({
   createOpenClawLLMProvider: providerMocks.createOpenClawLLMProvider,
 }));
 
-import {
-  OpenClawLLMClient,
-  createOpenClawLLMClient,
-} from "@charivo/llm/openclaw";
+import { createOpenClawLLMClient } from "@charivo/llm/openclaw";
 
 describe("OpenClawLLMClient", () => {
   beforeEach(() => {
@@ -28,7 +25,7 @@ describe("OpenClawLLMClient", () => {
   });
 
   it("forces dangerouslyAllowBrowser true for browser usage", () => {
-    const client = new OpenClawLLMClient({
+    createOpenClawLLMClient({
       token: "test-token",
       agentId: "main",
     });
@@ -40,8 +37,6 @@ describe("OpenClawLLMClient", () => {
         dangerouslyAllowBrowser: true,
       }),
     );
-
-    expect(client).toBeInstanceOf(OpenClawLLMClient);
   });
 
   it("delegates call() to the provider's generateResponse", async () => {
