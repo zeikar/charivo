@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ConsoleRenderer } from "@charivo/render/stub";
+import { ConsoleRenderer } from "../../src/stub/console-renderer";
+import { createConsoleRenderer } from "@charivo/render/stub";
 
 const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
 
@@ -48,6 +49,36 @@ describe("ConsoleRenderer", () => {
     );
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("System: System notice"),
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ConsoleRenderer destroyed"),
+    );
+  });
+});
+
+describe("createConsoleRenderer", () => {
+  it("returns a renderer that logs messages correctly", async () => {
+    const renderer = createConsoleRenderer();
+    const timestamp = new Date("2024-01-01T12:00:00Z");
+
+    await renderer.initialize();
+    await renderer.render(
+      {
+        id: "1",
+        content: "Factory message",
+        timestamp,
+        type: "character",
+        characterId: "char-2",
+      },
+      { id: "char-2", name: "Aria" },
+    );
+    await renderer.destroy();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ConsoleRenderer initialized"),
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Aria: Factory message"),
     );
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining("ConsoleRenderer destroyed"),
