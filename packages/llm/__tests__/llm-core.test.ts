@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Character, LLMClient, Message } from "@charivo/core";
-import {
-  CharacterPromptBuilder,
-  LLMValidators,
-  MessageConverter,
-  MessageHistoryManager,
-  ResponseMessageBuilder,
-  createLLMManager,
-} from "@charivo/llm";
+import { createLLMManager } from "@charivo/llm";
+import { CharacterPromptBuilder } from "../src/character-prompt-builder";
+import { LLMValidators } from "../src/validators";
+import { MessageConverter } from "../src/message-converter";
+import { MessageHistoryManager } from "../src/message-history-manager";
+import { ResponseMessageBuilder } from "../src/response-message-builder";
 
 const character: Character = {
   id: "char-1",

@@ -1,4 +1,10 @@
-import { LLMClient, Message, Character, toCharivoError } from "@charivo/core";
+import {
+  LLMClient,
+  Message,
+  Character,
+  toCharivoError,
+  type LLMManager as CoreLLMManager,
+} from "@charivo/core";
 import { MessageHistoryManager } from "./message-history-manager";
 import { CharacterPromptBuilder } from "./character-prompt-builder";
 import { MessageConverter } from "./message-converter";
@@ -147,7 +153,7 @@ export class LLMManager {
 export function createLLMManager(
   llmClient: LLMClient,
   options?: LLMManagerOptions,
-): LLMManager {
+): CoreLLMManager {
   return new LLMManager(llmClient, options);
 }
 
