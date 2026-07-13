@@ -6,6 +6,12 @@ import {
   OpenAISTTProvider,
 } from "./provider";
 
+export {
+  createOpenAISTTProvider,
+  OpenAISTTProvider,
+  type OpenAISTTConfig,
+} from "./provider";
+
 // Reuse OpenAISTTConfig directly (no extensions needed)
 export type OpenAISTTTranscriberConfig = OpenAISTTConfig;
 

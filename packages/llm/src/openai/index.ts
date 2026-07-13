@@ -5,6 +5,12 @@ import {
   OpenAILLMProvider,
 } from "./provider";
 
+export {
+  createOpenAILLMProvider,
+  OpenAILLMProvider,
+  type OpenAILLMConfig,
+} from "./provider";
+
 // Use OpenAILLMConfig directly
 export type OpenAILLMClientConfig = OpenAILLMConfig;
 

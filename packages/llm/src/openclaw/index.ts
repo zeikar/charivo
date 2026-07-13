@@ -5,6 +5,12 @@ import {
   OpenClawLLMProvider,
 } from "./provider";
 
+export {
+  createOpenClawLLMProvider,
+  OpenClawLLMProvider,
+  type OpenClawLLMConfig,
+} from "./provider";
+
 // No `sessionKey` here, unlike the provider config. Pinning the gateway
 // session requires rotating it on reset, and this client is driven by
 // LLMManager, whose clearHistory()/character switch clear only local history and

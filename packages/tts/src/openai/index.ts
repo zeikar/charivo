@@ -5,6 +5,12 @@ import {
   OpenAITTSProvider,
 } from "./provider";
 
+export {
+  createOpenAITTSProvider,
+  OpenAITTSProvider,
+  type OpenAITTSConfig,
+} from "./provider";
+
 // Use OpenAITTSConfig directly (nothing to extend)
 export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 
