@@ -32,6 +32,9 @@ await ttsManager.speak("Hello", { voice: "marin" });
 ## Exports
 
 - `createTTSManager(player)`
+- `@charivo/tts/openai`: `createOpenAITTSPlayer(config)` (browser player,
+  dev/testing only) and, for server-side use, `createOpenAITTSProvider(config)`,
+  `OpenAITTSProvider`, `type OpenAITTSConfig`
 
 ## Event Bridge
 

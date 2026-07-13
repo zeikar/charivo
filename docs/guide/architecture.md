@@ -26,7 +26,10 @@ In practice:
 - `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
 - modality packages own stateful feature logic
 - browser runtime packages live on subpaths such as `@charivo/tts/remote` or `@charivo/realtime/openai`
-- server providers live on `@charivo/server/*` subpaths and hold credentials
+- server providers live on `@charivo/server/*` subpaths; the OpenAI/OpenClaw
+  LLM/TTS/STT providers are implemented on the matching modality subpath
+  (e.g. `@charivo/llm/openai`) and re-exported from `@charivo/server/*`, which
+  keeps credential use and the realtime session bootstrap on the server side
 
 Lower layers should not take on orchestration concerns from higher layers.
 
@@ -54,20 +57,20 @@ when you explicitly want local development shortcuts or zero-server behavior.
 ### LLM
 
 - `@charivo/llm/remote`
-- `@charivo/llm/openai`
-- `@charivo/llm/openclaw`
+- `@charivo/llm/openai` — also exports the `createOpenAILLMProvider` server-side provider
+- `@charivo/llm/openclaw` — also exports the `createOpenClawLLMProvider` server-side provider
 - `@charivo/llm/stub`
 
 ### TTS
 
 - `@charivo/tts/remote`
-- `@charivo/tts/openai`
+- `@charivo/tts/openai` — also exports the `createOpenAITTSProvider` server-side provider
 - `@charivo/tts/web`
 
 ### STT
 
 - `@charivo/stt/remote`
-- `@charivo/stt/openai`
+- `@charivo/stt/openai` — also exports the `createOpenAISTTProvider` server-side provider
 - `@charivo/stt/web`
 
 ### Realtime
@@ -87,6 +90,12 @@ Provider packages belong behind your own API routes:
 
 - `@charivo/server/openai`
 - `@charivo/server/openclaw`
+
+The LLM/TTS/STT providers under these subpaths are implemented in the
+matching modality package (`@charivo/llm/openai`, `@charivo/llm/openclaw`,
+`@charivo/tts/openai`, `@charivo/stt/openai`) and re-exported here; only the
+OpenAI realtime provider (ephemeral client-secret minting) is implemented
+directly in `@charivo/server`.
 
 The default production shape is:
 

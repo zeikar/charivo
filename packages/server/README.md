@@ -57,3 +57,23 @@ old transcript under the old key.
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
 - `@charivo/server/openclaw`: `createOpenClawLLMProvider`
+
+The LLM/TTS/STT providers are re-exported from `@charivo/llm`, `@charivo/tts`,
+and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only
+`createOpenAIRealtimeProvider` is implemented in this package.
+
+## Errors
+
+Provider calls throw `CharivoError` subclasses from `@charivo/core` instead of
+plain `Error`s:
+
+- SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
+  The SDK's own error message is preserved, and the original error is kept on
+  `cause`.
+- Request timeouts (OpenAI LLM/TTS/STT, 30s) throw `CharivoTimeoutError`
+  (`code: "CHARIVO_TIMEOUT_ERROR"`).
+- Constructing a provider in a browser without `dangerouslyAllowBrowser: true`
+  throws `CharivoStateError` (`code: "CHARIVO_STATE_ERROR"`).
+
+`CharivoError extends Error`, so existing `catch (e)` handling still works;
+use `instanceof CharivoError` or `error.code` to branch on the failure kind.

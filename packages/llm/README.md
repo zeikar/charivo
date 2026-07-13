@@ -55,6 +55,16 @@ Use `maxHistoryTurns: null` to opt out and keep unbounded history.
 
 - `createLLMManager(client, options?)`
 - `LLMManagerOptions`
+- `@charivo/llm/openai`: `createOpenAILLMClient(config)` (browser client,
+  dev/testing only) and, for server-side use, `createOpenAILLMProvider(config)`,
+  `OpenAILLMProvider`, `type OpenAILLMConfig`
+- `@charivo/llm/openclaw`: `createOpenClawLLMClient(config)` (browser client,
+  dev/testing only) and, for server-side use, `createOpenClawLLMProvider(config)`,
+  `OpenClawLLMProvider`, `type OpenClawLLMConfig`. `sessionKey` exists only on
+  the provider config — `LLMManager.clearHistory()` can only clear local
+  history, not rotate a pinned gateway session, so a client-side `sessionKey`
+  would silently replay the old transcript after a reset. Server routes that
+  construct the provider directly can rotate `sessionKey` themselves.
 
 ## Manager API
 

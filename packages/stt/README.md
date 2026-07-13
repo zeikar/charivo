@@ -26,6 +26,9 @@ const text = await sttManager.stop();
 
 - `createSTTManager(transcriber)`
 - `isWebSTTSupported()` (from `@charivo/stt/web`) — SSR-safe check for Web Speech recognition support
+- `@charivo/stt/openai`: `createOpenAISTTTranscriber(config)` (browser
+  transcriber, dev/testing only) and, for server-side use,
+  `createOpenAISTTProvider(config)`, `OpenAISTTProvider`, `type OpenAISTTConfig`
 
 ## Event Bridge
 
