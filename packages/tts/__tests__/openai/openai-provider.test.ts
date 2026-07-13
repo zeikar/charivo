@@ -66,6 +66,39 @@ describe("OpenAITTSProvider", () => {
     });
   });
 
+  it("uses default voice, model, and speed when unconfigured", async () => {
+    const provider = new OpenAITTSProvider({ apiKey: "key" });
+
+    await provider.generateSpeech("hello");
+
+    expect(openaiMocks.createSpeech).toHaveBeenCalledWith({
+      model: "gpt-4o-mini-tts",
+      voice: "marin",
+      input: "hello",
+      speed: 1.0,
+      format: "wav",
+    });
+  });
+
+  it("updates voice and model via setVoice/setModel", async () => {
+    const provider = new OpenAITTSProvider({
+      apiKey: "key",
+      defaultVoice: "alloy",
+    });
+
+    provider.setVoice("shimmer");
+    provider.setModel("tts-1-hd");
+    await provider.generateSpeech("good day");
+
+    expect(openaiMocks.createSpeech).toHaveBeenCalledWith({
+      model: "tts-1-hd",
+      voice: "shimmer",
+      input: "good day",
+      speed: 1,
+      format: "wav",
+    });
+  });
+
   it("wraps rate-limit errors as provider errors", async () => {
     const error = Object.assign(new Error("Rate limit exceeded"), {
       status: 429,

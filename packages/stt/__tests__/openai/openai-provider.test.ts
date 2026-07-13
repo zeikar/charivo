@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CharivoStateError } from "@charivo/core";
 import type { CharivoProviderError } from "@charivo/core";
 
 const openaiMocks = vi.hoisted(() => {
@@ -50,6 +51,42 @@ describe("OpenAISTTProvider", () => {
       model: "whisper-1",
       language: "en",
     });
+  });
+
+  it("lets an explicit language override a different default and converts ArrayBuffer input to a File", async () => {
+    const provider = new OpenAISTTProvider({
+      apiKey: "key",
+      defaultLanguage: "en",
+    });
+
+    await provider.transcribe(new ArrayBuffer(8), { language: "ko" });
+
+    const payload = openaiMocks.createTranscription.mock.calls[0]![0];
+    expect(payload.file).toBeInstanceOf(File);
+    expect(payload.language).toBe("ko");
+  });
+
+  it("enforces server-only usage unless dangerouslyAllowBrowser is enabled", () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {},
+      configurable: true,
+    });
+
+    try {
+      expect(() => new OpenAISTTProvider({ apiKey: "key" })).toThrow(
+        CharivoStateError,
+      );
+
+      expect(
+        () =>
+          new OpenAISTTProvider({
+            apiKey: "key",
+            dangerouslyAllowBrowser: true,
+          }),
+      ).not.toThrow();
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
   });
 
   it("wraps rate-limit errors as provider errors", async () => {
