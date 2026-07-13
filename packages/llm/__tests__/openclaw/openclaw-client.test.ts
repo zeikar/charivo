@@ -15,7 +15,10 @@ vi.mock("../../src/openclaw/provider", () => ({
   createOpenClawLLMProvider: providerMocks.createOpenClawLLMProvider,
 }));
 
-import { createOpenClawLLMClient } from "@charivo/llm/openclaw";
+import {
+  createOpenClawLLMClient,
+  OpenClawLLMClientConfig,
+} from "@charivo/llm/openclaw";
 
 describe("OpenClawLLMClient", () => {
   beforeEach(() => {
@@ -47,5 +50,17 @@ describe("OpenClawLLMClient", () => {
 
     expect(response).toBe("openclaw message");
     expect(providerMocks.generateResponse).toHaveBeenCalledWith(messages);
+  });
+
+  it("never forwards sessionKey to the provider, even if a caller passes it", () => {
+    // sessionKey isn't in OpenClawLLMClientConfig; widen the cast to prove an
+    // untyped JS caller can't sneak it past the client either.
+    createOpenClawLLMClient({
+      token: "token",
+      sessionKey: "conversation-abc",
+    } as OpenClawLLMClientConfig & { sessionKey: string });
+
+    const config = providerMocks.createOpenClawLLMProvider.mock.calls[0]![0];
+    expect(config).not.toHaveProperty("sessionKey");
   });
 });

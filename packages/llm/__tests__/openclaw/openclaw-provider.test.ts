@@ -95,7 +95,7 @@ describe("OpenClawLLMProvider", () => {
     );
   });
 
-  it("sends the full history and never pins a gateway session", async () => {
+  it("sends the full history when no session is pinned", async () => {
     const provider = new OpenClawLLMProvider({
       token: "token",
       dangerouslyAllowBrowser: true,
@@ -112,10 +112,64 @@ describe("OpenClawLLMProvider", () => {
 
     const payload = openaiMocks.createCompletion.mock.calls[0]![0];
     expect(payload.messages).toEqual(history);
-    // This provider is driven by LLMManager, which cannot rotate a pinned session
-    // on clearHistory(). Sending `user` would strand the reset conversation on the
-    // gateway's old transcript.
     expect(payload.user).toBeUndefined();
+  });
+
+  it("sends sessionKey as the user field to pin the gateway session", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([{ role: "user", content: "hi" }]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.user).toBe("conversation-abc");
+  });
+
+  it("sends only system prompts and the latest turn when a session is pinned", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "first question" },
+      { role: "assistant", content: "first answer" },
+      { role: "user", content: "latest question" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    // The gateway already holds the past turns for this session; resending them
+    // would inject a duplicate copy of the history on top of its own.
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "latest question" },
+    ]);
+  });
+
+  it("sends only system prompts when the latest message is a system message", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "first question" },
+      { role: "assistant", content: "first answer" },
+      { role: "system", content: "Session reset notice" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "system", content: "Session reset notice" },
+    ]);
   });
 
   it("wraps request failures as CharivoProviderError", async () => {
