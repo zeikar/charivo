@@ -2,17 +2,17 @@ export {
   type OpenAILLMConfig,
   OpenAILLMProvider,
   createOpenAILLMProvider,
-} from "./llm";
+} from "@charivo/llm/openai";
 export {
   type OpenAITTSConfig,
   OpenAITTSProvider,
   createOpenAITTSProvider,
-} from "./tts";
+} from "@charivo/tts/openai";
 export {
   type OpenAISTTConfig,
   OpenAISTTProvider,
   createOpenAISTTProvider,
-} from "./stt";
+} from "@charivo/stt/openai";
 export {
   type OpenAIRealtimeProviderConfig,
   OpenAIRealtimeProvider,

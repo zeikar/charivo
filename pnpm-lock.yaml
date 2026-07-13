@@ -371,9 +371,6 @@ importers:
       '@charivo/tts':
         specifier: workspace:*
         version: link:../tts
-      openai:
-        specifier: ^4.47.1
-        version: 4.104.0(ws@8.18.3)
     devDependencies:
       tsup:
         specifier: ^8.5.0

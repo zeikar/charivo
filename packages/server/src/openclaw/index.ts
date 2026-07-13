@@ -2,4 +2,4 @@ export {
   type OpenClawLLMConfig,
   OpenClawLLMProvider,
   createOpenClawLLMProvider,
-} from "./llm";
+} from "@charivo/llm/openclaw";
