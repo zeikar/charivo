@@ -64,8 +64,9 @@ and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only
 
 ## Errors
 
-Provider calls throw `CharivoError` subclasses from `@charivo/core` instead of
-plain `Error`s:
+The LLM/TTS/STT providers (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
+`createOpenAISTTProvider`, `createOpenClawLLMProvider`) throw `CharivoError`
+subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
   The SDK's own error message is preserved, and the original error is kept on
@@ -77,3 +78,7 @@ plain `Error`s:
 
 `CharivoError extends Error`, so existing `catch (e)` handling still works;
 use `instanceof CharivoError` or `error.code` to branch on the failure kind.
+
+`createOpenAIRealtimeProvider` is unaffected by this change and still throws
+plain `Error`s for API failures, invalid input, request timeouts, and the
+browser guard.
