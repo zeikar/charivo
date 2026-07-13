@@ -362,6 +362,15 @@ importers:
       '@charivo/core':
         specifier: workspace:*
         version: link:../core
+      '@charivo/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@charivo/stt':
+        specifier: workspace:*
+        version: link:../stt
+      '@charivo/tts':
+        specifier: workspace:*
+        version: link:../tts
       openai:
         specifier: ^4.47.1
         version: 4.104.0(ws@8.18.3)

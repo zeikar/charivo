@@ -24,6 +24,9 @@
   },
   "dependencies": {
     "@charivo/core": "workspace:*",
+    "@charivo/llm": "workspace:*",
+    "@charivo/stt": "workspace:*",
+    "@charivo/tts": "workspace:*",
     "openai": "^4.47.1"
   },
   "devDependencies": {
