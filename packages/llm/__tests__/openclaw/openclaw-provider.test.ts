@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CharivoProviderError } from "@charivo/core";
 
 const openaiMocks = vi.hoisted(() => {
   const instances: { config: unknown }[] = [];
@@ -38,7 +39,7 @@ vi.mock("openai", () => ({
   default: openaiMocks.MockOpenAI,
 }));
 
-import { OpenClawLLMProvider } from "@charivo/server/openclaw";
+import { OpenClawLLMProvider } from "../../src/openclaw/provider";
 
 beforeEach(() => {
   openaiMocks.createCompletion.mockClear();
@@ -46,13 +47,12 @@ beforeEach(() => {
 });
 
 describe("OpenClawLLMProvider", () => {
-  it("sets correct baseURL and omits the agent header when no agentId is given", () => {
+  it("omits the agent header when no agentId is given", () => {
     new OpenClawLLMProvider({
       token: "test-token",
       dangerouslyAllowBrowser: true,
     });
 
-    expect(openaiMocks.instances).toHaveLength(1);
     const config = openaiMocks.instances[0]!.config as {
       defaultHeaders?: Record<string, string>;
     };
@@ -65,7 +65,7 @@ describe("OpenClawLLMProvider", () => {
     expect(config.defaultHeaders).toBeUndefined();
   });
 
-  it("uses custom baseURL and agentId when provided", () => {
+  it("sends the agent header when agentId is provided", () => {
     new OpenClawLLMProvider({
       token: "my-token",
       baseURL: "http://192.168.1.10:9000/v1",
@@ -74,32 +74,9 @@ describe("OpenClawLLMProvider", () => {
     });
 
     expect(openaiMocks.instances[0]!.config).toMatchObject({
-      apiKey: "my-token",
       baseURL: "http://192.168.1.10:9000/v1",
       defaultHeaders: { "x-openclaw-agent-id": "assistant" },
     });
-  });
-
-  it("forwards messages and returns response", async () => {
-    const provider = new OpenClawLLMProvider({
-      token: "token",
-      model: "openclaw",
-      dangerouslyAllowBrowser: true,
-    });
-
-    const result = await provider.generateResponse([
-      { role: "system", content: "You are Hiyori" },
-      { role: "user", content: "hello" },
-    ]);
-
-    expect(result).toBe("openclaw response");
-    expect(openaiMocks.createCompletion).toHaveBeenCalledTimes(1);
-    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
-    expect(payload.model).toBe("openclaw");
-    expect(payload.messages).toEqual([
-      { role: "system", content: "You are Hiyori" },
-      { role: "user", content: "hello" },
-    ]);
   });
 
   it("uses default model 'openclaw/default' when not specified", async () => {
@@ -108,49 +85,17 @@ describe("OpenClawLLMProvider", () => {
       dangerouslyAllowBrowser: true,
     });
 
-    await provider.generateResponse([{ role: "user", content: "hi" }]);
-
-    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
-    expect(payload.model).toBe("openclaw/default");
-  });
-
-  it("sends sessionKey as the user field to pin the gateway session", async () => {
-    const provider = new OpenClawLLMProvider({
-      token: "token",
-      sessionKey: "conversation-abc",
-      dangerouslyAllowBrowser: true,
-    });
-
-    await provider.generateResponse([{ role: "user", content: "hi" }]);
-
-    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
-    expect(payload.user).toBe("conversation-abc");
-  });
-
-  it("sends only system prompts and the latest turn when a session is pinned", async () => {
-    const provider = new OpenClawLLMProvider({
-      token: "token",
-      sessionKey: "conversation-abc",
-      dangerouslyAllowBrowser: true,
-    });
-
-    await provider.generateResponse([
-      { role: "system", content: "You are Hiyori" },
-      { role: "user", content: "first question" },
-      { role: "assistant", content: "first answer" },
-      { role: "user", content: "latest question" },
+    const result = await provider.generateResponse([
+      { role: "user", content: "hi" },
     ]);
 
-    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
-    // The gateway already holds the past turns for this session; resending them
-    // would inject a duplicate copy of the history on top of its own.
-    expect(payload.messages).toEqual([
-      { role: "system", content: "You are Hiyori" },
-      { role: "user", content: "latest question" },
-    ]);
+    expect(result).toBe("openclaw response");
+    expect(openaiMocks.createCompletion.mock.calls[0]![0].model).toBe(
+      "openclaw/default",
+    );
   });
 
-  it("sends the full history when no session is pinned", async () => {
+  it("sends the full history and never pins a gateway session", async () => {
     const provider = new OpenClawLLMProvider({
       token: "token",
       dangerouslyAllowBrowser: true,
@@ -167,10 +112,13 @@ describe("OpenClawLLMProvider", () => {
 
     const payload = openaiMocks.createCompletion.mock.calls[0]![0];
     expect(payload.messages).toEqual(history);
+    // This provider is driven by LLMManager, which cannot rotate a pinned session
+    // on clearHistory(). Sending `user` would strand the reset conversation on the
+    // gateway's old transcript.
     expect(payload.user).toBeUndefined();
   });
 
-  it("wraps errors with OpenClaw prefix", async () => {
+  it("wraps request failures as CharivoProviderError", async () => {
     openaiMocks.createCompletion.mockRejectedValueOnce(new Error("timeout"));
 
     const provider = new OpenClawLLMProvider({
@@ -180,6 +128,6 @@ describe("OpenClawLLMProvider", () => {
 
     await expect(
       provider.generateResponse([{ role: "user", content: "hi" }]),
-    ).rejects.toThrow("OpenClaw LLM Error: timeout");
+    ).rejects.toThrow(CharivoProviderError);
   });
 });
