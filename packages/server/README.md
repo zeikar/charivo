@@ -64,21 +64,21 @@ and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only
 
 ## Errors
 
-The LLM/TTS/STT providers (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
-`createOpenAISTTProvider`, `createOpenClawLLMProvider`) throw `CharivoError`
-subclasses from `@charivo/core` instead of plain `Error`s:
+Every provider in this package (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
+`createOpenAISTTProvider`, `createOpenAIRealtimeProvider`, `createOpenClawLLMProvider`)
+throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
-  The SDK's own error message is preserved, and the original error is kept on
-  `cause`.
-- Request timeouts (OpenAI LLM/TTS/STT, 30s) throw `CharivoTimeoutError`
+  The LLM/TTS/STT providers wrap the SDK's own error: its message is preserved and
+  the original error is kept on `cause`. `createOpenAIRealtimeProvider` builds its
+  provider errors from the HTTP response body, so it carries the API's message but
+  no `cause`.
+- Request timeouts (OpenAI LLM/TTS/STT/Realtime, 30s) throw `CharivoTimeoutError`
   (`code: "CHARIVO_TIMEOUT_ERROR"`).
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`
   throws `CharivoStateError` (`code: "CHARIVO_STATE_ERROR"`).
+  `createOpenAIRealtimeProvider` also throws `CharivoStateError` for invalid
+  session requests (unsupported provider/transport/adapter, missing SDP offer).
 
 `CharivoError extends Error`, so existing `catch (e)` handling still works;
 use `instanceof CharivoError` or `error.code` to branch on the failure kind.
-
-`createOpenAIRealtimeProvider` is unaffected by this change and still throws
-plain `Error`s for API failures, invalid input, request timeouts, and the
-browser guard.

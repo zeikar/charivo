@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CharivoStateError,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
@@ -10,6 +11,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("OpenAIRealtimeProvider", () => {
@@ -310,5 +312,167 @@ describe("OpenAIRealtimeProvider", () => {
         },
       }),
     ).rejects.toThrow('does not support adapter "unsupported-adapter"');
+  });
+
+  it("enforces server-only usage unless dangerouslyAllowBrowser is enabled", () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {},
+      configurable: true,
+    });
+
+    try {
+      expect(() => new OpenAIRealtimeProvider({ apiKey: "key" })).toThrow(
+        CharivoStateError,
+      );
+
+      expect(
+        () =>
+          new OpenAIRealtimeProvider({
+            apiKey: "key",
+            dangerouslyAllowBrowser: true,
+          }),
+      ).not.toThrow();
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
+  it("throws CharivoStateError for validation failures", async () => {
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        transport: "webrtc",
+        sdpOffer: "offer-sdp",
+        session: { provider: "google" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoStateError",
+      code: "CHARIVO_STATE_ERROR",
+      message: expect.stringContaining('only supports provider "openai"'),
+    });
+
+    await expect(
+      provider.createSession({
+        transport: "websocket",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoStateError",
+      code: "CHARIVO_STATE_ERROR",
+      message: expect.stringContaining("only supports webrtc transport"),
+    });
+
+    await expect(
+      provider.createSession({
+        adapter: "unsupported-adapter",
+        transport: "webrtc",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoStateError",
+      code: "CHARIVO_STATE_ERROR",
+      message: expect.stringContaining(
+        'does not support adapter "unsupported-adapter"',
+      ),
+    });
+
+    await expect(
+      provider.createSession({
+        transport: "webrtc",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoStateError",
+      code: "CHARIVO_STATE_ERROR",
+      message: "SDP offer is required for WebRTC realtime sessions",
+    });
+  });
+
+  it("throws CharivoProviderError when the WebRTC session request fails", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("bad request", { status: 400 }),
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        transport: "webrtc",
+        sdpOffer: "offer-sdp",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      code: "CHARIVO_PROVIDER_ERROR",
+      message: "OpenAI Realtime Error: bad request",
+    });
+  });
+
+  it("throws CharivoProviderError when the client secret request fails", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("server error", { status: 500 }),
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      code: "CHARIVO_PROVIDER_ERROR",
+      message: "OpenAI Realtime Error: server error",
+    });
+  });
+
+  it("throws CharivoProviderError when the client secret response is invalid", async () => {
+    globalThis.fetch = vi.fn(async () => Response.json({})) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      code: "CHARIVO_PROVIDER_ERROR",
+      message: "OpenAI Realtime Error: invalid client secret response",
+    });
+  });
+
+  it("throws CharivoTimeoutError when the request times out", async () => {
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    const request = provider.createSession({
+      transport: "webrtc",
+      sdpOffer: "offer-sdp",
+      session: { provider: "openai" },
+    });
+
+    const expectation = expect(request).rejects.toMatchObject({
+      name: "CharivoTimeoutError",
+      code: "CHARIVO_TIMEOUT_ERROR",
+      message: "OpenAI realtime request timed out after 30000ms",
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
   });
 });

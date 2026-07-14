@@ -5,6 +5,9 @@ import type {
   RealtimeSessionRequest,
 } from "@charivo/core";
 import {
+  CharivoProviderError,
+  CharivoStateError,
+  CharivoTimeoutError,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
@@ -32,7 +35,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
   constructor(private config: OpenAIRealtimeProviderConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
-      throw new Error(
+      throw new CharivoStateError(
         "OpenAI realtime provider is for server-side use only. Set dangerouslyAllowBrowser: true for testing",
       );
     }
@@ -52,13 +55,13 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       request.session.provider !== undefined &&
       request.session.provider !== "openai"
     ) {
-      throw new Error(
+      throw new CharivoStateError(
         `OpenAI realtime provider only supports provider "openai", received ${request.session.provider}`,
       );
     }
 
     if (request.transport !== "webrtc") {
-      throw new Error(
+      throw new CharivoStateError(
         `OpenAI realtime provider only supports webrtc transport, received ${request.transport}`,
       );
     }
@@ -71,13 +74,15 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
       request.adapter !== undefined &&
       request.adapter !== OPENAI_REALTIME_ADAPTER
     ) {
-      throw new Error(
+      throw new CharivoStateError(
         `OpenAI realtime provider does not support adapter "${request.adapter}"`,
       );
     }
 
     if (!request.sdpOffer) {
-      throw new Error("SDP offer is required for WebRTC realtime sessions");
+      throw new CharivoStateError(
+        "SDP offer is required for WebRTC realtime sessions",
+      );
     }
 
     const response = await fetchWithTimeout(
@@ -94,7 +99,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI Realtime Error: ${errorText}`);
+      throw new CharivoProviderError(`OpenAI Realtime Error: ${errorText}`);
     }
 
     return {
@@ -124,14 +129,16 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenAI Realtime Error: ${errorText}`);
+      throw new CharivoProviderError(`OpenAI Realtime Error: ${errorText}`);
     }
 
     const payload = (await response.json()) as unknown;
     const clientSecret = extractClientSecret(payload);
 
     if (!clientSecret) {
-      throw new Error("OpenAI Realtime Error: invalid client secret response");
+      throw new CharivoProviderError(
+        "OpenAI Realtime Error: invalid client secret response",
+      );
     }
 
     return {
@@ -245,7 +252,7 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (isAbortError(error)) {
-      throw new Error(timeoutMessage);
+      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
     throw error;
   } finally {
