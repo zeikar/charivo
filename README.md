@@ -82,7 +82,7 @@ const renderManager = createRenderManager(renderer, {
   mouseTracking: "document",
 });
 await renderManager.initialize();
-await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
 charivo.attachRenderer(renderManager);
 charivo.attachLLM(
@@ -152,7 +152,7 @@ const renderManager = createRenderManager(renderer, {
   mouseTracking: "document",
 });
 await renderManager.initialize();
-await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
 charivo.attachRenderer(renderManager);
 charivo.attachRealtime(

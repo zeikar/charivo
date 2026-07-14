@@ -5,7 +5,9 @@ sidebar_position: 2
 
 # Getting Started
 
-This is the shortest production-oriented path to a working Charivo app.
+This is the shortest production-oriented path to a working Charivo app. If you just
+want to see a character talk first, [Quick Try](#quick-try-dev-only) gets you there
+with an API key and no server — but it is not what you ship.
 
 ## Recommended Stack
 
@@ -40,6 +42,58 @@ pnpm add \
   @charivo/server
 ```
 
+## Quick Try (Dev Only)
+
+To see a character talk before writing any server code, the `openai` subpaths ship
+direct browser clients that call OpenAI straight from the page. They take your API
+key and send it to the browser, so this path is for local experiments only.
+
+**Never ship this.** Anyone who opens devtools can read the key. Once it works,
+move to [Minimal Browser Setup](#minimal-browser-setup) and
+[Minimal Server Routes](#minimal-server-routes) below, which keep the key on your
+server. The rest of the app stays the same — only the client factories change.
+
+```ts
+import { Charivo } from "@charivo/core";
+import { createLLMManager } from "@charivo/llm";
+import { createOpenAILLMClient } from "@charivo/llm/openai";
+import { createTTSManager } from "@charivo/tts";
+import { createOpenAITTSPlayer } from "@charivo/tts/openai";
+import { createRenderManager } from "@charivo/render";
+import { createLive2DRenderer } from "@charivo/render-live2d";
+
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+
+const canvas = document.querySelector("canvas")!;
+
+const charivo = new Charivo();
+
+const renderer = createLive2DRenderer({ canvas });
+const renderManager = createRenderManager(renderer, { canvas });
+
+await renderManager.initialize();
+await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
+
+charivo.attachRenderer(renderManager);
+charivo.attachLLM(
+  createLLMManager(
+    createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-4.1-nano" }),
+  ),
+);
+charivo.attachTTS(
+  createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
+);
+
+charivo.setCharacter({
+  id: "hiyori",
+  name: "Hiyori",
+  personality: "Cheerful and helpful assistant",
+  voice: { voiceId: "marin" },
+});
+
+await charivo.userSay("Hello");
+```
+
 ## Minimal Browser Setup
 
 ```ts
@@ -62,7 +116,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
 charivo.attachRenderer(renderManager);
 charivo.attachLLM(

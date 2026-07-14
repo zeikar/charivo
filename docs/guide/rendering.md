@@ -37,7 +37,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 ```
 
 Attach the manager to `Charivo` after initialization:
