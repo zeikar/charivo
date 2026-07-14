@@ -447,6 +447,47 @@ describe("OpenAIRealtimeProvider", () => {
     });
   });
 
+  it("wraps a raw network rejection into CharivoProviderError with the original error as cause", async () => {
+    const networkError = new TypeError("fetch failed");
+    globalThis.fetch = vi.fn(async () => {
+      throw networkError;
+    }) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        transport: "webrtc",
+        sdpOffer: "offer-sdp",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      code: "CHARIVO_PROVIDER_ERROR",
+      cause: networkError,
+    });
+  });
+
+  it("wraps a malformed JSON response body into CharivoProviderError with the original error as cause", async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response("not-json", { status: 200 }),
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+
+    await expect(
+      provider.createSession({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        session: { provider: "openai" },
+      }),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      code: "CHARIVO_PROVIDER_ERROR",
+      cause: expect.any(SyntaxError),
+    });
+  });
+
   it("throws CharivoTimeoutError when the request times out", async () => {
     vi.useFakeTimers();
     globalThis.fetch = vi.fn(

@@ -70,9 +70,11 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
   The LLM/TTS/STT providers wrap the SDK's own error: its message is preserved and
-  the original error is kept on `cause`. `createOpenAIRealtimeProvider` builds its
-  provider errors from the HTTP response body, so it carries the API's message but
-  no `cause`.
+  the original error is kept on `cause`. `createOpenAIRealtimeProvider`'s
+  HTTP-status errors (non-2xx responses, invalid client secret response) are
+  built from the response body text, so they carry the API's message but no
+  `cause`; its network/connection failures and response body/JSON parsing
+  failures are wrapped with the original error kept on `cause`.
 - Request timeouts (OpenAI LLM/TTS/STT/Realtime, 30s) throw `CharivoTimeoutError`
   (`code: "CHARIVO_TIMEOUT_ERROR"`).
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`

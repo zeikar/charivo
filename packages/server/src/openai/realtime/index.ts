@@ -10,6 +10,7 @@ import {
   CharivoTimeoutError,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
+  toCharivoError,
 } from "@charivo/core";
 
 const DEFAULT_REALTIME_URL = "https://api.openai.com/v1/realtime/calls";
@@ -98,14 +99,14 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await readResponseText(response);
       throw new CharivoProviderError(`OpenAI Realtime Error: ${errorText}`);
     }
 
     return {
       adapter: OPENAI_REALTIME_ADAPTER,
       transport: "webrtc",
-      answerSdp: await response.text(),
+      answerSdp: await readResponseText(response),
     };
   }
 
@@ -128,11 +129,11 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await readResponseText(response);
       throw new CharivoProviderError(`OpenAI Realtime Error: ${errorText}`);
     }
 
-    const payload = (await response.json()) as unknown;
+    const payload = await readResponseJson(response);
     const clientSecret = extractClientSecret(payload);
 
     if (!clientSecret) {
@@ -254,7 +255,9 @@ async function fetchWithTimeout(
     if (isAbortError(error)) {
       throw new CharivoTimeoutError(timeoutMessage, { cause: error });
     }
-    throw error;
+    // DNS/TLS/connection failures land here as raw fetch errors — wrap them
+    // so every failure escaping this provider is a CharivoError.
+    throw toCharivoError("provider", error, "OpenAI realtime request failed");
   } finally {
     clearTimeout(timeoutId);
   }
@@ -265,4 +268,28 @@ function isAbortError(error: unknown): boolean {
     (error instanceof DOMException && error.name === "AbortError") ||
     (error instanceof Error && error.name === "AbortError")
   );
+}
+
+async function readResponseText(response: Response): Promise<string> {
+  try {
+    return await response.text();
+  } catch (error) {
+    throw toCharivoError(
+      "provider",
+      error,
+      "Failed to read OpenAI realtime response body",
+    );
+  }
+}
+
+async function readResponseJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    throw toCharivoError(
+      "provider",
+      error,
+      "Failed to parse OpenAI realtime response body",
+    );
+  }
 }
