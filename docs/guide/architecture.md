@@ -164,6 +164,7 @@ packages/
   server/
 examples/
   web/
+  companion/
 docs/
   guide/
   history/
@@ -172,7 +173,9 @@ scripts/
 ```
 
 - `packages/`: publishable library packages
-- `examples/web/`: reference app
+- `examples/`: two reference apps — [web](./examples-web.md) puts the LLM/TTS/STT
+  client styles side by side, [companion](./examples-companion.md) is
+  realtime-only with browser-local character memory
 - `docs/guide/`: user-facing integration guides
 - `docs/history/`: upgrade notes and implementation history
 - `scripts/`: repo tooling

@@ -12,6 +12,7 @@ const sidebars: SidebarsConfig = {
     "stt",
     "realtime",
     "examples-web",
+    "examples-companion",
   ],
 };
 

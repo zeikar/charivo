@@ -61,10 +61,12 @@ If you are new to the repo, read in this order:
 - [STT](./stt.md)
 - [Realtime](./realtime.md)
 
-### Reading the shipped reference app
+### Reading the shipped reference apps
 
-- [Examples Web](./examples-web.md)
+- [Examples Web](./examples-web.md) — LLM/TTS/STT client styles side by side
 - [examples/web README](https://github.com/zeikar/charivo/blob/main/examples/web/README.md)
+- [Examples Companion](./examples-companion.md) — realtime-only, browser-local memory
+- [examples/companion README](https://github.com/zeikar/charivo/blob/main/examples/companion/README.md)
 
 ## Guide Map
 
@@ -77,6 +79,7 @@ If you are new to the repo, read in this order:
 - [STT](./stt.md): microphone recording and transcription paths
 - [Realtime](./realtime.md): session-based voice interaction and tool wiring
 - [Examples Web](./examples-web.md): Next.js reference app and API routes
+- [Examples Companion](./examples-companion.md): realtime-only app with browser-local character memory
 
 ## Guide Docs vs Package READMEs
 

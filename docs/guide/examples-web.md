@@ -5,8 +5,10 @@ sidebar_position: 10
 
 # Examples Web
 
-`examples/web` is the reference Next.js app for the Charivo workspace. Read it
-as the current integration example, not just a demo.
+`examples/web` is one of two reference Next.js apps in the Charivo workspace, and
+the one to read when comparing client styles. Read it as a current integration
+example, not just a demo. The other is
+[Examples Companion](./examples-companion.md), a realtime-only app.
 
 ## What It Covers
 
