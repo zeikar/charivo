@@ -70,7 +70,8 @@ The companion has **optional** webcam-based face tracking that drives the
 avatar's gaze to follow the user's head position.
 
 - **Off by default.** The webcam is never accessed unless the user explicitly
-  enables it.
+  enables it. Tracking also runs only while the realtime session is connected —
+  enabling the toggle while she is asleep does not start the camera.
 - **On-device inference.** Face detection runs entirely in the browser via
   [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector)
   WASM. No video frames are ever uploaded — all processing stays local.
@@ -277,11 +278,21 @@ The only server route is the realtime bootstrap — memory is fully client-side
   present and that `session.provider` is `"openai"`, then returns the session
   bootstrap payload.
 
+The session runs `gpt-realtime-mini` with `gpt-4o-mini-transcribe` for input
+transcription. Transcription is deliberately enabled — OpenAI defaults it off,
+and without it no user transcript arrives, which would silence turn capture and
+the memory refresh entirely.
+
 > **MVP scope:** the fact extractor is currently a no-op (`createServerExtractor`),
 > so live sessions persist the session record and advance the relationship
 > (session count / rapport / last-seen) but do not yet mine content facts. A real
 > LLM extractor lands in a later subtask; until then, content facts can still be
 > seeded externally.
+>
+> **The relevance refresh is not semantic.** `queryEmbedding` comes from
+> `FakeEmbedder`, a deterministic 16-dimensional token-hash stand-in — not an
+> embedding service. Retrieval scoring works end to end, but "relevance" is
+> lexical until a real embedder is wired in.
 >
 > **Corrections take effect next session.** Correction candidates (e.g. "forget
 > that" / "that's wrong") are detected during merge, which soft-invalidates or
