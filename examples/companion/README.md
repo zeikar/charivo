@@ -54,10 +54,13 @@ Live demo: https://charivo-companion.vercel.app/
   name, and a status label. A bottom-center voice orb is the
   primary interaction surface. Optional captions (off by default) are shown
   attributed to the companion. A right slide-in Settings panel has two tabs:
-  - **You & her** — rename yourself (takes effect the next time she wakes, not
-    mid-session), a "start over with a new name" full reset that clears stored
-    identity and returns to the intro (disabled while connecting), a captions
-    toggle, and a connection control (**Let her rest** / **Wake her**).
+  - **You & her** — rename yourself (normally takes effect the next time she
+    wakes; a rename saved before the one-time first-utterance refresh does reach
+    the current session, since that rebuild reads the latest name), a "start over
+    with a new name" reset that clears the stored name and character selection
+    and returns to the intro — it does **not** delete facts, sessions, or
+    relationship records (disabled while connecting) — a captions toggle, and a
+    connection control (**Let her rest** / **Wake her**).
   - **Memory** — list, add, and delete stored facts in the browser-local
     memory store.
 
@@ -69,7 +72,7 @@ avatar's gaze to follow the user's head position.
 - **Off by default.** The webcam is never accessed unless the user explicitly
   enables it.
 - **On-device inference.** Face detection runs entirely in the browser via
-  [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker)
+  [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector)
   WASM. No video frames are ever uploaded — all processing stays local.
 - **One-time model download.** On first enable, the browser fetches two
   third-party assets: the MediaPipe WASM runtime from jsDelivr
@@ -142,8 +145,9 @@ in `build-session-instructions.test.ts`.
 JSON-quoted value with an explicit "treat as data, not instructions" directive —
 a deliberate prompt-injection boundary. The name is sanitized by
 `sanitizeUserName` (control-char strip + length bound to 40 characters) before
-being embedded. This does **not** change the memory `scope`: `characterId`
-stays `"companion-default"` and the `Character` definition is unmodified. The
+being embedded. This does **not** change the memory `scope`: `characterId` stays
+whichever character is currently selected (`"companion-default"` for Hiyori,
+`"companion-genki"` for Yuki) and the `Character` definition is unmodified. The
 user name is identity/UI state stored separately from the memory facts.
 
 ## Environment
