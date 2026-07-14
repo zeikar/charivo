@@ -280,8 +280,9 @@ The only server route is the realtime bootstrap — memory is fully client-side
 
 The session runs `gpt-realtime-mini` with `gpt-4o-mini-transcribe` for input
 transcription. Transcription is deliberately enabled — OpenAI defaults it off,
-and without it no user transcript arrives, which would silence turn capture and
-the memory refresh entirely.
+and without it no user transcript arrives, so voice-user turn capture and the
+first-voice-utterance memory refresh would not run. (Assistant completions are
+recorded either way, and the internal typed path records user turns separately.)
 
 > **MVP scope:** the fact extractor is currently a no-op (`createServerExtractor`),
 > so live sessions persist the session record and advance the relationship
