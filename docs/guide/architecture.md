@@ -26,10 +26,11 @@ In practice:
 - `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
 - modality packages own stateful feature logic
 - browser runtime packages live on subpaths such as `@charivo/tts/remote` or `@charivo/realtime/openai`
-- server providers live on `@charivo/server/*` subpaths; the OpenAI/OpenClaw
-  LLM/TTS/STT providers are implemented on the matching modality subpath
-  (e.g. `@charivo/llm/openai`) and re-exported from `@charivo/server/*`, which
-  keeps credential use and the realtime session bootstrap on the server side
+- server providers live on `@charivo/server/*` subpaths; the OpenAI
+  LLM/TTS/STT providers and OpenClaw LLM provider are implemented on the
+  matching modality subpath (e.g. `@charivo/llm/openai`) and re-exported from
+  `@charivo/server/*`, which keeps credential use and the realtime session
+  bootstrap on the server side
 
 Lower layers should not take on orchestration concerns from higher layers.
 
