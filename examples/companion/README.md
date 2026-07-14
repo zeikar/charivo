@@ -162,11 +162,17 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 > 🗂️ **Per-browser memory.** All memory lives in the browser's `localStorage`,
 > so each browser profile gets its own isolated relationship state and facts —
-> there is no shared server database. That is exactly what makes the demo safe to
-> deploy publicly (every visitor gets their own memory) and serverless-friendly.
+> there is no shared server database. That is what lets the demo run without a
+> datastore (every visitor gets their own memory) and stay serverless-friendly.
 > Trade-offs: memory does not sync across devices/browsers, and clearing site
 > data resets it. A real multi-device product would add auth + a server datastore
 > (out of scope for this demo).
+
+> ⚠️ **Memory isolation is not deployment safety.** `POST /api/realtime` mints
+> realtime sessions with your server's `OPENAI_API_KEY` and has no
+> authentication or rate limiting — it only validates the request shape. Anyone
+> who can reach the route can spend your OpenAI budget. Add your own auth, rate
+> limiting, or abuse controls before putting this on a public URL.
 
 From the repository root:
 
