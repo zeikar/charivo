@@ -74,14 +74,16 @@ avatar's gaze to follow the user's head position.
 - **On-device inference.** Face detection runs entirely in the browser via
   [MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector)
   WASM. No video frames are ever uploaded — all processing stays local.
-- **One-time model download.** On first enable, the browser fetches two
-  third-party assets: the MediaPipe WASM runtime from jsDelivr
-  (`cdn.jsdelivr.net`) and the BlazeFace short-range face-detection model
-  weights from Google Cloud Storage (`storage.googleapis.com`). Subsequent
-  visits use the browser cache.
-- **Self-hosting.** For production deployments, place the WASM and model files
-  under `public/` and point the landmarker at the local URL. This avoids the
-  CDN dependency and is the recommended follow-up for any non-demo use.
+- **One-time model download.** On first enable, the browser fetches from two
+  third-party hosts: the MediaPipe vision runtime from jsDelivr
+  (`cdn.jsdelivr.net` — `FilesetResolver` pulls a loader script plus its WASM
+  binary) and the BlazeFace short-range face-detection model weights from Google
+  Cloud Storage (`storage.googleapis.com`). Subsequent visits use the browser
+  cache.
+- **Self-hosting.** For production deployments, place the runtime files (loader
+  + WASM binary) and the model weights under `public/`, then point the fileset
+  base and `modelAssetPath` at the local URLs. This avoids the CDN dependency and
+  is the recommended follow-up for any non-demo use.
 - **Gaze arbitration.** Webcam face position is fed to
   `renderManager.setLocalGaze(coords)`. AI gaze (`realtime:gaze`) takes
   priority over webcam, which in turn takes priority over mouse cursor. See
@@ -209,8 +211,10 @@ browser (useRealtimeSession.ts)
                                 └ LocalStorageMemoryStore  (window.localStorage)
 ```
 
-- **Read (inject).** On `start()`, three blocks are composed into
-  `startSession({ instructions })`: a memory block from
+- **Read (inject).** On `start()`, these three memory/context blocks join the
+  persona, user-name, demo-guidance, and avatar blocks in the seven-block
+  `buildSessionInstructions({...})` seam described above, and the result is passed
+  to `startSession({ instructions })`: a memory block from
   `buildMemoryInstructionBlock({ store, scope })` (facts; session summaries are
   deferred — always null in the MVP), a relationship block from
   `renderRelationshipBlock(getRelationship(scope), { now: now.getTime() })` (tone/address-style/
