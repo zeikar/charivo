@@ -23,9 +23,11 @@ The app exercises the current package stack:
 The current hook split is deliberate:
 
 - `useLive2D` owns canvas mount and unmount
-- `useCharivoChat` owns Charivo setup, manager attachment, event subscription, and teardown
+- `useCharivoChat` owns Charivo setup, render/LLM/TTS/STT manager attachment, event subscription, and teardown
+- `useRealtimeMode` owns the realtime manager: it attaches and detaches it on the shared Charivo instance, and starts and stops the session
 
-This keeps renderer lifecycle separate from conversation and session lifecycle.
+This keeps renderer lifecycle separate from conversation lifecycle, and both separate
+from realtime session lifecycle.
 
 ## API Routes
 

@@ -93,36 +93,65 @@ await charivo.dispose();
 
 ## Minimal Server Routes
 
-Browser clients should call your own routes, not vendor APIs directly.
+Browser clients should call your own routes, not vendor APIs directly. The
+routes below are Next.js route handlers matching what `/api/chat` and
+`/api/tts` above expect.
 
-LLM route:
+LLM route (`/api/chat`):
 
 ```ts
+import { NextRequest, NextResponse } from "next/server";
 import { createOpenAILLMProvider } from "@charivo/server/openai";
 
-const provider = createOpenAILLMProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-4.1-nano",
-});
+export async function POST(request: NextRequest) {
+  const { messages } = await request.json();
 
-const text = await provider.generateResponse(messages);
+  const provider = createOpenAILLMProvider({
+    apiKey: process.env.OPENAI_API_KEY!,
+    model: "gpt-4.1-nano",
+  });
+
+  try {
+    const message = await provider.generateResponse(messages);
+    return NextResponse.json({ success: true, message });
+  } catch (error) {
+    console.error("LLM Provider Error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate response" },
+      { status: 500 },
+    );
+  }
+}
 ```
 
-TTS route:
+TTS route (`/api/tts`):
 
 ```ts
+import { NextRequest, NextResponse } from "next/server";
 import { createOpenAITTSProvider } from "@charivo/server/openai";
 
-const provider = createOpenAITTSProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  defaultVoice: "marin",
-  defaultModel: "gpt-4o-mini-tts",
-});
+export async function POST(request: NextRequest) {
+  const { text, voice = "marin", speed = 1 } = await request.json();
 
-const audio = await provider.generateSpeech(text, {
-  voice: "marin",
-  rate: 1,
-});
+  const provider = createOpenAITTSProvider({
+    apiKey: process.env.OPENAI_API_KEY!,
+    defaultVoice: "marin",
+    defaultModel: "gpt-4o-mini-tts",
+  });
+
+  try {
+    const audio = await provider.generateSpeech(text, { voice, rate: speed });
+    return new NextResponse(audio, {
+      headers: { "Content-Type": "audio/wav" },
+    });
+  } catch (error) {
+    console.error("TTS Provider Error:", error);
+    return NextResponse.json(
+      { error: "Failed to generate speech" },
+      { status: 500 },
+    );
+  }
+}
 ```
 
 For a full Next.js example, see [Examples Web](./examples-web.md).

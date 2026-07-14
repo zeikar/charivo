@@ -50,6 +50,12 @@ Lower layers should not take on orchestration concerns from higher layers.
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.
 
+### Realtime Extensions
+
+- `@charivo/realtime-avatar` (optional): avatar expression/motion/gaze tools
+  and a result projector that bridge realtime tool results into
+  `@charivo/realtime`, adjacent to but separate from the core manager package
+
 ## Browser Runtime Packages
 
 For most apps, start with remote packages and only use browser-direct packages
@@ -152,6 +158,7 @@ packages/
   tts/
   stt/
   realtime/
+  realtime-avatar/
   render/
   render-live2d/
   server/

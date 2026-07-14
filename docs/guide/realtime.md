@@ -21,9 +21,14 @@ This is the current production-oriented browser path. The browser calls your
 route, receives an adapter-aware bootstrap, and connects through the default
 remote adapter registry.
 
+Add `@charivo/realtime-avatar` (a separate install) if you want its avatar
+expression/motion/gaze tools and result projector, as used in the Basic Setup
+example below.
+
 ## Basic Setup
 
 ```ts
+import { Charivo } from "@charivo/core";
 import {
   createRealtimeManager,
   type RealtimeToolRegistration,
@@ -65,7 +70,21 @@ const manager = createRealtimeManager(client, {
   tools,
   resultProjectors: [createAvatarResultProjector()],
 });
+
+const charivo = new Charivo();
+charivo.attachRealtime(manager);
+charivo.setCharacter({
+  id: "hiyori",
+  name: "Hiyori",
+  personality: "Cheerful and helpful assistant",
+  voice: { voiceId: "marin" },
+});
 ```
+
+`attachRealtime(...)` installs the event bridge that relays realtime output
+(including projected avatar events) into the Charivo event stream and
+propagates the current character to the manager. Set the character before
+starting the session so tool handlers and instructions have access to it.
 
 If your app also renders lipsync locally, prepare audio from a user gesture
 before the first realtime session:
@@ -78,23 +97,16 @@ await manager.startSession({
 });
 ```
 
-Typical session start:
-
-```ts
-await manager.startSession({
-  provider: "openai",
-  model: "gpt-realtime-mini",
-});
-```
-
-`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
+`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before switching.
 
 ### Input Audio Transcription
 
 `RealtimeSessionConfig.inputAudioTranscription` controls how the provider
-transcribes the user's microphone input. Leave it unset to preserve the
-provider's current default; the field is fully optional and lands under
-`audio.input.transcription` on the wire (OpenAI Realtime GA shape).
+transcribes the user's microphone input. Leave it unset to leave input
+transcription disabled — OpenAI's Realtime API defaults transcription to off,
+so set `model` explicitly if you want user transcripts. The field is fully
+optional and lands under `audio.input.transcription` on the wire (OpenAI
+Realtime GA shape).
 
 ```ts
 // Cheaper transcription model.
@@ -115,8 +127,9 @@ await manager.updateSession({
 ```
 
 Model strings pass through to OpenAI without local validation, so unknown
-values surface as upstream errors. Known options today include `whisper-1`
-(default), `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe`.
+values surface as upstream errors. Known options today include `whisper-1`,
+`gpt-4o-mini-transcribe`, and `gpt-4o-transcribe`; none is applied unless you
+set `model` explicitly.
 
 If you need stronger product-specific acting guidance, append it in the app
 layer on top of the library-generated base instead of making
@@ -228,6 +241,16 @@ session active and attempts recovery with the latest effective config.
 - `realtime:reconnect:attempt`, `realtime:reconnect:success`, and
   `realtime:reconnect:exhausted` are emitted for observability
 
+## Observability
+
+- `realtime:usage` is emitted whenever the transport reports usage on an
+  assistant response. The payload is `{ usage, model?, responseId?, sessionId? }`,
+  where `sessionId` is the current session's id.
+- Pass a `logger` (`{ debug?, info?, warn?, error? }`) to
+  `createRealtimeManager(client, { logger })` to receive internal manager
+  logs. Log calls made during an active session automatically include
+  `sessionId` in the log context.
+
 ## Provider Route
 
 The server route typically uses `@charivo/server/openai`:
@@ -251,7 +274,7 @@ const bootstrap = await provider.createSession({
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can
 still pass those fields explicitly when they need deterministic provider
-configuration. For pricing information on the available models, see [OpenAI's pricing page](https://openai.com/api/pricing/).
+configuration.
 
 For local development without a server, the direct Agents transport can mint the
 client secret in the browser via `apiKey` — see
