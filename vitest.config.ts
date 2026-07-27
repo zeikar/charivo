@@ -12,6 +12,7 @@ export default defineConfig({
       "tests/live-realtime/**",
       "tests/webrtc-smoke/**",
       "tests/cascade-smoke/**",
+      "tests/streaming-stt-smoke/**",
     ],
     coverage: {
       provider: "v8",

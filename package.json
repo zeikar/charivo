@@ -50,6 +50,7 @@
     "test:webrtc": "playwright test -c playwright.webrtc.config.ts",
     "test:voice": "playwright test -c playwright.voice.config.ts",
     "test:cascade": "playwright test -c playwright.cascade.config.ts",
+    "test:streaming-stt": "playwright test -c playwright.streaming-stt.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "clean": "pnpm -r exec rm -rf dist && pnpm -r exec rm -rf .turbo",
