@@ -30,7 +30,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest",
+    "test": "vitest run --root ../.. packages/tts",
+    "test:watch": "vitest --root ../.. packages/tts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
