@@ -49,6 +49,9 @@
       "@charivo/render/stub": ["../../packages/render/src/stub/index.ts"],
       "@charivo/stt": ["../../packages/stt/src/index.ts"],
       "@charivo/stt/openai": ["../../packages/stt/src/openai/index.ts"],
+      "@charivo/stt/openai-realtime": [
+        "../../packages/stt/src/openai-realtime/index.ts"
+      ],
       "@charivo/stt/remote": ["../../packages/stt/src/remote/index.ts"],
       "@charivo/stt/web": ["../../packages/stt/src/web/index.ts"],
       "@charivo/tts": ["../../packages/tts/src/index.ts"],
