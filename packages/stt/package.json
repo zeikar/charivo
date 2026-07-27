@@ -21,6 +21,11 @@
       "import": "./dist/openai/index.mjs",
       "require": "./dist/openai/index.js"
     },
+    "./openai-realtime": {
+      "types": "./dist/openai-realtime/index.d.ts",
+      "import": "./dist/openai-realtime/index.mjs",
+      "require": "./dist/openai-realtime/index.js"
+    },
     "./web": {
       "types": "./dist/web/index.d.ts",
       "import": "./dist/web/index.mjs",
