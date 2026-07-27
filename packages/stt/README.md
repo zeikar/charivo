@@ -29,6 +29,11 @@ const text = await sttManager.stop();
 - `@charivo/stt/openai`: `createOpenAISTTTranscriber(config)` (browser
   transcriber, dev/testing only) and, for server-side use,
   `createOpenAISTTProvider(config)`, `OpenAISTTProvider`, `type OpenAISTTConfig`
+- `@charivo/stt/openai-realtime`: `createOpenAIRealtimeSTTTranscriber({ bootstrap })`
+  (live WebRTC streaming transcriber, `gpt-realtime-whisper`) — the app injects
+  `bootstrap(request) => Promise<{ answerSdp }>`, owns the credentials, and
+  mints the `type: "transcription"` session with `turn_detection: null`; no
+  key-bearing helper is shipped
 
 ## Event Bridge
 
@@ -39,5 +44,10 @@ through the shared event bus.
 When connected, the manager emits:
 
 - `stt:start`
+- `stt:partial` (streaming transcribers only, e.g. `@charivo/stt/openai-realtime`)
 - `stt:stop`
 - `stt:error`
+
+For the streaming transcriber, a mid-session failure does not push an event on
+its own — it surfaces the next time the app calls `stop()`, which rejects and
+emits `stt:error` (never a successful `stt:stop`).

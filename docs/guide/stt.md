@@ -59,11 +59,31 @@ const text = await charivo.getSTTManager()?.stop();
 - useful for prototypes and zero-server flows
 - browser support varies
 
+### Streaming (live)
+
+- `@charivo/stt/openai-realtime`
+- WebRTC transcriber backed by an OpenAI Realtime transcription session (`gpt-realtime-whisper`)
+- credential-free: the app supplies a `bootstrap(request) => Promise<{ answerSdp }>` function that owns credentials and the SDP exchange
+- transcript deltas stream live as the user speaks, each carrying its own spacing
+- drafts relay via `stt:partial` by plain concatenation of those deltas
+- on `stop()`, the transcriber disables the mic, sends a single `input_audio_buffer.commit`, and resolves with the joined authoritative final transcript
+
+**Limitations:**
+
+- no server VAD — press-to-start / press-to-stop only
+- language auto-detects unless `STTOptions.language` is set
+- calling `stop()` before connect finishes rejects
+- a mid-session failure does not push an event on its own — it surfaces the next time the app calls `stop()`, which rejects and emits `stt:error`
+- a stop that times out also rejects `stop()` and emits `stt:error` — a partial draft is never returned as a successful `stt:stop`
+- a small RTP-vs-data-channel tail race means the last fraction of a second of audio may rarely be truncated
+- packaged Electron apps behind UDP-blocking proxies may fail to establish the WebRTC connection
+
 ## What `@charivo/stt` Owns
 
 - recording lifecycle
 - interaction with the transcriber implementation
 - STT lifecycle and error events back into core
+- relaying interim transcript drafts (`stt:partial`) from streaming transcribers
 
 `STTManager` intentionally uses `setEventEmitter(...)` rather than the full
 event bus.
