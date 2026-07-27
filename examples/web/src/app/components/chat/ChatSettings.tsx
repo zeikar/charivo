@@ -11,6 +11,7 @@ import {
   MicrophoneIcon,
   CpuChipIcon,
   ExclamationTriangleIcon,
+  SignalIcon,
 } from "@heroicons/react/24/solid";
 import type {
   LLMClientType,
@@ -117,6 +118,13 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     value: "openai",
     description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
+  },
+  {
+    label: "OpenAI Realtime (Streaming)",
+    value: "openai-realtime",
+    description:
+      "Live streaming transcription over WebRTC. Credentials stay on the server.",
+    Icon: SignalIcon,
   },
   {
     label: "Disabled",

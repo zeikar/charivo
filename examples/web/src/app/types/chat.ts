@@ -12,7 +12,12 @@ export type RealtimeTurnStatus =
 
 export type TTSPlayerType = "remote" | "web" | "openai" | "none";
 
-export type STTTranscriberType = "remote" | "web" | "openai" | "none";
+export type STTTranscriberType =
+  | "remote"
+  | "web"
+  | "openai"
+  | "openai-realtime"
+  | "none";
 
 export type LLMClientType =
   | "remote"

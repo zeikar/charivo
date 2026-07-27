@@ -21,6 +21,7 @@ import {
   type TTSPlayer,
 } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
+import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import type { Live2DRenderer } from "@charivo/render-live2d";
 
@@ -50,6 +51,7 @@ const OPENAI_TESTING_PROMPT =
   "Enter your OpenAI API key. This direct browser client is for development/testing only.";
 const OPENCLAW_TESTING_PROMPT =
   "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
+const REALTIME_TRANSCRIPTION_ENDPOINT = "/api/realtime-transcription";
 const REALTIME_UI_DEBUG = process.env.NODE_ENV !== "production";
 
 function logRealtimeUi(...args: unknown[]): void {
@@ -109,6 +111,39 @@ function promptForSecret(message: string, missingMessage: string): string {
   }
   return value;
 }
+
+// The streaming STT transcriber never sees a credential: it hands us its SDP
+// offer, and /api/realtime-transcription mints the ephemeral secret server-side
+// and returns the answer SDP.
+const bootstrapRealtimeTranscription: OpenAIRealtimeTranscriptionBootstrapFn =
+  async (sessionRequest) => {
+    const response = await fetch(REALTIME_TRANSCRIPTION_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sessionRequest),
+    });
+
+    const rawBody = await response.text();
+    let payload: { answerSdp?: unknown; error?: unknown; details?: unknown } =
+      {};
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      // Leave payload empty; the raw body goes into the error below.
+    }
+
+    if (!response.ok || typeof payload.answerSdp !== "string") {
+      const message = [payload.error, payload.details]
+        .filter((part): part is string => typeof part === "string")
+        .join(": ");
+      throw new Error(
+        message ||
+          `Transcription bootstrap failed with ${response.status}: ${rawBody}`,
+      );
+    }
+
+    return { answerSdp: payload.answerSdp };
+  };
 
 async function stopRealtime(instance: Charivo | null): Promise<void> {
   const realtimeManager = instance?.getRealtimeManager();
@@ -304,6 +339,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             );
             return createOpenAISTTTranscriber({ apiKey });
           }
+          case "openai-realtime": {
+            const { createOpenAIRealtimeSTTTranscriber } = await import(
+              "@charivo/stt/openai-realtime"
+            );
+            return createOpenAIRealtimeSTTTranscriber({
+              bootstrap: bootstrapRealtimeTranscription,
+            });
+          }
           case "none":
           default:
             return null;
@@ -476,6 +519,16 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           if (!disposed) {
             setIsRecording(true);
           }
+        });
+
+        // Cumulative interim snapshot, not an incremental fragment: replace the
+        // draft so the live text lands in the same box the final transcript
+        // overwrites at stt:stop.
+        instance.on("stt:partial", ({ transcription }) => {
+          if (disposed) {
+            return;
+          }
+          setInput(transcription);
         });
 
         instance.on("stt:stop", ({ transcription }) => {

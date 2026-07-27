@@ -6,7 +6,8 @@ current architecture as it is actually shipped:
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - LLM chat through remote, direct, OpenClaw proxy, and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
-- STT through remote, browser-native, and direct OpenAI transcribers
+- STT through remote, browser-native, direct OpenAI, and streaming OpenAI
+  Realtime transcribers
 - Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
   using the OpenAI Agents WebRTC adapter by default
 
@@ -58,6 +59,10 @@ The demo ships these routes:
 - `POST /api/realtime`
   Uses `@charivo/server/openai` to create a realtime session
   bootstrap for `@charivo/realtime/remote`
+- `POST /api/realtime-transcription`
+  Mints an ephemeral transcription session secret and performs the SDP exchange
+  for `@charivo/stt/openai-realtime`
+  Accepts `{ sdpOffer, session: { model, language? } }` and returns `{ answerSdp }`
 
 There is no `GET /api/tts` route in the current demo.
 
@@ -70,6 +75,8 @@ compare the tradeoffs:
 - Browser-direct OpenAI and OpenClaw options expose credentials to the browser.
   They are for local development and testing only.
 - Browser TTS/STT options use Web Speech APIs and depend on browser support.
+- The streaming STT option keeps the key on the server and writes interim
+  transcripts into the message box while you hold the mic.
 - The stub LLM mode is useful for UI work and deterministic demos.
 
 ## Structure
@@ -80,6 +87,7 @@ examples/web/src/app
     chat/route.ts
     chat-openclaw/route.ts
     realtime/route.ts
+    realtime-transcription/route.ts
     stt/route.ts
     tts/route.ts
   components/
