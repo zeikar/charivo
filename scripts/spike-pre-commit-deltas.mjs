@@ -11,7 +11,7 @@
  * WebSocket is used only for Node simplicity; the delta-timing it observes is a
  * property of the model/session and applies to the WebRTC path too.
  *
- *   OPENAI_API_KEY=sk-... node pre-commit-delta-spike.mjs <audio.wav>
+ *   OPENAI_API_KEY=sk-... node scripts/spike-pre-commit-deltas.mjs <audio.wav>
  * Env: REALTIME_MODEL (default gpt-realtime-whisper), GRACE_MS (default 4000)
  */
 
@@ -53,7 +53,8 @@ const CANDIDATES = [
 ];
 
 if (!API_KEY) fail("Set OPENAI_API_KEY in the environment.");
-if (!WAV_PATH) fail("Usage: node pre-commit-delta-spike.mjs <audio.wav>");
+if (!WAV_PATH)
+  fail("Usage: node scripts/spike-pre-commit-deltas.mjs <audio.wav>");
 
 const t0 = Date.now();
 const ts = () => `+${String(Date.now() - t0).padStart(6)}ms`;

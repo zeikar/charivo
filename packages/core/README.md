@@ -97,6 +97,7 @@ Important event names include:
 - `tts:audio:end`
 - `tts:lipsync:update`
 - `stt:start`
+- `stt:partial`
 - `stt:stop`
 - `stt:error`
 - `realtime:session:start`

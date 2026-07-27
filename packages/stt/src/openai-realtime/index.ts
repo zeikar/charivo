@@ -148,7 +148,21 @@ class OpenAIRealtimeSTTTranscriber implements STTTranscriber {
         }
       });
 
-      this.mediaStream = await this.acquireMic();
+      const micPromise = this.acquireMic();
+      // A getUserMedia() permission prompt can resolve after this attempt's
+      // setup was canceled or superseded by a newer session; release that
+      // late stream instead of leaking a hot mic nothing holds a reference
+      // to. Handled separately from the race below, which only decides
+      // whether THIS attempt proceeds.
+      void micPromise.then(
+        (stream) => {
+          if (gen !== this.generation) {
+            stream.getTracks().forEach((track) => track.stop());
+          }
+        },
+        () => {},
+      );
+      this.mediaStream = await Promise.race([micPromise, setupFailure]);
       this.pc.addTrack(this.mediaStream.getTracks()[0], this.mediaStream);
 
       this.dc = this.pc.createDataChannel("oai-events");
@@ -246,9 +260,13 @@ class OpenAIRealtimeSTTTranscriber implements STTTranscriber {
       throw new CharivoStateError("stop already in progress");
     }
     if (this.connecting) {
-      throw new CharivoStateError(
-        "cannot stop while the streaming session is still starting",
-      );
+      // Nothing was transcribed yet, so canceling a connecting session is a
+      // successful, idempotent stop, not an error — the same "" contract as
+      // the !this.recording case below. This keeps dispose(), which sees
+      // isRecording() === true while connecting, from surfacing a thrown
+      // error for what is, from the caller's perspective, a clean teardown.
+      this.cancelConnecting();
+      return "";
     }
     if (!this.recording) {
       return "";
@@ -291,10 +309,12 @@ class OpenAIRealtimeSTTTranscriber implements STTTranscriber {
   }
 
   /**
-   * Check if currently recording
+   * Check if currently recording, including while a session is still
+   * connecting: lifecycle owners like Charivo.dispose() gate their stop call
+   * on this, so a connecting session must count as active.
    */
   isRecording(): boolean {
-    return this.recording;
+    return this.recording || this.connecting;
   }
 
   /**
@@ -393,6 +413,20 @@ class OpenAIRealtimeSTTTranscriber implements STTTranscriber {
     } else {
       this.failTerminal(error);
     }
+  }
+
+  // Cancels the in-flight startRecording(). Runs cleanup() synchronously so
+  // a caller awaiting stopRecording() sees every acquired resource (mic, dc,
+  // pc, timers, pagehide listener) already released by the time it returns,
+  // then rejects whichever setup step startRecording() is currently
+  // awaiting so ITS promise settles too, instead of hanging or going live.
+  private cancelConnecting(): void {
+    const error = new CharivoStateError(
+      "start canceled because stop was called while connecting",
+    );
+    this.setupError ??= error;
+    this.cleanup();
+    this.setupReject?.(error);
   }
 
   private sendCommit(): void {

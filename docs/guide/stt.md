@@ -72,7 +72,7 @@ const text = await charivo.getSTTManager()?.stop();
 
 - no server VAD — press-to-start / press-to-stop only
 - language auto-detects unless `STTOptions.language` is set
-- calling `stop()` before connect finishes rejects
+- calling `stop()` before connect finishes cancels the pending start and resolves with an empty transcript, releasing the microphone and any partially-opened connection; the pending `start()` call itself rejects
 - a mid-session failure does not push an event on its own — it surfaces the next time the app calls `stop()`, which rejects and emits `stt:error`
 - a stop that times out also rejects `stop()` and emits `stt:error` — a partial draft is never returned as a successful `stt:stop`
 - a small RTP-vs-data-channel tail race means the last fraction of a second of audio may rarely be truncated

@@ -757,26 +757,79 @@ describe("OpenAIRealtimeSTTTranscriber", () => {
     await expect(first).resolves.toBe("done");
   });
 
-  it("rejects a stop while the session is still connecting, then stops normally once started", async () => {
+  it("cancels the pending start when stop is called while the session is still connecting, then allows a fresh session", async () => {
     const transcriber = createTranscriber();
     const started = transcriber.startRecording();
     await flush();
 
-    await expectRejectsWith(
-      transcriber.stopRecording(),
-      CharivoStateError,
-      "cannot stop while the streaming session is still starting",
-    );
+    // Nothing was transcribed yet, so canceling a connecting session is a
+    // successful stop that resolves "" — not a thrown error.
+    await expect(transcriber.stopRecording()).resolves.toBe("");
+    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+    expect(transcriber.isRecording()).toBe(false);
 
-    openChannel();
-    await started;
-    expect(transcriber.isRecording()).toBe(true);
-
+    // A fresh session still works after the canceled connect.
+    await startAndOpen(transcriber);
     const stopped = transcriber.stopRecording();
     await flush();
     deliverFinal("item-1", "late but fine");
 
     await expect(stopped).resolves.toBe("late but fine");
+  });
+
+  it("cancels the pending start and releases the mic when stop is called while the bootstrap is still pending (mirrors dispose())", async () => {
+    bootstrap.mockImplementation(
+      () => new Promise<OpenAIRealtimeTranscriptionBootstrap>(() => {}),
+    );
+
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    await flush();
+
+    // dispose() only calls stop() when isRecording() is true, so a connecting
+    // session must report itself as recording.
+    expect(transcriber.isRecording()).toBe(true);
+
+    // dispose() must not see this as a failure: it resolves "", so the
+    // manager emits stt:stop rather than stt:error and dispose() never throws.
+    await expect(transcriber.stopRecording()).resolves.toBe("");
+    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+
+    expect(tracks[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(latestPeer().close).toHaveBeenCalledTimes(1);
+    expect(transcriber.isRecording()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("closes the peer connection promptly when stop cancels a connect stuck acquiring the mic, then releases a mic that resolves late", async () => {
+    let resolveGetUserMedia!: (stream: MediaStream) => void;
+    getUserMedia.mockImplementation(
+      () =>
+        new Promise<MediaStream>((resolve) => {
+          resolveGetUserMedia = resolve;
+        }),
+    );
+
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    await flush();
+
+    // stopRecording() is deterministic: by the time it resolves, the peer
+    // connection is already closed, without waiting on getUserMedia().
+    await expect(transcriber.stopRecording()).resolves.toBe("");
+    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+    expect(latestPeer().close).toHaveBeenCalledTimes(1);
+    expect(transcriber.isRecording()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(tracks[0]!.stop).not.toHaveBeenCalled();
+
+    // The permission prompt resolves after cancellation; its stream is stale
+    // and must be released instead of leaking a hot mic.
+    resolveGetUserMedia(mediaStream);
+    await flush();
+
+    expect(tracks[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(transcriber.isRecording()).toBe(false);
   });
 
   it("rejects the pending stop when the data channel closes unexpectedly", async () => {
