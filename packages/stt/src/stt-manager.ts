@@ -20,6 +20,9 @@ export class STTManagerImpl implements STTManager {
 
   constructor(sttTranscriber: STTTranscriber) {
     this.sttTranscriber = sttTranscriber;
+    this.sttTranscriber.onPartial?.((transcription) =>
+      this.eventEmitter?.emit("stt:partial", { transcription }),
+    );
   }
 
   /**

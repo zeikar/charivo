@@ -88,4 +88,28 @@ describe("STTManagerImpl", () => {
     await expect(manager.stop()).rejects.toThrow("transcription failed");
     expect(emitter.emit).toHaveBeenCalledWith("stt:error", { error });
   });
+
+  it("bridges onPartial callback to stt:partial event", () => {
+    let storedCallback: ((transcription: string) => void) | undefined;
+    const transcriber = {
+      startRecording: vi.fn(async () => undefined),
+      stopRecording: vi.fn(async () => ""),
+      isRecording: vi.fn(() => false),
+      onPartial: vi.fn((callback: (transcription: string) => void) => {
+        storedCallback = callback;
+      }),
+    };
+    const emitter = { emit: vi.fn() };
+    const manager = createSTTManager(transcriber);
+
+    manager.setEventEmitter(emitter);
+
+    expect(transcriber.onPartial).toHaveBeenCalledTimes(1);
+
+    storedCallback!("draft text");
+
+    expect(emitter.emit).toHaveBeenCalledWith("stt:partial", {
+      transcription: "draft text",
+    });
+  });
 });
