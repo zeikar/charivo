@@ -303,6 +303,8 @@ export interface STTTranscriber {
   startRecording(options?: STTOptions): Promise<void>;
   stopRecording(): Promise<string>;
   isRecording(): boolean;
+  /** Optional: subscribe to cumulative interim transcript snapshots (streaming transcribers only). */
+  onPartial?(callback: (transcription: string) => void): void;
 }
 
 // STT Manager - Manages STT session state
@@ -340,6 +342,7 @@ export type EventMap = {
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };
   "stt:start": { options?: STTOptions };
+  "stt:partial": { transcription: string };
   "stt:stop": { transcription: string };
   "stt:error": { error: Error };
   "realtime:session:start": {
