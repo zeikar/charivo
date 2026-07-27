@@ -177,7 +177,7 @@ const base = buildRealtimeSessionConfig({
 
 await realtime.startSession({
   provider: "openai",
-  model: "gpt-realtime-mini",
+  model: "gpt-realtime-2.1-mini",
   instructions: base.instructions,
 });
 

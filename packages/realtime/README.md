@@ -48,11 +48,11 @@ manager.setCharacter({
 
 await manager.startSession({
   provider: "openai",
-  model: "gpt-realtime-mini",
+  model: "gpt-realtime-2.1-mini",
 });
 ```
 
-`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive — consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
+`gpt-realtime-2.1-mini` is the default realtime model; the full `gpt-realtime-2.1` is available but meaningfully more expensive — consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
 
 ```ts
 await manager.updateSession({
@@ -89,7 +89,7 @@ import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agent
 const client = createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." });
 const manager = createRealtimeManager(client);
 
-await manager.startSession({ provider: "openai", model: "gpt-realtime-mini" });
+await manager.startSession({ provider: "openai", model: "gpt-realtime-2.1-mini" });
 ```
 
 `createOpenAIRealtimeAgentsClient` option precedence is `sessionBootstrap` >
@@ -130,7 +130,7 @@ const base = buildRealtimeSessionConfig({ character });
 
 await manager.startSession({
   provider: "openai",
-  model: "gpt-realtime-mini",
+  model: "gpt-realtime-2.1-mini",
   instructions: [
     base.instructions,
     "Keep replies short and natural for this product.",

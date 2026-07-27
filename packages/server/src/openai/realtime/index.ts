@@ -20,7 +20,7 @@ const DEFAULT_CLIENT_SECRETS_URL =
 // packages/realtime/src/openai/defaults.ts. Strict layering keeps server and
 // browser providers self-contained (no shared module / cross-package dep) — the
 // same pattern the tts/stt OpenAI defaults follow.
-const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-mini";
+const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 

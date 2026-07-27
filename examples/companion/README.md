@@ -278,7 +278,7 @@ The only server route is the realtime bootstrap — memory is fully client-side
   present and that `session.provider` is `"openai"`, then returns the session
   bootstrap payload.
 
-The session runs `gpt-realtime-mini` with `gpt-4o-mini-transcribe` for input
+The session runs `gpt-realtime-2.1-mini` with `gpt-4o-mini-transcribe` for input
 transcription. Transcription is deliberately enabled — OpenAI defaults it off,
 and without it no user transcript arrives, so voice-user turn capture and the
 first-voice-utterance memory refresh would not run. (Assistant completions are

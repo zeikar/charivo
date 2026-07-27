@@ -22,7 +22,7 @@ afterEach(() => {
 const request: RealtimeSessionRequest = {
   transport: "webrtc",
   session: {
-    model: "gpt-4o-realtime-preview",
+    model: "gpt-realtime-2.1",
     voice: "nova",
   },
 };
@@ -151,7 +151,7 @@ describe("getOpenAIRealtimeAgentsBootstrap — apiKey (dev-bootstrap) path", () 
       session: { model?: string; audio?: { output?: { voice?: string } } };
     };
     // The session mapper places model at top-level and voice inside audio.output
-    expect(body.session.model).toBe("gpt-4o-realtime-preview");
+    expect(body.session.model).toBe("gpt-realtime-2.1");
     expect(body.session.audio?.output?.voice).toBe("nova");
   });
 });

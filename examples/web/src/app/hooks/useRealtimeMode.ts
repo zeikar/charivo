@@ -68,7 +68,7 @@ export function useRealtimeMode() {
 
       await realtimeManager.startSession({
         provider: "openai",
-        model: "gpt-realtime-mini",
+        model: "gpt-realtime-2.1-mini",
         instructions: buildDemoRealtimeInstructions(
           charivo.getCurrentCharacter(),
           avatarCatalog,

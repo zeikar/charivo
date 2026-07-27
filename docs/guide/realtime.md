@@ -93,11 +93,11 @@ before the first realtime session:
 await renderManager.prepareAudio?.();
 await manager.startSession({
   provider: "openai",
-  model: "gpt-realtime-mini",
+  model: "gpt-realtime-2.1-mini",
 });
 ```
 
-`gpt-realtime-mini` is the default realtime model; the full `gpt-realtime` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before switching.
+`gpt-realtime-2.1-mini` is the default realtime model; the full `gpt-realtime-2.1` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before switching.
 
 ### Input Audio Transcription
 
@@ -143,7 +143,7 @@ const base = buildRealtimeSessionConfig({ character });
 
 await manager.startSession({
   provider: "openai",
-  model: "gpt-realtime-mini",
+  model: "gpt-realtime-2.1-mini",
   instructions: [
     base.instructions,
     buildAvatarControlInstructions(avatarCatalog),
@@ -265,7 +265,7 @@ const bootstrap = await provider.createSession({
   transport: "webrtc",
   session: {
     provider: "openai",
-    model: "gpt-realtime-mini",
+    model: "gpt-realtime-2.1-mini",
     voice: "marin",
   },
 });

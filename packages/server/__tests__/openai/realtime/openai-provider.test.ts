@@ -271,7 +271,7 @@ describe("OpenAIRealtimeProvider", () => {
 
         expect(JSON.parse(String(formData.get("session")))).toEqual({
           type: "realtime",
-          model: "gpt-realtime-mini",
+          model: "gpt-realtime-2.1-mini",
           audio: {
             output: {
               voice: "marin",

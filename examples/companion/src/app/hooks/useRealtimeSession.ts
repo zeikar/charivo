@@ -621,7 +621,7 @@ export function useRealtimeSession(
 
       await manager.startSession({
         provider: "openai",
-        model: "gpt-realtime-mini",
+        model: "gpt-realtime-2.1-mini",
         instructions,
         // Enable input transcription so `conversation.item.input_audio_transcription.completed`
         // fires and the manager emits `realtime:user:transcript`. Without this

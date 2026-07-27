@@ -276,10 +276,10 @@ describe("OpenAIRealtimeAgentsClient", () => {
 
     expect(sdkState.session?.connect).toHaveBeenCalledWith({
       apiKey: "client-secret",
-      model: "gpt-realtime-mini",
+      model: "gpt-realtime-2.1-mini",
     });
     expect(sdkState.session?.options.config).toMatchObject({
-      model: "gpt-realtime-mini",
+      model: "gpt-realtime-2.1-mini",
       audio: {
         output: {
           voice: "marin",
