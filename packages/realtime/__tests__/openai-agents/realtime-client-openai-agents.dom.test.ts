@@ -115,12 +115,15 @@ class MockAnalyser {
   getByteFrequencyData(target: Uint8Array): void {
     target.fill(128);
   }
+
+  disconnect(): void {}
 }
 
 class MockAudioContext {
   analyser = new MockAnalyser();
   createMediaStreamSource = vi.fn((_stream: MediaStream) => ({
     connect: vi.fn(),
+    disconnect: vi.fn(),
   }));
   createAnalyser = vi.fn(() => this.analyser);
   close = vi.fn(async () => undefined);
@@ -881,6 +884,62 @@ describe("OpenAIRealtimeAgentsClient", () => {
       type: "audio.lipsync",
       rms: 0,
     });
+  });
+
+  it("resumes lip sync analysis after an interrupt when the next response starts", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const events: RealtimeTransportEvent[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.connect({
+      provider: "openai",
+    });
+
+    const stream = new MediaStream();
+    if (sdkState.audioElement) {
+      sdkState.audioElement.srcObject = stream;
+      sdkState.audioElement.dispatchEvent(new Event("loadedmetadata"));
+    }
+
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(
+      events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+    ).toBe(true);
+
+    // Interrupt should pause analysis (rms reset to 0) without tearing down
+    // the persistent MediaStream attachment.
+    events.length = 0;
+    sdkState.transport?.emit("audio_interrupted");
+
+    expect(events).toContainEqual({ type: "audio.lipsync", rms: 0 });
+
+    events.length = 0;
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(
+      events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+    ).toBe(false);
+
+    // The next response should resume analysis without a new track event or
+    // re-attach.
+    events.length = 0;
+    sdkState.session?.emit("audio_start", {}, {});
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(
+      events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+    ).toBe(true);
   });
 
   it("can fall back to peer connection track events for lip sync analysis", async () => {

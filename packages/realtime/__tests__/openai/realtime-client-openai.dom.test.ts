@@ -5,7 +5,7 @@ import type { RealtimeTransportEvent } from "@charivo/realtime";
 
 type RealtimeClientTestInternals = OpenAIRealtimeClient & {
   audioElement: HTMLAudioElement | null;
-  lipSyncAnalyzer: { attachStream: (stream: MediaStream) => void };
+  lipSyncAnalyzer: { attachMediaStream: (stream: MediaStream) => void };
 };
 
 class MockMediaTrack {
@@ -127,8 +127,8 @@ describe("OpenAIRealtimeClient", () => {
     });
 
     const internals = client as unknown as RealtimeClientTestInternals;
-    const attachStreamSpy = vi
-      .spyOn(internals.lipSyncAnalyzer, "attachStream")
+    const attachMediaStreamSpy = vi
+      .spyOn(internals.lipSyncAnalyzer, "attachMediaStream")
       .mockImplementation(() => undefined);
 
     await client.connect({
@@ -161,7 +161,7 @@ describe("OpenAIRealtimeClient", () => {
 
     peer.ontrack?.({ streams: [remoteStream] } as unknown as RTCTrackEvent);
     expect(internals.audioElement?.srcObject).toBe(remoteStream);
-    expect(attachStreamSpy).toHaveBeenCalledWith(remoteStream);
+    expect(attachMediaStreamSpy).toHaveBeenCalledWith(remoteStream);
   });
 
   it("rejects invalid bootstrap payloads", async () => {

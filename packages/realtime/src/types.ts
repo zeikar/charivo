@@ -74,6 +74,7 @@ export interface RealtimeTransportClient {
   ): Promise<void>;
   interrupt(): Promise<void>;
   onEvent(callback: (event: RealtimeTransportEvent) => void): void;
+  prepareAudio?(): Promise<void>;
 }
 
 export type RealtimeClient = RealtimeTransportClient;

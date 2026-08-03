@@ -4,7 +4,7 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import { createLipSyncAnalyzer, OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   bindTransportLifecycle,
@@ -19,7 +19,6 @@ import {
   isRecord,
 } from "../internal/shared";
 import { delay } from "../internal/timing";
-import { LipSyncAnalyzer } from "../openai-agents/lip-sync-analyzer";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import { DEFAULT_OPENAI_REALTIME_VOICE } from "./defaults";
 
@@ -93,7 +92,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   private audioElement: HTMLAudioElement | null = null;
   private mediaStream: MediaStream | null = null;
   private audioSender: RTCRtpSender | null = null;
-  private readonly lipSyncAnalyzer = new LipSyncAnalyzer({
+  private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => this.emitEvent({ type: "audio.lipsync", rms }),
     onError: (error) => console.error("Failed to setup audio analysis:", error),
   });
@@ -133,7 +132,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       this.audioElement = document.createElement("audio");
       this.audioElement.autoplay = true;
       this.audioElement.setAttribute("playsinline", "true");
-      void this.lipSyncAnalyzer.prepareAudioContext().catch(() => undefined);
+      void this.lipSyncAnalyzer.prepare().catch(() => undefined);
       this.bindConnectionEvents();
       this.bindTransportLifecycleEvents();
 
@@ -141,7 +140,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         if (this.audioElement) {
           this.audioElement.srcObject = event.streams[0];
         }
-        this.lipSyncAnalyzer.attachStream(event.streams[0]);
+        this.lipSyncAnalyzer.attachMediaStream(event.streams[0]);
       };
 
       try {
@@ -342,6 +341,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
     this.eventCallbacks.add(callback);
+  }
+
+  async prepareAudio(): Promise<void> {
+    await this.lipSyncAnalyzer.prepare();
   }
 
   private handleServerEvent(event: ServerEvent): void {
@@ -654,7 +657,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.isResponseInProgress = false;
     this.cancelInFlight = false;
     this.resetResponseTracking();
-    this.lipSyncAnalyzer.stopOutput();
+    this.lipSyncAnalyzer.stop();
     this.emitEvent({
       type: "connection.lost",
       cause,
@@ -689,7 +692,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.isCleaningUp = true;
     this.unbindTransportLifecycleEvents();
     this.iceDisconnectDebouncer.cancel();
-    this.lipSyncAnalyzer.cleanup();
+    this.lipSyncAnalyzer
+      .cleanup()
+      .catch((error) =>
+        console.error("Failed to clean up lip-sync analyzer:", error),
+      );
     this.rejectPendingSessionUpdate(
       new Error("Realtime session ended before session update completed"),
     );
