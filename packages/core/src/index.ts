@@ -29,6 +29,11 @@ export {
   getErrorMessage,
   toCharivoError,
 } from "./errors";
+export {
+  createLipSyncAnalyzer,
+  type LipSyncAnalyzer,
+  type LipSyncAnalyzerOptions,
+} from "./lipsync-analyzer";
 
 export class Charivo {
   private eventBus: EventBus;
