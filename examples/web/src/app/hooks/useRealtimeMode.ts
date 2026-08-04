@@ -64,7 +64,7 @@ export function useRealtimeMode() {
           .map((tool) => tool.name),
       });
       charivo.attachRealtime(realtimeManager);
-      await charivo.getRenderManager()?.prepareAudio?.();
+      await realtimeManager.prepareAudio?.();
 
       await realtimeManager.startSession({
         provider: "openai",

@@ -396,6 +396,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         } catch {
           // Ignore teardown errors during effect cleanup.
         }
+
+        try {
+          await ttsManager.dispose?.();
+        } catch {
+          // Ignore teardown errors during effect cleanup.
+        }
       }
 
       if (sttManager?.isRecording()) {
