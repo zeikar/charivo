@@ -29,9 +29,10 @@ What it proves:
 - `Charivo.userSay` runs the transcript through the LLM and produces a reply
 - the TTS manager synthesizes audio and plays it through its full lifecycle
   (`tts:audio:start` → `tts:audio:end`)
-- the browser audio→lip-sync loop (`RenderManager` + `RealTimeLipSync`) drives
-  the renderer with RMS updates during playback — the path that node-level
-  tests cannot reproduce
+- the browser audio→lip-sync loop — the TTS manager analyzes its playing audio
+  with the shared core `LipSyncAnalyzer` and emits `tts:lipsync:update`,
+  which `RenderManager` consumes to drive the renderer with RMS updates during
+  playback — the path that node-level tests cannot reproduce
 
 The harness intentionally provides its own minimal `/api/stt`, `/api/chat`, and
 `/api/tts` implementations (mirroring the `examples/web` route contracts). It

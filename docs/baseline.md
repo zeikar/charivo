@@ -87,19 +87,30 @@ locks this contract.
 
 ## Lip-sync
 
+**Re-recorded 2026-08-02.** The two separate analyzer paths described in the
+previous version of this section were unified into one shared analyzer; this
+section reflects the current wiring.
+
 RMS-driven mouth movement: an analyzer reads the playing audio via Web Audio,
 computes a normalized RMS, and feeds it to the renderer, which drives the Live2D
 mouth-open parameter.
 
-**Two analyzer paths:**
+**One shared analyzer.** [`createLipSyncAnalyzer`](../packages/core/src/lipsync-analyzer.ts)
+in `@charivo/core` computes speech-band RMS (10–60% of the frequency spectrum)
+normalized to `min(rms * 2, 1)`. It is owned by the producers, not the
+renderer:
 
-- TTS playback — [render/src/lipsync.ts](../packages/render/src/lipsync.ts):
-  speech-band RMS, normalized `min(rms * 2, 1.0)`. Wired in
-  `RenderManager.setEventBus` via `tts:audio:start` / `tts:audio:end` /
-  `tts:lipsync:update`.
-- Realtime voice —
-  [openai-agents/lip-sync-analyzer.ts](../packages/realtime/src/openai-agents/lip-sync-analyzer.ts):
-  RMS normalized `min(rms * 3, 1)`.
+- the TTS manager ([tts-manager.ts](../packages/tts/src/tts-manager.ts))
+  attaches it to the `<audio>` element it plays for `"audio"` playback mode
+- both realtime clients ([openai/client.ts](../packages/realtime/src/openai/client.ts)
+  and [openai-agents/client.ts](../packages/realtime/src/openai-agents/client.ts))
+  attach it to the incoming `MediaStream`
+
+Both producer paths emit `tts:lipsync:update`.
+[`RenderManager`](../packages/render/src/render-manager.ts) is a pure
+consumer: it toggles `setRealtimeLipSync` on `tts:audio:start` /
+`tts:audio:end` and feeds the RMS numbers to `updateRealtimeLipSyncRms` — it
+does not analyze audio itself.
 
 The Live2D renderer additionally amplifies the live RMS by `1.8` for visible
 mouth movement on web audio

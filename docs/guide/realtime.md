@@ -86,11 +86,11 @@ charivo.setCharacter({
 propagates the current character to the manager. Set the character before
 starting the session so tool handlers and instructions have access to it.
 
-If your app also renders lipsync locally, prepare audio from a user gesture
-before the first realtime session:
+For iOS-safe lip-sync, prepare audio from a user gesture before the first
+realtime session:
 
 ```ts
-await renderManager.prepareAudio?.();
+await manager.prepareAudio?.();
 await manager.startSession({
   provider: "openai",
   model: "gpt-realtime-2.1-mini",

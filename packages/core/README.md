@@ -8,6 +8,9 @@ It exports:
 - shared domain types such as `Character`, `Message`, and realtime session types
 - interface contracts for LLM, render, TTS, STT, and realtime managers
 - the typed `EventBus`
+- `createLipSyncAnalyzer`: the shared audio-analysis utility the TTS manager
+  and realtime clients use to compute mouth-open RMS and emit
+  `tts:lipsync:update`
 
 ## Install
 

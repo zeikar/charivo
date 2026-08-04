@@ -28,21 +28,16 @@ await renderManager.initialize();
 await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 ```
 
-For iOS-safe realtime lipsync, prepare audio from the same user gesture that
-starts your voice session:
-
-```ts
-await renderManager.prepareAudio?.();
-```
-
 ## What It Does
 
 - wraps a `Renderer` implementation
 - consumes the typed `CharivoEventBus`
-- reacts to `tts:audio:start`, `tts:audio:end`, and `tts:lipsync:update`
+- toggles the renderer's `setRealtimeLipSync` on `tts:audio:start` /
+  `tts:audio:end` and feeds `updateRealtimeLipSyncRms` from the RMS numbers
+  carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
+  and realtime managers produce those numbers
 - reacts to `realtime:expression`, `realtime:motion`, and `realtime:gaze`
 - optionally wires mouse tracking to a canvas or the full document
-- exposes `prepareAudio()` for pre-warming lipsync audio contexts on mobile
 
 ## Exports
 
