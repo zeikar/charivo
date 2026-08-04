@@ -48,6 +48,10 @@ class StubTTSManager implements TTSManager {
   voice: string | undefined;
 }
 
+class StubDisposableTTSManager extends StubTTSManager {
+  dispose = vi.fn(async () => undefined);
+}
+
 class StubSTTManager implements STTManager {
   start = vi.fn(async () => undefined);
   stop = vi.fn(async () => "");
@@ -436,6 +440,76 @@ describe("Charivo", () => {
     expect(ttsManager.stop).toHaveBeenCalledTimes(1);
     expect(sttManager.stop).toHaveBeenCalledTimes(1);
     expect(renderManager.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("awaits TTS dispose after stopping the manager", async () => {
+    const calls: string[] = [];
+    let disposeSettled = false;
+    const ttsManager = new StubDisposableTTSManager();
+    const charivo = new Charivo();
+
+    ttsManager.stop.mockImplementation(async () => {
+      calls.push("stop");
+    });
+    ttsManager.dispose.mockImplementation(async () => {
+      calls.push("dispose");
+      await Promise.resolve();
+      disposeSettled = true;
+    });
+
+    charivo.attachTTS(ttsManager);
+    await charivo.dispose();
+
+    expect(calls).toEqual(["stop", "dispose"]);
+    expect(disposeSettled).toBe(true);
+  });
+
+  it("disposes TTS resources even when stop() and dispose() both fail", async () => {
+    const ttsManager = new StubDisposableTTSManager();
+    const charivo = new Charivo();
+
+    ttsManager.stop.mockRejectedValueOnce(new Error("tts stop failed"));
+    ttsManager.dispose.mockRejectedValueOnce(new Error("tts dispose failed"));
+
+    charivo.attachTTS(ttsManager);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: expect.objectContaining({
+        message: "tts stop failed",
+      }),
+    });
+
+    expect(ttsManager.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects with the dispose failure when stop() succeeds but dispose() fails", async () => {
+    const ttsManager = new StubDisposableTTSManager();
+    const charivo = new Charivo();
+
+    ttsManager.dispose.mockRejectedValueOnce(new Error("tts dispose failed"));
+
+    charivo.attachTTS(ttsManager);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: expect.objectContaining({
+        message: "tts dispose failed",
+      }),
+    });
+
+    expect(ttsManager.stop).toHaveBeenCalledTimes(1);
+    expect(ttsManager.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes cleanly when the TTS manager has no dispose method", async () => {
+    const ttsManager = new StubTTSManager();
+    const charivo = new Charivo();
+
+    charivo.attachTTS(ttsManager);
+
+    await expect(charivo.dispose()).resolves.toBeUndefined();
+    expect(ttsManager.stop).toHaveBeenCalledTimes(1);
   });
 
   it("dispose() calls destroy on the render manager but does not call disconnect a second time after destroy", async () => {

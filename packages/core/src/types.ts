@@ -269,7 +269,11 @@ export interface TTSPlayer {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
-  // Stateless audio generation (optional)
+  /**
+   * Stateless audio generation. Required for the `"audio"` playback mode: the
+   * manager creates the audio element itself so it can analyze playback for
+   * lip-sync. Players that can only `speak()` must use `"web-speech"` mode.
+   */
   generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
 }
 
@@ -285,7 +289,11 @@ export interface TTSManager {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
+  /** Creates the audio analysis context up front; call from a user gesture handler so browsers allow playback later. */
+  prepareAudio?(): Promise<void>;
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
+  /** Final resource release; call stop() first - dispose() does not stop playback. */
+  dispose?(): Promise<void>;
 }
 
 export interface STTOptions {
