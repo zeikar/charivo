@@ -22,7 +22,12 @@ Breaking changes:
 - `RenderManager.prepareAudio` is removed. Use `TTSManager.prepareAudio?.()`
   and/or `RealtimeManager.prepareAudio?.()` instead, from the same
   user-gesture handler that previously called
-  `renderManager.prepareAudio?.()`.
+  `renderManager.prepareAudio?.()`. With `@charivo/realtime/remote`,
+  `RealtimeManager.prepareAudio?.()` needs the same `RealtimeSessionConfig`
+  you pass to `startSession()` to resolve which adapter to prepare — build
+  one config and pass it to both:
+  `await manager.prepareAudio?.(sessionConfig);` then
+  `await manager.startSession(sessionConfig);`.
 - `"audio"` playback mode now requires the `TTSPlayer` to implement
   `generateAudio()`. `createTTSManager(player)` throws an explicit error for
   an `"audio"`-mode player that lacks it, instead of silently playing without

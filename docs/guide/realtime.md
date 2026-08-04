@@ -87,14 +87,17 @@ propagates the current character to the manager. Set the character before
 starting the session so tool handlers and instructions have access to it.
 
 For iOS-safe lip-sync, prepare audio from a user gesture before the first
-realtime session:
+realtime session. Pass the same session config to both calls — `prepareAudio`
+needs it to resolve which remote adapter to warm up:
 
 ```ts
-await manager.prepareAudio?.();
-await manager.startSession({
+const sessionConfig = {
   provider: "openai",
   model: "gpt-realtime-2.1-mini",
-});
+};
+
+await manager.prepareAudio?.(sessionConfig);
+await manager.startSession(sessionConfig);
 ```
 
 `gpt-realtime-2.1-mini` is the default realtime model; the full `gpt-realtime-2.1` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before switching.

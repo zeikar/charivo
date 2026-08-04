@@ -617,7 +617,7 @@ export function useRealtimeSession(
         situationalBlock,
       });
 
-      await manager.prepareAudio?.();
+      await manager.prepareAudio?.({ provider: "openai" });
 
       await manager.startSession({
         provider: "openai",

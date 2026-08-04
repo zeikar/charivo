@@ -326,7 +326,7 @@ export interface STTManager {
 export interface RealtimeManager {
   setCharacter(character: Character): void;
   getState(): RealtimeState;
-  prepareAudio?(): Promise<void>;
+  prepareAudio?(config?: RealtimeSessionConfig): Promise<void>;
   startSession(config?: RealtimeSessionConfig): Promise<void>;
   updateSession(config?: RealtimeSessionConfig): Promise<void>;
   stopSession(): Promise<void>;

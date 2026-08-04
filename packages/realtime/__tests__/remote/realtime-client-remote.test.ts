@@ -35,6 +35,7 @@ const agentsTransportClient = {
   onEvent: vi.fn((callback: (event: unknown) => void) => {
     agentsTransportState.callbacks.push(callback);
   }),
+  prepareAudio: vi.fn(async () => undefined),
 };
 
 const legacyTransportState = vi.hoisted(() => ({
@@ -86,6 +87,7 @@ vi.mock("@charivo/realtime/openai", () => ({
 }));
 
 import { RemoteRealtimeClient } from "../../src/remote/client";
+import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
 
 const originalFetch = globalThis.fetch;
 
@@ -106,6 +108,8 @@ afterEach(() => {
   agentsTransportClient.sendToolResult.mockClear();
   agentsTransportClient.interrupt.mockClear();
   agentsTransportClient.onEvent.mockClear();
+  agentsTransportClient.prepareAudio.mockClear();
+  vi.mocked(createOpenAIRealtimeAgentsClient).mockClear();
   legacyTransportClient.connect.mockClear();
   legacyTransportClient.disconnect.mockClear();
   legacyTransportClient.updateSession.mockClear();
@@ -338,5 +342,70 @@ describe("RemoteRealtimeClient", () => {
       transport: "webrtc",
       answerSdp: "answer-sdp",
     });
+  });
+
+  it("prepares the resolved adapter and connect() reuses the same instance", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.prepareAudio({ provider: "openai" });
+    expect(agentsTransportClient.prepareAudio).toHaveBeenCalledTimes(1);
+    expect(createOpenAIRealtimeAgentsClient).toHaveBeenCalledTimes(1);
+
+    await client.connect({ provider: "openai" });
+    expect(createOpenAIRealtimeAgentsClient).toHaveBeenCalledTimes(1);
+    expect(agentsTransportClient.connect).toHaveBeenCalledTimes(1);
+    expect(agentsTransportClient.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("forwards listeners registered between prepareAudio and connect to the prepared adapter", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.prepareAudio({ provider: "openai" });
+
+    const listener = vi.fn();
+    client.onEvent(listener);
+    expect(agentsTransportClient.onEvent).toHaveBeenCalledWith(listener);
+
+    await client.connect({ provider: "openai" });
+    expect(listener).toHaveBeenCalledWith({ type: "session.started" });
+  });
+
+  it("disconnect() releases a prepared-but-unconnected adapter", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.prepareAudio({ provider: "openai" });
+    await client.disconnect();
+
+    expect(agentsTransportClient.disconnect).toHaveBeenCalledTimes(1);
   });
 });

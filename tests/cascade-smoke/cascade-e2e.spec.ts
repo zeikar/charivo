@@ -16,7 +16,8 @@ import {
 //   STT (whisper) → Charivo.userSay → LLM (chat) → TTS (audio) → lip-sync.
 //
 // The lip-sync RMS assertion proves the browser audio→lip-sync loop ran during
-// TTS playback — the path exercised by RenderManager + RealTimeLipSync, which
+// TTS playback — TTSManager analyzing audio through the shared core
+// LipSyncAnalyzer and RenderManager consuming the resulting RMS, which
 // node-level tests cannot reproduce.
 
 const WAV_PATH = fileURLToPath(

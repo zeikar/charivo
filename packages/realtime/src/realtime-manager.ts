@@ -142,8 +142,8 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     return this.toolRegistry.getDefinitions();
   }
 
-  async prepareAudio(): Promise<void> {
-    await this.client.prepareAudio?.();
+  async prepareAudio(config?: RealtimeSessionConfig): Promise<void> {
+    await this.client.prepareAudio?.(config);
   }
 
   getState(): RealtimeState {
