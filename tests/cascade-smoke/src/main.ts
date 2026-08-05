@@ -89,9 +89,10 @@ charivo.attachRenderer(renderManager);
 charivo.attachLLM(
   createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
 );
-charivo.attachTTS(
-  createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
+const ttsManager = createTTSManager(
+  createRemoteTTSPlayer({ apiEndpoint: "/api/tts" }),
 );
+charivo.attachTTS(ttsManager);
 const sttManager = createSTTManager(
   createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" }),
 );
@@ -109,9 +110,9 @@ charivo.on("message:received", (data) => {
   record("message:received", { content: data.message.content });
 });
 charivo.on("tts:start", (data) => record("tts:start", data));
-charivo.on("tts:audio:start", (data) => {
+charivo.on("tts:audio:start", () => {
   ttsAudioStarted = true;
-  record("tts:audio:start", { hasAudioElement: Boolean(data.audioElement) });
+  record("tts:audio:start", {});
 });
 charivo.on("tts:audio:end", () => {
   ttsAudioEnded = true;
@@ -131,9 +132,10 @@ async function ensureRendererReady(): Promise<void> {
     await renderManager.initialize();
     rendererReady = true;
   }
-  // Resume the AudioContext used by lip-sync analysis. The Chromium autoplay
-  // flag (see playwright.cascade.config.ts) lets this run without a gesture.
-  await renderManager.prepareAudio();
+  // Resume the AudioContext used by lip-sync analysis. The AudioContext now
+  // lives in the TTS manager. The Chromium autoplay flag (see
+  // playwright.cascade.config.ts) lets this run without a gesture.
+  await ttsManager.prepareAudio?.();
 }
 
 async function runTurn(recordMs = DEFAULT_RECORD_MS): Promise<void> {

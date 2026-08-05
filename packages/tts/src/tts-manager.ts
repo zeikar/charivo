@@ -1,5 +1,8 @@
 import {
   CharivoEventEmitter,
+  CharivoStateError,
+  createLipSyncAnalyzer,
+  subscribeBrowserLifecycle,
   TTSPlayer,
   TTSPlaybackMode,
   TTSOptions,
@@ -19,7 +22,7 @@ import {
  * Responsibilities:
  * - TTS Player management and wrapping
  * - Audio playback and control
- * - Lip-sync handling (Web Speech simulation; Audio is handled automatically by the Live2D SDK)
+ * - Lip-sync handling (Web Speech simulation; audio playback is analyzed by the manager itself)
  * - Event emission (tts:audio:start, tts:lipsync:update, tts:audio:end)
  * - Session state management
  */
@@ -30,13 +33,27 @@ export class TTSManagerImpl implements TTSManager {
   private currentAudioUrl: string | null = null;
   private playbackMode: TTSPlaybackMode;
   private isAudioSessionActive = false;
+  private teardownBrowserLifecycle?: () => void;
 
   // Only the Web Speech lip-sync simulation is needed
   private webSimulator: WebSpeechLipSyncSimulator;
 
+  // Reads the emitter at emit time, so a later setEventEmitter() still applies.
+  private readonly lipSync = createLipSyncAnalyzer({
+    onRms: (rms) => this.eventEmitter?.emit("tts:lipsync:update", { rms }),
+    onError: (error) =>
+      console.error("TTS Manager: lip-sync analysis failed:", error),
+  });
+
   constructor(ttsPlayer: TTSPlayer) {
     this.ttsPlayer = ttsPlayer;
     this.playbackMode = getTTSPlaybackMode(ttsPlayer);
+
+    if (this.playbackMode === "audio" && !supportsGenerateAudio(ttsPlayer)) {
+      throw new CharivoStateError(
+        'TTS playback mode "audio" requires the player to implement generateAudio() so the manager can create and analyze playback for lip-sync. Implement generateAudio() or set playbackMode: "web-speech".',
+      );
+    }
 
     // Initialize Web Speech simulator
     this.webSimulator = new WebSpeechLipSyncSimulator();
@@ -64,7 +81,7 @@ export class TTSManagerImpl implements TTSManager {
       if (this.playbackMode === "web-speech") {
         return await this.handleWebSpeech(text, options);
       } else {
-        return await this.handleAudioSpeech(text, options);
+        return await this.handleStatelessAudio(text, options);
       }
     } catch (error) {
       throw toCharivoError("provider", error, "Failed to speak text");
@@ -95,6 +112,7 @@ export class TTSManagerImpl implements TTSManager {
         this.currentAudioUrl = null;
       }
 
+      this.lipSync.stop();
       this.endAudioSession();
     }
   }
@@ -114,18 +132,43 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
+   * Create the audio analysis context up front, typically from a user gesture
+   * handler so browsers allow playback later. Throws on unsupported browsers.
+   */
+  async prepareAudio(): Promise<void> {
+    this.ensureLifecycleBound();
+    await this.lipSync.prepare();
+  }
+
+  /**
+   * Release audio resources. Call stop() first: dispose() does not stop playback.
+   */
+  async dispose(): Promise<void> {
+    this.webSimulator.dispose();
+
+    this.teardownBrowserLifecycle?.();
+    this.teardownBrowserLifecycle = undefined;
+
+    try {
+      await this.lipSync.cleanup();
+    } catch (error) {
+      throw toCharivoError(
+        "dispose",
+        error,
+        "Failed to release TTS audio resources",
+      );
+    }
+  }
+
+  /**
    * Handle the Web Speech API (simulated lip-sync)
    */
   private async handleWebSpeech(
     text: string,
     options?: TTSOptions,
   ): Promise<void> {
-    // Create dummy audio element for consistent interface
-    const dummyAudio = document.createElement("audio");
-    dummyAudio.preload = "none";
-
     // Emit audio start event
-    this.startAudioSession(dummyAudio);
+    this.startAudioSession();
 
     // Compute the effective rate using the same clamp the Web Speech player applies,
     // so the lip-sync simulation speed matches the actual playback rate.
@@ -147,33 +190,14 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * Handle audio-based TTS (real-time audio analysis)
-   */
-  private async handleAudioSpeech(
-    text: string,
-    options?: TTSOptions,
-  ): Promise<void> {
-    // Try to use generateAudio if available (stateless approach)
-    if (supportsGenerateAudio(this.ttsPlayer)) {
-      return this.handleStatelessAudio(text, options);
-    }
-
-    // Fallback: use legacy speak method
-    this.startAudioSession();
-    try {
-      await this.ttsPlayer.speak(text, options);
-    } finally {
-      this.endAudioSession();
-    }
-  }
-
-  /**
    * Stateless audio handling
    */
   private async handleStatelessAudio(
     text: string,
     options?: TTSOptions,
   ): Promise<void> {
+    // Non-null: the constructor guard rejects "audio" playback mode players
+    // that lack generateAudio(), so this path only runs when it exists.
     const audioData = await this.ttsPlayer.generateAudio!(text, options).catch(
       (error) =>
         Promise.reject(
@@ -193,10 +217,11 @@ export class TTSManagerImpl implements TTSManager {
         audio.volume = Math.max(0, Math.min(1, options.volume));
       }
 
-      // Emit audio start event
-      this.startAudioSession(audio);
+      this.ensureLifecycleBound();
+      this.lipSync.attachMediaElement(audio);
 
-      // Live2D SDK handles lip sync automatically from audio element
+      // Emit audio start event
+      this.startAudioSession();
 
       let isFinalized = false;
       const finalize = (next: () => void) => {
@@ -209,6 +234,7 @@ export class TTSManagerImpl implements TTSManager {
         }
 
         this.currentAudio = null;
+        this.lipSync.stop();
         this.endAudioSession();
         next();
       };
@@ -231,12 +257,30 @@ export class TTSManagerImpl implements TTSManager {
     });
   }
 
-  private startAudioSession(audioElement?: HTMLAudioElement): void {
+  /**
+   * Subscribes to browser lifecycle events once; the teardown is released in
+   * dispose(). Pausing analysis while the tab is hidden closes the mouth
+   * instead of freezing on the last frame.
+   */
+  private ensureLifecycleBound(): void {
+    if (this.teardownBrowserLifecycle) {
+      return;
+    }
+
+    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
+      onHidden: () => this.lipSync.pause(),
+      onPageHide: () => this.lipSync.pause(),
+      onVisible: () => this.lipSync.resume(),
+      onPageShow: () => this.lipSync.resume(),
+    });
+  }
+
+  private startAudioSession(): void {
     if (this.isAudioSessionActive) {
       return;
     }
     this.isAudioSessionActive = true;
-    this.eventEmitter?.emit("tts:audio:start", { audioElement });
+    this.eventEmitter?.emit("tts:audio:start", {});
   }
 
   private endAudioSession(): void {

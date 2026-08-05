@@ -7,7 +7,6 @@ import {
   type Renderer,
 } from "@charivo/core";
 import { createRenderManager } from "../src";
-import { RealTimeLipSync } from "../src/lipsync";
 
 class StubRenderer implements Renderer {
   initialize = vi.fn(async () => undefined);
@@ -34,29 +33,8 @@ class StubRenderer implements Renderer {
 }
 
 describe("RenderManager", () => {
-  let connectToAudioSpy: ReturnType<typeof vi.spyOn>;
-  let prepareAudioSpy: ReturnType<typeof vi.spyOn>;
-  let pauseSpy: ReturnType<typeof vi.spyOn>;
-  let stopSpy: ReturnType<typeof vi.spyOn>;
-  let cleanupSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     vi.useRealTimers();
-    connectToAudioSpy = vi
-      .spyOn(RealTimeLipSync.prototype, "connectToAudio")
-      .mockImplementation(() => undefined);
-    prepareAudioSpy = vi
-      .spyOn(RealTimeLipSync.prototype, "prepareAudio")
-      .mockResolvedValue(undefined);
-    pauseSpy = vi
-      .spyOn(RealTimeLipSync.prototype, "pause")
-      .mockImplementation(() => undefined);
-    stopSpy = vi
-      .spyOn(RealTimeLipSync.prototype, "stop")
-      .mockImplementation(() => undefined);
-    cleanupSpy = vi
-      .spyOn(RealTimeLipSync.prototype, "cleanup")
-      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -90,7 +68,6 @@ describe("RenderManager", () => {
     expect(renderer.initialize).toHaveBeenCalledTimes(1);
     expect(renderer.render).toHaveBeenCalledWith(message, character);
     expect(callback).toHaveBeenCalledWith(message, character);
-    expect(cleanupSpy).toHaveBeenCalledTimes(1);
     expect(renderer.destroy).toHaveBeenCalledTimes(1);
   });
 
@@ -101,8 +78,7 @@ describe("RenderManager", () => {
 
     manager.setEventBus(bus);
 
-    const audio = document.createElement("audio");
-    bus.emit("tts:audio:start", { audioElement: audio });
+    bus.emit("tts:audio:start", {});
     bus.emit("tts:lipsync:update", { rms: 0.42 });
     bus.emit("tts:audio:end", {});
     bus.emit("realtime:expression", { expressionId: "exp_happy" });
@@ -110,37 +86,12 @@ describe("RenderManager", () => {
     bus.emit("realtime:gaze", { x: 0.25, y: -0.5 });
 
     expect(renderer.setRealtimeLipSync).toHaveBeenNthCalledWith(1, true);
-    expect(connectToAudioSpy).toHaveBeenCalledWith(audio, expect.any(Function));
     expect(renderer.updateRealtimeLipSyncRms).toHaveBeenCalledWith(0.42);
-    expect(stopSpy).toHaveBeenCalledTimes(1);
     expect(renderer.setRealtimeLipSync).toHaveBeenNthCalledWith(2, false);
+    expect(renderer.updateRealtimeLipSyncRms).toHaveBeenLastCalledWith(0);
     expect(renderer.playExpression).toHaveBeenCalledWith("exp_happy");
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     expect(renderer.lookAt).toHaveBeenCalledWith({ x: 0.25, y: -0.5 });
-  });
-
-  it("prepares audio on demand and pauses lip sync while hidden", async () => {
-    const renderer = new StubRenderer();
-    const manager = createRenderManager(renderer);
-    const originalVisibilityState = document.visibilityState;
-
-    await manager.initialize();
-    await manager.prepareAudio?.();
-    Object.defineProperty(document, "visibilityState", {
-      value: "hidden",
-      configurable: true,
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-    window.dispatchEvent(new Event("pagehide"));
-
-    expect(prepareAudioSpy).toHaveBeenCalledTimes(1);
-    expect(pauseSpy).toHaveBeenCalledTimes(2);
-    await manager.destroy();
-
-    Object.defineProperty(document, "visibilityState", {
-      value: originalVisibilityState,
-      configurable: true,
-    });
   });
 
   it("debounces repeated explicit expression and motion actions", async () => {
@@ -225,21 +176,19 @@ describe("RenderManager", () => {
 
     manager.setEventBus(bus);
 
-    const audio = document.createElement("audio");
-    bus.emit("tts:audio:start", { audioElement: audio });
+    bus.emit("tts:audio:start", {});
 
     // Lip-sync is now active: renderer should have been told true
     expect(renderer.setRealtimeLipSync).toHaveBeenCalledWith(true);
 
     renderer.setRealtimeLipSync.mockClear();
     renderer.updateRealtimeLipSyncRms.mockClear();
-    stopSpy.mockClear();
 
     manager.disconnect();
 
-    // lip-sync must be stopped and renderer told false
-    expect(stopSpy).toHaveBeenCalledTimes(1);
+    // lip-sync must be deactivated: renderer told false and mouth forced closed
     expect(renderer.setRealtimeLipSync).toHaveBeenCalledWith(false);
+    expect(renderer.updateRealtimeLipSyncRms).toHaveBeenCalledWith(0);
 
     // Any subsequent RMS updates (stale callbacks) must not reach the renderer
     renderer.updateRealtimeLipSyncRms.mockClear();

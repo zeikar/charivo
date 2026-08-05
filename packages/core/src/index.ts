@@ -29,6 +29,11 @@ export {
   getErrorMessage,
   toCharivoError,
 } from "./errors";
+export {
+  createLipSyncAnalyzer,
+  type LipSyncAnalyzer,
+  type LipSyncAnalyzerOptions,
+} from "./lipsync-analyzer";
 
 export class Charivo {
   private eventBus: EventBus;
@@ -394,6 +399,13 @@ export class Charivo {
         await this.ttsManager.stop();
       } catch (error) {
         recordError(error, "Failed to stop TTS during dispose");
+      }
+
+      // Runs even when stop() failed: audio resources must still be released.
+      try {
+        await this.ttsManager.dispose?.();
+      } catch (error) {
+        recordError(error, "Failed to release TTS resources during dispose");
       }
     }
 

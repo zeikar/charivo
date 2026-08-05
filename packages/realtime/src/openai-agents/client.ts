@@ -4,7 +4,10 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
+import {
+  createLipSyncAnalyzer,
+  OPENAI_REALTIME_AGENTS_ADAPTER,
+} from "@charivo/core";
 import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   bindTransportLifecycle,
@@ -27,7 +30,6 @@ import {
   getOpenAIRealtimeAgentsBootstrap,
   type RealtimeBootstrapLoaderOptions,
 } from "./bootstrap";
-import { LipSyncAnalyzer } from "./lip-sync-analyzer";
 import {
   resolveInstructions,
   resolveVoice,
@@ -96,7 +98,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     (event: RealtimeTransportEvent) => void
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
-  private readonly lipSyncAnalyzer = new LipSyncAnalyzer({
+  private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
       this.emitEvent({ type: "audio.lipsync", rms });
     },
@@ -104,6 +106,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       console.error("Failed to setup audio analysis:", error);
     },
   });
+  private observedAudioElement: HTMLAudioElement | null = null;
+  private observedAudioElementListener: (() => void) | null = null;
+  private pendingAudioElementPoll: number | null = null;
 
   constructor(private options: OpenAIRealtimeAgentsClientOptions = {}) {}
 
@@ -124,7 +129,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.audioElement.setAttribute("playsinline", "true");
       this.mediaStream = await acquireMicrophoneStream();
       this.bindTransportLifecycleEvents();
-      await this.lipSyncAnalyzer.prepareAudioContext();
+      await this.lipSyncAnalyzer.prepare();
 
       const agent = this.createAgent(config);
 
@@ -139,7 +144,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
       this.bindSessionEvents(this.session);
       this.bindTransportEvents(this.transport);
-      this.lipSyncAnalyzer.observeAudioElement(this.audioElement);
+      this.observeAudioElement(this.audioElement);
 
       const bootstrap = await this.getSessionBootstrap({
         adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
@@ -268,6 +273,10 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.eventCallbacks.add(callback);
   }
 
+  async prepareAudio(): Promise<void> {
+    await this.lipSyncAnalyzer.prepare();
+  }
+
   private createAgent(config?: RealtimeSessionConfig): RealtimeAgent {
     return new RealtimeAgent({
       name: "charivo-realtime-agent",
@@ -287,6 +296,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("audio_start", () => {
+      this.lipSyncAnalyzer.resume();
       this.emitEvent({ type: "audio.output.started" });
     });
 
@@ -346,7 +356,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
     transport.on("audio_interrupted", () => {
       this.emitEvent({ type: "audio.output.ended" });
-      this.lipSyncAnalyzer.stopOutput();
+      this.lipSyncAnalyzer.pause();
     });
 
     transport.on("connection_change", (status) => {
@@ -522,7 +532,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         peerConnection.addEventListener("track", (event) => {
           const stream = event.streams[0];
           if (stream) {
-            this.lipSyncAnalyzer.attachStream(stream);
+            this.lipSyncAnalyzer.attachMediaStream(stream);
           }
         });
         return peerConnection;
@@ -623,6 +633,40 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     }
   }
 
+  private observeAudioElement(audioElement: HTMLAudioElement): void {
+    this.stopObservingAudioElement();
+
+    const tryAttachStream = () => {
+      const stream = audioElement.srcObject;
+      if (stream instanceof MediaStream) {
+        this.lipSyncAnalyzer.attachMediaStream(stream);
+        this.stopObservingAudioElement();
+      }
+    };
+
+    this.observedAudioElement = audioElement;
+    this.observedAudioElementListener = tryAttachStream;
+    audioElement.addEventListener("loadedmetadata", tryAttachStream);
+    this.pendingAudioElementPoll = window.setInterval(tryAttachStream, 50);
+  }
+
+  private stopObservingAudioElement(): void {
+    if (this.pendingAudioElementPoll !== null) {
+      clearInterval(this.pendingAudioElementPoll);
+      this.pendingAudioElementPoll = null;
+    }
+
+    if (this.observedAudioElement && this.observedAudioElementListener) {
+      this.observedAudioElement.removeEventListener(
+        "loadedmetadata",
+        this.observedAudioElementListener,
+      );
+    }
+
+    this.observedAudioElement = null;
+    this.observedAudioElementListener = null;
+  }
+
   private emitConnectionLost(
     cause: RealtimeReconnectCause,
     error?: Error,
@@ -641,7 +685,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       new Error("Realtime session interrupted during reconnect"),
     );
     this.resetAssistantTracking();
-    this.lipSyncAnalyzer.stopOutput();
+    this.lipSyncAnalyzer.stop();
     this.emitEvent({
       type: "connection.lost",
       cause,
@@ -677,7 +721,12 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.iceDisconnectDebouncer.cancel();
     this.unbindTransportLifecycleEvents();
     this.cleanupPendingToolCalls(error);
-    this.lipSyncAnalyzer.cleanup();
+    this.stopObservingAudioElement();
+    this.lipSyncAnalyzer
+      .cleanup()
+      .catch((cleanupError) =>
+        console.error("Failed to clean up lip-sync analyzer:", cleanupError),
+      );
 
     if (this.transport) {
       this.transport.close();

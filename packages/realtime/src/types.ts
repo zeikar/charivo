@@ -74,6 +74,9 @@ export interface RealtimeTransportClient {
   ): Promise<void>;
   interrupt(): Promise<void>;
   onEvent(callback: (event: RealtimeTransportEvent) => void): void;
+  prepareAudio?(
+    config?: import("@charivo/core").RealtimeSessionConfig,
+  ): Promise<void>;
 }
 
 export type RealtimeClient = RealtimeTransportClient;

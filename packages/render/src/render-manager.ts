@@ -1,5 +1,4 @@
 import {
-  subscribeBrowserLifecycle,
   type Character,
   type EventMap,
   type GazeCoordinates,
@@ -9,7 +8,6 @@ import {
   type RenderManager as IRenderManager,
   type CharivoEventBus,
 } from "@charivo/core";
-import { RealTimeLipSync } from "./lipsync";
 import {
   setupMouseTracking,
   type MouseTrackable,
@@ -43,10 +41,8 @@ export interface RenderManagerOptions {
 }
 
 export class RenderManager implements IRenderManager {
-  private readonly lipSync = new RealTimeLipSync();
   private readonly renderer: Renderer;
   private character: Character | null = null;
-  private teardownBrowserLifecycle?: () => void;
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
@@ -58,15 +54,15 @@ export class RenderManager implements IRenderManager {
 
   // Stable handler references so they can be removed by reference in disconnect()
   private readonly handleTtsAudioStart = (
-    data: EventMap["tts:audio:start"],
+    _data: EventMap["tts:audio:start"],
   ): void => {
-    this.startRealtimeLipSync(data.audioElement);
+    this.renderer.setRealtimeLipSync?.(true);
   };
 
   private readonly handleTtsAudioEnd = (
     _data: EventMap["tts:audio:end"],
   ): void => {
-    this.stopRealtimeLipSync();
+    this.deactivateRealtimeLipSync();
   };
 
   private readonly handleTtsLipsyncUpdate = (
@@ -126,9 +122,9 @@ export class RenderManager implements IRenderManager {
       return;
     }
 
-    // Stop any in-progress lip-sync before removing listeners so the RMS
-    // callback cannot fire into the renderer after the bus is cleared.
-    this.stopRealtimeLipSync();
+    // Deactivate lip-sync before removing listeners so the renderer cannot
+    // be left with the mouth open after the bus is cleared.
+    this.deactivateRealtimeLipSync();
 
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
@@ -159,7 +155,6 @@ export class RenderManager implements IRenderManager {
    * Initialize the renderer
    */
   async initialize(): Promise<void> {
-    this.bindBrowserLifecycleEvents();
     await this.renderer.initialize();
 
     if (this.isMouseTrackable(this.renderer) && this.options?.canvas) {
@@ -185,10 +180,6 @@ export class RenderManager implements IRenderManager {
         },
       });
     }
-  }
-
-  async prepareAudio(): Promise<void> {
-    await this.lipSync.prepareAudio();
   }
 
   /**
@@ -228,7 +219,6 @@ export class RenderManager implements IRenderManager {
    */
   async destroy(): Promise<void> {
     this.disconnect();
-    this.unbindBrowserLifecycleEvents();
     this.cleanupMouseTracking?.();
     this.cleanupMouseTracking = undefined;
 
@@ -237,82 +227,24 @@ export class RenderManager implements IRenderManager {
       this.resumeMouseTrackingTimer = undefined;
     }
 
-    this.lipSync.cleanup();
     await this.renderer.destroy();
   }
 
   /**
-   * Start real-time lip-sync
+   * Deactivate real-time lip-sync: tell the renderer to stop animating and
+   * force the mouth closed, guaranteeing a clean rest state.
    */
-  private startRealtimeLipSync(audioElement?: HTMLAudioElement): void {
-    if (this.renderer.setRealtimeLipSync) {
-      this.renderer.setRealtimeLipSync(true);
-    }
-
-    if (!audioElement) {
-      return;
-    }
-
-    this.lipSync.connectToAudio(audioElement, (rms: number) => {
-      if (this.renderer.updateRealtimeLipSyncRms) {
-        this.renderer.updateRealtimeLipSyncRms(rms);
-      }
-    });
-  }
-
-  /**
-   * Stop real-time lip-sync
-   */
-  private stopRealtimeLipSync(): void {
-    this.lipSync.stop();
-
-    if (this.renderer.setRealtimeLipSync) {
-      this.renderer.setRealtimeLipSync(false);
-    }
+  private deactivateRealtimeLipSync(): void {
+    this.renderer.setRealtimeLipSync?.(false);
+    this.renderer.updateRealtimeLipSyncRms?.(0);
   }
 
   /**
    * Update the lip-sync RMS
    */
   private updateLipSync(rms: number): void {
-    if (this.renderer.updateRealtimeLipSyncRms) {
-      this.renderer.updateRealtimeLipSyncRms(rms);
-    }
+    this.renderer.updateRealtimeLipSyncRms?.(rms);
   }
-
-  private bindBrowserLifecycleEvents(): void {
-    if (this.teardownBrowserLifecycle) {
-      return;
-    }
-
-    this.teardownBrowserLifecycle = subscribeBrowserLifecycle({
-      onHidden: this.handleHidden,
-      onPageHide: this.handlePageHide,
-      onPageShow: this.handlePageShow,
-      onVisible: this.handleVisible,
-    });
-  }
-
-  private unbindBrowserLifecycleEvents(): void {
-    this.teardownBrowserLifecycle?.();
-    this.teardownBrowserLifecycle = undefined;
-  }
-
-  private readonly handleHidden = (): void => {
-    this.lipSync.pause();
-  };
-
-  private readonly handleVisible = (): void => {
-    this.lipSync.resume();
-  };
-
-  private readonly handlePageHide = (): void => {
-    this.lipSync.pause();
-  };
-
-  private readonly handlePageShow = (): void => {
-    this.lipSync.resume();
-  };
 
   private applyExpression(expressionId: string): boolean {
     if (!this.hasExpressionControl(this.renderer)) {

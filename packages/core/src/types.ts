@@ -238,7 +238,6 @@ export interface RenderManager {
   setEventBus(eventBus: CharivoEventBus): void;
   /** Removes all event-bus listeners registered by setEventBus. */
   disconnect(): void;
-  prepareAudio?(): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(
     callback: (message: Message, character?: Character) => void,
@@ -269,7 +268,11 @@ export interface TTSPlayer {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
-  // Stateless audio generation (optional)
+  /**
+   * Stateless audio generation. Required for the `"audio"` playback mode: the
+   * manager creates the audio element itself so it can analyze playback for
+   * lip-sync. Players that can only `speak()` must use `"web-speech"` mode.
+   */
   generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
 }
 
@@ -285,7 +288,11 @@ export interface TTSManager {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
+  /** Creates the audio analysis context up front; call from a user gesture handler so browsers allow playback later. */
+  prepareAudio?(): Promise<void>;
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
+  /** Final resource release; call stop() first - dispose() does not stop playback. */
+  dispose?(): Promise<void>;
 }
 
 export interface STTOptions {
@@ -319,6 +326,7 @@ export interface STTManager {
 export interface RealtimeManager {
   setCharacter(character: Character): void;
   getState(): RealtimeState;
+  prepareAudio?(config?: RealtimeSessionConfig): Promise<void>;
   startSession(config?: RealtimeSessionConfig): Promise<void>;
   updateSession(config?: RealtimeSessionConfig): Promise<void>;
   stopSession(): Promise<void>;
@@ -338,7 +346,7 @@ export type EventMap = {
   "tts:start": { text: string; characterId?: string };
   "tts:end": { characterId?: string };
   "tts:error": { error: Error };
-  "tts:audio:start": { audioElement?: HTMLAudioElement; characterId?: string };
+  "tts:audio:start": { characterId?: string };
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };
   "stt:start": { options?: STTOptions };

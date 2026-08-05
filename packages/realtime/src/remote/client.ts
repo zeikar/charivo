@@ -59,6 +59,8 @@ export interface RemoteRealtimeClientConfig {
  */
 export class RemoteRealtimeClient implements RealtimeTransportClient {
   private transportClient: RealtimeTransportClient | null = null;
+  private preparedTransportClient: RealtimeTransportClient | null = null;
+  private preparedAdapterId: string | null = null;
   private readonly adapters: Map<string, RemoteRealtimeAdapterFactory>;
   private readonly eventCallbacks = new Set<
     (event: RealtimeTransportEvent) => void
@@ -76,22 +78,18 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
   async connect(config?: RealtimeSessionConfig): Promise<void> {
     try {
       const adapterId = this.resolveAdapterId(config);
-      const factory = this.adapters.get(adapterId);
+      let transportClient: RealtimeTransportClient;
 
-      if (!factory) {
-        throw new CharivoStateError(
-          `No realtime adapter registered for "${adapterId}". Registered adapters: ${Array.from(this.adapters.keys()).join(", ") || "(none)"}`,
-        );
-      }
-
-      const transportClient = factory({
-        debug: this.config.debug,
-        requestBootstrap: (request) =>
-          this.requestBootstrap(request, { expectedAdapterId: adapterId }),
-      });
-
-      for (const callback of this.eventCallbacks) {
-        transportClient.onEvent(callback);
+      if (
+        this.preparedAdapterId === adapterId &&
+        this.preparedTransportClient
+      ) {
+        transportClient = this.preparedTransportClient;
+        this.preparedTransportClient = null;
+        this.preparedAdapterId = null;
+      } else {
+        void this.discardPreparedTransportClient();
+        transportClient = this.createTransportClient(adapterId);
       }
 
       this.transportClient = transportClient;
@@ -100,6 +98,79 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
       this.transportClient = null;
       throw toCharivoError("transport", error);
     }
+  }
+
+  /**
+   * Creates and prepares the browser-side transport adapter for `config` up
+   * front so its audio context/lip-sync analyzer is warmed inside the same
+   * user-gesture call stack. `connect()` reuses this same adapter instance
+   * when it is called with a matching adapter selection. Repeated calls that
+   * resolve to the same adapter reuse the already-prepared instance instead
+   * of creating another one.
+   */
+  async prepareAudio(config?: RealtimeSessionConfig): Promise<void> {
+    try {
+      const adapterId = this.resolveAdapterId(config);
+
+      if (
+        this.preparedAdapterId !== adapterId ||
+        !this.preparedTransportClient
+      ) {
+        void this.discardPreparedTransportClient();
+        this.preparedTransportClient = this.createTransportClient(adapterId);
+        this.preparedAdapterId = adapterId;
+      }
+
+      await this.preparedTransportClient.prepareAudio?.();
+    } catch (error) {
+      void this.discardPreparedTransportClient();
+      throw toCharivoError("transport", error);
+    }
+  }
+
+  /**
+   * Releases a prepared-but-never-connected adapter's audio resources
+   * (e.g. its `AudioContext`) when it is superseded, mismatched, or fails.
+   * `disconnect()` on these adapters is safe to call without a prior
+   * `connect()` — it tears down the lip-sync analyzer unconditionally.
+   * Resolves once cleanup settles; a disconnect failure is reported instead
+   * of being silently swallowed, since it was never part of an active
+   * session and the caller has nothing else to react to.
+   */
+  private discardPreparedTransportClient(): Promise<void> {
+    const prepared = this.preparedTransportClient;
+    this.preparedTransportClient = null;
+    this.preparedAdapterId = null;
+
+    if (!prepared || prepared === this.transportClient) {
+      return Promise.resolve();
+    }
+
+    return prepared.disconnect().catch((error) => {
+      console.error("Failed to release a prepared realtime adapter:", error);
+    });
+  }
+
+  private createTransportClient(adapterId: string): RealtimeTransportClient {
+    const factory = this.adapters.get(adapterId);
+
+    if (!factory) {
+      throw new CharivoStateError(
+        `No realtime adapter registered for "${adapterId}". Registered adapters: ${Array.from(this.adapters.keys()).join(", ") || "(none)"}`,
+      );
+    }
+
+    const transportClient = factory({
+      debug: this.config.debug,
+      requestBootstrap: (request) =>
+        this.requestBootstrap(request, { expectedAdapterId: adapterId }),
+    });
+
+    for (const callback of this.eventCallbacks) {
+      transportClient.onEvent(callback);
+    }
+
+    return transportClient;
   }
 
   async updateSession(config?: RealtimeSessionConfig): Promise<void> {
@@ -115,6 +186,8 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
   }
 
   async disconnect(): Promise<void> {
+    await this.discardPreparedTransportClient();
+
     if (!this.transportClient) {
       return;
     }
@@ -156,6 +229,13 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
     this.eventCallbacks.add(callback);
     this.transportClient?.onEvent(callback);
+
+    if (
+      this.preparedTransportClient &&
+      this.preparedTransportClient !== this.transportClient
+    ) {
+      this.preparedTransportClient.onEvent(callback);
+    }
   }
 
   private getActiveTransportClient(): RealtimeTransportClient {
