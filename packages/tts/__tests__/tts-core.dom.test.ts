@@ -35,7 +35,7 @@ class MockAnalyser {
   connect = vi.fn(() => undefined);
   disconnect = vi.fn(() => undefined);
   getByteFrequencyData = vi.fn((target: Uint8Array) => {
-    // One saturated bin inside the [12, 76) speech band: sqrt(1 / 64) * 2 = 0.25
+    // One saturated bin inside the [12, 76) speech band: sqrt(1 / 64) * 1.7 = 0.2125
     target.fill(0);
     target[40] = 255;
   });

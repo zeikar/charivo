@@ -7,7 +7,7 @@
 
 Unify lip-sync audio analysis behind one shared analyzer in `@charivo/core`.
 
-`createLipSyncAnalyzer` (speech-band RMS, `min(rms * 2, 1)`) is now the single
+`createLipSyncAnalyzer` (speech-band RMS, `min(rms * 1.7, 1)`) is now the single
 implementation used by every lip-sync producer: the TTS manager analyzes the
 `<audio>` element it plays for `"audio"` playback mode, and both realtime
 clients analyze their incoming `MediaStream`. All producers emit

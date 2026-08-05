@@ -97,7 +97,7 @@ mouth-open parameter.
 
 **One shared analyzer.** [`createLipSyncAnalyzer`](../packages/core/src/lipsync-analyzer.ts)
 in `@charivo/core` computes speech-band RMS (10–60% of the frequency spectrum)
-normalized to `min(rms * 2, 1)`. It is owned by the producers, not the
+normalized to `min(rms * 1.7, 1)`. It is owned by the producers, not the
 renderer:
 
 - the TTS manager ([tts-manager.ts](../packages/tts/src/tts-manager.ts))

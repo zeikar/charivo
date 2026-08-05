@@ -19,7 +19,7 @@ export function computeLipSyncRms(frequencyData: Uint8Array): number {
   }
 
   const rms = Math.sqrt(sum / (speechBandEnd - speechBandStart));
-  return Math.min(rms * 2, 1); // Amplify and clamp
+  return Math.min(rms * 1.7, 1); // Amplify and clamp
 }
 
 export interface LipSyncAnalyzerOptions {

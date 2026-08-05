@@ -42,8 +42,8 @@ describe("computeLipSyncRms", () => {
   });
 
   it("applies the x2 gain", () => {
-    // One saturated bin out of 64: sqrt(1 / 64) = 0.125, doubled to 0.25.
-    expect(computeLipSyncRms(createFrequencyData({ 40: 255 }))).toBe(0.25);
+    // One saturated bin out of 64: sqrt(1 / 64) = 0.125, times 1.7 = 0.2125.
+    expect(computeLipSyncRms(createFrequencyData({ 40: 255 }))).toBe(0.2125);
   });
 
   it("clamps saturated input to 1", () => {
