@@ -33,6 +33,10 @@ What it proves:
   with the shared core `LipSyncAnalyzer` and emits `tts:lipsync:update`,
   which `RenderManager` consumes to drive the renderer with RMS updates during
   playback — the path that node-level tests cannot reproduce
+- the LLM avatar-tool loop — the LLM manager is wired with `@charivo/avatar`'s
+  tools and result projector, so the reply to the canned "smile for me"
+  utterance drives a real `setExpression` tool call and an `avatar:expression`
+  event, not just plain text
 
 The harness intentionally provides its own minimal `/api/stt`, `/api/chat`, and
 `/api/tts` implementations (mirroring the `examples/web` route contracts). It

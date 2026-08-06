@@ -4,6 +4,7 @@ import {
   createOpenAISTTProvider,
   createOpenAITTSProvider,
 } from "../../packages/server/src/openai/index";
+import type { LLMMessage, ToolDefinition } from "../../packages/core/src/types";
 import { workspaceAliases } from "../../test-aliases";
 import { defineConfig } from "vite";
 
@@ -43,6 +44,27 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonRecord> {
   }
 
   return JSON.parse(rawBody) as JsonRecord;
+}
+
+// Minimal tool-turn detection mirroring examples/web's requiresToolCallingPath:
+// a `tools` key (even an empty array) or a tool-ish message (a "tool" turn, or
+// an assistant turn carrying toolCalls) routes through the tool-calling
+// provider call instead of the plain chat call.
+function isToolishMessage(message: unknown): boolean {
+  if (typeof message !== "object" || message === null) {
+    return false;
+  }
+
+  const record = message as JsonRecord;
+  if (record.role === "tool") {
+    return true;
+  }
+
+  return (
+    record.role === "assistant" &&
+    Array.isArray(record.toolCalls) &&
+    record.toolCalls.length > 0
+  );
 }
 
 function requireApiKey(response: ServerResponse): string | null {
@@ -132,6 +154,7 @@ export default defineConfig({
             try {
               const payload = await readJsonBody(request);
               const messages = payload.messages;
+              const tools = payload.tools;
 
               if (!Array.isArray(messages)) {
                 sendJson(response, 400, {
@@ -145,6 +168,21 @@ export default defineConfig({
                 apiKey,
                 model: "gpt-4.1-nano",
               });
+
+              if (tools !== undefined || messages.some(isToolishMessage)) {
+                const result = await provider.generateResponseWithTools(
+                  messages as LLMMessage[],
+                  (tools as ToolDefinition[] | undefined) ?? [],
+                );
+
+                sendJson(response, 200, {
+                  success: true,
+                  message: result.content,
+                  toolCalls: result.toolCalls,
+                });
+                return;
+              }
+
               const message = await provider.generateResponse(
                 messages as Array<{ role: string; content: string }>,
               );

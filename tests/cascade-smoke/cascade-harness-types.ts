@@ -19,6 +19,11 @@ export type CascadeTimings = {
   totalMs: number | null;
 };
 
+export type CascadeAvatarEvent =
+  | { type: "expression"; expressionId: string }
+  | { type: "motion"; group: string; index: number }
+  | { type: "gaze"; x: number; y: number };
+
 export type CascadeSnapshot = {
   status: CascadeStatus;
   transcript: string | null;
@@ -31,6 +36,8 @@ export type CascadeSnapshot = {
    */
   lipsyncRmsUpdates: number;
   maxRms: number;
+  /** Avatar events emitted by the LLM tool loop's result projector during the turn. */
+  avatarEvents: CascadeAvatarEvent[];
   lastError: string | null;
   timings: CascadeTimings;
   events: CascadeEvent[];
