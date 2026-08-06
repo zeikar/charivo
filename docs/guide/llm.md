@@ -90,6 +90,72 @@ const provider = createOpenAILLMProvider({
 const text = await provider.generateResponse(messages);
 ```
 
+## Avatar Tool Calling
+
+`LLMManager` can drive `@charivo/avatar`'s tools the same way
+`RealtimeManager` does, on top of the recommended remote stack. The tool loop
+turns on only when both a tool is registered and the client implements
+`callWithTools` — `@charivo/llm/remote` does, provided your route forwards
+`tools` to a provider's `generateResponseWithTools`.
+
+```ts
+import { createLLMManager } from "@charivo/llm";
+import { createRemoteLLMClient } from "@charivo/llm/remote";
+import {
+  buildAvatarControlInstructions,
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/avatar";
+
+const catalog = { expressions: ["Smile", "Sad"], motions: { Idle: 2 } };
+
+const manager = createLLMManager(
+  createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
+  {
+    tools: createAvatarControlTools(catalog),
+    resultProjectors: [createAvatarResultProjector()],
+    toolInstructions: buildAvatarControlInstructions(catalog),
+  },
+);
+
+charivo.attachLLM(manager);
+```
+
+`attachLLM(...)` wires the event emitter that `resultProjectors` need to turn
+successful tool calls into `avatar:expression` / `avatar:motion` /
+`avatar:gaze` events; a `RenderManager` attached to the same `Charivo`
+instance already listens for them.
+
+On the server side, your route needs to accept an optional `tools` array and
+call the tool-calling variant of your provider whenever the request needs it —
+that includes both a `tools`-carrying request (even `tools: []`, the terminal
+round) and a plain request whose `messages` already contain a tool-call or
+tool-result turn:
+
+```ts
+const { messages, tools } = parsedBody;
+const needsTools = tools !== undefined || messages.some(isToolishMessage);
+
+const result = needsTools
+  ? await provider.generateResponseWithTools(messages, tools ?? [])
+  : { content: await provider.generateResponse(messages) };
+
+return NextResponse.json({
+  success: true,
+  message: result.content,
+  toolCalls: "toolCalls" in result ? result.toolCalls : undefined,
+});
+```
+
+See [`examples/web/src/app/api/chat-request.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/chat-request.ts)
+for the full request-parsing and validation this demo uses (`parseChatRequest`,
+`requiresToolCallingPath`, `isToolishMessage`).
+
+The tool loop runs at most 3 rounds before a final `tools: []` call forces a
+text-only reply, and only the final assistant text is added to
+`LLMManager`'s history — see [Tool Calling](https://github.com/zeikar/charivo/blob/main/packages/llm/README.md#tool-calling)
+in the package README for the full round-cap and remote protocol details.
+
 ## What `@charivo/llm` Owns
 
 - message history

@@ -52,7 +52,7 @@ export interface CaptureRecord {
 /**
  * Compose the scenario's system prompt by mirroring the live session seam.
  * avatarBlock: "" — browser-only tool listing; would need a fabricated render
- *   catalog + dynamic @charivo/realtime-avatar import; irrelevant to persona TONE.
+ *   catalog + dynamic @charivo/avatar import; irrelevant to persona TONE.
  * memoryBlock: "" — these scenarios seed relationship state, not facts.
  * PURE: no network, no clock reads (now is injected).
  */

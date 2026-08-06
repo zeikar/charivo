@@ -4,7 +4,15 @@ import {
   CharivoTimeoutError,
   LLMProvider,
   toCharivoError,
+  type LLMMessage,
+  type LLMToolResponse,
+  type ToolDefinition,
 } from "@charivo/core";
+import {
+  toLLMToolResponse,
+  toOpenAIChatMessages,
+  toOpenAITools,
+} from "../openai-tool-format";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -59,6 +67,30 @@ export class OpenAILLMProvider implements LLMProvider {
       );
 
       return completion.choices[0]?.message?.content || "";
+    } catch (error) {
+      throw toCharivoError("provider", error, "OpenAI LLM request failed");
+    }
+  }
+
+  async generateResponseWithTools(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse> {
+    try {
+      const openAITools = toOpenAITools(tools);
+
+      const completion = await withTimeout(
+        this.openai.chat.completions.create({
+          model: this.model,
+          messages: toOpenAIChatMessages(messages),
+          temperature: this.temperature,
+          max_tokens: this.maxTokens,
+          ...(openAITools ? { tools: openAITools } : {}),
+        }),
+        `OpenAI LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      );
+
+      return toLLMToolResponse(completion.choices[0]?.message);
     } catch (error) {
       throw toCharivoError("provider", error, "OpenAI LLM request failed");
     }

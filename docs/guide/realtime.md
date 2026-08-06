@@ -21,9 +21,10 @@ This is the current production-oriented browser path. The browser calls your
 route, receives an adapter-aware bootstrap, and connects through the default
 remote adapter registry.
 
-Add `@charivo/realtime-avatar` (a separate install) if you want its avatar
+Add `@charivo/avatar` (a separate install) if you want its avatar
 expression/motion/gaze tools and result projector, as used in the Basic Setup
-example below.
+example below. The same tools also work with `@charivo/llm`'s `LLMManager` —
+see [LLM — Avatar Tool Calling](./llm.md#avatar-tool-calling).
 
 ## Basic Setup
 
@@ -36,7 +37,7 @@ import {
 import {
   createAvatarControlTools,
   createAvatarResultProjector,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
@@ -140,7 +141,7 @@ layer on top of the library-generated base instead of making
 
 ```ts
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
-import { buildAvatarControlInstructions } from "@charivo/realtime-avatar";
+import { buildAvatarControlInstructions } from "@charivo/avatar";
 
 const base = buildRealtimeSessionConfig({ character });
 
@@ -226,9 +227,9 @@ failure tool result. Nested object/array schemas, `additionalProperties`, and
 union `type` arrays are not enforced.
 
 Avatar expression/motion/gaze tools are optional and now live in
-`@charivo/realtime-avatar`. Use a result projector when you want those tool
-results bridged back into `realtime:expression`, `realtime:motion`, and
-`realtime:gaze`.
+`@charivo/avatar` (`@charivo/realtime-avatar` is a deprecated re-export of it).
+Use a result projector when you want those tool results bridged back into
+`avatar:expression`, `avatar:motion`, and `avatar:gaze`.
 
 ## Reconnect Behavior
 

@@ -81,9 +81,9 @@ describe("RenderManager", () => {
     bus.emit("tts:audio:start", {});
     bus.emit("tts:lipsync:update", { rms: 0.42 });
     bus.emit("tts:audio:end", {});
-    bus.emit("realtime:expression", { expressionId: "exp_happy" });
-    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
-    bus.emit("realtime:gaze", { x: 0.25, y: -0.5 });
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+    bus.emit("avatar:gaze", { x: 0.25, y: -0.5 });
 
     expect(renderer.setRealtimeLipSync).toHaveBeenNthCalledWith(1, true);
     expect(renderer.updateRealtimeLipSyncRms).toHaveBeenCalledWith(0.42);
@@ -103,18 +103,18 @@ describe("RenderManager", () => {
 
     manager.setEventBus(bus);
 
-    bus.emit("realtime:expression", { expressionId: "exp_happy" });
-    bus.emit("realtime:expression", { expressionId: "exp_happy" });
-    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
-    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+    bus.emit("avatar:motion", { group: "TapBody", index: 1 });
 
     expect(renderer.playExpression).toHaveBeenCalledTimes(1);
     expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(300);
-    bus.emit("realtime:expression", { expressionId: "exp_happy" });
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
     await vi.advanceTimersByTimeAsync(700);
-    bus.emit("realtime:motion", { group: "TapBody", index: 1 });
+    bus.emit("avatar:motion", { group: "TapBody", index: 1 });
 
     expect(renderer.playExpression).toHaveBeenCalledTimes(2);
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
@@ -152,12 +152,12 @@ describe("RenderManager", () => {
     manager.setEventBus(bus);
 
     // First gaze emit — listener is wired
-    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    bus.emit("avatar:gaze", { x: 1, y: 0 });
     expect(renderer.lookAt).toHaveBeenCalledTimes(1);
 
     // After disconnect the listener must be gone
     manager.disconnect();
-    bus.emit("realtime:gaze", { x: 0, y: 1 });
+    bus.emit("avatar:gaze", { x: 0, y: 1 });
     expect(renderer.lookAt).toHaveBeenCalledTimes(1); // still 1, not 2
 
     // disconnect a second time must not throw (idempotent)
@@ -165,7 +165,7 @@ describe("RenderManager", () => {
 
     // Re-wiring must work: setEventBus again and emit
     manager.setEventBus(bus);
-    bus.emit("realtime:gaze", { x: 0.5, y: 0.5 });
+    bus.emit("avatar:gaze", { x: 0.5, y: 0.5 });
     expect(renderer.lookAt).toHaveBeenCalledTimes(2);
   });
 
@@ -220,7 +220,7 @@ describe("RenderManager", () => {
     await manager.initialize();
     manager.setEventBus(bus);
 
-    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    bus.emit("avatar:gaze", { x: 1, y: 0 });
     document.dispatchEvent(
       new MouseEvent("pointermove", { clientX: 12, clientY: 34 }),
     );
@@ -326,7 +326,7 @@ describe("RenderManager", () => {
     manager.setEventBus(bus);
 
     // Open the AI gaze window.
-    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    bus.emit("avatar:gaze", { x: 1, y: 0 });
     expect(renderer.lookAt).toHaveBeenCalledTimes(1);
     renderer.lookAt.mockClear();
 
@@ -385,7 +385,7 @@ describe("RenderManager", () => {
     renderer.handleMouseTap.mockClear();
 
     // Open the AI gaze window: now taps yield too.
-    bus.emit("realtime:gaze", { x: 1, y: 0 });
+    bus.emit("avatar:gaze", { x: 1, y: 0 });
     document.dispatchEvent(
       new MouseEvent("pointerdown", { clientX: 40, clientY: 40 }),
     );

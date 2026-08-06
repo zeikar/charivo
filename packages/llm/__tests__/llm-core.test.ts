@@ -1,8 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Character, LLMClient, Message } from "@charivo/core";
+import type {
+  Character,
+  CharivoEventEmitter,
+  LLMClient,
+  LLMMessage,
+  LLMToolCall,
+  LLMToolResponse,
+  Message,
+  ToolDefinition,
+  ToolHandler,
+  ToolRegistration,
+  ToolResultProjector,
+} from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { CharacterPromptBuilder } from "../src/character-prompt-builder";
 import { LLMValidators } from "../src/validators";
+import { LLMManager } from "../src/llm-manager";
 import { MessageConverter } from "../src/message-converter";
 import { MessageHistoryManager } from "../src/message-history-manager";
 import { ResponseMessageBuilder } from "../src/response-message-builder";
@@ -420,5 +433,534 @@ describe("LLMManager", () => {
     expect(() => createLLMManager(client, { maxHistoryTurns: NaN })).toThrow(
       "maxHistoryTurns must be a positive integer or null",
     );
+  });
+});
+
+describe("LLMManager tool loop", () => {
+  const FINAL_TEXT = "Here you go!";
+
+  const buildUserMessage = (content: string): Message => ({
+    id: `msg-${content}`,
+    content,
+    timestamp: new Date("2024-01-01T00:00:00Z"),
+    type: "user",
+  });
+
+  const buildPlainClient = () => ({
+    call: vi.fn(
+      async (messages: Array<{ role: string; content: string }>) =>
+        messages[messages.length - 1]?.content.toUpperCase() ?? "",
+    ),
+  });
+
+  /**
+   * Tool-capable fake client. Queued responses are returned in order; the
+   * message payloads are snapshotted per call because the manager mutates the
+   * working conversation in place.
+   */
+  const buildToolClient = (responses: LLMToolResponse[]) => {
+    const queue = [...responses];
+    const payloads: LLMMessage[][] = [];
+    const toolPayloads: ToolDefinition[][] = [];
+
+    const call = vi.fn(
+      async (messages: Array<{ role: string; content: string }>) =>
+        messages[messages.length - 1]?.content.toUpperCase() ?? "",
+    );
+    const callWithTools = vi.fn(
+      async (
+        messages: LLMMessage[],
+        tools: ToolDefinition[],
+      ): Promise<LLMToolResponse> => {
+        payloads.push([...messages]);
+        toolPayloads.push(tools);
+        return queue.shift() ?? { content: FINAL_TEXT };
+      },
+    );
+
+    const client: LLMClient = { call, callWithTools };
+
+    return { client, call, callWithTools, payloads, toolPayloads };
+  };
+
+  const expressionDefinition: ToolDefinition = {
+    type: "function",
+    name: "setExpression",
+    description: "Change the avatar expression",
+    parameters: {
+      type: "object",
+      properties: {
+        expressionId: { type: "string", enum: ["smile", "sad"] },
+      },
+      required: ["expressionId"],
+    },
+  };
+
+  const buildExpressionTool = (handler: ToolHandler): ToolRegistration => ({
+    definition: expressionDefinition,
+    handler,
+  });
+
+  const expressionHandler: ToolHandler = async (args) => ({
+    success: true,
+    expressionId: args.expressionId,
+  });
+
+  const buildToolCall = (
+    args: Record<string, unknown> = { expressionId: "smile" },
+    name = "setExpression",
+  ): LLMToolCall => ({
+    id: "call-1",
+    name,
+    arguments: args,
+  });
+
+  const expressionProjector: ToolResultProjector = ({ name, output, emit }) => {
+    if (name === "setExpression" && typeof output.expressionId === "string") {
+      emit("avatar:expression", { expressionId: output.expressionId });
+    }
+  };
+
+  const buildEmitterSpy = () => {
+    const emit = vi.fn();
+    const eventEmitter: CharivoEventEmitter = { emit };
+    return { eventEmitter, emit };
+  };
+
+  const readToolTurn = (messages: LLMMessage[]) => {
+    const toolTurn = messages.find((message) => message.role === "tool");
+    expect(toolTurn).toBeDefined();
+    return JSON.parse(toolTurn!.content) as Record<string, unknown>;
+  };
+
+  it("keeps the plain call path when the client cannot call tools", async () => {
+    const client = buildPlainClient();
+    const handler = vi.fn(expressionHandler);
+    // Uses the factory (core's optional-tool interface) since this test only
+    // needs generateResponse; the other tests below call registerTool/
+    // getRegisteredTools directly and need LLMManager's non-optional members.
+    const manager = createLLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+      toolInstructions: "Use avatar tools when it fits.",
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe("HELLO");
+    expect(client.call).toHaveBeenCalledTimes(1);
+    expect(handler).not.toHaveBeenCalled();
+
+    const systemMessage = client.call.mock.calls[0]![0][0]!;
+    expect(systemMessage.content).not.toContain(
+      "Use avatar tools when it fits.",
+    );
+    expect(manager.getHistory()).toHaveLength(2);
+  });
+
+  it("executes a tool round and returns the follow-up text", async () => {
+    const toolCall = buildToolCall();
+    const { client, callWithTools, payloads, toolPayloads } = buildToolClient([
+      { content: "", toolCalls: [toolCall] },
+      { content: FINAL_TEXT },
+    ]);
+    const handler = vi.fn(expressionHandler);
+    const { eventEmitter, emit } = buildEmitterSpy();
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+      resultProjectors: [expressionProjector],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(callWithTools).toHaveBeenCalledTimes(2);
+    expect(toolPayloads[0]).toEqual([expressionDefinition]);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(
+      { expressionId: "smile" },
+      { character, callId: "call-1" },
+    );
+
+    expect(emit).toHaveBeenCalledWith("avatar:expression", {
+      expressionId: "smile",
+    });
+
+    expect(payloads[0]).toEqual([
+      { role: "system", content: expect.stringContaining("You are Hiyori") },
+      { role: "user", content: "hello" },
+    ]);
+    expect(payloads[1]!.slice(2)).toEqual([
+      { role: "assistant", content: "", toolCalls: [toolCall] },
+      {
+        role: "tool",
+        toolCallId: "call-1",
+        content: JSON.stringify({ success: true, expressionId: "smile" }),
+      },
+    ]);
+
+    expect(
+      manager.getHistory().map((message) => [message.type, message.content]),
+    ).toEqual([
+      ["user", "hello"],
+      ["character", FINAL_TEXT],
+    ]);
+  });
+
+  it("executes multiple tool calls from a single round in order", async () => {
+    const toolCallOne: LLMToolCall = {
+      id: "call-1",
+      name: "setExpression",
+      arguments: { expressionId: "smile" },
+    };
+    const toolCallTwo: LLMToolCall = {
+      id: "call-2",
+      name: "setExpression",
+      arguments: { expressionId: "sad" },
+    };
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [toolCallOne, toolCallTwo] },
+      { content: FINAL_TEXT },
+    ]);
+    const handler = vi.fn(expressionHandler);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenNthCalledWith(
+      1,
+      { expressionId: "smile" },
+      { character, callId: "call-1" },
+    );
+    expect(handler).toHaveBeenNthCalledWith(
+      2,
+      { expressionId: "sad" },
+      { character, callId: "call-2" },
+    );
+
+    const toolTurns = payloads[1]!.filter((message) => message.role === "tool");
+    expect(toolTurns).toEqual([
+      {
+        role: "tool",
+        toolCallId: "call-1",
+        content: JSON.stringify({ success: true, expressionId: "smile" }),
+      },
+      {
+        role: "tool",
+        toolCallId: "call-2",
+        content: JSON.stringify({ success: true, expressionId: "sad" }),
+      },
+    ]);
+  });
+
+  it("skips the handler and returns a failure output on invalid arguments", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall({})] },
+      { content: FINAL_TEXT },
+    ]);
+    const handler = vi.fn(expressionHandler);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(handler).not.toHaveBeenCalled();
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error:
+        'LLM tool "setExpression" arguments failed schema validation: missing required property "expressionId"',
+    });
+  });
+
+  it("converts a throwing handler into a failure output", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client, {
+      tools: [
+        buildExpressionTool(async () => {
+          throw new Error("handler exploded");
+        }),
+      ],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error: "handler exploded",
+    });
+  });
+
+  it("converts a timed out handler into a failure output", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client, {
+      tools: [
+        {
+          ...buildExpressionTool(() => new Promise<never>(() => {})),
+          timeoutMs: 1,
+        },
+      ],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error: 'LLM tool "setExpression" timed out after 1ms',
+    });
+  });
+
+  it("falls back to the manager's default tool timeout when a tool sets none", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(() => new Promise<never>(() => {}))],
+      defaultToolTimeoutMs: 1,
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error: 'LLM tool "setExpression" timed out after 1ms',
+    });
+  });
+
+  it("converts a non-object handler result into a failure output", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client, {
+      tools: [
+        buildExpressionTool((async () => "not an object") as ToolHandler),
+      ],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error: 'LLM tool "setExpression" must return an object',
+    });
+  });
+
+  it("converts an unknown tool name into a failure output", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall({}, "playMotion")] },
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(expressionHandler)],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: false,
+      error: 'No LLM tool registered for "playMotion"',
+    });
+  });
+
+  it("stops executing tools after the round cap", async () => {
+    const toolCall = buildToolCall();
+    const { client, callWithTools, toolPayloads } = buildToolClient([
+      { content: "", toolCalls: [toolCall] },
+      { content: "", toolCalls: [toolCall] },
+      { content: "", toolCalls: [toolCall] },
+      { content: FINAL_TEXT, toolCalls: [toolCall] },
+    ]);
+    const handler = vi.fn(expressionHandler);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+    });
+
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(callWithTools).toHaveBeenCalledTimes(4);
+    expect(handler).toHaveBeenCalledTimes(3);
+    // The terminal call forces text by offering no tools.
+    expect(toolPayloads[3]).toEqual([]);
+  });
+
+  it("appends tool instructions to the system prompt on the tools path", async () => {
+    const { client, payloads } = buildToolClient([{ content: FINAL_TEXT }]);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(expressionHandler)],
+      toolInstructions: "Use avatar tools when it fits.",
+    });
+
+    manager.setCharacter(character);
+
+    await manager.generateResponse(buildUserMessage("hello"));
+
+    const systemMessage = payloads[0]![0]!;
+    expect(systemMessage.content).toContain("You are Hiyori");
+    expect(
+      systemMessage.content.endsWith("\n\nUse avatar tools when it fits."),
+    ).toBe(true);
+
+    manager.setToolInstructions(null);
+    await manager.generateResponse(buildUserMessage("again"));
+
+    expect(payloads[1]![0]!.content).not.toContain(
+      "Use avatar tools when it fits.",
+    );
+  });
+
+  it("skips projection when no event emitter is set", async () => {
+    const { client } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const projector = vi.fn();
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(expressionHandler)],
+      resultProjectors: [projector],
+    });
+
+    manager.setCharacter(character);
+
+    await expect(
+      manager.generateResponse(buildUserMessage("hello")),
+    ).resolves.toBe(FINAL_TEXT);
+    expect(projector).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a throwing projector as an error event", async () => {
+    const { client } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const { eventEmitter, emit } = buildEmitterSpy();
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(expressionHandler)],
+      resultProjectors: [
+        () => {
+          throw new Error("projector exploded");
+        },
+      ],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+    expect(emit).toHaveBeenCalledWith("error", {
+      error: new Error(
+        'LLM result projector failed for tool "setExpression": projector exploded',
+      ),
+    });
+  });
+
+  it("converts unserializable tool outputs into failure outputs", async () => {
+    const circular: Record<string, unknown> = { success: true };
+    circular.self = circular;
+
+    const cases: Array<{ label: string; result: Record<string, unknown> }> = [
+      { label: "bigint", result: { success: true, amount: 1n } },
+      { label: "circular", result: circular },
+      {
+        label: "toJSON-undefined",
+        result: { success: true, toJSON: () => undefined },
+      },
+    ];
+
+    for (const { label, result } of cases) {
+      const { client, payloads } = buildToolClient([
+        { content: "", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      const projector = vi.fn();
+      const { eventEmitter } = buildEmitterSpy();
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(async () => result)],
+        resultProjectors: [projector],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+      );
+
+      expect(response, label).toBe(FINAL_TEXT);
+      expect(projector, label).not.toHaveBeenCalled();
+
+      const output = readToolTurn(payloads[1]!);
+      expect(output.success, label).toBe(false);
+      expect(typeof output.error, label).toBe("string");
+
+      expect(
+        manager.getHistory().map((message) => message.type),
+        label,
+      ).toEqual(["user", "character"]);
+    }
+  });
+
+  it("registers and unregisters tools after construction", async () => {
+    const { client, call, callWithTools } = buildToolClient([
+      { content: FINAL_TEXT },
+    ]);
+    const manager = new LLMManager(client);
+
+    manager.setCharacter(character);
+    expect(manager.getRegisteredTools()).toEqual([]);
+
+    manager.registerTool(buildExpressionTool(expressionHandler));
+    expect(manager.getRegisteredTools()).toEqual([expressionDefinition]);
+
+    await manager.generateResponse(buildUserMessage("hello"));
+    expect(callWithTools).toHaveBeenCalledTimes(1);
+
+    manager.unregisterTool("setExpression");
+    expect(manager.getRegisteredTools()).toEqual([]);
+
+    await manager.generateResponse(buildUserMessage("again"));
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(callWithTools).toHaveBeenCalledTimes(1);
   });
 });

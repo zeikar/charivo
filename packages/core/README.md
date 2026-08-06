@@ -11,6 +11,9 @@ It exports:
 - `createLipSyncAnalyzer`: the shared audio-analysis utility the TTS manager
   and realtime clients use to compute mouth-open RMS and emit
   `tts:lipsync:update`
+- modality-neutral tool contracts (`ToolDefinition`, `ToolRegistration`, ...)
+  and validation helpers (`validateToolArguments`, `assertToolResultObject`)
+  shared by `@charivo/llm` and `@charivo/realtime`
 
 ## Install
 
@@ -70,7 +73,7 @@ for driving avatar state from the app layer:
 
 - `setLocalGaze(coords: GazeCoordinates): boolean` — drives local-presence gaze
   (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
-  avatar (the `realtime:gaze` suspend window is active) or when the renderer has
+  avatar (the `avatar:gaze` suspend window is active) or when the renderer has
   no `lookAt`.
 
 ## Errors
@@ -85,6 +88,55 @@ Public methods throw typed errors exported from `@charivo/core`:
 
 Prefer `instanceof CharivoError` or `error.code` checks over
 `error.message.includes(...)`.
+
+## Tool Contracts
+
+`@charivo/core` owns a modality-neutral tool contract used by both
+`@charivo/llm` (`LLMManager`) and `@charivo/realtime` (`RealtimeManager`), so a
+tool built once (e.g. by `@charivo/avatar`) registers with either manager:
+
+- `ToolDefinition`: `{ type: "function", name, description, parameters }`, a
+  JSON Schema-shaped function definition
+- `ToolContext`: `{ character?, callId?, state? }` passed to a handler;
+  `state` (a `RealtimeState`) is present only for realtime sessions
+- `ToolHandler`: `(args, context) => Promise<Record<string, unknown>>` — must
+  resolve to a plain object; arrays and primitives are rejected by the runners
+- `ToolRegistration`: `{ definition, handler, timeoutMs? }`
+- `ToolResultProjector` / `ToolResultProjectorContext`: `({ name, output,
+  callId?, emit }) => void`, run by a manager after a successful tool call so
+  app code can turn tool output into Charivo events (e.g. `avatar:expression`)
+
+Validation helpers, used by both managers before/after a handler runs:
+
+- `validateToolArguments(definition, args, toolLabel?)`: throws a plain
+  `Error` on the first schema violation. Enforces only required-key presence,
+  `enum` membership, and each property's top-level `type` — nested schemas,
+  `additionalProperties`, and numeric-length constraints are not validated.
+- `assertToolResultObject(result, toolName, toolLabel?)`: throws a plain
+  `Error` unless `result` is a plain object.
+
+### Deprecated Realtime Tool Aliases
+
+`RealtimeTool`, `RealtimeToolContext`, `RealtimeToolHandler`, and
+`RealtimeToolRegistration` are deprecated aliases of the neutral contracts
+above, kept for backward compatibility. Prefer `ToolDefinition`, `ToolContext`,
+`ToolHandler`, and `ToolRegistration`. Note `RealtimeToolContext.state` is
+required, while the neutral `ToolContext.state` is optional.
+
+### LLM Tool-Calling Contracts
+
+- `LLMMessage`: role-discriminated union (`system`/`user`, `assistant` with
+  optional `toolCalls`, or `tool` with a required `toolCallId`) so
+  protocol-invalid combinations are unrepresentable for typed callers
+- `LLMToolCall`: `{ id, name, arguments }`
+- `LLMToolResponse`: `{ content, toolCalls? }`
+- `LLMProvider.generateResponseWithTools?(messages, tools)`: optional
+  tool-calling variant a provider implements alongside `generateResponse`
+- `LLMClient.callWithTools?(messages, tools)`: optional tool-calling variant a
+  client implements alongside `call`
+- `LLMManager.registerTool?`, `unregisterTool?`, `getRegisteredTools?`,
+  `setToolInstructions?`: optional manager methods for managing the tool
+  registry and the tool-only system-prompt addendum
 
 ## Events
 
@@ -114,8 +166,8 @@ Important event names include:
 - `realtime:tool:result`
 - `realtime:tool:error`
 - `realtime:usage`
-- `realtime:expression`
-- `realtime:motion`
-- `realtime:gaze`
+- `avatar:expression`
+- `avatar:motion`
+- `avatar:gaze`
 - `realtime:text:delta`
 - `realtime:error`

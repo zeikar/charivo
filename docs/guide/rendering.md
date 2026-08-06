@@ -51,9 +51,9 @@ charivo.attachRenderer(renderManager);
 - character text rendering
 - `tts:audio:start` and `tts:audio:end`
 - `tts:lipsync:update`
-- `realtime:expression`
-- `realtime:motion`
-- `realtime:gaze`
+- `avatar:expression`
+- `avatar:motion`
+- `avatar:gaze`
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
@@ -88,14 +88,14 @@ them automatically.
 
 The render manager arbitrates between three gaze drivers:
 
-1. **AI gaze** — driven by the `realtime:gaze` event from the realtime model's
+1. **AI gaze** — driven by the `avatar:gaze` event from the realtime model's
    look intent. Owns the avatar's gaze while the AI suspend window is active.
 2. **Local-presence gaze** — driven by calling `renderManager.setLocalGaze(coords)` from
    the app layer (e.g. webcam face tracking). Suspends mouse cursor tracking
    through a separate local-gaze window while active.
 3. **Mouse cursor** — the default continuous mouse-tracking path.
 
-**Priority for cursor-follow:** AI (`realtime:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
+**Priority for cursor-follow:** AI (`avatar:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
 
 **Deliberate taps** yield only to the AI window — local-presence does not
 suppress them.

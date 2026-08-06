@@ -19,6 +19,8 @@ The app exercises the current package stack:
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
+- avatar expression/motion/gaze tool calling through `@charivo/avatar`, wired
+  into both LLM chat and realtime voice sessions
 
 ## Lifecycle Split
 

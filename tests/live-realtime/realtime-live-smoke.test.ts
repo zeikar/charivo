@@ -227,7 +227,7 @@ liveDescribe("live realtime bootstrap and local manager plumbing", () => {
     );
     const expressionPromise = waitForEvent(
       charivo,
-      "realtime:expression",
+      "avatar:expression",
       client,
     );
 

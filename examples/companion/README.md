@@ -41,7 +41,7 @@ Live demo: https://charivo-companion.vercel.app/
   seam before calling `startSession({ instructions })`, including a sanitized user-name
   block so the character addresses the user by name.
 - Renders the selected Live2D avatar via `@charivo/render` + `@charivo/render-live2d`,
-  with realtime audio driving lip-sync and avatar tools (`@charivo/realtime-avatar`:
+  with realtime audio driving lip-sync and avatar tools (`@charivo/avatar`:
   `createAvatarControlTools`, `createAvatarResultProjector`,
   `buildAvatarControlInstructions`) driving motions/gaze through the shared
   Charivo event bus. (Bundled models vary — Hiyori exposes motion groups and gaze
@@ -86,7 +86,7 @@ avatar's gaze to follow the user's head position.
   base and `modelAssetPath` at the local URLs. This avoids the CDN dependency and
   is the recommended follow-up for any non-demo use.
 - **Gaze arbitration.** Webcam face position is fed to
-  `renderManager.setLocalGaze(coords)`. AI gaze (`realtime:gaze`) takes
+  `renderManager.setLocalGaze(coords)`. AI gaze (`avatar:gaze`) takes
   priority over webcam, which in turn takes priority over mouse cursor. See
   [Rendering — Gaze Drivers](../../docs/guide/rendering.md#gaze-drivers) for
   the full arbitration model.
@@ -125,7 +125,7 @@ out by `composeInstructions` — so it contributes nothing before the user has
 entered a name — but addresses them by name once one exists, a demo-guidance
 block that keeps replies short and natural for a live voice demo, an
 avatar-control instruction block (`buildAvatarControlInstructions` from
-`@charivo/realtime-avatar`) that tells the model what motions/gaze (and, when
+`@charivo/avatar`) that tells the model what motions/gaze (and, when
 present, expression) tools are available, a memory block (facts; session
 summaries are deferred — the MVP has no LLM summarizer yet, so they are always
 null, but the render pipeline supports them for when one is added) built from

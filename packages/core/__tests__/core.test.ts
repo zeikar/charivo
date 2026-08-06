@@ -12,6 +12,7 @@ import type {
   CharivoEventEmitter,
   GazeCoordinates,
   LLMClient,
+  LLMManager,
   Message,
   RealtimeManager,
   RealtimeState,
@@ -84,6 +85,15 @@ class StubRealtimeManager implements RealtimeManager {
   registerTool = vi.fn((_tool: RealtimeToolRegistration) => undefined);
   unregisterTool = vi.fn((_name: string) => undefined);
   getRegisteredTools = vi.fn((): RealtimeTool[] => []);
+  setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
+}
+
+class StubLLMManager implements LLMManager {
+  setCharacter = vi.fn((_character: Character) => undefined);
+  getCharacter = vi.fn((): Character | null => null);
+  clearHistory = vi.fn(() => undefined);
+  getHistory = vi.fn((): Message[] => []);
+  generateResponse = vi.fn(async (_message: Message) => "");
   setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
 }
 
@@ -263,6 +273,32 @@ describe("Charivo", () => {
     expect(charivo.getHistory()).toHaveLength(0);
     expect(charivo.isRealtimeModeEnabled()).toBe(false);
     expect(renderManager.destroy).not.toHaveBeenCalled();
+  });
+
+  it("attachLLM connects setEventEmitter when the manager defines it", () => {
+    const llmManager = new StubLLMManager();
+    const charivo = new Charivo();
+
+    charivo.attachLLM(llmManager);
+
+    expect(llmManager.setEventEmitter).toHaveBeenCalledTimes(1);
+
+    // The emitter must be the live event bus: emitting through it reaches
+    // listeners registered via the Charivo facade.
+    const emitter = llmManager.setEventEmitter.mock
+      .calls[0]?.[0] as CharivoEventEmitter;
+    const listener = vi.fn();
+    charivo.on("avatar:expression", listener);
+    emitter.emit("avatar:expression", { expressionId: "smile" });
+    expect(listener).toHaveBeenCalledWith({ expressionId: "smile" });
+  });
+
+  it("attachLLM does not throw when the manager has no setEventEmitter", () => {
+    const client = new ResolvingClient("hi");
+    const llmManager = createLLMManager(client);
+    const charivo = new Charivo();
+
+    expect(() => charivo.attachLLM(llmManager)).not.toThrow();
   });
 
   it("detachRenderer disconnects without destroying the manager", () => {

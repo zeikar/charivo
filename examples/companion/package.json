@@ -14,9 +14,9 @@
     "eval:memory:check-sensitivity": "out=$(EVAL_INJECT_BREAK=1 vitest run --config testing/vitest.eval.config.ts -t 'extraction precision/recall meets threshold' 2>&1); code=$?; echo \"$out\"; if [ $code -ne 0 ] && echo \"$out\" | grep -q 'EXTRACTION_PRECISION_BELOW_THRESHOLD'; then exit 0; else exit 1; fi"
   },
   "dependencies": {
+    "@charivo/avatar": "workspace:*",
     "@charivo/core": "workspace:*",
     "@charivo/realtime": "workspace:*",
-    "@charivo/realtime-avatar": "workspace:*",
     "@charivo/render": "workspace:*",
     "@charivo/render-live2d": "workspace:*",
     "@charivo/server": "workspace:*",

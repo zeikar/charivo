@@ -1,17 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CharivoProviderError } from "@charivo/core";
+import { CharivoProviderError, type ToolDefinition } from "@charivo/core";
 
 const openaiMocks = vi.hoisted(() => {
   const instances: { config: unknown }[] = [];
 
+  type ChatPayload = {
+    model: string;
+    messages: Array<Record<string, unknown>>;
+    temperature?: number;
+    max_tokens?: number;
+    user?: string;
+    tools?: Array<Record<string, unknown>>;
+  };
+
+  type ChatCompletionLike = {
+    choices: Array<{
+      message?: {
+        content?: string | null;
+        tool_calls?: Array<Record<string, unknown>>;
+      };
+    }>;
+  };
+
   const createCompletion = vi.fn(
-    async (_payload: {
-      model: string;
-      messages: Array<{ role: string; content: string }>;
-      temperature?: number;
-      max_tokens?: number;
-      user?: string;
-    }) => ({
+    async (_payload: ChatPayload): Promise<ChatCompletionLike> => ({
       choices: [
         {
           message: { content: "openclaw response" },
@@ -182,6 +194,210 @@ describe("OpenClawLLMProvider", () => {
 
     await expect(
       provider.generateResponse([{ role: "user", content: "hi" }]),
+    ).rejects.toThrow(CharivoProviderError);
+  });
+});
+
+const weatherTool: ToolDefinition = {
+  type: "function",
+  name: "get_weather",
+  description: "Look up the weather",
+  parameters: {
+    type: "object",
+    properties: { city: { type: "string" } },
+    required: ["city"],
+  },
+};
+
+describe("OpenClawLLMProvider.generateResponseWithTools", () => {
+  it("sends the full history and the tool definitions when no session is pinned", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponseWithTools(
+      [
+        { role: "system", content: "You are Hiyori" },
+        { role: "user", content: "weather?" },
+        {
+          role: "assistant",
+          content: "checking",
+          toolCalls: [
+            { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+          ],
+        },
+        { role: "tool", content: '{"temp":21}', toolCallId: "call_1" },
+      ],
+      [weatherTool],
+    );
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Seoul"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: '{"temp":21}' },
+    ]);
+    expect(payload.tools).toEqual([
+      {
+        type: "function",
+        function: {
+          name: "get_weather",
+          description: "Look up the weather",
+          parameters: weatherTool.parameters,
+        },
+      },
+    ]);
+  });
+
+  it("sends only system prompts and the latest user turn on the first pinned call", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponseWithTools(
+      [
+        { role: "system", content: "You are Hiyori" },
+        { role: "user", content: "first question" },
+        { role: "assistant", content: "first answer" },
+        { role: "user", content: "weather?" },
+      ],
+      [weatherTool],
+    );
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "weather?" },
+    ]);
+    expect(payload.user).toBe("conversation-abc");
+  });
+
+  it("sends only system prompts and the trailing tool results on a pinned continuation", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponseWithTools(
+      [
+        { role: "system", content: "You are Hiyori" },
+        { role: "user", content: "weather?" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            { id: "call_0", name: "get_weather", arguments: { city: "Seoul" } },
+          ],
+        },
+        { role: "tool", content: '{"temp":21}', toolCallId: "call_0" },
+        { role: "user", content: "and tomorrow?" },
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_1",
+              name: "get_weather",
+              arguments: { city: "Seoul", day: "tomorrow" },
+            },
+          ],
+        },
+        { role: "tool", content: '{"temp":24}', toolCallId: "call_1" },
+      ],
+      [weatherTool],
+    );
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    // The earlier round (call_0) is already acknowledged and resent turns; a
+    // naive `messages.filter(role === "tool")` would still include its result.
+    // Only the trailing unbroken run of tool messages belongs to this turn.
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "tool", tool_call_id: "call_1", content: '{"temp":24}' },
+    ]);
+  });
+
+  it("omits the tools param when the round offers no tools", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponseWithTools(
+      [{ role: "user", content: "wrap up" }],
+      [],
+    );
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload).not.toHaveProperty("tools");
+  });
+
+  it("returns the tool calls requested by the gateway with decoded arguments", async () => {
+    openaiMocks.createCompletion.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"city":"Seoul"}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      dangerouslyAllowBrowser: true,
+    });
+
+    const response = await provider.generateResponseWithTools(
+      [{ role: "user", content: "weather?" }],
+      [weatherTool],
+    );
+
+    expect(response).toEqual({
+      content: "",
+      toolCalls: [
+        { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+      ],
+    });
+  });
+
+  it("wraps request failures as CharivoProviderError", async () => {
+    openaiMocks.createCompletion.mockRejectedValueOnce(new Error("timeout"));
+
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await expect(
+      provider.generateResponseWithTools(
+        [{ role: "user", content: "hi" }],
+        [weatherTool],
+      ),
     ).rejects.toThrow(CharivoProviderError);
   });
 });

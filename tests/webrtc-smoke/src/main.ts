@@ -139,9 +139,9 @@ const subscriptions: Array<keyof EventMap> = [
   "realtime:reconnect:success",
   "realtime:reconnect:exhausted",
   "realtime:usage",
-  "realtime:expression",
-  "realtime:motion",
-  "realtime:gaze",
+  "avatar:expression",
+  "avatar:motion",
+  "avatar:gaze",
   "realtime:error",
 ];
 
@@ -205,14 +205,14 @@ for (const eventName of subscriptions) {
         state.usageEvents.push(payload);
         break;
 
-      case "realtime:expression":
+      case "avatar:expression":
         state.avatarEvents.push({
           type: "expression",
           expressionId: payload.expressionId,
         });
         break;
 
-      case "realtime:motion":
+      case "avatar:motion":
         state.avatarEvents.push({
           type: "motion",
           group: payload.group,
@@ -220,7 +220,7 @@ for (const eventName of subscriptions) {
         });
         break;
 
-      case "realtime:gaze":
+      case "avatar:gaze":
         state.avatarEvents.push({
           type: "gaze",
           x: payload.x,

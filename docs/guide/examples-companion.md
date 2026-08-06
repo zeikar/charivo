@@ -25,7 +25,7 @@ package list is:
 
 ```text
 @charivo/core
-@charivo/realtime + @charivo/realtime-avatar
+@charivo/realtime + @charivo/avatar
 @charivo/render + @charivo/render-live2d
 @charivo/server (one route)
 ```
@@ -75,7 +75,7 @@ the memory design, and this guide deliberately does not restate it.
 
 ## Avatar Control And Gaze
 
-Motions and gaze are driven by the model through `@charivo/realtime-avatar`
+Motions and gaze are driven by the model through `@charivo/avatar`
 (`createAvatarControlTools`, `createAvatarResultProjector`,
 `buildAvatarControlInstructions`), bridged back into the render manager over the
 shared Charivo event bus.

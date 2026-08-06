@@ -1,4 +1,9 @@
-import type { LLMClient } from "@charivo/core";
+import type {
+  LLMClient,
+  LLMMessage,
+  LLMToolResponse,
+  ToolDefinition,
+} from "@charivo/core";
 import {
   createOpenClawLLMProvider,
   OpenClawLLMConfig,
@@ -47,6 +52,13 @@ class OpenClawLLMClient implements LLMClient {
     messages: Array<{ role: string; content: string }>,
   ): Promise<string> {
     return this.provider.generateResponse(messages);
+  }
+
+  async callWithTools(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse> {
+    return this.provider.generateResponseWithTools(messages, tools);
   }
 }
 

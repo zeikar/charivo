@@ -52,9 +52,9 @@ async function main(): Promise<void> {
     }, 50);
   });
 
-  // Gaze buttons go through the event bus (realtime:gaze) like the live model.
+  // Gaze buttons go through the event bus (avatar:gaze) like the live model.
   const gaze = (x: number, y: number): void => {
-    charivo.emit("realtime:gaze", { x, y });
+    charivo.emit("avatar:gaze", { x, y });
     setStatus(`gaze → x=${x}, y=${y}`);
   };
   document

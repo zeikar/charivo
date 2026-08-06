@@ -28,6 +28,10 @@ const WAV_PRESENT = existsSync(WAV_PATH);
 const LIVE_ENABLED = process.env.RUN_LIVE_CASCADE === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
+// Mirrors the AVATAR_CATALOG expressions in src/main.ts, so the assertion
+// below can prove the model only ever picked from the enum offered to it.
+const AVATAR_CATALOG_EXPRESSIONS = ["happy", "sad", "surprised"];
+
 test.describe("cascade stt → llm → tts e2e", () => {
   test.skip(
     !WAV_PRESENT,
@@ -58,6 +62,9 @@ test.describe("cascade stt → llm → tts e2e", () => {
         `lip-sync RMS updates: ${snapshot.lipsyncRmsUpdates}, maxRms: ${snapshot.maxRms.toFixed(4)}`,
     );
     console.log(`[cascade] timings(ms): ${JSON.stringify(snapshot.timings)}`);
+    console.log(
+      `[cascade] avatar events: ${JSON.stringify(snapshot.avatarEvents)}`,
+    );
 
     expect(
       snapshot.lastError,
@@ -74,5 +81,17 @@ test.describe("cascade stt → llm → tts e2e", () => {
     expect(snapshot.ttsAudioEnded).toBe(true);
     // The browser audio→lip-sync loop drove the renderer during playback.
     expect(snapshot.lipsyncRmsUpdates).toBeGreaterThan(0);
+
+    // The LLM tool loop called setExpression: the canned utterance asks the
+    // character to smile, and the avatar tool instructions push proactive
+    // expression use, so an avatar:expression event should have fired -
+    // proving the tool loop → result projector → bus path end-to-end.
+    const expressionEvents = snapshot.avatarEvents.filter(
+      (event) => event.type === "expression",
+    );
+    expect(expressionEvents.length).toBeGreaterThan(0);
+    for (const event of expressionEvents) {
+      expect(AVATAR_CATALOG_EXPRESSIONS).toContain(event.expressionId);
+    }
   });
 });

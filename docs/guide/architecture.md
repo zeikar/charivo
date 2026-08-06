@@ -50,11 +50,14 @@ Lower layers should not take on orchestration concerns from higher layers.
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.
 
-### Realtime Extensions
+### Avatar Tool Extensions
 
-- `@charivo/realtime-avatar` (optional): avatar expression/motion/gaze tools
-  and a result projector that bridge realtime tool results into
-  `@charivo/realtime`, adjacent to but separate from the core manager package
+- `@charivo/avatar` (optional): catalog-constrained avatar
+  expression/motion/gaze tools, instructions, and a result projector, built on
+  `@charivo/core`'s neutral `ToolRegistration`/`ToolResultProjector`
+  contracts. It bridges tool results into both `@charivo/realtime` and
+  `@charivo/llm`, adjacent to but separate from either manager package.
+  `@charivo/realtime-avatar` is a deprecated re-export of it.
 
 ## Browser Runtime Packages
 
@@ -120,12 +123,16 @@ browser app
 Charivo intentionally keeps two event contracts:
 
 - `RenderManager` uses `setEventBus(...)`
-- `TTSManager`, `STTManager`, and `RealtimeManager` use `setEventEmitter(...)`
+- `TTSManager`, `STTManager`, `RealtimeManager`, and `LLMManager` use
+  `setEventEmitter(...)` (optional on `LLMManager`; wired only when it is
+  attached via `Charivo.attachLLM(...)`)
 
 This is deliberate.
 
-- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `realtime:expression`, `realtime:motion`, and `realtime:gaze`
-- TTS, STT, and realtime managers mainly publish events back into core
+- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `avatar:expression`, `avatar:motion`, and `avatar:gaze`
+- TTS, STT, realtime, and LLM managers mainly publish events back into core —
+  for `LLMManager` that means `avatar:*`-style events from tool result
+  projectors, not conversation events
 
 Do not normalize these contracts unless the public manager API is being
 redesigned.
@@ -154,11 +161,12 @@ support differences.
 ```text
 packages/
   core/
+  avatar/
   llm/
   tts/
   stt/
   realtime/
-  realtime-avatar/
+  realtime-avatar/  (deprecated, re-exports avatar/)
   render/
   render-live2d/
   server/

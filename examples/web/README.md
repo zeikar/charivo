@@ -10,6 +10,8 @@ current architecture as it is actually shipped:
   Realtime transcribers
 - Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
   using the OpenAI Agents WebRTC adapter by default
+- Avatar expression/motion/gaze tool calling from `@charivo/avatar`, wired into
+  both LLM chat and realtime voice sessions
 
 ## Environment
 

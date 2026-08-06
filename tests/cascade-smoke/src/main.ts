@@ -1,12 +1,18 @@
 import { Charivo, type Character, type Renderer } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
+import {
+  buildAvatarControlInstructions,
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/avatar";
 import { createSTTManager } from "@charivo/stt";
 import { createRemoteSTTTranscriber } from "@charivo/stt/remote";
 import { createTTSManager } from "@charivo/tts";
 import { createRemoteTTSPlayer } from "@charivo/tts/remote";
 import { createRenderManager } from "@charivo/render";
 import type {
+  CascadeAvatarEvent,
   CascadeEvent,
   CascadeHarnessApi,
   CascadeSnapshot,
@@ -27,6 +33,15 @@ const TEST_CHARACTER: Character = {
   personality: "Gentle and attentive. Answers in one short, warm sentence.",
 };
 
+// Fixed catalog for the LLM avatar-control tool loop. IDs are arbitrary since
+// this harness's renderer is a stub, not a real avatar model — only the
+// tool-calling round trip (LLM → tool → result projector → avatar:* event)
+// is under test here.
+const AVATAR_CATALOG = {
+  expressions: ["happy", "sad", "surprised"],
+  motions: { greeting: 2 },
+} as const;
+
 const DEFAULT_RECORD_MS = 3500;
 
 let status: CascadeStatus = "idle";
@@ -38,6 +53,7 @@ let lipsyncRmsUpdates = 0;
 let maxRms = 0;
 let lastError: string | null = null;
 let rendererReady = false;
+const avatarEvents: CascadeAvatarEvent[] = [];
 const timings: CascadeTimings = {
   recordMs: null,
   sttMs: null,
@@ -64,6 +80,7 @@ function reset(): void {
   timings.turnMs = null;
   timings.totalMs = null;
   events.length = 0;
+  avatarEvents.length = 0;
 }
 
 // Minimal renderer that records realtime lip-sync RMS so the spec can assert
@@ -87,7 +104,11 @@ const charivo = new Charivo();
 const renderManager = createRenderManager(lipSyncRecordingRenderer);
 charivo.attachRenderer(renderManager);
 charivo.attachLLM(
-  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" }), {
+    tools: createAvatarControlTools(AVATAR_CATALOG),
+    resultProjectors: [createAvatarResultProjector()],
+    toolInstructions: buildAvatarControlInstructions(AVATAR_CATALOG),
+  }),
 );
 const ttsManager = createTTSManager(
   createRemoteTTSPlayer({ apiEndpoint: "/api/tts" }),
@@ -108,6 +129,18 @@ charivo.on("stt:error", (data) => {
 charivo.on("message:received", (data) => {
   assistantText = data.message.content;
   record("message:received", { content: data.message.content });
+});
+charivo.on("avatar:expression", (data) => {
+  avatarEvents.push({ type: "expression", expressionId: data.expressionId });
+  record("avatar:expression", data);
+});
+charivo.on("avatar:motion", (data) => {
+  avatarEvents.push({ type: "motion", group: data.group, index: data.index });
+  record("avatar:motion", data);
+});
+charivo.on("avatar:gaze", (data) => {
+  avatarEvents.push({ type: "gaze", x: data.x, y: data.y });
+  record("avatar:gaze", data);
 });
 charivo.on("tts:start", (data) => record("tts:start", data));
 charivo.on("tts:audio:start", () => {
@@ -186,6 +219,7 @@ function getSnapshot(): CascadeSnapshot {
     ttsAudioEnded,
     lipsyncRmsUpdates,
     maxRms,
+    avatarEvents: [...avatarEvents],
     lastError,
     timings: { ...timings },
     events: [...events],

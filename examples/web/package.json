@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@charivo/avatar": "workspace:*",
     "@charivo/core": "workspace:*",
     "@charivo/llm": "workspace:*",
     "@charivo/realtime": "workspace:*",
-    "@charivo/realtime-avatar": "workspace:*",
     "@charivo/render": "workspace:*",
     "@charivo/render-live2d": "workspace:*",
     "@charivo/server": "workspace:*",

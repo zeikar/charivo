@@ -34,6 +34,10 @@ export {
   type LipSyncAnalyzer,
   type LipSyncAnalyzerOptions,
 } from "./lipsync-analyzer";
+export {
+  assertToolResultObject,
+  validateToolArguments,
+} from "./tool-validation";
 
 export class Charivo {
   private eventBus: EventBus;
@@ -81,6 +85,7 @@ export class Charivo {
    */
   attachLLM(manager: LLMManager): void {
     this.llmManager = manager;
+    this.connectLLMManagerEventEmitter(manager);
 
     // Set character if it was already configured
     if (this.character) {
@@ -148,6 +153,15 @@ export class Charivo {
    * Connects the STT manager to the event bus for speech recognition event emission.
    */
   private connectSTTManagerEventEmitter(manager: STTManager): void {
+    if (manager.setEventEmitter) {
+      manager.setEventEmitter(this.eventBus);
+    }
+  }
+
+  /**
+   * Connects the LLM manager to the event bus for tool-call event emission.
+   */
+  private connectLLMManagerEventEmitter(manager: LLMManager): void {
     if (manager.setEventEmitter) {
       manager.setEventEmitter(this.eventBus);
     }

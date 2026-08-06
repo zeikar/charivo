@@ -79,6 +79,10 @@ export const workspaceAliases = [
     ),
   },
   {
+    find: "@charivo/avatar",
+    replacement: resolvePackage("packages/avatar/src/index.ts"),
+  },
+  {
     find: "@charivo/core",
     replacement: resolvePackage("packages/core/src/index.ts"),
   },

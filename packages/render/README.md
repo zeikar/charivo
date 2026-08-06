@@ -36,7 +36,7 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   `tts:audio:end` and feeds `updateRealtimeLipSyncRms` from the RMS numbers
   carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
   and realtime managers produce those numbers
-- reacts to `realtime:expression`, `realtime:motion`, and `realtime:gaze`
+- reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
@@ -60,9 +60,9 @@ Charivo events. In the default flow it listens for:
 - `tts:audio:start`
 - `tts:audio:end`
 - `tts:lipsync:update`
-- `realtime:expression`
-- `realtime:motion`
-- `realtime:gaze`
+- `avatar:expression`
+- `avatar:motion`
+- `avatar:gaze`
 
 This manager consumes the full bus because it needs subscription access, not
 just event emission. `RenderManager` also exposes `disconnect()` to remove the
@@ -86,17 +86,17 @@ renderManager.setLocalGaze({ x: 0.3, y: -0.1 }); // returns boolean
 
 **What it does NOT do:**
 
-- It does not open the AI gaze suspend window used by `realtime:gaze`.
+- It does not open the AI gaze suspend window used by `avatar:gaze`.
 - It does not suppress deliberate taps — tap-driven gaze yields only to the AI
   window, not to the local-gaze window.
 
 **Returns `false` (no-op) when:**
 
-- AI gaze currently owns the avatar (the `realtime:gaze` suspend window is
+- AI gaze currently owns the avatar (the `avatar:gaze` suspend window is
   active), or
 - the renderer has no `lookAt` method.
 
 **Gaze driver priority:**
 
-- Cursor-follow: AI (`realtime:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
-- Deliberate taps: AI (`realtime:gaze`) > tap (local-presence does not suppress taps)
+- Cursor-follow: AI (`avatar:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
+- Deliberate taps: AI (`avatar:gaze`) > tap (local-presence does not suppress taps)

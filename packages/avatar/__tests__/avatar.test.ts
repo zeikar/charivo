@@ -5,7 +5,7 @@ import {
   buildAvatarControlInstructions,
   createAvatarControlTools,
   createAvatarResultProjector,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 
 const TOOL_CONTEXT = {
   character: null,
@@ -23,7 +23,7 @@ const TOOL_CONTEXT = {
   },
 };
 
-describe("realtime-avatar", () => {
+describe("avatar", () => {
   it("builds avatar-specific realtime instructions only when avatar tools are in use", () => {
     const instructions = buildAvatarControlInstructions({
       expressions: ["Smile"],
@@ -130,9 +130,9 @@ describe("realtime-avatar", () => {
     });
 
     expect(emit.mock.calls).toEqual([
-      ["realtime:expression", { expressionId: "Smile" }],
-      ["realtime:motion", { group: "Idle", index: 0 }],
-      ["realtime:gaze", { x: 0.2, y: -0.3 }],
+      ["avatar:expression", { expressionId: "Smile" }],
+      ["avatar:motion", { group: "Idle", index: 0 }],
+      ["avatar:gaze", { x: 0.2, y: -0.3 }],
     ]);
   });
 });

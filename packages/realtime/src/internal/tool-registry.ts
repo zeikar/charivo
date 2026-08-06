@@ -1,4 +1,4 @@
-import type { RealtimeTool, RealtimeToolRegistration } from "@charivo/core";
+import type { RealtimeToolRegistration, ToolDefinition } from "@charivo/core";
 
 export class RealtimeToolRegistry {
   private readonly tools = new Map<string, RealtimeToolRegistration>();
@@ -15,7 +15,7 @@ export class RealtimeToolRegistry {
     return this.tools.get(name);
   }
 
-  getDefinitions(): RealtimeTool[] {
+  getDefinitions(): ToolDefinition[] {
     return Array.from(this.tools.values(), (tool) => ({
       ...tool.definition,
       parameters: {

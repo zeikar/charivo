@@ -1,7 +1,7 @@
 {
   "name": "@charivo/realtime-avatar",
   "version": "0.3.12",
-  "description": "Avatar bridge helpers for Charivo realtime sessions",
+  "description": "Deprecated: use @charivo/avatar. Avatar bridge helpers for Charivo realtime sessions",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -19,8 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
-    "@charivo/realtime": "workspace:*"
+    "@charivo/avatar": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

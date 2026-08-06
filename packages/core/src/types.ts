@@ -63,16 +63,52 @@ export type RealtimeToolChoice = "auto" | "none" | "required";
 export const OPENAI_REALTIME_ADAPTER = "openai-webrtc";
 export const OPENAI_REALTIME_AGENTS_ADAPTER = "openai-agents-webrtc";
 
-export interface RealtimeTool {
+// Modality-neutral tool contracts (used by realtime and LLM sessions)
+export interface ToolDefinition {
   type: "function";
   name: string;
   description: string;
+  /**
+   * JSON Schema-shaped. `validateToolArguments` only enforces required-key
+   * presence, enum membership, and each property's top-level `type`; nested
+   * schemas, `additionalProperties`, and numeric-length constraints are not
+   * validated.
+   */
   parameters: {
     type: "object";
     properties: Record<string, unknown>;
     required?: string[];
   };
 }
+
+export interface ToolContext {
+  character?: Character | null;
+  callId?: string;
+  /** Present only for realtime sessions. */
+  state?: RealtimeState;
+}
+
+/** Must resolve to a plain object; arrays and primitives are rejected by the runners. */
+export type ToolHandler = (
+  args: Record<string, unknown>,
+  context: ToolContext,
+) => Promise<Record<string, unknown>>;
+
+export interface ToolRegistration {
+  definition: ToolDefinition;
+  handler: ToolHandler;
+  /** Timeout in ms; falls back to the manager default when omitted. */
+  timeoutMs?: number;
+}
+
+export interface ToolResultProjectorContext {
+  name: string;
+  output: Record<string, unknown>;
+  callId?: string;
+  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void;
+}
+
+export type ToolResultProjector = (context: ToolResultProjectorContext) => void;
 
 export interface RealtimeSessionConfig {
   provider?: string;
@@ -82,7 +118,7 @@ export interface RealtimeSessionConfig {
   instructions?: string;
   temperature?: number;
   maxTokens?: number;
-  tools?: RealtimeTool[];
+  tools?: ToolDefinition[];
   toolChoice?: RealtimeToolChoice;
   inputAudioTranscription?: {
     model?: string;
@@ -161,17 +197,23 @@ export interface RealtimeState {
   lastError: Error | null;
 }
 
-export interface RealtimeToolContext {
-  character?: Character | null;
+// Deprecated realtime tool aliases — use the neutral Tool* contracts
+/** @deprecated Use ToolDefinition */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- interface (not alias) so existing declaration merging keeps working
+export interface RealtimeTool extends ToolDefinition {}
+
+/** @deprecated Use ToolContext (note: context.state becomes optional in the neutral contract) */
+export interface RealtimeToolContext extends ToolContext {
   state: RealtimeState;
-  callId?: string;
 }
 
+/** @deprecated Use ToolHandler (note: context.state becomes optional in the neutral contract) */
 export type RealtimeToolHandler = (
   args: Record<string, unknown>,
   context: RealtimeToolContext,
 ) => Promise<Record<string, unknown>>;
 
+/** @deprecated Use ToolRegistration (note: context.state becomes optional in the neutral contract) */
 export interface RealtimeToolRegistration {
   definition: RealtimeTool;
   handler: RealtimeToolHandler;
@@ -191,16 +233,48 @@ export interface LLMAdapter {
   clearHistory(): void;
 }
 
+export interface LLMToolCall {
+  id: string;
+  name: string;
+  /** JSON-decoded; the provider/client adapter parses the raw tool-call arguments before this contract is used. */
+  arguments: Record<string, unknown>;
+}
+
+/**
+ * Role-discriminated union so protocol-invalid combinations are unrepresentable
+ * for typed direct callers: unknown roles, tool turns without an ID, and tool
+ * calls on user turns cannot be expressed.
+ */
+export type LLMMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls?: LLMToolCall[] }
+  | { role: "tool"; content: string; toolCallId: string };
+
+export interface LLMToolResponse {
+  content: string;
+  toolCalls?: LLMToolCall[];
+}
+
 // LLM provider (generates LLM responses server-side)
 export interface LLMProvider {
   generateResponse(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string>;
+  /** Tool-calling variant; providers that support function calling implement this alongside generateResponse. */
+  generateResponseWithTools?(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse>;
 }
 
 // Simple LLM call client (stateless)
 export interface LLMClient {
   call(messages: Array<{ role: string; content: string }>): Promise<string>;
+  /** Tool-calling variant; clients that support function calling implement this alongside call. */
+  callWithTools?(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse>;
 }
 
 // LLM manager (session management, history, character management)
@@ -210,6 +284,25 @@ export interface LLMManager {
   clearHistory(): void;
   getHistory(): Message[];
   generateResponse(message: Message): Promise<string>;
+  setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
+  registerTool?(tool: ToolRegistration): void;
+  unregisterTool?(name: string): void;
+  getRegisteredTools?(): ToolDefinition[];
+  /** System-prompt-level instructions injected only when tools are registered; pass null to clear. */
+  setToolInstructions?(instructions: string | null): void;
+}
+
+/**
+ * `LLMManager` with the tool-calling members required instead of optional.
+ * Third-party `LLMManager` implementations may omit tool support, but the
+ * built-in manager returned by `createLLMManager` always provides it.
+ */
+export interface LLMManagerWithTools extends LLMManager {
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void;
+  registerTool(tool: ToolRegistration): void;
+  unregisterTool(name: string): void;
+  getRegisteredTools(): ToolDefinition[];
+  setToolInstructions(instructions: string | null): void;
 }
 
 // Renderer interface (stateless renderer)
@@ -335,7 +428,7 @@ export interface RealtimeManager {
   interrupt(): Promise<void>;
   registerTool(tool: RealtimeToolRegistration): void;
   unregisterTool(name: string): void;
-  getRegisteredTools(): RealtimeTool[];
+  getRegisteredTools(): ToolDefinition[];
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
@@ -398,9 +491,9 @@ export type EventMap = {
     lastError: Error;
   };
   "realtime:usage": RealtimeUsageEvent;
-  "realtime:expression": { expressionId: string };
-  "realtime:motion": { group: string; index: number };
-  "realtime:gaze": GazeCoordinates;
+  "avatar:expression": { expressionId: string };
+  "avatar:motion": { group: string; index: number };
+  "avatar:gaze": GazeCoordinates;
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
   error: { error: Error };

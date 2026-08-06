@@ -5,6 +5,7 @@ import {
   type CharivoEventEmitter,
   type RealtimeState,
   type RealtimeToolRegistration,
+  type ToolRegistration,
 } from "@charivo/core";
 import {
   createRealtimeManager,
@@ -330,7 +331,7 @@ describe("realtime-core", () => {
         callId: "call-2",
       }),
     );
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "exp_happy",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:call", {
@@ -478,6 +479,87 @@ describe("realtime-core", () => {
     );
   });
 
+  it("rejects handler results that are not objects", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tool: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "listMoods",
+        description: "List the available moods.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(
+        async () => ["happy", "calm"] as unknown as Record<string, unknown>,
+      ),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [tool],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "listMoods",
+      args: {},
+      callId: "call-array-result",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith(
+      "call-array-result",
+      {
+        success: false,
+        error: 'Realtime tool "listMoods" must return an object',
+      },
+    );
+  });
+
+  it("runs modality-neutral tool registrations", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tool: ToolRegistration = {
+      definition: {
+        type: "function",
+        name: "describeScene",
+        description: "Describe the current scene.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: async (_args, context) => ({
+        success: true,
+        responseStatus: context.state?.response.status ?? null,
+      }),
+    };
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter(eventEmitter);
+    manager.registerTool(tool);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "describeScene",
+      args: {},
+      callId: "call-neutral",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith("call-neutral", {
+      success: true,
+      responseStatus: "idle",
+    });
+  });
+
   it("emits canonical avatar action events for direct tools", async () => {
     const stub = createRealtimeClientStub();
     const manager = createRealtimeManager(stub.client, {
@@ -515,14 +597,14 @@ describe("realtime-core", () => {
       callId: "call-gaze",
     });
 
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "Smile",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:motion", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:motion", {
       group: "Idle",
       index: 0,
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:gaze", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:gaze", {
       x: 0.4,
       y: -0.2,
     });
@@ -536,7 +618,7 @@ describe("realtime-core", () => {
     );
     const projectedExpressionIndex = (
       eventEmitter.emit as ReturnType<typeof vi.fn>
-    ).mock.calls.findIndex(([name]) => name === "realtime:expression");
+    ).mock.calls.findIndex(([name]) => name === "avatar:expression");
 
     expect(toolResultIndex).toBeGreaterThanOrEqual(0);
     expect(projectedExpressionIndex).toBeGreaterThan(toolResultIndex);
@@ -566,7 +648,7 @@ describe("realtime-core", () => {
       callId: "call-expression",
     });
 
-    expect(getEventPayloads(eventEmitter, "realtime:expression")).toEqual([]);
+    expect(getEventPayloads(eventEmitter, "avatar:expression")).toEqual([]);
     expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
       {
         name: "setExpression",

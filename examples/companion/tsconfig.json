@@ -21,12 +21,10 @@
       }
     ],
     "paths": {
+      "@charivo/avatar": ["../../packages/avatar/src/index.ts"],
       "@charivo/core": ["../../packages/core/src/index.ts"],
       "@charivo/realtime/remote": [
         "../../packages/realtime/src/remote/index.ts"
-      ],
-      "@charivo/realtime-avatar": [
-        "../../packages/realtime-avatar/src/index.ts"
       ],
       "@charivo/realtime": ["../../packages/realtime/src/index.ts"],
       "@charivo/render": ["../../packages/render/src/index.ts"],

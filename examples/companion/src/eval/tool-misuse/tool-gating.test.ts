@@ -7,7 +7,7 @@ import {
   SET_EXPRESSION_TOOL_NAME,
   PLAY_MOTION_TOOL_NAME,
   LOOK_AT_TOOL_NAME,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 import type { RealtimeToolContext } from "@charivo/core";
 import { getCharacterById } from "../../app/lib/character-catalog";
 

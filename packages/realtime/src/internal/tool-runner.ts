@@ -3,9 +3,10 @@ import type {
   EventMap,
   RealtimeState,
   RealtimeToolRegistration,
+  ToolResultProjectorContext,
 } from "@charivo/core";
+import { assertToolResultObject } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
-import { isRecord } from "./shared";
 import { validateToolArguments } from "./tool-args-validation";
 import { createFailureOutput, withTimeout } from "./tool-execution";
 
@@ -22,13 +23,12 @@ type ToolLog = (
   context?: Record<string, unknown>,
 ) => void;
 
-export interface RealtimeToolResultProjectorContext {
-  name: string;
-  output: Record<string, unknown>;
-  callId?: string;
-  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void;
-}
+/** @deprecated Use ToolResultProjectorContext */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- interface (not alias) so existing declaration merging keeps working
+export interface RealtimeToolResultProjectorContext
+  extends ToolResultProjectorContext {}
 
+/** @deprecated Use ToolResultProjector */
 export type RealtimeToolResultProjector = (
   context: RealtimeToolResultProjectorContext,
 ) => void;
@@ -146,11 +146,7 @@ async function runToolHandler({
     tool.definition.name,
   );
 
-  if (!isRecord(result)) {
-    throw new Error(
-      `Realtime tool "${tool.definition.name}" must return an object`,
-    );
-  }
+  assertToolResultObject(result, tool.definition.name, "Realtime tool");
 
   return result;
 }

@@ -13,6 +13,7 @@ import {
   type Character,
   type GazeCoordinates,
   type LLMClient,
+  type LLMManager,
   type Message,
   type RenderManager,
   type STTManager,
@@ -24,6 +25,11 @@ import { createSTTManager } from "@charivo/stt";
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import type { Live2DRenderer } from "@charivo/render-live2d";
+import {
+  buildAvatarControlInstructions,
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/avatar";
 
 import type {
   LLMClientType,
@@ -208,6 +214,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
   const renderManagerRef = useRef<RenderManager | null>(null);
+  const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
   const currentCharacterRef = useRef(character);
   const syncedCharacterIdRef = useRef<string | null>(null);
@@ -377,6 +384,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       sttManagerRef.current = null;
       rendererRef.current = null;
       renderManagerRef.current = null;
+      llmManagerRef.current = null;
       syncedCharacterIdRef.current = null;
       setIsLoading(false);
       setIsSpeaking(false);
@@ -480,7 +488,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           return;
         }
 
-        const llmManager = createLLMManager(llmClient);
+        const llmManager = createLLMManager(llmClient, {
+          tools: createAvatarControlTools(initialCatalog),
+          resultProjectors: [createAvatarResultProjector()],
+          toolInstructions: buildAvatarControlInstructions(initialCatalog),
+        });
+        llmManagerRef.current = llmManager;
         instance = new Charivo();
         instance.attachRenderer(renderManager);
         instance.attachLLM(llmManager);
@@ -712,7 +725,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           });
         });
 
-        instance.on("realtime:expression", ({ expressionId }) => {
+        instance.on("avatar:expression", ({ expressionId }) => {
           if (disposed) {
             return;
           }
@@ -726,7 +739,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           logAvatarControl("expression", { expressionId });
         });
 
-        instance.on("realtime:motion", ({ group, index }) => {
+        instance.on("avatar:motion", ({ group, index }) => {
           if (disposed) {
             return;
           }
@@ -741,7 +754,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           logAvatarControl("motion", { group, index });
         });
 
-        instance.on("realtime:gaze", ({ x, y }) => {
+        instance.on("avatar:gaze", ({ x, y }) => {
           if (disposed) {
             return;
           }
@@ -865,6 +878,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         }
 
         syncedCharacterIdRef.current = character.id;
+
+        const llmManager = llmManagerRef.current;
+        if (llmManager) {
+          syncAvatarControlTools(llmManager, nextCatalog);
+          llmManager.setToolInstructions?.(
+            buildAvatarControlInstructions(nextCatalog),
+          );
+        }
 
         if (isRealtimeMode) {
           const realtimeManager = charivo.getRealtimeManager();

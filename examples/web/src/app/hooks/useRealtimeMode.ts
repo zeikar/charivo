@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { createRealtimeManager } from "@charivo/realtime";
-import { createAvatarResultProjector } from "@charivo/realtime-avatar";
+import { createAvatarResultProjector } from "@charivo/avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";

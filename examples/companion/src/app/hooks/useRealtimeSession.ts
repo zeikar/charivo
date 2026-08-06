@@ -441,7 +441,7 @@ export function useRealtimeSession(
         createAvatarControlTools,
         createAvatarResultProjector,
         buildAvatarControlInstructions,
-      } = await import("@charivo/realtime-avatar");
+      } = await import("@charivo/avatar");
 
       const renderer = rendererRef.current;
       const catalog = {

@@ -21,6 +21,10 @@ export type {
   RealtimeTool,
   RealtimeToolChoice,
   RealtimeTransportKind,
+  ToolDefinition,
+  ToolContext,
+  ToolHandler,
+  ToolRegistration,
 } from "@charivo/core";
 
 export type RealtimeTransportEvent =
