@@ -196,10 +196,11 @@ server-mediated `@charivo/realtime/remote` client backed by a server route (see
 [Choosing Packages](#choosing-packages)).
 
 To let the live model drive avatar expressions and motions, register the avatar
-tools and result projector from `@charivo/realtime-avatar`. See
-[`examples/web`](./examples/web) for the full server wiring and the
-[Companion demo](https://charivo-companion.vercel.app/) for realtime voice with
-cross-session memory.
+tools and result projector from `@charivo/avatar` (the same tools also work
+with `@charivo/llm`'s `LLMManager`; `@charivo/realtime-avatar` is a deprecated
+re-export of `@charivo/avatar`). See [`examples/web`](./examples/web) for the
+full server wiring and the [Companion demo](https://charivo-companion.vercel.app/)
+for realtime voice with cross-session memory.
 
 ## Choosing Packages
 
@@ -298,11 +299,17 @@ Realtime:
 
 - `@charivo/realtime`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
   Supports explicit `updateSession(...)` session patching without a reconnect.
-- `@charivo/realtime-avatar`: optional avatar tool definitions and result projector bridge
 - `@charivo/realtime/remote`: adapter-dispatched browser client for server realtime routes
 - `@charivo/realtime/openai-agents`: OpenAI Agents SDK realtime transport client and adapter
 - `@charivo/realtime/openai`: legacy low-level OpenAI realtime transport client and adapter
 - `@charivo/server/openai`: exports `createOpenAIRealtimeProvider(...)`
+
+Avatar:
+
+- `@charivo/avatar`: catalog-constrained avatar expression/motion/gaze tool
+  definitions, instructions, and a result projector, for use with either
+  `@charivo/llm` or `@charivo/realtime`
+- `@charivo/realtime-avatar`: **deprecated**, re-exports `@charivo/avatar`
 
 Rendering:
 

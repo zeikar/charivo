@@ -1,21 +1,26 @@
 # @charivo/realtime-avatar
 
-Avatar-specific realtime tool helpers for Charivo.
+**Deprecated.** This package now only re-exports `@charivo/avatar` and will be
+removed in a future major version. It also no longer requires a realtime
+session — the underlying tools work with both `RealtimeManager`
+(`@charivo/realtime`) and `LLMManager` (`@charivo/llm`).
 
-Use this package when a realtime session should drive expression, motion, or
-gaze events for an avatar renderer.
+## Migration
 
-Pair `createAvatarControlTools(...)` with
-`buildAvatarControlInstructions(...)` when you want the model to use avatar
-actions proactively. Keep those instructions in the app/session layer rather
-than in `@charivo/realtime` so non-avatar realtime sessions stay generic.
+Replace the dependency and imports:
 
-## Exports
+```bash
+s/@charivo\/realtime-avatar/@charivo\/avatar/
+```
 
-- `createAvatarControlTools(catalog)`
-- `buildAvatarControlInstructions(catalog)`
-- `createAvatarResultProjector()`
-- `AVATAR_CONTROL_TOOL_NAMES`
-- `SET_EXPRESSION_TOOL_NAME`
-- `PLAY_MOTION_TOOL_NAME`
-- `LOOK_AT_TOOL_NAME`
+All exports (`createAvatarControlTools`, `buildAvatarControlInstructions`,
+`createAvatarResultProjector`, `AVATAR_CONTROL_TOOL_NAMES`,
+`SET_EXPRESSION_TOOL_NAME`, `PLAY_MOTION_TOOL_NAME`, `LOOK_AT_TOOL_NAME`) are
+unchanged.
+
+If you used `RealtimeToolResultProjector` from `@charivo/realtime`, switch to
+the neutral `ToolResultProjector` re-exported from `@charivo/core` (and also
+re-exported by `@charivo/realtime`) — `createAvatarResultProjector()` already
+returns that type.
+
+See [`@charivo/avatar`](../avatar/README.md) for full documentation.

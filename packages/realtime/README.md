@@ -119,7 +119,9 @@ client shown above.
 - `buildRealtimeSessionConfig({ character, baseConfig? })`
 - `DEFAULT_REALTIME_AGENT_INSTRUCTIONS`
 - realtime-related types re-exported from `@charivo/core`
-- `RealtimeToolResultProjector`
+- `ToolResultProjector` (re-exported from `@charivo/core`) — use this for
+  `resultProjectors`
+- `RealtimeToolResultProjector` — **deprecated**, alias of `ToolResultProjector`
 - `RealtimeLogger`
 
 ## Instruction Layering
@@ -159,8 +161,10 @@ OpenAI transport packages and `@charivo/server/openai` keep their own
 OpenAI-specific fallbacks for omitted model or voice values.
 
 Avatar-specific realtime tools and avatar-specific instruction addenda now live
-in `@charivo/realtime-avatar`. Append those instructions only in sessions that
-register avatar tools so `@charivo/realtime` stays tool-agnostic.
+in `@charivo/avatar` (works with both `@charivo/realtime` and `@charivo/llm`;
+`@charivo/realtime-avatar` is a deprecated re-export of it). Append those
+instructions only in sessions that register avatar tools so `@charivo/realtime`
+stays tool-agnostic.
 
 ## Result Projectors And Logging
 
@@ -175,7 +179,7 @@ import {
 import {
   buildAvatarControlInstructions,
   createAvatarResultProjector,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 
 const base = buildRealtimeSessionConfig({ character });
 
