@@ -233,16 +233,48 @@ export interface LLMAdapter {
   clearHistory(): void;
 }
 
+export interface LLMToolCall {
+  id: string;
+  name: string;
+  /** JSON-decoded; the provider/client adapter parses the raw tool-call arguments before this contract is used. */
+  arguments: Record<string, unknown>;
+}
+
+/**
+ * Role-discriminated union so protocol-invalid combinations are unrepresentable
+ * for typed direct callers: unknown roles, tool turns without an ID, and tool
+ * calls on user turns cannot be expressed.
+ */
+export type LLMMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls?: LLMToolCall[] }
+  | { role: "tool"; content: string; toolCallId: string };
+
+export interface LLMToolResponse {
+  content: string;
+  toolCalls?: LLMToolCall[];
+}
+
 // LLM provider (generates LLM responses server-side)
 export interface LLMProvider {
   generateResponse(
     messages: Array<{ role: string; content: string }>,
   ): Promise<string>;
+  /** Tool-calling variant; providers that support function calling implement this alongside generateResponse. */
+  generateResponseWithTools?(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse>;
 }
 
 // Simple LLM call client (stateless)
 export interface LLMClient {
   call(messages: Array<{ role: string; content: string }>): Promise<string>;
+  /** Tool-calling variant; clients that support function calling implement this alongside call. */
+  callWithTools?(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse>;
 }
 
 // LLM manager (session management, history, character management)
@@ -252,6 +284,12 @@ export interface LLMManager {
   clearHistory(): void;
   getHistory(): Message[];
   generateResponse(message: Message): Promise<string>;
+  setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
+  registerTool?(tool: ToolRegistration): void;
+  unregisterTool?(name: string): void;
+  getRegisteredTools?(): ToolDefinition[];
+  /** System-prompt-level instructions injected only when tools are registered; pass null to clear. */
+  setToolInstructions?(instructions: string | null): void;
 }
 
 // Renderer interface (stateless renderer)
