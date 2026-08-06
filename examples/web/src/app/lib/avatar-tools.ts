@@ -1,14 +1,10 @@
-import type {
-  AvatarControlCatalog,
-  RealtimeManager,
-  RealtimeToolRegistration,
-} from "@charivo/core";
+import type { AvatarControlCatalog, ToolRegistration } from "@charivo/core";
 import {
   AVATAR_CONTROL_TOOL_NAMES,
   createAvatarControlTools,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 
-const describeCharacterProfileTool: RealtimeToolRegistration = {
+const describeCharacterProfileTool: ToolRegistration = {
   definition: {
     type: "function",
     name: "describeCharacterProfile",
@@ -30,19 +26,24 @@ const describeCharacterProfileTool: RealtimeToolRegistration = {
 
 export function buildDemoRealtimeTools(
   catalog: AvatarControlCatalog,
-): RealtimeToolRegistration[] {
+): ToolRegistration[] {
   return [...createAvatarControlTools(catalog), describeCharacterProfileTool];
 }
 
+interface AvatarToolHost {
+  registerTool?(tool: ToolRegistration): void;
+  unregisterTool?(name: string): void;
+}
+
 export function syncAvatarControlTools(
-  manager: RealtimeManager,
+  target: AvatarToolHost,
   catalog: AvatarControlCatalog,
 ): void {
   for (const toolName of AVATAR_CONTROL_TOOL_NAMES) {
-    manager.unregisterTool(toolName);
+    target.unregisterTool?.(toolName);
   }
 
   for (const tool of createAvatarControlTools(catalog)) {
-    manager.registerTool(tool);
+    target.registerTool?.(tool);
   }
 }

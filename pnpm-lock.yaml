@@ -99,15 +99,15 @@ importers:
 
   examples/companion:
     dependencies:
+      '@charivo/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@charivo/realtime':
         specifier: workspace:*
         version: link:../../packages/realtime
-      '@charivo/realtime-avatar':
-        specifier: workspace:*
-        version: link:../../packages/realtime-avatar
       '@charivo/render':
         specifier: workspace:*
         version: link:../../packages/render
@@ -175,6 +175,9 @@ importers:
 
   examples/web:
     dependencies:
+      '@charivo/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
       '@charivo/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -184,9 +187,6 @@ importers:
       '@charivo/realtime':
         specifier: workspace:*
         version: link:../../packages/realtime
-      '@charivo/realtime-avatar':
-        specifier: workspace:*
-        version: link:../../packages/realtime-avatar
       '@charivo/render':
         specifier: workspace:*
         version: link:../../packages/render

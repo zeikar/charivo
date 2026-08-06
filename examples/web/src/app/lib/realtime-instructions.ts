@@ -1,6 +1,6 @@
 import type { AvatarControlCatalog, Character } from "@charivo/core";
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
-import { buildAvatarControlInstructions } from "@charivo/realtime-avatar";
+import { buildAvatarControlInstructions } from "@charivo/avatar";
 
 const DEMO_REALTIME_INSTRUCTIONS = `
 Keep replies short and natural for a live voice demo.
