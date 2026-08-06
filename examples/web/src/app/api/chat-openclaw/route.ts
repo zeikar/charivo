@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenClawLLMProvider } from "@charivo/server/openclaw";
+import { parseChatRequest, requiresToolCallingPath } from "../chat-request";
 
 export async function POST(request: NextRequest) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = parseChatRequest(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
   try {
     const llmProvider = createOpenClawLLMProvider({
       token: process.env.OPENCLAW_TOKEN ?? "",
@@ -9,13 +22,19 @@ export async function POST(request: NextRequest) {
       agentId: process.env.OPENCLAW_AGENT_ID ?? "main",
     });
 
-    const { messages } = await request.json();
+    const { messages, tools } = parsed.value;
 
-    if (!messages || !Array.isArray(messages)) {
-      return NextResponse.json(
-        { error: "Messages array is required" },
-        { status: 400 },
+    if (requiresToolCallingPath(parsed.value)) {
+      const result = await llmProvider.generateResponseWithTools(
+        messages,
+        tools ?? [],
       );
+
+      return NextResponse.json({
+        success: true,
+        message: result.content,
+        toolCalls: result.toolCalls,
+      });
     }
 
     const assistantMessage = await llmProvider.generateResponse(messages);
