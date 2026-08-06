@@ -1,5 +1,17 @@
 import OpenAI from "openai";
-import { CharivoStateError, LLMProvider, toCharivoError } from "@charivo/core";
+import {
+  CharivoStateError,
+  LLMProvider,
+  toCharivoError,
+  type LLMMessage,
+  type LLMToolResponse,
+  type ToolDefinition,
+} from "@charivo/core";
+import {
+  toLLMToolResponse,
+  toOpenAIChatMessages,
+  toOpenAITools,
+} from "../openai-tool-format";
 
 export interface OpenClawLLMConfig {
   token: string;
@@ -90,25 +102,63 @@ export class OpenClawLLMProvider implements LLMProvider {
     }
   }
 
+  async generateResponseWithTools(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse> {
+    try {
+      const openAITools = toOpenAITools(tools);
+
+      const completion = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: toOpenAIChatMessages(this.selectMessages(messages)),
+        temperature: this.temperature,
+        max_tokens: this.maxTokens,
+        ...(this.sessionKey ? { user: this.sessionKey } : {}),
+        ...(openAITools ? { tools: openAITools } : {}),
+      });
+
+      return toLLMToolResponse(completion.choices[0]?.message);
+    } catch (error) {
+      throw toCharivoError("provider", error, "OpenClaw LLM request failed");
+    }
+  }
+
   /**
    * With a pinned session the gateway already holds the past turns, and resending
    * them would flatten a duplicate copy of the history on top of its own. Keep the
-   * system prompts (cheap persona insurance if the session was dropped) and the
-   * latest turn.
+   * system prompts (cheap persona insurance if the session was dropped) and only
+   * what the gateway has not recorded yet:
+   * - mid tool round, that is the trailing run of tool results (the gateway
+   *   generated the assistant tool-call turn that asked for them itself);
+   * - otherwise, the latest turn.
    */
-  private selectMessages(
-    messages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }> {
+  private selectMessages<T extends { role: string }>(messages: T[]): T[] {
     const latest = messages[messages.length - 1];
     if (!this.sessionKey || !latest) {
       return messages;
     }
 
     const systemMessages = messages.filter((msg) => msg.role === "system");
+
+    if (latest.role === "tool") {
+      return [...systemMessages, ...trailingToolMessages(messages)];
+    }
+
     return latest.role === "system"
       ? systemMessages
       : [...systemMessages, latest];
   }
+}
+
+/** The unbroken run of tool results at the end of the conversation. */
+function trailingToolMessages<T extends { role: string }>(messages: T[]): T[] {
+  let start = messages.length;
+  while (start > 0 && messages[start - 1]!.role === "tool") {
+    start -= 1;
+  }
+
+  return messages.slice(start);
 }
 
 export function createOpenClawLLMProvider(

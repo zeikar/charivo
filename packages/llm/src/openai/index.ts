@@ -1,4 +1,9 @@
-import type { LLMClient } from "@charivo/core";
+import type {
+  LLMClient,
+  LLMMessage,
+  LLMToolResponse,
+  ToolDefinition,
+} from "@charivo/core";
 import {
   createOpenAILLMProvider,
   OpenAILLMConfig,
@@ -41,6 +46,13 @@ class OpenAILLMClient implements LLMClient {
     const assistantMessage = await this.provider.generateResponse(messages);
 
     return assistantMessage;
+  }
+
+  async callWithTools(
+    messages: LLMMessage[],
+    tools: ToolDefinition[],
+  ): Promise<LLMToolResponse> {
+    return this.provider.generateResponseWithTools(messages, tools);
   }
 }
 
