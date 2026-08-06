@@ -124,7 +124,7 @@ Charivo intentionally keeps two event contracts:
 
 This is deliberate.
 
-- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `realtime:expression`, `realtime:motion`, and `realtime:gaze`
+- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `avatar:expression`, `avatar:motion`, and `avatar:gaze`
 - TTS, STT, and realtime managers mainly publish events back into core
 
 Do not normalize these contracts unless the public manager API is being

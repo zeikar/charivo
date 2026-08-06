@@ -71,21 +71,19 @@ export class RenderManager implements IRenderManager {
     this.updateLipSync(data.rms);
   };
 
-  private readonly handleRealtimeExpression = (
-    data: EventMap["realtime:expression"],
+  private readonly handleAvatarExpression = (
+    data: EventMap["avatar:expression"],
   ): void => {
     this.applyExpression(data.expressionId);
   };
 
-  private readonly handleRealtimeMotion = (
-    data: EventMap["realtime:motion"],
+  private readonly handleAvatarMotion = (
+    data: EventMap["avatar:motion"],
   ): void => {
     this.applyMotion({ group: data.group, index: data.index });
   };
 
-  private readonly handleRealtimeGaze = (
-    data: EventMap["realtime:gaze"],
-  ): void => {
+  private readonly handleAvatarGaze = (data: EventMap["avatar:gaze"]): void => {
     this.applyGaze(data);
   };
 
@@ -109,9 +107,9 @@ export class RenderManager implements IRenderManager {
     eventBus.on("tts:audio:start", this.handleTtsAudioStart);
     eventBus.on("tts:audio:end", this.handleTtsAudioEnd);
     eventBus.on("tts:lipsync:update", this.handleTtsLipsyncUpdate);
-    eventBus.on("realtime:expression", this.handleRealtimeExpression);
-    eventBus.on("realtime:motion", this.handleRealtimeMotion);
-    eventBus.on("realtime:gaze", this.handleRealtimeGaze);
+    eventBus.on("avatar:expression", this.handleAvatarExpression);
+    eventBus.on("avatar:motion", this.handleAvatarMotion);
+    eventBus.on("avatar:gaze", this.handleAvatarGaze);
   }
 
   /**
@@ -129,9 +127,9 @@ export class RenderManager implements IRenderManager {
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
     this.eventBus.off("tts:lipsync:update", this.handleTtsLipsyncUpdate);
-    this.eventBus.off("realtime:expression", this.handleRealtimeExpression);
-    this.eventBus.off("realtime:motion", this.handleRealtimeMotion);
-    this.eventBus.off("realtime:gaze", this.handleRealtimeGaze);
+    this.eventBus.off("avatar:expression", this.handleAvatarExpression);
+    this.eventBus.off("avatar:motion", this.handleAvatarMotion);
+    this.eventBus.off("avatar:gaze", this.handleAvatarGaze);
     this.eventBus = undefined;
   }
 

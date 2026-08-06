@@ -130,9 +130,9 @@ describe("realtime-avatar", () => {
     });
 
     expect(emit.mock.calls).toEqual([
-      ["realtime:expression", { expressionId: "Smile" }],
-      ["realtime:motion", { group: "Idle", index: 0 }],
-      ["realtime:gaze", { x: 0.2, y: -0.3 }],
+      ["avatar:expression", { expressionId: "Smile" }],
+      ["avatar:motion", { group: "Idle", index: 0 }],
+      ["avatar:gaze", { x: 0.2, y: -0.3 }],
     ]);
   });
 });

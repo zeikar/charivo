@@ -219,7 +219,7 @@ export function createAvatarResultProjector(): RealtimeToolResultProjector {
       case SET_EXPRESSION_TOOL_NAME: {
         const expressionId = output.expressionId;
         if (typeof expressionId === "string") {
-          emit("realtime:expression", { expressionId });
+          emit("avatar:expression", { expressionId });
         }
         return;
       }
@@ -228,7 +228,7 @@ export function createAvatarResultProjector(): RealtimeToolResultProjector {
         const group = output.group;
         const index = output.index;
         if (typeof group === "string" && Number.isInteger(index)) {
-          emit("realtime:motion", { group, index: index as number });
+          emit("avatar:motion", { group, index: index as number });
         }
         return;
       }
@@ -236,7 +236,7 @@ export function createAvatarResultProjector(): RealtimeToolResultProjector {
       case LOOK_AT_TOOL_NAME: {
         const coords = readGazeCoordinates(output);
         if (coords) {
-          emit("realtime:gaze", coords);
+          emit("avatar:gaze", coords);
         }
       }
     }

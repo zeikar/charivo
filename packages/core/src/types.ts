@@ -398,9 +398,9 @@ export type EventMap = {
     lastError: Error;
   };
   "realtime:usage": RealtimeUsageEvent;
-  "realtime:expression": { expressionId: string };
-  "realtime:motion": { group: string; index: number };
-  "realtime:gaze": GazeCoordinates;
+  "avatar:expression": { expressionId: string };
+  "avatar:motion": { group: string; index: number };
+  "avatar:gaze": GazeCoordinates;
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
   error: { error: Error };

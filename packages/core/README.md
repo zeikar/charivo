@@ -70,7 +70,7 @@ for driving avatar state from the app layer:
 
 - `setLocalGaze(coords: GazeCoordinates): boolean` — drives local-presence gaze
   (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
-  avatar (the `realtime:gaze` suspend window is active) or when the renderer has
+  avatar (the `avatar:gaze` suspend window is active) or when the renderer has
   no `lookAt`.
 
 ## Errors
@@ -114,8 +114,8 @@ Important event names include:
 - `realtime:tool:result`
 - `realtime:tool:error`
 - `realtime:usage`
-- `realtime:expression`
-- `realtime:motion`
-- `realtime:gaze`
+- `avatar:expression`
+- `avatar:motion`
+- `avatar:gaze`
 - `realtime:text:delta`
 - `realtime:error`

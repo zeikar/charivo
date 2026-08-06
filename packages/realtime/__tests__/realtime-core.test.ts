@@ -330,7 +330,7 @@ describe("realtime-core", () => {
         callId: "call-2",
       }),
     );
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "exp_happy",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:call", {
@@ -515,14 +515,14 @@ describe("realtime-core", () => {
       callId: "call-gaze",
     });
 
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:expression", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "Smile",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:motion", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:motion", {
       group: "Idle",
       index: 0,
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:gaze", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:gaze", {
       x: 0.4,
       y: -0.2,
     });
@@ -536,7 +536,7 @@ describe("realtime-core", () => {
     );
     const projectedExpressionIndex = (
       eventEmitter.emit as ReturnType<typeof vi.fn>
-    ).mock.calls.findIndex(([name]) => name === "realtime:expression");
+    ).mock.calls.findIndex(([name]) => name === "avatar:expression");
 
     expect(toolResultIndex).toBeGreaterThanOrEqual(0);
     expect(projectedExpressionIndex).toBeGreaterThan(toolResultIndex);
@@ -566,7 +566,7 @@ describe("realtime-core", () => {
       callId: "call-expression",
     });
 
-    expect(getEventPayloads(eventEmitter, "realtime:expression")).toEqual([]);
+    expect(getEventPayloads(eventEmitter, "avatar:expression")).toEqual([]);
     expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
       {
         name: "setExpression",

@@ -712,7 +712,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           });
         });
 
-        instance.on("realtime:expression", ({ expressionId }) => {
+        instance.on("avatar:expression", ({ expressionId }) => {
           if (disposed) {
             return;
           }
@@ -726,7 +726,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           logAvatarControl("expression", { expressionId });
         });
 
-        instance.on("realtime:motion", ({ group, index }) => {
+        instance.on("avatar:motion", ({ group, index }) => {
           if (disposed) {
             return;
           }
@@ -741,7 +741,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           logAvatarControl("motion", { group, index });
         });
 
-        instance.on("realtime:gaze", ({ x, y }) => {
+        instance.on("avatar:gaze", ({ x, y }) => {
           if (disposed) {
             return;
           }

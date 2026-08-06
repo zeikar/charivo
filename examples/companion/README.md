@@ -86,7 +86,7 @@ avatar's gaze to follow the user's head position.
   base and `modelAssetPath` at the local URLs. This avoids the CDN dependency and
   is the recommended follow-up for any non-demo use.
 - **Gaze arbitration.** Webcam face position is fed to
-  `renderManager.setLocalGaze(coords)`. AI gaze (`realtime:gaze`) takes
+  `renderManager.setLocalGaze(coords)`. AI gaze (`avatar:gaze`) takes
   priority over webcam, which in turn takes priority over mouse cursor. See
   [Rendering — Gaze Drivers](../../docs/guide/rendering.md#gaze-drivers) for
   the full arbitration model.

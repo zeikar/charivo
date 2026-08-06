@@ -195,7 +195,7 @@ await manager.startSession({
 ```
 
 `resultProjectors` run after successful local tool execution and can emit
-additional app-level events such as `realtime:expression`.
+additional app-level events such as `avatar:expression`.
 
 When a logger is configured, `RealtimeManager` also injects a per-session
 `sessionId` into every log context. If the caller also supplies `sessionId` in
