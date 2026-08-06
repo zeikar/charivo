@@ -4,7 +4,6 @@ import {
   type Character,
   type CharivoEventEmitter,
   type RealtimeState,
-  type RealtimeToolRegistration,
   type ToolRegistration,
 } from "@charivo/core";
 import {
@@ -17,7 +16,7 @@ import { buildRealtimeSessionConfig } from "@charivo/realtime";
 import {
   createAvatarControlTools,
   createAvatarResultProjector,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 
 function createRealtimeClientStub(options?: {
   emitSessionStartedOnConnect?: boolean;
@@ -233,7 +232,7 @@ describe("realtime-core", () => {
         TapBody: 2,
       },
     });
-    const describeSceneTool: RealtimeToolRegistration = {
+    const describeSceneTool: ToolRegistration = {
       definition: {
         type: "function",
         name: "describeScene",
@@ -246,7 +245,7 @@ describe("realtime-core", () => {
       handler: vi.fn(async (_args, context) => ({
         success: true,
         characterId: context.character?.id ?? null,
-        responseStatus: context.state.response.status,
+        responseStatus: context.state?.response.status,
       })),
     };
     const manager = createRealtimeManager(stub.client, {
@@ -357,7 +356,7 @@ describe("realtime-core", () => {
       success: true,
       args,
     }));
-    const tool: RealtimeToolRegistration = {
+    const tool: ToolRegistration = {
       definition: {
         type: "function",
         name: "setMood",
@@ -482,7 +481,7 @@ describe("realtime-core", () => {
   it("rejects handler results that are not objects", async () => {
     const stub = createRealtimeClientStub();
     const eventEmitter = createEventEmitter();
-    const tool: RealtimeToolRegistration = {
+    const tool: ToolRegistration = {
       definition: {
         type: "function",
         name: "listMoods",
@@ -1086,7 +1085,7 @@ describe("realtime-core", () => {
     vi.useFakeTimers();
 
     const stub = createRealtimeClientStub();
-    const slowTool: RealtimeToolRegistration = {
+    const slowTool: ToolRegistration = {
       definition: {
         type: "function",
         name: "slowTool",
@@ -1278,7 +1277,7 @@ describe("realtime-core", () => {
 
   it("applies tool registry mutations on the next session refresh", async () => {
     const stub = createRealtimeClientStub();
-    const toolA: RealtimeToolRegistration = {
+    const toolA: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolA",
@@ -1290,7 +1289,7 @@ describe("realtime-core", () => {
       },
       handler: vi.fn(async () => ({ success: true })),
     };
-    const toolB: RealtimeToolRegistration = {
+    const toolB: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolB",
@@ -1349,7 +1348,7 @@ describe("realtime-core", () => {
 
   it("does NOT auto-refresh when registering a tool on an idle manager", async () => {
     const stub = createRealtimeClientStub();
-    const toolB: RealtimeToolRegistration = {
+    const toolB: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolB",
@@ -1388,7 +1387,7 @@ describe("realtime-core", () => {
       new Error("transport failure"),
     );
 
-    const toolB: RealtimeToolRegistration = {
+    const toolB: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolB",
@@ -1964,7 +1963,7 @@ describe("realtime-core", () => {
     const stub = createRealtimeClientStub({
       emitSessionStartedOnConnect: true,
     });
-    const toolA: RealtimeToolRegistration = {
+    const toolA: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolA",
@@ -1973,7 +1972,7 @@ describe("realtime-core", () => {
       },
       handler: vi.fn(async () => ({ success: true })),
     };
-    const toolB: RealtimeToolRegistration = {
+    const toolB: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolB",
@@ -2046,7 +2045,7 @@ describe("realtime-core", () => {
     const stub = createRealtimeClientStub({
       emitSessionStartedOnConnect: true,
     });
-    const toolA: RealtimeToolRegistration = {
+    const toolA: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolA",
@@ -2084,7 +2083,7 @@ describe("realtime-core", () => {
     const stub = createRealtimeClientStub({
       emitSessionStartedOnConnect: true,
     });
-    const toolA: RealtimeToolRegistration = {
+    const toolA: ToolRegistration = {
       definition: {
         type: "function",
         name: "toolA",

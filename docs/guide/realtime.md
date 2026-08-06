@@ -32,7 +32,7 @@ see [LLM — Avatar Tool Calling](./llm.md#avatar-tool-calling).
 import { Charivo } from "@charivo/core";
 import {
   createRealtimeManager,
-  type RealtimeToolRegistration,
+  type ToolRegistration,
 } from "@charivo/realtime";
 import {
   createAvatarControlTools,
@@ -46,7 +46,7 @@ const avatarTools = createAvatarControlTools({
   motions: { Idle: 2, TapBody: 3 },
 });
 
-const tools: RealtimeToolRegistration[] = [
+const tools: ToolRegistration[] = [
   ...avatarTools,
   {
     definition: {
@@ -227,7 +227,7 @@ failure tool result. Nested object/array schemas, `additionalProperties`, and
 union `type` arrays are not enforced.
 
 Avatar expression/motion/gaze tools are optional and now live in
-`@charivo/avatar` (`@charivo/realtime-avatar` is a deprecated re-export of it).
+`@charivo/avatar` (formerly published as `@charivo/realtime-avatar`).
 Use a result projector when you want those tool results bridged back into
 `avatar:expression`, `avatar:motion`, and `avatar:gaze`.
 

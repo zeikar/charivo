@@ -6,9 +6,10 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionTransitionReason,
   RealtimeState,
-  RealtimeToolRegistration,
   RealtimeUsageEvent,
   ToolDefinition,
+  ToolRegistration,
+  ToolResultProjector,
 } from "@charivo/core";
 import { CharivoStateError, toCharivoError } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
@@ -22,24 +23,16 @@ import {
 } from "./internal/manager-state";
 import { delay } from "./internal/timing";
 import { RealtimeToolRegistry } from "./internal/tool-registry";
-import {
-  executeRealtimeToolCall,
-  type RealtimeToolResultProjector,
-} from "./internal/tool-runner";
-
-export type {
-  RealtimeToolResultProjector,
-  RealtimeToolResultProjectorContext,
-} from "./internal/tool-runner";
+import { executeRealtimeToolCall } from "./internal/tool-runner";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
 
 export interface RealtimeManagerOptions {
   defaultSessionConfig?: Omit<RealtimeSessionConfig, "tools">;
-  tools?: RealtimeToolRegistration[];
+  tools?: ToolRegistration[];
   defaultToolTimeoutMs?: number;
-  resultProjectors?: RealtimeToolResultProjector[];
+  resultProjectors?: ToolResultProjector[];
   logger?: RealtimeLogger;
 }
 
@@ -128,7 +121,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.emitState();
   }
 
-  registerTool(tool: RealtimeToolRegistration): void {
+  registerTool(tool: ToolRegistration): void {
     this.toolRegistry.register(tool);
     this.requestToolRefresh();
   }

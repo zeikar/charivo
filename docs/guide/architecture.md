@@ -57,7 +57,7 @@ Each manager wraps a runtime implementation behind a stable manager-facing API.
   `@charivo/core`'s neutral `ToolRegistration`/`ToolResultProjector`
   contracts. It bridges tool results into both `@charivo/realtime` and
   `@charivo/llm`, adjacent to but separate from either manager package.
-  `@charivo/realtime-avatar` is a deprecated re-export of it.
+  (Formerly published as `@charivo/realtime-avatar`.)
 
 ## Browser Runtime Packages
 
@@ -166,7 +166,6 @@ packages/
   tts/
   stt/
   realtime/
-  realtime-avatar/  (deprecated, re-exports avatar/)
   render/
   render-live2d/
   server/

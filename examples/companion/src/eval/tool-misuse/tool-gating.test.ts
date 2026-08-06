@@ -8,7 +8,7 @@ import {
   PLAY_MOTION_TOOL_NAME,
   LOOK_AT_TOOL_NAME,
 } from "@charivo/avatar";
-import type { RealtimeToolContext } from "@charivo/core";
+import type { ToolContext } from "@charivo/core";
 import { getCharacterById } from "../../app/lib/character-catalog";
 
 // ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ const yuki = loadCatalogFromModel3(
 // packages/realtime-avatar/__tests__/realtime-avatar.test.ts.
 // ---------------------------------------------------------------------------
 
-const TOOL_CONTEXT: RealtimeToolContext = {
+const TOOL_CONTEXT: ToolContext = {
   character: null,
   state: {
     connection: "idle" as const,

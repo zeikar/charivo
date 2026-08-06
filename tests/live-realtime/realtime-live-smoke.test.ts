@@ -8,7 +8,7 @@ import {
   type RealtimeSessionBootstrap,
   type RealtimeSessionConfig,
   type RealtimeSessionRequest,
-  type RealtimeTool,
+  type ToolDefinition,
 } from "@charivo/core";
 import {
   LOOK_AT_TOOL_NAME,
@@ -16,7 +16,7 @@ import {
   SET_EXPRESSION_TOOL_NAME,
   createAvatarResultProjector,
   createAvatarControlTools,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 import {
   createRealtimeManager,
   type RealtimeTransportClient,
@@ -318,11 +318,11 @@ async function requestLiveBootstrap(
   return payload;
 }
 
-function hasTool(tools: RealtimeTool[], name: string): boolean {
+function hasTool(tools: ToolDefinition[], name: string): boolean {
   return tools.some((tool) => tool.name === name);
 }
 
-function readFirstExpressionId(tools: RealtimeTool[]): string | null {
+function readFirstExpressionId(tools: ToolDefinition[]): string | null {
   const tool = tools.find(({ name }) => name === SET_EXPRESSION_TOOL_NAME);
   const expressionProperty = tool?.parameters.properties.expressionId as
     | { enum?: unknown }
@@ -335,7 +335,7 @@ function readFirstExpressionId(tools: RealtimeTool[]): string | null {
 }
 
 function readFirstMotion(
-  tools: RealtimeTool[],
+  tools: ToolDefinition[],
 ): { group: string; index: number } | null {
   const tool = tools.find(({ name }) => name === PLAY_MOTION_TOOL_NAME);
   const groupProperty = tool?.parameters.properties.group as

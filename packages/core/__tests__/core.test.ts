@@ -17,9 +17,9 @@ import type {
   RealtimeManager,
   RealtimeState,
   RenderManager,
-  RealtimeTool,
-  RealtimeToolRegistration,
   STTManager,
+  ToolDefinition,
+  ToolRegistration,
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
@@ -82,9 +82,9 @@ class StubRealtimeManager implements RealtimeManager {
   sendMessage = vi.fn(async (_text: string) => undefined);
   sendAudioChunk = vi.fn(async (_audio: ArrayBuffer) => undefined);
   interrupt = vi.fn(async () => undefined);
-  registerTool = vi.fn((_tool: RealtimeToolRegistration) => undefined);
+  registerTool = vi.fn((_tool: ToolRegistration) => undefined);
   unregisterTool = vi.fn((_name: string) => undefined);
-  getRegisteredTools = vi.fn((): RealtimeTool[] => []);
+  getRegisteredTools = vi.fn((): ToolDefinition[] => []);
   setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
 }
 

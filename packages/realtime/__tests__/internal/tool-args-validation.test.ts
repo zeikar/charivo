@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { RealtimeTool } from "@charivo/core";
+import type { ToolDefinition } from "@charivo/core";
 import { validateToolArguments } from "../../src/internal/tool-args-validation";
 
-const baseTool: RealtimeTool = {
+const baseTool: ToolDefinition = {
   type: "function",
   name: "setAmount",
   description: "Set an amount.",
