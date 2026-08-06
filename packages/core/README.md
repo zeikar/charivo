@@ -115,14 +115,6 @@ Validation helpers, used by both managers before/after a handler runs:
 - `assertToolResultObject(result, toolName, toolLabel?)`: throws a plain
   `Error` unless `result` is a plain object.
 
-### Deprecated Realtime Tool Aliases
-
-`RealtimeTool`, `RealtimeToolContext`, `RealtimeToolHandler`, and
-`RealtimeToolRegistration` are deprecated aliases of the neutral contracts
-above, kept for backward compatibility. Prefer `ToolDefinition`, `ToolContext`,
-`ToolHandler`, and `ToolRegistration`. Note `RealtimeToolContext.state` is
-required, while the neutral `ToolContext.state` is optional.
-
 ### LLM Tool-Calling Contracts
 
 - `LLMMessage`: role-discriminated union (`system`/`user`, `assistant` with

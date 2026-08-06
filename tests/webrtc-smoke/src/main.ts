@@ -5,7 +5,7 @@ import {
   buildAvatarControlInstructions,
   createAvatarResultProjector,
   createAvatarControlTools,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 import {
   buildRealtimeSessionConfig,
   createRealtimeManager,

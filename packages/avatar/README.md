@@ -111,7 +111,8 @@ const instructions = [
 
 ## Migrating From `@charivo/realtime-avatar`
 
-`@charivo/realtime-avatar` is deprecated and now re-exports this package.
+`@charivo/realtime-avatar` is deprecated; its published versions re-export
+this package.
 Replace the dependency and imports:
 
 ```bash

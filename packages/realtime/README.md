@@ -13,12 +13,12 @@ pnpm add @charivo/realtime
 ```ts
 import {
   createRealtimeManager,
-  type RealtimeToolRegistration,
+  type ToolRegistration,
 } from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
-const tools: RealtimeToolRegistration[] = [
+const tools: ToolRegistration[] = [
   {
     definition: {
       type: "function",
@@ -121,7 +121,6 @@ client shown above.
 - realtime-related types re-exported from `@charivo/core`
 - `ToolResultProjector` (re-exported from `@charivo/core`) — use this for
   `resultProjectors`
-- `RealtimeToolResultProjector` — **deprecated**, alias of `ToolResultProjector`
 - `RealtimeLogger`
 
 ## Instruction Layering
@@ -162,7 +161,7 @@ OpenAI-specific fallbacks for omitted model or voice values.
 
 Avatar-specific realtime tools and avatar-specific instruction addenda now live
 in `@charivo/avatar` (works with both `@charivo/realtime` and `@charivo/llm`;
-`@charivo/realtime-avatar` is a deprecated re-export of it). Append those
+formerly published as `@charivo/realtime-avatar`). Append those
 instructions only in sessions that register avatar tools so `@charivo/realtime`
 stays tool-agnostic.
 

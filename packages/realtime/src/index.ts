@@ -3,8 +3,6 @@ export {
   createRealtimeManager,
   type RealtimeManagerOptions,
   type RealtimeLogger,
-  type RealtimeToolResultProjector,
-  type RealtimeToolResultProjectorContext,
 } from "./realtime-manager";
 export type {
   ToolResultProjector,

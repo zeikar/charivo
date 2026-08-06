@@ -203,8 +203,8 @@ server-mediated `@charivo/realtime/remote` client backed by a server route (see
 
 To let the live model drive avatar expressions and motions, register the avatar
 tools and result projector from `@charivo/avatar` (the same tools also work
-with `@charivo/llm`'s `LLMManager`; `@charivo/realtime-avatar` is a deprecated
-re-export of `@charivo/avatar`). See [`examples/web`](./examples/web) for the
+with `@charivo/llm`'s `LLMManager`; formerly published as
+`@charivo/realtime-avatar`). See [`examples/web`](./examples/web) for the
 full server wiring and the [Companion demo](https://charivo-companion.vercel.app/)
 for realtime voice with cross-session memory.
 
@@ -315,7 +315,6 @@ Avatar:
 - `@charivo/avatar`: catalog-constrained avatar expression/motion/gaze tool
   definitions, instructions, and a result projector, for use with either
   `@charivo/llm` or `@charivo/realtime`
-- `@charivo/realtime-avatar`: **deprecated**, re-exports `@charivo/avatar`
 
 Rendering:
 

@@ -2,8 +2,8 @@ import type {
   Character,
   EventMap,
   RealtimeState,
-  RealtimeToolRegistration,
-  ToolResultProjectorContext,
+  ToolRegistration,
+  ToolResultProjector,
 } from "@charivo/core";
 import { assertToolResultObject } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
@@ -23,24 +23,14 @@ type ToolLog = (
   context?: Record<string, unknown>,
 ) => void;
 
-/** @deprecated Use ToolResultProjectorContext */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- interface (not alias) so existing declaration merging keeps working
-export interface RealtimeToolResultProjectorContext
-  extends ToolResultProjectorContext {}
-
-/** @deprecated Use ToolResultProjector */
-export type RealtimeToolResultProjector = (
-  context: RealtimeToolResultProjectorContext,
-) => void;
-
 export interface ExecuteRealtimeToolCallOptions {
   event: ToolCallEvent;
-  tool?: RealtimeToolRegistration;
+  tool?: ToolRegistration;
   client: RealtimeTransportClient;
   character: Character | null;
   state: RealtimeState;
   defaultToolTimeoutMs: number;
-  resultProjectors?: RealtimeToolResultProjector[];
+  resultProjectors?: ToolResultProjector[];
   emit: EmitEvent;
   log: ToolLog;
 }
@@ -128,7 +118,7 @@ async function runToolHandler({
   state,
   defaultToolTimeoutMs,
 }: {
-  tool: RealtimeToolRegistration;
+  tool: ToolRegistration;
   event: ToolCallEvent;
   character: Character | null;
   state: RealtimeState;
@@ -177,7 +167,7 @@ async function handleToolExecutionFailure(
 function projectToolResult(
   name: string,
   output: Record<string, unknown>,
-  resultProjectors: RealtimeToolResultProjector[] | undefined,
+  resultProjectors: ToolResultProjector[] | undefined,
   emit: EmitEvent,
   log: ToolLog,
   callId?: string,

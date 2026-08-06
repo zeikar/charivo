@@ -309,19 +309,6 @@ importers:
         specifier: ^5.9.2
         version: 5.9.2
 
-  packages/realtime-avatar:
-    dependencies:
-      '@charivo/avatar':
-        specifier: workspace:*
-        version: link:../avatar
-    devDependencies:
-      tsup:
-        specifier: ^8.5.0
-        version: 8.5.0(@swc/core@1.15.26)(jiti@2.6.0)(postcss@8.5.6)(typescript@5.9.2)
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.2
-
   packages/render:
     dependencies:
       '@charivo/core':

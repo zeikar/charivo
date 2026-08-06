@@ -197,29 +197,6 @@ export interface RealtimeState {
   lastError: Error | null;
 }
 
-// Deprecated realtime tool aliases — use the neutral Tool* contracts
-/** @deprecated Use ToolDefinition */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- interface (not alias) so existing declaration merging keeps working
-export interface RealtimeTool extends ToolDefinition {}
-
-/** @deprecated Use ToolContext (note: context.state becomes optional in the neutral contract) */
-export interface RealtimeToolContext extends ToolContext {
-  state: RealtimeState;
-}
-
-/** @deprecated Use ToolHandler (note: context.state becomes optional in the neutral contract) */
-export type RealtimeToolHandler = (
-  args: Record<string, unknown>,
-  context: RealtimeToolContext,
-) => Promise<Record<string, unknown>>;
-
-/** @deprecated Use ToolRegistration (note: context.state becomes optional in the neutral contract) */
-export interface RealtimeToolRegistration {
-  definition: RealtimeTool;
-  handler: RealtimeToolHandler;
-  timeoutMs?: number;
-}
-
 export interface RealtimeUsageEvent {
   usage: Record<string, unknown>;
   model?: string;
@@ -426,7 +403,7 @@ export interface RealtimeManager {
   sendMessage(text: string): Promise<void>;
   sendAudioChunk(audio: ArrayBuffer): Promise<void>;
   interrupt(): Promise<void>;
-  registerTool(tool: RealtimeToolRegistration): void;
+  registerTool(tool: ToolRegistration): void;
   unregisterTool(name: string): void;
   getRegisteredTools(): ToolDefinition[];
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
