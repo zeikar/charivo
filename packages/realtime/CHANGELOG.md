@@ -1,5 +1,16 @@
 # @charivo/realtime
 
+## 0.14.0
+
+### Minor Changes
+
+- 5d949a9: Remove the deprecated `Realtime*` tool type aliases (`RealtimeTool`, `RealtimeToolContext`, `RealtimeToolHandler`, `RealtimeToolRegistration`, `RealtimeToolResultProjector`, `RealtimeToolResultProjectorContext`). Use the neutral `Tool*` contracts from `@charivo/core` instead (`ToolDefinition`, `ToolContext`, `ToolHandler`, `ToolRegistration`, `ToolResultProjector`, `ToolResultProjectorContext`); imports of the old names map 1:1 to the neutral ones. The `@charivo/realtime-avatar` package is also removed from the repo — its already-published versions keep working and continue to re-export `@charivo/avatar`.
+
+### Patch Changes
+
+- Updated dependencies [5d949a9]
+  - @charivo/core@0.18.0
+
 ## 0.13.0
 
 ### Minor Changes

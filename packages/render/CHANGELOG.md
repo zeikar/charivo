@@ -1,5 +1,12 @@
 # @charivo/render
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [5d949a9]
+  - @charivo/core@0.18.0
+
 ## 0.8.0
 
 ### Minor Changes
