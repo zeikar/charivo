@@ -114,6 +114,12 @@ await charivo.dispose();
 For a complete app with the production server-mediated path, see
 [`examples/web`](./examples/web).
 
+Text chat can also drive the character's face and body: register the
+catalog-constrained tools from `@charivo/avatar` on the LLM manager and the
+model calls `setExpression` / `playMotion` / `lookAt` while it replies. See the
+[LLM guide's avatar tool-calling walkthrough](./docs/guide/llm.md) for the
+wiring.
+
 ## Realtime Voice
 
 For low-latency, speech-to-speech conversation, attach a realtime manager

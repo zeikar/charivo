@@ -178,6 +178,11 @@ export async function POST(request: NextRequest) {
 }
 ```
 
+This minimal route covers plain chat. To let the model drive avatar
+expressions and motions through tool calls, the route also needs to forward
+`tools` to `generateResponseWithTools` — see the avatar tool-calling section
+in the [LLM guide](./llm.md).
+
 TTS route (`/api/tts`):
 
 ```ts
