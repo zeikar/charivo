@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime-avatar",
-  "version": "0.3.12",
+  "version": "0.4.0",
   "description": "Deprecated: use @charivo/avatar. Avatar bridge helpers for Charivo realtime sessions",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
