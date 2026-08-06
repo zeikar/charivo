@@ -902,6 +902,10 @@ describe("LLMManager tool loop", () => {
     const cases: Array<{ label: string; result: Record<string, unknown> }> = [
       { label: "bigint", result: { success: true, amount: 1n } },
       { label: "circular", result: circular },
+      {
+        label: "toJSON-undefined",
+        result: { success: true, toJSON: () => undefined },
+      },
     ];
 
     for (const { label, result } of cases) {

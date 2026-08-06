@@ -292,6 +292,19 @@ export interface LLMManager {
   setToolInstructions?(instructions: string | null): void;
 }
 
+/**
+ * `LLMManager` with the tool-calling members required instead of optional.
+ * Third-party `LLMManager` implementations may omit tool support, but the
+ * built-in manager returned by `createLLMManager` always provides it.
+ */
+export interface LLMManagerWithTools extends LLMManager {
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void;
+  registerTool(tool: ToolRegistration): void;
+  unregisterTool(name: string): void;
+  getRegisteredTools(): ToolDefinition[];
+  setToolInstructions(instructions: string | null): void;
+}
+
 // Renderer interface (stateless renderer)
 export interface Renderer {
   initialize(): Promise<void>;

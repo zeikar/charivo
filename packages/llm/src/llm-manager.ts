@@ -6,7 +6,7 @@ import {
   toCharivoError,
   validateToolArguments,
   type CharivoEventEmitter,
-  type LLMManager as CoreLLMManager,
+  type LLMManagerWithTools,
   type LLMMessage,
   type LLMToolCall,
   type ToolDefinition,
@@ -283,8 +283,17 @@ export class LLMManager {
 
       // Serialize inside the failure boundary: outputs that cannot be
       // stringified (bigint values, circular references) degrade to a failure
-      // output instead of aborting the reply.
-      serialized = JSON.stringify(result);
+      // output instead of aborting the reply. JSON.stringify's declared return
+      // type is `string`, but a `toJSON()` that returns `undefined` makes it
+      // return the value `undefined` at runtime, so that case is checked
+      // explicitly rather than relying on a thrown error.
+      const stringified: unknown = JSON.stringify(result);
+      if (typeof stringified !== "string") {
+        throw new Error(
+          `LLM tool "${tool.definition.name}" result could not be serialized to JSON`,
+        );
+      }
+      serialized = stringified;
       output = result;
     } catch (error) {
       return JSON.stringify(createFailureOutput(toError(error)));
@@ -362,7 +371,7 @@ export class LLMManager {
 export function createLLMManager(
   llmClient: LLMClient,
   options?: LLMManagerOptions,
-): CoreLLMManager {
+): LLMManagerWithTools {
   return new LLMManager(llmClient, options);
 }
 
