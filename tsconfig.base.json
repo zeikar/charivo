@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
+      "@charivo/avatar": ["packages/avatar/src/index.ts"],
       "@charivo/core": ["packages/core/src/index.ts"],
       "@charivo/llm/openai": ["packages/llm/src/openai/index.ts"],
       "@charivo/llm/openclaw": ["packages/llm/src/openclaw/index.ts"],

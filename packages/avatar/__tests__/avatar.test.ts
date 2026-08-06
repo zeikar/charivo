@@ -5,7 +5,7 @@ import {
   buildAvatarControlInstructions,
   createAvatarControlTools,
   createAvatarResultProjector,
-} from "@charivo/realtime-avatar";
+} from "@charivo/avatar";
 
 const TOOL_CONTEXT = {
   character: null,
@@ -23,7 +23,7 @@ const TOOL_CONTEXT = {
   },
 };
 
-describe("realtime-avatar", () => {
+describe("avatar", () => {
   it("builds avatar-specific realtime instructions only when avatar tools are in use", () => {
     const instructions = buildAvatarControlInstructions({
       expressions: ["Smile"],
