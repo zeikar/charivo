@@ -6,6 +6,10 @@ export {
   type RealtimeToolResultProjector,
   type RealtimeToolResultProjectorContext,
 } from "./realtime-manager";
+export type {
+  ToolResultProjector,
+  ToolResultProjectorContext,
+} from "@charivo/core";
 export {
   DEFAULT_REALTIME_AGENT_INSTRUCTIONS,
   buildRealtimeSessionConfig,

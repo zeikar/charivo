@@ -6,9 +6,9 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionTransitionReason,
   RealtimeState,
-  RealtimeTool,
   RealtimeToolRegistration,
   RealtimeUsageEvent,
+  ToolDefinition,
 } from "@charivo/core";
 import { CharivoStateError, toCharivoError } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
@@ -138,7 +138,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.requestToolRefresh();
   }
 
-  getRegisteredTools(): RealtimeTool[] {
+  getRegisteredTools(): ToolDefinition[] {
     return this.toolRegistry.getDefinitions();
   }
 

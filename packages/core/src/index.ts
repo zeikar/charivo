@@ -34,6 +34,10 @@ export {
   type LipSyncAnalyzer,
   type LipSyncAnalyzerOptions,
 } from "./lipsync-analyzer";
+export {
+  assertToolResultObject,
+  validateToolArguments,
+} from "./tool-validation";
 
 export class Charivo {
   private eventBus: EventBus;

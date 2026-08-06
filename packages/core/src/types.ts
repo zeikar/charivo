@@ -63,16 +63,52 @@ export type RealtimeToolChoice = "auto" | "none" | "required";
 export const OPENAI_REALTIME_ADAPTER = "openai-webrtc";
 export const OPENAI_REALTIME_AGENTS_ADAPTER = "openai-agents-webrtc";
 
-export interface RealtimeTool {
+// Modality-neutral tool contracts (used by realtime and LLM sessions)
+export interface ToolDefinition {
   type: "function";
   name: string;
   description: string;
+  /**
+   * JSON Schema-shaped. `validateToolArguments` only enforces required-key
+   * presence, enum membership, and each property's top-level `type`; nested
+   * schemas, `additionalProperties`, and numeric-length constraints are not
+   * validated.
+   */
   parameters: {
     type: "object";
     properties: Record<string, unknown>;
     required?: string[];
   };
 }
+
+export interface ToolContext {
+  character?: Character | null;
+  callId?: string;
+  /** Present only for realtime sessions. */
+  state?: RealtimeState;
+}
+
+/** Must resolve to a plain object; arrays and primitives are rejected by the runners. */
+export type ToolHandler = (
+  args: Record<string, unknown>,
+  context: ToolContext,
+) => Promise<Record<string, unknown>>;
+
+export interface ToolRegistration {
+  definition: ToolDefinition;
+  handler: ToolHandler;
+  /** Timeout in ms; falls back to the manager default when omitted. */
+  timeoutMs?: number;
+}
+
+export interface ToolResultProjectorContext {
+  name: string;
+  output: Record<string, unknown>;
+  callId?: string;
+  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void;
+}
+
+export type ToolResultProjector = (context: ToolResultProjectorContext) => void;
 
 export interface RealtimeSessionConfig {
   provider?: string;
@@ -82,7 +118,7 @@ export interface RealtimeSessionConfig {
   instructions?: string;
   temperature?: number;
   maxTokens?: number;
-  tools?: RealtimeTool[];
+  tools?: ToolDefinition[];
   toolChoice?: RealtimeToolChoice;
   inputAudioTranscription?: {
     model?: string;
@@ -161,17 +197,23 @@ export interface RealtimeState {
   lastError: Error | null;
 }
 
-export interface RealtimeToolContext {
-  character?: Character | null;
+// Deprecated realtime tool aliases — use the neutral Tool* contracts
+/** @deprecated Use ToolDefinition */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- interface (not alias) so existing declaration merging keeps working
+export interface RealtimeTool extends ToolDefinition {}
+
+/** @deprecated Use ToolContext (note: context.state becomes optional in the neutral contract) */
+export interface RealtimeToolContext extends ToolContext {
   state: RealtimeState;
-  callId?: string;
 }
 
+/** @deprecated Use ToolHandler (note: context.state becomes optional in the neutral contract) */
 export type RealtimeToolHandler = (
   args: Record<string, unknown>,
   context: RealtimeToolContext,
 ) => Promise<Record<string, unknown>>;
 
+/** @deprecated Use ToolRegistration (note: context.state becomes optional in the neutral contract) */
 export interface RealtimeToolRegistration {
   definition: RealtimeTool;
   handler: RealtimeToolHandler;
@@ -335,7 +377,7 @@ export interface RealtimeManager {
   interrupt(): Promise<void>;
   registerTool(tool: RealtimeToolRegistration): void;
   unregisterTool(name: string): void;
-  getRegisteredTools(): RealtimeTool[];
+  getRegisteredTools(): ToolDefinition[];
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 

@@ -5,6 +5,7 @@ import {
   type CharivoEventEmitter,
   type RealtimeState,
   type RealtimeToolRegistration,
+  type ToolRegistration,
 } from "@charivo/core";
 import {
   createRealtimeManager,
@@ -476,6 +477,87 @@ describe("realtime-core", () => {
         args: { mood: "calm", count: 2, enabled: true },
       },
     );
+  });
+
+  it("rejects handler results that are not objects", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tool: RealtimeToolRegistration = {
+      definition: {
+        type: "function",
+        name: "listMoods",
+        description: "List the available moods.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: vi.fn(
+        async () => ["happy", "calm"] as unknown as Record<string, unknown>,
+      ),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [tool],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "listMoods",
+      args: {},
+      callId: "call-array-result",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith(
+      "call-array-result",
+      {
+        success: false,
+        error: 'Realtime tool "listMoods" must return an object',
+      },
+    );
+  });
+
+  it("runs modality-neutral tool registrations", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tool: ToolRegistration = {
+      definition: {
+        type: "function",
+        name: "describeScene",
+        description: "Describe the current scene.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: async (_args, context) => ({
+        success: true,
+        responseStatus: context.state?.response.status ?? null,
+      }),
+    };
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter(eventEmitter);
+    manager.registerTool(tool);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "describeScene",
+      args: {},
+      callId: "call-neutral",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith("call-neutral", {
+      success: true,
+      responseStatus: "idle",
+    });
   });
 
   it("emits canonical avatar action events for direct tools", async () => {
