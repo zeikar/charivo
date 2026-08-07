@@ -1,5 +1,13 @@
 # @charivo/render-live2d
 
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [370dfdc]
+  - @charivo/core@0.19.0
+  - @charivo/render@0.8.2
+
 ## 0.3.4
 
 ### Patch Changes
