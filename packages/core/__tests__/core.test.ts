@@ -288,12 +288,12 @@ describe("Charivo", () => {
     expect(charivo.getRealtimeManager()).toBe(realtimeManager);
     expect(charivo.isRealtimeModeEnabled()).toBe(true);
 
-    charivo.on("realtime:text:delta", customListener);
-    charivo.emit("realtime:text:delta", { text: "partial" });
+    charivo.on("realtime:assistant:delta", customListener);
+    charivo.emit("realtime:assistant:delta", { text: "partial" });
     expect(customListener).toHaveBeenCalledWith({ text: "partial" });
 
-    charivo.off("realtime:text:delta", customListener);
-    charivo.emit("realtime:text:delta", { text: "ignored" });
+    charivo.off("realtime:assistant:delta", customListener);
+    charivo.emit("realtime:assistant:delta", { text: "ignored" });
     expect(customListener).toHaveBeenCalledTimes(1);
 
     charivo.detachTTS();

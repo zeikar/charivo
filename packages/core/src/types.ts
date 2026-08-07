@@ -471,7 +471,6 @@ export type EventMap = {
   "avatar:expression": { expressionId: string };
   "avatar:motion": { group: string; index: number };
   "avatar:gaze": GazeCoordinates;
-  "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
   "llm:error": { error: Error };
 };

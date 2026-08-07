@@ -181,7 +181,6 @@ Important event names include:
 - `avatar:expression`
 - `avatar:motion`
 - `avatar:gaze`
-- `realtime:text:delta`
 - `realtime:error`
 
 `EventBus.emit(...)` isolates each listener: one that throws is reported via

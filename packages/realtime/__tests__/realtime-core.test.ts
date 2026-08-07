@@ -948,9 +948,6 @@ describe("realtime-core", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:assistant:delta", {
       text: "hel",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:text:delta", {
-      text: "hel",
-    });
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:result", {
       name: "serverTool",
       output: { success: true },

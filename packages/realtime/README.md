@@ -298,7 +298,6 @@ When connected, the manager relays:
 - `realtime:tool:result`
 - `realtime:tool:error`
 - `realtime:usage`
-- `realtime:text:delta`
 - `realtime:error`
 - `tts:lipsync:update`
 - `tts:audio:start`

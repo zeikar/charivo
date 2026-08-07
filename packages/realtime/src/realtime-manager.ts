@@ -409,7 +409,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
             text: this.state.response.text + event.text,
           },
         };
-        this.eventEmitter?.emit("realtime:text:delta", { text: event.text });
         this.eventEmitter?.emit("realtime:assistant:delta", {
           text: event.text,
         });
