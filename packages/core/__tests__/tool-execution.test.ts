@@ -3,6 +3,7 @@ import {
   createToolFailureOutput,
   createToolRegistry,
   serializeToolResult,
+  snapshotToolResult,
   withToolTimeout,
   type ToolRegistration,
 } from "@charivo/core";
@@ -143,6 +144,55 @@ describe("serializeToolResult", () => {
     circular.self = circular;
 
     expect(() => serializeToolResult(circular, "setMood")).toThrow();
+  });
+});
+
+describe("snapshotToolResult", () => {
+  it("returns the string and its parsed snapshot", () => {
+    const result = { success: true, mood: "calm" };
+
+    expect(snapshotToolResult(result, "setMood")).toEqual({
+      serialized: '{"success":true,"mood":"calm"}',
+      snapshot: { success: true, mood: "calm" },
+    });
+  });
+
+  it("returns a snapshot detached from the live result", () => {
+    const result: Record<string, unknown> = {
+      success: true,
+      startedAt: new Date("2024-01-01T00:00:00Z"),
+      skipped: undefined,
+    };
+
+    const { snapshot } = snapshotToolResult(result, "setMood");
+
+    expect(snapshot).not.toBe(result);
+    expect(snapshot).toEqual({
+      success: true,
+      startedAt: "2024-01-01T00:00:00.000Z",
+    });
+  });
+
+  it("applies toJSON before snapshotting", () => {
+    const result = { success: true, toJSON: () => ({ mood: "calm" }) };
+
+    expect(snapshotToolResult(result, "setMood").snapshot).toEqual({
+      mood: "calm",
+    });
+  });
+
+  it("rejects a toJSON that yields a non-object", () => {
+    for (const value of [null, ["calm"], 42]) {
+      expect(() =>
+        snapshotToolResult({ toJSON: () => value }, "setMood", "Realtime tool"),
+      ).toThrow('Realtime tool "setMood" must return an object');
+    }
+  });
+
+  it("rejects a result that cannot be serialized at all", () => {
+    expect(() =>
+      snapshotToolResult({ toJSON: () => undefined }, "setMood", "LLM tool"),
+    ).toThrow('LLM tool "setMood" result could not be serialized to JSON');
   });
 });
 

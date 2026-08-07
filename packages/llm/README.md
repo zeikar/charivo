@@ -113,14 +113,12 @@ observe tool activity without caring which modality ran the tool.
 same value the model's tool turn receives — so a result with a `toJSON()`
 surfaces as its round-tripped form.
 
-Known, deliberate divergence: `resultProjectors` do **not** receive that
-snapshot. LLM projectors are called with the original validated handler result
-(so `Date`, `undefined`, and getter properties survive), while
-`@charivo/realtime` projectors receive the snapshot. A projector doing
-`output.startedAt.getTime()` therefore works on the LLM path but receives an
-ISO string on the realtime path and throws, and `undefined` properties
-disappear there entirely. Projectors that must behave identically across both
-modalities should only read plain JSON values.
+`resultProjectors` receive that same snapshot, as they do in
+`@charivo/realtime`, so a projector behaves identically no matter which
+modality ran the tool. It is the wire form, not the live handler object: a
+`Date` arrives as its ISO string and an `undefined` property is gone, so read
+`output` as plain JSON. Values that cannot survive JSON were never part of the
+tool result anyway — the model only ever sees the serialized form.
 
 ### Round Cap
 

@@ -42,7 +42,9 @@ export {
   createToolFailureOutput,
   createToolRegistry,
   serializeToolResult,
+  snapshotToolResult,
   type ToolRegistry,
+  type ToolResultSnapshot,
   withToolTimeout,
 } from "./tool-execution";
 

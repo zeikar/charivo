@@ -7,6 +7,7 @@
  * messages. Errors are plain `Error` for the same reason given there.
  */
 import type { ToolDefinition, ToolRegistration } from "./types";
+import { assertToolResultObject } from "./tool-validation";
 
 /** Registry of the tools a session may execute, keyed by definition name. */
 export interface ToolRegistry {
@@ -111,4 +112,37 @@ export function serializeToolResult(
   }
 
   return serialized;
+}
+
+/** A tool result's JSON string plus the parsed value every consumer sees. */
+export interface ToolResultSnapshot {
+  /** Handed to the model's tool turn, or to the realtime transport. */
+  serialized: string;
+  /** Parsed form of `serialized` — what `tool:result` and projectors receive. */
+  snapshot: Record<string, unknown>;
+}
+
+/**
+ * Serializes a tool result once and returns both the string and its parsed
+ * snapshot, so every consumer downstream of a tool runner sees the same JSON
+ * shape regardless of modality.
+ *
+ * Call this inside a tool runner's failure boundary: a result that cannot be
+ * represented as JSON throws here and degrades to a failure output instead of
+ * reaching a transport or a projector. `serializeToolResult` proves the result
+ * is representable, but a `toJSON()` can still yield null, an array, or a
+ * primitive, so the parsed value is checked against the tool-result contract
+ * rather than cast to it.
+ */
+export function snapshotToolResult(
+  result: Record<string, unknown>,
+  toolName: string,
+  toolLabel = "Tool",
+): ToolResultSnapshot {
+  const serialized = serializeToolResult(result, toolName, toolLabel);
+  const parsed: unknown = JSON.parse(serialized);
+
+  assertToolResultObject(parsed, toolName, toolLabel);
+
+  return { serialized, snapshot: parsed };
 }

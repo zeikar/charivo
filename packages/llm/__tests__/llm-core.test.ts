@@ -922,7 +922,7 @@ describe("LLMManager tool loop", () => {
     });
   });
 
-  it("emits the serialized snapshot while projectors keep the live result", async () => {
+  it("hands the same snapshot to the event, the projectors, and the tool turn", async () => {
     const { client, payloads } = buildToolClient([
       { content: "", toolCalls: [buildToolCall()] },
       { content: FINAL_TEXT },
@@ -956,15 +956,52 @@ describe("LLMManager tool loop", () => {
       callId: "call-1",
     });
 
-    // Projectors deliberately keep receiving the live handler result, so
-    // non-JSON values such as Date survive for them.
+    // Projectors receive that same snapshot, never the live handler object.
     expect(projectedOutputs).toHaveLength(1);
-    expect(projectedOutputs[0]).toBe(result);
+    expect(projectedOutputs[0]).not.toBe(result);
+    expect(projectedOutputs[0]).toEqual({
+      success: true,
+      expressionId: "smile",
+    });
 
     expect(readToolTurn(payloads[1]!)).toEqual({
       success: true,
       expressionId: "smile",
     });
+  });
+
+  it("gives projectors the JSON form of non-JSON handler values", async () => {
+    const { client } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const result: Record<string, unknown> = {
+      success: true,
+      startedAt: new Date("2024-01-01T00:00:00Z"),
+      skipped: undefined,
+    };
+    const projectedOutputs: Array<Record<string, unknown>> = [];
+    const projector: ToolResultProjector = ({ output }) => {
+      projectedOutputs.push(output);
+    };
+    const { eventEmitter } = buildEmitterSpy();
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(async () => result)],
+      resultProjectors: [projector],
+    });
+
+    // Projection is skipped entirely without an event emitter.
+    manager.setEventEmitter(eventEmitter);
+    manager.setCharacter(character);
+
+    await manager.generateResponse(buildUserMessage("hello"));
+
+    // A Date becomes its ISO string and an undefined property disappears —
+    // the same values a realtime projector sees, and the documented cost of
+    // projecting the wire form rather than the live object.
+    expect(projectedOutputs).toEqual([
+      { success: true, startedAt: "2024-01-01T00:00:00.000Z" },
+    ]);
   });
 
   it("converts unserializable tool outputs into failure outputs", async () => {

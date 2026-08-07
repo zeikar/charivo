@@ -5,7 +5,7 @@ import {
   assertToolResultObject,
   createToolFailureOutput,
   createToolRegistry,
-  serializeToolResult,
+  snapshotToolResult,
   toCharivoError,
   validateToolArguments,
   withToolTimeout,
@@ -16,6 +16,7 @@ import {
   type ToolDefinition,
   type ToolRegistration,
   type ToolResultProjector,
+  type ToolResultSnapshot,
 } from "@charivo/core";
 import { MessageHistoryManager } from "./message-history-manager";
 import { CharacterPromptBuilder } from "./character-prompt-builder";
@@ -258,9 +259,7 @@ export class LLMManager {
    * reply always continues.
    */
   private async executeToolCall(toolCall: LLMToolCall): Promise<string> {
-    let handlerResult: Record<string, unknown>;
-    let snapshot: Record<string, unknown>;
-    let serialized: string;
+    let outcome: ToolResultSnapshot;
 
     this.eventEmitter?.emit("tool:call", {
       name: toolCall.name,
@@ -289,22 +288,10 @@ export class LLMManager {
       assertToolResultObject(result, tool.definition.name, "LLM tool");
 
       // Serialize inside the failure boundary: outputs that cannot be
-      // stringified (bigint values, circular references) degrade to a failure
-      // output instead of aborting the reply.
-      serialized = serializeToolResult(
-        result,
-        tool.definition.name,
-        "LLM tool",
-      );
-      handlerResult = result;
-
-      // The event carries the JSON round-trip of the result so `tool:result`
-      // means the same thing from the LLM and realtime paths. A `toJSON()` can
-      // still yield null, an array, or a primitive, so the snapshot is checked
-      // against the same contract and degrades to the failure output below.
-      const parsed: unknown = JSON.parse(serialized);
-      assertToolResultObject(parsed, tool.definition.name, "LLM tool");
-      snapshot = parsed;
+      // represented as JSON (bigint values, circular references, a `toJSON()`
+      // yielding a non-object) degrade to a failure output instead of aborting
+      // the reply.
+      outcome = snapshotToolResult(result, tool.definition.name, "LLM tool");
     } catch (error) {
       const failure = toError(error);
       this.eventEmitter?.emit("tool:error", {
@@ -315,19 +302,17 @@ export class LLMManager {
       return JSON.stringify(createToolFailureOutput(failure));
     }
 
-    // Deliberate divergence: the event carries the snapshot so both modalities
-    // publish the same shape, but LLM projectors keep the original handler result
-    // (Date / undefined / getters survive) rather than silently changing what
-    // existing projectors already receive. Documented under "Tool Events" in the
-    // package README.
+    // The event and the projectors both receive the snapshot — the same value
+    // the model's tool turn carries — so a tool result means one thing no
+    // matter which modality executed it.
     this.eventEmitter?.emit("tool:result", {
       name: toolCall.name,
-      output: snapshot,
+      output: outcome.snapshot,
       callId: toolCall.id,
     });
-    this.projectToolResult(toolCall.name, handlerResult, toolCall.id);
+    this.projectToolResult(toolCall.name, outcome.snapshot, toolCall.id);
 
-    return serialized;
+    return outcome.serialized;
   }
 
   /**

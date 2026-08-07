@@ -200,7 +200,8 @@ await manager.startSession({
 `resultProjectors` run after successful local tool execution and can emit
 additional app-level events such as `avatar:expression`. They receive the JSON
 snapshot of the handler result — exactly what was sent to the transport — not
-the live handler object.
+the live handler object. `@charivo/llm` hands its projectors the same snapshot,
+so one projector behaves identically on both paths.
 
 When a logger is configured, `RealtimeManager` also injects a per-session
 `sessionId` into every log context. If the caller also supplies `sessionId` in
