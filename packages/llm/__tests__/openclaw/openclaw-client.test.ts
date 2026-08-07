@@ -18,7 +18,7 @@ const providerMocks = vi.hoisted(() => {
       throw new Error("generateResponseWithTools was not mocked for this test");
     },
   );
-  const createOpenClawLLMProvider = vi.fn(() => ({
+  const createOpenClawLLMProvider = vi.fn((_config: unknown) => ({
     generateResponse,
     generateResponseWithTools,
   }));

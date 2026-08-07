@@ -59,7 +59,7 @@ describe("RenderManager", () => {
     };
 
     manager.setCharacter(character);
-    manager.setMessageCallback(callback);
+    manager.setMessageCallback!(callback);
 
     await manager.initialize();
     await manager.render(message);
@@ -255,7 +255,7 @@ describe("RenderManager", () => {
     await manager.initialize();
 
     const coords: GazeCoordinates = { x: 0.3, y: -0.2 };
-    expect(manager.setLocalGaze(coords)).toBe(true);
+    expect(manager.setLocalGaze!(coords)).toBe(true);
     expect(renderer.lookAt).toHaveBeenCalledWith(coords);
 
     // Local-gaze window suppresses the mouse cursor target right after.
@@ -304,7 +304,7 @@ describe("RenderManager", () => {
 
     await manager.initialize();
 
-    expect(manager.setLocalGaze({ x: 0.1, y: 0.1 })).toBe(false);
+    expect(manager.setLocalGaze!({ x: 0.1, y: 0.1 })).toBe(false);
 
     // No local-gaze window means the cursor target still runs.
     document.dispatchEvent(
@@ -331,7 +331,7 @@ describe("RenderManager", () => {
     renderer.lookAt.mockClear();
 
     // Within the 1200ms AI window, local gaze yields.
-    expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(false);
+    expect(manager.setLocalGaze!({ x: 0.5, y: 0.5 })).toBe(false);
     expect(renderer.lookAt).not.toHaveBeenCalled();
   });
 
@@ -340,8 +340,8 @@ describe("RenderManager", () => {
     const manager = createRenderManager(renderer);
 
     // Two back-to-back applies (no AI window): both must apply.
-    expect(manager.setLocalGaze({ x: 0.1, y: 0.1 })).toBe(true);
-    expect(manager.setLocalGaze({ x: 0.2, y: 0.2 })).toBe(true);
+    expect(manager.setLocalGaze!({ x: 0.1, y: 0.1 })).toBe(true);
+    expect(manager.setLocalGaze!({ x: 0.2, y: 0.2 })).toBe(true);
     expect(renderer.lookAt).toHaveBeenCalledTimes(2);
   });
 
@@ -365,7 +365,7 @@ describe("RenderManager", () => {
     manager.setEventBus(bus);
 
     // Open a local-gaze window (no AI window).
-    expect(manager.setLocalGaze({ x: 0.3, y: 0.3 })).toBe(true);
+    expect(manager.setLocalGaze!({ x: 0.3, y: 0.3 })).toBe(true);
 
     // A tap still fires while webcam gaze is active.
     document.dispatchEvent(

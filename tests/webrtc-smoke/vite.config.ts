@@ -59,7 +59,7 @@ export default defineConfig({
               const session = payload.session;
 
               if (
-                typeof transport !== "string" ||
+                (transport !== "webrtc" && transport !== "websocket") ||
                 typeof session !== "object" ||
                 session === null
               ) {

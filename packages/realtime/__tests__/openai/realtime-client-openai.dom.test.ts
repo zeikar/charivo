@@ -3,7 +3,9 @@ import { OpenAIRealtimeClient } from "../../src/openai/client";
 import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import type { RealtimeTransportEvent } from "@charivo/realtime";
 
-type RealtimeClientTestInternals = OpenAIRealtimeClient & {
+// `audioElement` / `lipSyncAnalyzer` are private on the class, so intersecting
+// with it collapses to `never`; this is a standalone view of those internals.
+type RealtimeClientTestInternals = {
   audioElement: HTMLAudioElement | null;
   lipSyncAnalyzer: { attachMediaStream: (stream: MediaStream) => void };
 };

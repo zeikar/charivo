@@ -3,6 +3,8 @@ import {
   CharivoTransportError,
   type Character,
   type CharivoEventEmitter,
+  type EventMap,
+  type ToolDefinition,
   type RealtimeState,
   type ToolRegistration,
 } from "@charivo/core";
@@ -69,13 +71,24 @@ function createEventEmitter(): CharivoEventEmitter {
   };
 }
 
-function getEventPayloads(
+/** Reads one generated property schema out of the untyped `properties` bag. */
+function propertySchema(
+  definition: ToolDefinition,
+  property: string,
+): { description?: string; enum?: unknown[] } {
+  return definition.parameters.properties[property] as {
+    description?: string;
+    enum?: unknown[];
+  };
+}
+
+function getEventPayloads<K extends keyof EventMap>(
   eventEmitter: CharivoEventEmitter,
-  eventName: string,
-): unknown[] {
+  eventName: K,
+): Array<EventMap[K]> {
   return (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
     .filter(([name]) => name === eventName)
-    .map(([, payload]) => payload);
+    .map(([, payload]) => payload as EventMap[K]);
 }
 
 function createDeferred<T>() {
@@ -166,7 +179,7 @@ describe("realtime-core", () => {
       enum: ["Smile"],
     });
     expect(
-      expressionTool!.definition.parameters.properties.expressionId.description,
+      propertySchema(expressionTool!.definition, "expressionId").description,
     ).toContain("available for your current model");
     expect(expressionTool!.definition.description).toContain(
       "Use proactively for greetings",
@@ -178,7 +191,7 @@ describe("realtime-core", () => {
       enum: ["Idle"],
     });
     expect(
-      motionTool!.definition.parameters.properties.group.description,
+      propertySchema(motionTool!.definition, "group").description,
     ).toContain("available for your current model");
     expect(motionTool!.definition.description).toContain(
       "don't stack body motions in the same reply",
@@ -256,7 +269,7 @@ describe("realtime-core", () => {
       emit: vi.fn(),
     };
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
@@ -384,7 +397,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -499,7 +512,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -541,7 +554,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -594,7 +607,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -637,7 +650,7 @@ describe("realtime-core", () => {
     }));
     const manager = createRealtimeManager(stub.client, { tools });
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -681,7 +694,7 @@ describe("realtime-core", () => {
     };
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     manager.registerTool(tool);
     await manager.startSession({
       provider: "openai",
@@ -713,7 +726,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -776,7 +789,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -822,7 +835,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -870,7 +883,7 @@ describe("realtime-core", () => {
       emit: vi.fn(),
     };
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
@@ -971,7 +984,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -1028,7 +1041,7 @@ describe("realtime-core", () => {
       voice: "marin",
     });
     const firstSessionId = vi
-      .mocked(logger.info)
+      .mocked(logger.info!)
       .mock.calls.find(
         ([message]) => message === "Realtime session started",
       )?.[1]?.sessionId;
@@ -1144,7 +1157,7 @@ describe("realtime-core", () => {
     });
 
     const secondSessionId = vi
-      .mocked(logger.info)
+      .mocked(logger.info!)
       .mock.calls.filter(([message]) => message === "Realtime session started")
       .slice(-1)[0]?.[1]?.sessionId;
 
@@ -1182,7 +1195,7 @@ describe("realtime-core", () => {
     });
 
     const initialSessionId = vi
-      .mocked(logger.info)
+      .mocked(logger.info!)
       .mock.calls.find(
         ([message]) => message === "Realtime session started",
       )?.[1]?.sessionId;
@@ -1192,8 +1205,8 @@ describe("realtime-core", () => {
     });
 
     const refreshSessionIds = [
-      ...vi.mocked(logger.info).mock.calls,
-      ...vi.mocked(logger.debug).mock.calls,
+      ...vi.mocked(logger.info!).mock.calls,
+      ...vi.mocked(logger.debug!).mock.calls,
     ]
       .filter(([message]) =>
         [
@@ -1214,7 +1227,7 @@ describe("realtime-core", () => {
     });
 
     const restartedSessionId = vi
-      .mocked(logger.info)
+      .mocked(logger.info!)
       .mock.calls.filter(([message]) => message === "Realtime session started")
       .slice(-1)[0]?.[1]?.sessionId;
 
@@ -1324,7 +1337,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -1517,7 +1530,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
 
     const manager = createRealtimeManager(stub.client);
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
 
     await manager.startSession({
       provider: "openai",
@@ -1643,7 +1656,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -1738,7 +1751,7 @@ describe("realtime-core", () => {
 
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
 
     await manager.startSession({
       provider: "openai",
@@ -1792,7 +1805,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const recoverGate = createDeferred<void>();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -1946,7 +1959,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter(eventEmitter);
+    manager.setEventEmitter!(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",

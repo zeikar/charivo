@@ -764,7 +764,9 @@ describe("LLMManager tool loop", () => {
     ]);
     const manager = new LLMManager(client, {
       tools: [
-        buildExpressionTool((async () => "not an object") as ToolHandler),
+        buildExpressionTool(
+          (async () => "not an object") as unknown as ToolHandler,
+        ),
       ],
     });
 

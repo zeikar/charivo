@@ -2,14 +2,18 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vitest/globals"]
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["vitest/globals", "node"]
   },
   "include": [
-    "packages/**/*.test.ts",
-    "packages/**/*.test.tsx",
     "packages/**/__tests__/**/*.ts",
     "packages/**/__tests__/**/*.tsx",
+    "tests/**/*.ts",
     "vitest.setup.ts",
-    "vitest.config.ts"
-  ]
+    "vitest.config.ts",
+    "vitest.live.config.ts",
+    "playwright.*.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".turbo", "packages/render-live2d/**"]
 }

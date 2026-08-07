@@ -70,7 +70,7 @@ class RemotePlayerWithAudio {
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
   isSupported = vi.fn(() => true);
-  generateAudio = vi.fn(async () => new Uint8Array([1, 2, 3]));
+  generateAudio = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
 }
 
 class RemotePlayerWithoutAudio {
@@ -95,7 +95,7 @@ class ExplicitAudioPlayerWithWebName {
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
   isSupported = vi.fn(() => true);
-  generateAudio = vi.fn(async () => new Uint8Array([4, 5, 6]));
+  generateAudio = vi.fn(async () => new Uint8Array([4, 5, 6]).buffer);
 }
 
 class AudioPlayerWithCustomMime {
@@ -142,7 +142,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("hello", { volume: 0.4 });
 
@@ -158,7 +158,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("mute", { volume: 0 });
 
@@ -176,7 +176,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("browser speech", { rate: 1.25 });
 
@@ -202,7 +202,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("audio path");
 
@@ -228,14 +228,14 @@ describe("TTSManagerImpl stop() failure cleanup", () => {
       .mockRejectedValueOnce(new Error("player stop failed"));
 
     // Replace generateAudio to return minimal data; audio is created via NonFinalizingAudio.
-    player.generateAudio = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    player.generateAudio = vi.fn(async () => new Uint8Array([1, 2, 3]).buffer);
 
     // Install MockAudio variant whose play doesn't auto-finalize.
     globalThis.Audio = NonFinalizingAudio as unknown as typeof Audio;
 
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     // Spy on URL.revokeObjectURL before speak() creates the blob URL.
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
@@ -315,7 +315,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("hello");
 
@@ -344,7 +344,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     const speaking = manager.speak("hello");
     speaking.catch(() => undefined);
@@ -372,7 +372,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.speak("hello");
     const context = MockAudioContext.lastInstance!;

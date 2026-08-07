@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { createLipSyncAnalyzer } from "../src/lipsync-analyzer";
 
 class MockAnalyser {
@@ -48,8 +56,10 @@ class MockAudioContext {
 
 describe("createLipSyncAnalyzer", () => {
   const originalAudioContext = window.AudioContext;
-  let requestAnimationFrameSpy: ReturnType<typeof vi.spyOn>;
-  let cancelAnimationFrameSpy: ReturnType<typeof vi.spyOn>;
+  let requestAnimationFrameSpy: MockInstance<
+    (callback: FrameRequestCallback) => number
+  >;
+  let cancelAnimationFrameSpy: MockInstance<(handle: number) => void>;
 
   beforeEach(() => {
     MockAudioContext.lastInstance = undefined;

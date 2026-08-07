@@ -1,4 +1,9 @@
-import { Charivo, type Character, type EventMap } from "@charivo/core";
+import {
+  Charivo,
+  type AvatarControlCatalog,
+  type Character,
+  type EventMap,
+} from "@charivo/core";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import {
   SET_EXPRESSION_TOOL_NAME,
@@ -55,7 +60,7 @@ const AVATAR_CATALOG = {
     // expression + motion choice instead of only a generic emphasis motion.
     Wave: 1,
   },
-} as const;
+} satisfies AvatarControlCatalog;
 
 const ALL_TEST_TOOLS = createAvatarControlTools(AVATAR_CATALOG);
 
@@ -125,7 +130,7 @@ const lastErrorElement = requiredElement<HTMLSpanElement>("last-error");
 const assistantTextElement = requiredElement<HTMLPreElement>("assistant-text");
 const eventLogElement = requiredElement<HTMLPreElement>("event-log");
 
-const subscriptions: Array<keyof EventMap> = [
+const subscriptions = [
   "realtime:session:start",
   "realtime:session:end",
   "realtime:state",
@@ -143,102 +148,117 @@ const subscriptions: Array<keyof EventMap> = [
   "avatar:motion",
   "avatar:gaze",
   "realtime:error",
-];
+] as const satisfies ReadonlyArray<keyof EventMap>;
+
+/**
+ * `charivo.on` types its payload from the event name alone, so subscribing in a
+ * loop widens it to every `EventMap` value at once and the switch below cannot
+ * narrow it. Re-pairing each payload with the name it arrived under rebuilds a
+ * discriminated union, which the destructured switch does narrow.
+ */
+type HarnessEvent = {
+  [K in (typeof subscriptions)[number]]: { event: K; payload: EventMap[K] };
+}[(typeof subscriptions)[number]];
 
 for (const eventName of subscriptions) {
   charivo.on(eventName, (payload) => {
     recordEvent(eventName, payload);
+    handleHarnessEvent({ event: eventName, payload } as HarnessEvent);
+  });
+}
 
-    switch (eventName) {
-      case "realtime:session:start":
-      case "realtime:session:end":
-      case "realtime:state": {
-        const realtimeState = payload.state;
-        state.sessionStatus = realtimeState.session.status;
-        state.connection = realtimeState.connection;
-        state.assistantStatus = realtimeState.response.status;
-        state.sessionInstructions =
-          realtimeState.session.config?.instructions ?? null;
-        if (realtimeState.response.text) {
-          state.assistantText = realtimeState.response.text;
-        }
-        if (
-          (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
-          eventName === "realtime:session:start" &&
-          state.voiceLatency.sessionStartAt === null
-        ) {
-          state.voiceLatency.sessionStartAt = Date.now();
-        }
-        break;
+function handleHarnessEvent(harnessEvent: HarnessEvent): void {
+  const { event: eventName, payload } = harnessEvent;
+
+  switch (eventName) {
+    case "realtime:session:start":
+    case "realtime:session:end":
+    case "realtime:state": {
+      const realtimeState = payload.state;
+      state.sessionStatus = realtimeState.session.status;
+      state.connection = realtimeState.connection;
+      state.assistantStatus = realtimeState.response.status;
+      state.sessionInstructions =
+        realtimeState.session.config?.instructions ?? null;
+      if (realtimeState.response.text) {
+        state.assistantText = realtimeState.response.text;
       }
-
-      case "realtime:assistant:start":
-        state.assistantStatus = "responding";
-        state.assistantText = "";
-        if (
-          (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
-          state.voiceLatency.firstAssistantEventAt === null &&
-          state.voiceLatency.sessionStartAt !== null
-        ) {
-          state.voiceLatency.firstAssistantEventAt = Date.now();
-          state.voiceLatency.deltaMs =
-            state.voiceLatency.firstAssistantEventAt -
-            state.voiceLatency.sessionStartAt;
-        }
-        break;
-
-      case "realtime:assistant:delta":
-        state.assistantText += payload.text;
-        break;
-
-      case "realtime:assistant:done":
-        state.assistantStatus = "completed";
-        state.assistantCompletions += 1;
-        state.assistantText = payload.text;
-        break;
-
-      case "realtime:tool:call":
-        state.toolCalls.push({ name: payload.name, callId: payload.callId });
-        break;
-
-      case "realtime:usage":
-        state.usageEvents.push(payload);
-        break;
-
-      case "avatar:expression":
-        state.avatarEvents.push({
-          type: "expression",
-          expressionId: payload.expressionId,
-        });
-        break;
-
-      case "avatar:motion":
-        state.avatarEvents.push({
-          type: "motion",
-          group: payload.group,
-          index: payload.index,
-        });
-        break;
-
-      case "avatar:gaze":
-        state.avatarEvents.push({
-          type: "gaze",
-          x: payload.x,
-          y: payload.y,
-        });
-        break;
-
-      case "realtime:tool:error":
-      case "realtime:error":
-        state.lastError = payload.error.message;
-        break;
-
-      default:
-        break;
+      if (
+        (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
+        eventName === "realtime:session:start" &&
+        state.voiceLatency.sessionStartAt === null
+      ) {
+        state.voiceLatency.sessionStartAt = Date.now();
+      }
+      break;
     }
 
-    render();
-  });
+    case "realtime:assistant:start":
+      state.assistantStatus = "responding";
+      state.assistantText = "";
+      if (
+        (HARNESS_MODE === "voice-e2e" || HARNESS_MODE === "voice-baseline") &&
+        state.voiceLatency.firstAssistantEventAt === null &&
+        state.voiceLatency.sessionStartAt !== null
+      ) {
+        state.voiceLatency.firstAssistantEventAt = Date.now();
+        state.voiceLatency.deltaMs =
+          state.voiceLatency.firstAssistantEventAt -
+          state.voiceLatency.sessionStartAt;
+      }
+      break;
+
+    case "realtime:assistant:delta":
+      state.assistantText += payload.text;
+      break;
+
+    case "realtime:assistant:done":
+      state.assistantStatus = "completed";
+      state.assistantCompletions += 1;
+      state.assistantText = payload.text;
+      break;
+
+    case "realtime:tool:call":
+      state.toolCalls.push({ name: payload.name, callId: payload.callId });
+      break;
+
+    case "realtime:usage":
+      state.usageEvents.push(payload);
+      break;
+
+    case "avatar:expression":
+      state.avatarEvents.push({
+        type: "expression",
+        expressionId: payload.expressionId,
+      });
+      break;
+
+    case "avatar:motion":
+      state.avatarEvents.push({
+        type: "motion",
+        group: payload.group,
+        index: payload.index,
+      });
+      break;
+
+    case "avatar:gaze":
+      state.avatarEvents.push({
+        type: "gaze",
+        x: payload.x,
+        y: payload.y,
+      });
+      break;
+
+    case "realtime:tool:error":
+    case "realtime:error":
+      state.lastError = payload.error.message;
+      break;
+
+    default:
+      break;
+  }
+
+  render();
 }
 
 connectButton.addEventListener("click", () => {

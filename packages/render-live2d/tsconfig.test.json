@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["vitest/globals", "node"]
+  },
+  "include": [
+    "src/**/*",
+    "__tests__/**/*.ts",
+    "CubismSdkForWeb-5-r.4/Core/live2dcubismcore.d.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

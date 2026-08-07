@@ -11,7 +11,7 @@ describe("STTManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createSTTManager(transcriber);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.start({ language: "en" });
 
@@ -30,7 +30,7 @@ describe("STTManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createSTTManager(transcriber);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await manager.start();
     const transcription = await manager.stop();
@@ -65,7 +65,7 @@ describe("STTManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createSTTManager(transcriber);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await expect(manager.start()).rejects.toThrow("mic denied");
     expect(emitter.emit).toHaveBeenCalledWith("stt:error", { error });
@@ -83,7 +83,7 @@ describe("STTManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createSTTManager(transcriber);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     await expect(manager.stop()).rejects.toThrow("transcription failed");
     expect(emitter.emit).toHaveBeenCalledWith("stt:error", { error });
@@ -102,7 +102,7 @@ describe("STTManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createSTTManager(transcriber);
 
-    manager.setEventEmitter(emitter);
+    manager.setEventEmitter!(emitter);
 
     expect(transcriber.onPartial).toHaveBeenCalledTimes(1);
 

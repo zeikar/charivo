@@ -1,4 +1,9 @@
-import { Charivo, type Character, type Renderer } from "@charivo/core";
+import {
+  Charivo,
+  type AvatarControlCatalog,
+  type Character,
+  type Renderer,
+} from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import {
@@ -40,7 +45,7 @@ const TEST_CHARACTER: Character = {
 const AVATAR_CATALOG = {
   expressions: ["happy", "sad", "surprised"],
   motions: { greeting: 2 },
-} as const;
+} satisfies AvatarControlCatalog;
 
 const DEFAULT_RECORD_MS = 3500;
 

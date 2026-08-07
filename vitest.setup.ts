@@ -1,11 +1,9 @@
 import { vi } from "vitest";
 
+// `setImmediate` / `clearImmediate` are already typed on globalThis by the node
+// types; re-declaring them here would intersect into an unassignable type. Only
+// the members node does not know about are added.
 const globalAny = globalThis as typeof globalThis & {
-  setImmediate?: (
-    fn: (...args: unknown[]) => void,
-    ...args: unknown[]
-  ) => number;
-  clearImmediate?: (id: number) => void;
   Audio?: typeof Audio;
 };
 
@@ -55,9 +53,7 @@ if (typeof window !== "undefined") {
   }
 
   class MutationObserverStub {
-    constructor(private callback: MutationCallback) {
-      this.callback = callback;
-    }
+    constructor(_callback: MutationCallback) {}
     observe = vi.fn();
     disconnect = vi.fn();
     takeRecords = vi.fn(() => []);

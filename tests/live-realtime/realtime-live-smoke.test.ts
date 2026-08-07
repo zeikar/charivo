@@ -66,6 +66,14 @@ class LiveBootstrapSmokeClient implements RealtimeTransportClient {
     this.emit({ type: "session.started" });
   }
 
+  async updateSession(config?: RealtimeSessionConfig): Promise<void> {
+    this.latestConfig = config ?? this.latestConfig;
+  }
+
+  async recover(config?: RealtimeSessionConfig): Promise<void> {
+    await this.connect(config ?? this.latestConfig);
+  }
+
   async disconnect(): Promise<void> {
     this.emit({ type: "session.ended" });
   }
@@ -240,7 +248,9 @@ liveDescribe("live realtime bootstrap and local manager plumbing", () => {
       expect(sessionStart.state.session.status).toBe("active");
 
       const bootstrap = client.bootstrap;
-      expect(bootstrap).not.toBeNull();
+      if (bootstrap === null) {
+        throw new Error("Expected the smoke client to capture a bootstrap");
+      }
       expect(isRealtimeSessionBootstrap(bootstrap)).toBe(true);
       expect(bootstrap).toMatchObject({
         adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
@@ -289,7 +299,7 @@ async function requestLiveBootstrap(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(request),
-    }) as unknown as import("next/server").NextRequest,
+    }) as unknown as Parameters<typeof POST>[0],
   );
 
   if (!response.ok) {

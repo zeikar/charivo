@@ -107,7 +107,8 @@ export default defineConfig({
                 headers: {
                   "content-type": request.headers["content-type"] ?? "",
                 },
-                body: rawBody,
+                // Buffer is not a BodyInit; a view over the same bytes is.
+                body: new Uint8Array(rawBody),
               });
               const form = await webRequest.formData();
               const audio = form.get("audio");

@@ -172,7 +172,7 @@ describe("getOpenAIRealtimeAgentsBootstrap — precedence", () => {
       request,
     );
 
-    expect(result.clientSecret).toBe("from-bootstrap");
+    expect(result).toHaveProperty("clientSecret", "from-bootstrap");
     expect(sessionBootstrap).toHaveBeenCalledWith(request);
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -195,7 +195,7 @@ describe("getOpenAIRealtimeAgentsBootstrap — precedence", () => {
       request,
     );
 
-    expect(result.clientSecret).toBe("from-endpoint");
+    expect(result).toHaveProperty("clientSecret", "from-endpoint");
 
     const calls = (mockFetch as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls).toHaveLength(1);
@@ -212,7 +212,7 @@ describe("getOpenAIRealtimeAgentsBootstrap — precedence", () => {
       request,
     );
 
-    expect(result.clientSecret).toBe("ek_only_key");
+    expect(result).toHaveProperty("clientSecret", "ek_only_key");
   });
 
   it("throws CharivoStateError naming all three options when none are provided", async () => {
