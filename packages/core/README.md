@@ -14,8 +14,8 @@ It exports:
 - modality-neutral tool contracts (`ToolDefinition`, `ToolRegistration`, ...)
   plus the validation and execution helpers (`validateToolArguments`,
   `assertToolResultObject`, `createToolRegistry`, `withToolTimeout`,
-  `serializeToolResult`, `snapshotToolResult`, `createToolFailureOutput`)
-  shared by `@charivo/llm` and `@charivo/realtime`
+  `snapshotToolResult`, `createToolFailureOutput`) shared by `@charivo/llm`
+  and `@charivo/realtime`
 
 ## Install
 
@@ -126,19 +126,16 @@ Execution helpers, shared so both managers run tools with the same guarantees:
 - `withToolTimeout(promise, timeoutMs, toolName, toolLabel?)`: rejects with
   `${toolLabel} "${toolName}" timed out after ${timeoutMs}ms` and always clears
   its timer.
-- `serializeToolResult(result, toolName, toolLabel?)`: returns the JSON string,
-  throwing when the result cannot be represented as JSON. `JSON.stringify`
-  returns the value `undefined` (without throwing) for a result whose
-  `toJSON()` yields `undefined`, which would otherwise reach the transport with
-  its payload silently dropped.
 - `snapshotToolResult(result, toolName, toolLabel?): ToolResultSnapshot`:
   serializes once and returns `{ serialized, snapshot }` — the string for the
   model's tool turn or the transport, and its parsed form for the `tool:result`
   event and the result projectors. Call it inside a runner's failure boundary
-  so an unrepresentable result degrades to a failure output. The parsed value
-  is re-checked against the tool-result contract, since a `toJSON()` can still
-  yield null, an array, or a primitive. Both tool runners use this, which is
-  what makes a tool result mean the same thing across modalities.
+  so an unrepresentable result degrades to a failure output: `JSON.stringify`
+  returns the value `undefined` (without throwing) for a result whose
+  `toJSON()` yields `undefined`, and a `toJSON()` can also yield null, an
+  array, or a primitive, so the parsed value is re-checked against the
+  tool-result contract. Both tool runners use this, which is what makes a tool
+  result mean the same thing across modalities.
 - `createToolFailureOutput(error)`: the always-serializable
   `{ success: false, error }` output handed back to the model when a call fails.
 

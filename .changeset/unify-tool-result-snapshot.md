@@ -25,4 +25,9 @@ JSON values are unaffected.
 returning `{ serialized, snapshot }`, plus its `ToolResultSnapshot` type. Both
 tool runners now call it instead of each maintaining their own
 serialize/parse/re-assert sequence, so the two paths cannot drift apart again.
-`serializeToolResult` is unchanged and still exported.
+
+`serializeToolResult` is no longer exported. It became package-internal to
+`snapshotToolResult`, which is now its only caller — callers always need the
+parsed snapshot alongside the string, so exporting the string-only half offered
+no supported use. Its behavior is unchanged; if you were calling it directly,
+use `snapshotToolResult(...).serialized`.

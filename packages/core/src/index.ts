@@ -41,7 +41,6 @@ export {
 export {
   createToolFailureOutput,
   createToolRegistry,
-  serializeToolResult,
   snapshotToolResult,
   type ToolRegistry,
   type ToolResultSnapshot,

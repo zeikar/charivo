@@ -2,11 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createToolFailureOutput,
   createToolRegistry,
-  serializeToolResult,
   snapshotToolResult,
   withToolTimeout,
   type ToolRegistration,
 } from "@charivo/core";
+// Package-internal, so it is not on the package root the other imports use.
+import { serializeToolResult } from "../src/tool-execution";
 
 function createRegistration(name: string): ToolRegistration {
   return {

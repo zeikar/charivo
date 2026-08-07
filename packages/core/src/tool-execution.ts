@@ -91,8 +91,11 @@ export async function withToolTimeout<T>(
 /**
  * Serializes a tool result, throwing when it cannot be represented as JSON.
  *
- * Call this inside a tool runner's failure boundary so an unserializable
- * output degrades to a failure output instead of reaching the transport.
+ * Package-internal: exported for this module's unit tests only, and
+ * deliberately NOT re-exported from the package root. `snapshotToolResult` is
+ * the supported entry point — it is the only caller, and callers need the
+ * parsed snapshot alongside the string.
+ *
  * `JSON.stringify` is declared to return `string`, but it returns the value
  * `undefined` at runtime for inputs whose `toJSON()` yields `undefined` — a
  * case that throws nothing and would otherwise drop the payload silently, so
@@ -129,8 +132,8 @@ export interface ToolResultSnapshot {
  *
  * Call this inside a tool runner's failure boundary: a result that cannot be
  * represented as JSON throws here and degrades to a failure output instead of
- * reaching a transport or a projector. `serializeToolResult` proves the result
- * is representable, but a `toJSON()` can still yield null, an array, or a
+ * reaching a transport or a projector. Serializing proves the result is
+ * representable, but a `toJSON()` can still yield null, an array, or a
  * primitive, so the parsed value is checked against the tool-result contract
  * rather than cast to it.
  */
