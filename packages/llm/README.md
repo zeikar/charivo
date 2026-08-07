@@ -85,7 +85,7 @@ const manager = createLLMManager(
   after construction via `registerTool(tool)` / `unregisterTool(name)`
 - `resultProjectors?: ToolResultProjector[]` — run after a successful tool
   call, when an event emitter is attached (`Charivo.attachLLM(...)` wires one
-  automatically). A projector throwing turns into an `error` event
+  automatically). A projector throwing turns into an `llm:error` event
   (`Error` message: `` LLM result projector failed for tool "<name>": <cause> ``)
   instead of failing the reply.
 - `toolInstructions?: string` — appended to the character system prompt, but

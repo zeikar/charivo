@@ -869,7 +869,7 @@ describe("LLMManager tool loop", () => {
     expect(projector).not.toHaveBeenCalled();
   });
 
-  it("surfaces a throwing projector as an error event", async () => {
+  it("surfaces a throwing projector as an llm:error event", async () => {
     const { client } = buildToolClient([
       { content: "", toolCalls: [buildToolCall()] },
       { content: FINAL_TEXT },
@@ -890,7 +890,7 @@ describe("LLMManager tool loop", () => {
     const response = await manager.generateResponse(buildUserMessage("hello"));
 
     expect(response).toBe(FINAL_TEXT);
-    expect(emit).toHaveBeenCalledWith("error", {
+    expect(emit).toHaveBeenCalledWith("llm:error", {
       error: new Error(
         'LLM result projector failed for tool "setExpression": projector exploded',
       ),

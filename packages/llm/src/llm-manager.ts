@@ -324,7 +324,7 @@ export class LLMManager {
           },
         });
       } catch (error) {
-        eventEmitter.emit("error", {
+        eventEmitter.emit("llm:error", {
           error: new Error(
             `LLM result projector failed for tool "${name}": ${toError(error).message}`,
           ),

@@ -166,6 +166,7 @@ Important event names include:
 - `stt:partial`
 - `stt:stop`
 - `stt:error`
+- `llm:error`
 - `realtime:session:start`
 - `realtime:session:end`
 - `realtime:state`

@@ -473,7 +473,7 @@ export type EventMap = {
   "avatar:gaze": GazeCoordinates;
   "realtime:text:delta": { text: string };
   "realtime:error": { error: Error };
-  error: { error: Error };
+  "llm:error": { error: Error };
 };
 
 export interface CharivoEventEmitter {
