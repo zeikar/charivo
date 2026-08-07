@@ -21,7 +21,7 @@ export class STTManagerImpl implements STTManager {
   constructor(sttTranscriber: STTTranscriber) {
     this.sttTranscriber = sttTranscriber;
     this.sttTranscriber.onPartial?.((transcription) =>
-      this.eventEmitter?.emit("stt:partial", { transcription }),
+      this.eventEmitter?.emit("stt:partial", { text: transcription }),
     );
   }
 
@@ -53,7 +53,7 @@ export class STTManagerImpl implements STTManager {
   async stop(): Promise<string> {
     try {
       const transcription = await this.sttTranscriber.stopRecording();
-      this.eventEmitter?.emit("stt:stop", { transcription });
+      this.eventEmitter?.emit("stt:stop", { text: transcription });
       return transcription;
     } catch (error) {
       const typedError = toCharivoError("provider", error);

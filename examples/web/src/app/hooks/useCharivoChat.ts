@@ -543,20 +543,20 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         // Cumulative interim snapshot, not an incremental fragment: replace the
         // draft so the live text lands in the same box the final transcript
         // overwrites at stt:stop.
-        instance.on("stt:partial", ({ transcription }) => {
+        instance.on("stt:partial", ({ text }) => {
           if (disposed) {
             return;
           }
-          setInput(transcription);
+          setInput(text);
         });
 
-        instance.on("stt:stop", ({ transcription }) => {
+        instance.on("stt:stop", ({ text }) => {
           if (disposed) {
             return;
           }
           setIsRecording(false);
           setIsTranscribing(false);
-          setInput(transcription);
+          setInput(text);
         });
 
         instance.on("stt:error", ({ error }) => {

@@ -69,10 +69,10 @@ const charivo = new Charivo();
 charivo.attachSTT(sttManager);
 
 charivo.on("stt:partial", (data) => {
-  partials.push(data.transcription);
+  partials.push(data.text);
 });
 charivo.on("stt:stop", (data) => {
-  final = data.transcription;
+  final = data.text;
 });
 charivo.on("stt:error", (data) => {
   error = data.error.message;

@@ -37,7 +37,7 @@ describe("STTManagerImpl", () => {
 
     expect(transcription).toBe("hello world");
     expect(emitter.emit).toHaveBeenCalledWith("stt:stop", {
-      transcription: "hello world",
+      text: "hello world",
     });
   });
 
@@ -109,7 +109,7 @@ describe("STTManagerImpl", () => {
     storedCallback!("draft text");
 
     expect(emitter.emit).toHaveBeenCalledWith("stt:partial", {
-      transcription: "draft text",
+      text: "draft text",
     });
   });
 });

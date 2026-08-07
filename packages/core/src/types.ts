@@ -420,8 +420,8 @@ export type EventMap = {
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };
   "stt:start": { options?: STTOptions };
-  "stt:partial": { transcription: string };
-  "stt:stop": { transcription: string };
+  "stt:partial": { text: string };
+  "stt:stop": { text: string };
   "stt:error": { error: Error };
   "realtime:session:start": {
     state: RealtimeState;
