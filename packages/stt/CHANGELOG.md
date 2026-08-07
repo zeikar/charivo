@@ -1,5 +1,12 @@
 # @charivo/stt
 
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies [370dfdc]
+  - @charivo/core@0.19.0
+
 ## 0.6.3
 
 ### Patch Changes
