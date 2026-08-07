@@ -423,6 +423,22 @@ export type EventMap = {
   "stt:partial": { text: string };
   "stt:stop": { text: string };
   "stt:error": { error: Error };
+  // Emitted by both the LLM and realtime tool paths.
+  "tool:call": {
+    name: string;
+    args: Record<string, unknown>;
+    callId?: string;
+  };
+  "tool:result": {
+    name: string;
+    output: Record<string, unknown>;
+    callId?: string;
+  };
+  "tool:error": {
+    name: string;
+    error: Error;
+    callId?: string;
+  };
   "realtime:session:start": {
     state: RealtimeState;
     reason?: RealtimeSessionTransitionReason;
@@ -436,21 +452,6 @@ export type EventMap = {
   "realtime:assistant:start": { state: RealtimeState };
   "realtime:assistant:delta": { text: string };
   "realtime:assistant:done": { text: string };
-  "realtime:tool:call": {
-    name: string;
-    args: Record<string, unknown>;
-    callId?: string;
-  };
-  "realtime:tool:result": {
-    name: string;
-    output: Record<string, unknown>;
-    callId?: string;
-  };
-  "realtime:tool:error": {
-    name: string;
-    error: Error;
-    callId?: string;
-  };
   "realtime:reconnect:attempt": {
     attempt: number;
     delayMs: number;

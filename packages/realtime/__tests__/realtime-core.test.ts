@@ -346,12 +346,12 @@ describe("realtime-core", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "exp_happy",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:call", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("tool:call", {
       name: "setExpression",
       args: { expressionId: "exp_happy" },
       callId: "call-1",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:result", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("tool:result", {
       name: "describeScene",
       output: {
         success: true,
@@ -449,7 +449,7 @@ describe("realtime-core", () => {
           'Realtime tool "setMood" arguments failed schema validation: property "count" must be integer',
       },
     );
-    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([
+    expect(getEventPayloads(eventEmitter, "tool:error")).toEqual([
       {
         name: "setMood",
         error: expect.any(Error),
@@ -574,7 +574,7 @@ describe("realtime-core", () => {
           'Realtime tool "reportStatus" result could not be serialized to JSON',
       },
     );
-    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([
+    expect(getEventPayloads(eventEmitter, "tool:error")).toEqual([
       {
         name: "reportStatus",
         error: expect.any(Error),
@@ -766,7 +766,7 @@ describe("realtime-core", () => {
       eventEmitter.emit as ReturnType<typeof vi.fn>
     ).mock.calls.findIndex(
       ([name, payload]) =>
-        name === "realtime:tool:result" &&
+        name === "tool:result" &&
         (payload as { callId?: string }).callId === "call-expression",
     );
     const projectedExpressionIndex = (
@@ -802,7 +802,7 @@ describe("realtime-core", () => {
     });
 
     expect(getEventPayloads(eventEmitter, "avatar:expression")).toEqual([]);
-    expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
+    expect(getEventPayloads(eventEmitter, "tool:result")).toEqual([
       {
         name: "setExpression",
         output: {
@@ -848,8 +848,8 @@ describe("realtime-core", () => {
     });
 
     expect(stub.client.sendToolResult).toHaveBeenCalledTimes(1);
-    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([]);
-    expect(getEventPayloads(eventEmitter, "realtime:tool:result")).toEqual([
+    expect(getEventPayloads(eventEmitter, "tool:error")).toEqual([]);
+    expect(getEventPayloads(eventEmitter, "tool:result")).toEqual([
       {
         name: "setExpression",
         output: {
@@ -948,17 +948,17 @@ describe("realtime-core", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:assistant:delta", {
       text: "hel",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:result", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("tool:result", {
       name: "serverTool",
       output: { success: true },
       callId: "call-server",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:error", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("tool:error", {
       name: "setExpression",
       error: expect.any(Error),
       callId: "call-invalid",
     });
-    expect(eventEmitter.emit).toHaveBeenCalledWith("realtime:tool:error", {
+    expect(eventEmitter.emit).toHaveBeenCalledWith("tool:error", {
       name: "missingTool",
       error: expect.any(Error),
       callId: "call-missing",

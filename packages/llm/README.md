@@ -102,6 +102,26 @@ failure — unknown tool, invalid arguments, handler throw/timeout, non-object
 result — becomes a `{ success: false, error }` tool output so the reply
 always continues instead of throwing.
 
+### Tool Events
+
+When an event emitter is attached, the manager emits `tool:call` before each
+tool executes, then either `tool:result` on success or `tool:error` on any
+failure. `@charivo/realtime` emits the same three events, so a listener can
+observe tool activity without caring which modality ran the tool.
+
+`tool:result` carries the JSON-serialized snapshot of the handler result — the
+same value the model's tool turn receives — so a result with a `toJSON()`
+surfaces as its round-tripped form.
+
+Known, deliberate divergence: `resultProjectors` do **not** receive that
+snapshot. LLM projectors are called with the original validated handler result
+(so `Date`, `undefined`, and getter properties survive), while
+`@charivo/realtime` projectors receive the snapshot. A projector doing
+`output.startedAt.getTime()` therefore works on the LLM path but receives an
+ISO string on the realtime path and throws, and `undefined` properties
+disappear there entirely. Projectors that must behave identically across both
+modalities should only read plain JSON values.
+
 ### Round Cap
 
 The tool loop executes at most 3 tool-calling rounds. After the third round,

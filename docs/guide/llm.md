@@ -124,7 +124,10 @@ charivo.attachLLM(manager);
 `attachLLM(...)` wires the event emitter that `resultProjectors` need to turn
 successful tool calls into `avatar:expression` / `avatar:motion` /
 `avatar:gaze` events; a `RenderManager` attached to the same `Charivo`
-instance already listens for them.
+instance already listens for them. The same emitter also makes the tool loop
+publish `tool:call` / `tool:result` / `tool:error` around every tool execution,
+the same events `RealtimeManager` emits, so you can log or inspect tool activity
+from one place.
 
 On the server side, your route needs to accept an optional `tools` array and
 call the tool-calling variant of your provider whenever the request needs it —

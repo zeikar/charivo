@@ -167,6 +167,9 @@ Important event names include:
 - `stt:stop`
 - `stt:error`
 - `llm:error`
+- `tool:call`
+- `tool:result`
+- `tool:error`
 - `realtime:session:start`
 - `realtime:session:end`
 - `realtime:state`
@@ -174,9 +177,6 @@ Important event names include:
 - `realtime:assistant:start`
 - `realtime:assistant:delta`
 - `realtime:assistant:done`
-- `realtime:tool:call`
-- `realtime:tool:result`
-- `realtime:tool:error`
 - `realtime:usage`
 - `avatar:expression`
 - `avatar:motion`

@@ -227,12 +227,8 @@ liveDescribe("live realtime bootstrap and local manager plumbing", () => {
       "realtime:session:start",
       client,
     );
-    const toolCallPromise = waitForEvent(charivo, "realtime:tool:call", client);
-    const toolResultPromise = waitForEvent(
-      charivo,
-      "realtime:tool:result",
-      client,
-    );
+    const toolCallPromise = waitForEvent(charivo, "tool:call", client);
+    const toolResultPromise = waitForEvent(charivo, "tool:result", client);
     const expressionPromise = waitForEvent(
       charivo,
       "avatar:expression",

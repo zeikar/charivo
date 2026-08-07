@@ -198,7 +198,9 @@ await manager.startSession({
 ```
 
 `resultProjectors` run after successful local tool execution and can emit
-additional app-level events such as `avatar:expression`.
+additional app-level events such as `avatar:expression`. They receive the JSON
+snapshot of the handler result — exactly what was sent to the transport — not
+the live handler object.
 
 When a logger is configured, `RealtimeManager` also injects a per-session
 `sessionId` into every log context. If the caller also supplies `sessionId` in
@@ -249,9 +251,9 @@ from the registry, not from `defaultSessionConfig.tools`.
 Before invoking a local tool handler, the manager validates incoming tool
 arguments against the tool definition's `required`, `enum`, and basic JSON
 Schema `type` fields. Invalid arguments follow the normal tool failure path:
-`realtime:tool:error` is emitted and a `{ success: false, error }` result is
-sent back to the transport. Nested object/array schemas, `additionalProperties`,
-and union `type` arrays are not enforced.
+`tool:error` is emitted and a `{ success: false, error }` result is sent back
+to the transport. Nested object/array schemas, `additionalProperties`, and
+union `type` arrays are not enforced.
 
 ```ts
 manager.registerTool({
@@ -294,9 +296,9 @@ When connected, the manager relays:
 - `realtime:assistant:start`
 - `realtime:assistant:delta`
 - `realtime:assistant:done`
-- `realtime:tool:call`
-- `realtime:tool:result`
-- `realtime:tool:error`
+- `tool:call`
+- `tool:result`
+- `tool:error`
 - `realtime:usage`
 - `realtime:error`
 - `tts:lipsync:update`

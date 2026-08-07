@@ -590,6 +590,16 @@ describe("LLMManager tool loop", () => {
     expect(emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "smile",
     });
+    expect(emit).toHaveBeenCalledWith("tool:call", {
+      name: "setExpression",
+      args: { expressionId: "smile" },
+      callId: "call-1",
+    });
+    expect(emit).toHaveBeenCalledWith("tool:result", {
+      name: "setExpression",
+      output: { success: true, expressionId: "smile" },
+      callId: "call-1",
+    });
 
     expect(payloads[0]).toEqual([
       { role: "system", content: expect.stringContaining("You are Hiyori") },
@@ -786,10 +796,12 @@ describe("LLMManager tool loop", () => {
       { content: "", toolCalls: [buildToolCall({}, "playMotion")] },
       { content: FINAL_TEXT },
     ]);
+    const { eventEmitter, emit } = buildEmitterSpy();
     const manager = new LLMManager(client, {
       tools: [buildExpressionTool(expressionHandler)],
     });
 
+    manager.setEventEmitter(eventEmitter);
     manager.setCharacter(character);
 
     const response = await manager.generateResponse(buildUserMessage("hello"));
@@ -799,6 +811,19 @@ describe("LLMManager tool loop", () => {
       success: false,
       error: 'No LLM tool registered for "playMotion"',
     });
+    expect(emit).toHaveBeenCalledWith("tool:call", {
+      name: "playMotion",
+      args: {},
+      callId: "call-1",
+    });
+    expect(emit).toHaveBeenCalledWith("tool:error", {
+      name: "playMotion",
+      error: new Error('No LLM tool registered for "playMotion"'),
+      callId: "call-1",
+    });
+    expect(
+      emit.mock.calls.filter(([event]) => event === "tool:result"),
+    ).toEqual([]);
   });
 
   it("stops executing tools after the round cap", async () => {
@@ -897,6 +922,51 @@ describe("LLMManager tool loop", () => {
     });
   });
 
+  it("emits the serialized snapshot while projectors keep the live result", async () => {
+    const { client, payloads } = buildToolClient([
+      { content: "", toolCalls: [buildToolCall()] },
+      { content: FINAL_TEXT },
+    ]);
+    const result: Record<string, unknown> = {
+      success: true,
+      startedAt: new Date("2024-01-01T00:00:00Z"),
+      toJSON: () => ({ success: true, expressionId: "smile" }),
+    };
+    const projectedOutputs: Array<Record<string, unknown>> = [];
+    const projector: ToolResultProjector = ({ output }) => {
+      projectedOutputs.push(output);
+    };
+    const { eventEmitter, emit } = buildEmitterSpy();
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(async () => result)],
+      resultProjectors: [projector],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    manager.setCharacter(character);
+
+    const response = await manager.generateResponse(buildUserMessage("hello"));
+
+    expect(response).toBe(FINAL_TEXT);
+
+    // The event carries the JSON round-trip, matching what realtime emits.
+    expect(emit).toHaveBeenCalledWith("tool:result", {
+      name: "setExpression",
+      output: { success: true, expressionId: "smile" },
+      callId: "call-1",
+    });
+
+    // Projectors deliberately keep receiving the live handler result, so
+    // non-JSON values such as Date survive for them.
+    expect(projectedOutputs).toHaveLength(1);
+    expect(projectedOutputs[0]).toBe(result);
+
+    expect(readToolTurn(payloads[1]!)).toEqual({
+      success: true,
+      expressionId: "smile",
+    });
+  });
+
   it("converts unserializable tool outputs into failure outputs", async () => {
     const circular: Record<string, unknown> = { success: true };
     circular.self = circular;
@@ -908,6 +978,12 @@ describe("LLMManager tool loop", () => {
         label: "toJSON-undefined",
         result: { success: true, toJSON: () => undefined },
       },
+      // The snapshot recheck catches a toJSON() that is serializable but is not
+      // an object, so it degrades here instead of escaping through the event.
+      {
+        label: "toJSON-primitive",
+        result: { success: true, toJSON: () => "not an object" },
+      },
     ];
 
     for (const { label, result } of cases) {
@@ -916,7 +992,7 @@ describe("LLMManager tool loop", () => {
         { content: FINAL_TEXT },
       ]);
       const projector = vi.fn();
-      const { eventEmitter } = buildEmitterSpy();
+      const { eventEmitter, emit } = buildEmitterSpy();
       const manager = new LLMManager(client, {
         tools: [buildExpressionTool(async () => result)],
         resultProjectors: [projector],
@@ -931,6 +1007,16 @@ describe("LLMManager tool loop", () => {
 
       expect(response, label).toBe(FINAL_TEXT);
       expect(projector, label).not.toHaveBeenCalled();
+
+      expect(
+        emit.mock.calls.filter(([event]) => event === "tool:result"),
+        label,
+      ).toEqual([]);
+      expect(emit, label).toHaveBeenCalledWith("tool:error", {
+        name: "setExpression",
+        error: expect.any(Error),
+        callId: "call-1",
+      });
 
       const output = readToolTurn(payloads[1]!);
       expect(output.success, label).toBe(false);

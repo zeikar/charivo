@@ -88,7 +88,7 @@ export async function executeRealtimeToolCall({
       defaultToolTimeoutMs,
     });
     await client.sendToolResult(event.callId, output);
-    emit("realtime:tool:result", {
+    emit("tool:result", {
       name: event.name,
       output,
       callId: event.callId,
@@ -228,7 +228,7 @@ function emitToolError(
     callId,
     error: error.message,
   });
-  emit("realtime:tool:error", {
+  emit("tool:error", {
     name,
     error,
     callId,

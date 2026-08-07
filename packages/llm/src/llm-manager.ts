@@ -258,8 +258,15 @@ export class LLMManager {
    * reply always continues.
    */
   private async executeToolCall(toolCall: LLMToolCall): Promise<string> {
-    let output: Record<string, unknown>;
+    let handlerResult: Record<string, unknown>;
+    let snapshot: Record<string, unknown>;
     let serialized: string;
+
+    this.eventEmitter?.emit("tool:call", {
+      name: toolCall.name,
+      args: toolCall.arguments,
+      callId: toolCall.id,
+    });
 
     try {
       const tool = this.toolRegistry.get(toolCall.name);
@@ -289,12 +296,36 @@ export class LLMManager {
         tool.definition.name,
         "LLM tool",
       );
-      output = result;
+      handlerResult = result;
+
+      // The event carries the JSON round-trip of the result so `tool:result`
+      // means the same thing from the LLM and realtime paths. A `toJSON()` can
+      // still yield null, an array, or a primitive, so the snapshot is checked
+      // against the same contract and degrades to the failure output below.
+      const parsed: unknown = JSON.parse(serialized);
+      assertToolResultObject(parsed, tool.definition.name, "LLM tool");
+      snapshot = parsed;
     } catch (error) {
-      return JSON.stringify(createToolFailureOutput(toError(error)));
+      const failure = toError(error);
+      this.eventEmitter?.emit("tool:error", {
+        name: toolCall.name,
+        error: failure,
+        callId: toolCall.id,
+      });
+      return JSON.stringify(createToolFailureOutput(failure));
     }
 
-    this.projectToolResult(toolCall.name, output, toolCall.id);
+    // Deliberate divergence: the event carries the snapshot so both modalities
+    // publish the same shape, but LLM projectors keep the original handler result
+    // (Date / undefined / getters survive) rather than silently changing what
+    // existing projectors already receive. Documented under "Tool Events" in the
+    // package README.
+    this.eventEmitter?.emit("tool:result", {
+      name: toolCall.name,
+      output: snapshot,
+      callId: toolCall.id,
+    });
+    this.projectToolResult(toolCall.name, handlerResult, toolCall.id);
 
     return serialized;
   }

@@ -667,7 +667,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           setRealtimeInterruptedDraft(null);
         });
 
-        instance.on("realtime:tool:call", ({ name, args, callId }) => {
+        instance.on("tool:call", ({ name, args, callId }) => {
           if (disposed) {
             return;
           }
@@ -687,7 +687,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           });
         });
 
-        instance.on("realtime:tool:result", ({ name, output, callId }) => {
+        instance.on("tool:result", ({ name, output, callId }) => {
           if (disposed) {
             return;
           }
@@ -713,7 +713,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           });
         });
 
-        instance.on("realtime:tool:error", ({ name, error, callId }) => {
+        instance.on("tool:error", ({ name, error, callId }) => {
           if (disposed) {
             return;
           }

@@ -137,9 +137,9 @@ const subscriptions = [
   "realtime:assistant:start",
   "realtime:assistant:delta",
   "realtime:assistant:done",
-  "realtime:tool:call",
-  "realtime:tool:result",
-  "realtime:tool:error",
+  "tool:call",
+  "tool:result",
+  "tool:error",
   "realtime:reconnect:attempt",
   "realtime:reconnect:success",
   "realtime:reconnect:exhausted",
@@ -218,7 +218,7 @@ function handleHarnessEvent(harnessEvent: HarnessEvent): void {
       state.assistantText = payload.text;
       break;
 
-    case "realtime:tool:call":
+    case "tool:call":
       state.toolCalls.push({ name: payload.name, callId: payload.callId });
       break;
 
@@ -249,7 +249,7 @@ function handleHarnessEvent(harnessEvent: HarnessEvent): void {
       });
       break;
 
-    case "realtime:tool:error":
+    case "tool:error":
     case "realtime:error":
       state.lastError = payload.error.message;
       break;

@@ -453,7 +453,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "tool.call":
-        this.eventEmitter?.emit("realtime:tool:call", {
+        this.eventEmitter?.emit("tool:call", {
           name: event.name,
           args: event.args,
           callId: event.callId,
@@ -477,7 +477,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "tool.result":
-        this.eventEmitter?.emit("realtime:tool:result", {
+        this.eventEmitter?.emit("tool:result", {
           name: event.name,
           output: event.output,
           callId: event.callId,
