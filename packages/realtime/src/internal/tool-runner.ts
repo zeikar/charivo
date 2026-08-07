@@ -5,10 +5,16 @@ import type {
   ToolRegistration,
   ToolResultProjector,
 } from "@charivo/core";
-import { assertToolResultObject } from "@charivo/core";
+import {
+  assertToolResultObject,
+  createToolFailureOutput,
+  serializeToolResult,
+  withToolTimeout,
+} from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import { validateToolArguments } from "./tool-args-validation";
-import { createFailureOutput, withTimeout } from "./tool-execution";
+
+const TOOL_LABEL = "Realtime tool";
 
 type ToolCallEvent = Extract<RealtimeTransportEvent, { type: "tool.call" }>;
 
@@ -126,7 +132,7 @@ async function runToolHandler({
 }): Promise<Record<string, unknown>> {
   validateToolArguments(tool.definition, event.args);
 
-  const result = await withTimeout(
+  const result = await withToolTimeout(
     tool.handler(event.args, {
       character,
       state,
@@ -134,11 +140,29 @@ async function runToolHandler({
     }),
     tool.timeoutMs ?? defaultToolTimeoutMs,
     tool.definition.name,
+    TOOL_LABEL,
   );
 
-  assertToolResultObject(result, tool.definition.name, "Realtime tool");
+  assertToolResultObject(result, tool.definition.name, TOOL_LABEL);
 
-  return result;
+  // Serialize once inside the failure boundary and hand the parsed snapshot
+  // downstream. Transports stringify the output themselves, so returning the
+  // live result would let a stateful `toJSON()` (or getter) pass this check and
+  // then yield something else — or `undefined` — at the transport boundary,
+  // silently dropping the wire `output`. The snapshot is exactly what the wire
+  // carries, and a result that cannot be represented as JSON throws here into
+  // the caller's failure path instead.
+  const snapshot: unknown = JSON.parse(
+    serializeToolResult(result, tool.definition.name, TOOL_LABEL),
+  );
+
+  // The assert above covers what the handler returned; `toJSON()` can still
+  // turn that into null, an array, or a primitive, so the snapshot that
+  // actually reaches the transport, the event, and the projectors is checked
+  // against the same contract rather than cast to it.
+  assertToolResultObject(snapshot, tool.definition.name, TOOL_LABEL);
+
+  return snapshot;
 }
 
 async function handleToolExecutionFailure(
@@ -152,7 +176,7 @@ async function handleToolExecutionFailure(
   emitToolError(name, error, callId, emit, log);
 
   try {
-    await client.sendToolResult(callId, createFailureOutput(error));
+    await client.sendToolResult(callId, createToolFailureOutput(error));
   } catch (sendError) {
     emitToolError(
       name,

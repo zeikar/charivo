@@ -520,6 +520,147 @@ describe("realtime-core", () => {
     );
   });
 
+  it("rejects handler results that cannot be serialized to JSON", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tool: ToolRegistration = {
+      definition: {
+        type: "function",
+        name: "reportStatus",
+        description: "Report the current status.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      // `toJSON` returning undefined makes JSON.stringify yield the value
+      // `undefined` without throwing, which would drop the wire `output` field.
+      handler: vi.fn(async () => ({ ok: true, toJSON: () => undefined })),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [tool],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "reportStatus",
+      args: {},
+      callId: "call-unserializable",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith(
+      "call-unserializable",
+      {
+        success: false,
+        error:
+          'Realtime tool "reportStatus" result could not be serialized to JSON',
+      },
+    );
+    expect(getEventPayloads(eventEmitter, "realtime:tool:error")).toEqual([
+      {
+        name: "reportStatus",
+        error: expect.any(Error),
+        callId: "call-unserializable",
+      },
+    ]);
+  });
+
+  it("sends a JSON-safe snapshot so a stateful toJSON cannot change the wire output", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    let serializations = 0;
+    const tool: ToolRegistration = {
+      definition: {
+        type: "function",
+        name: "reportUptime",
+        description: "Report the current uptime.",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      // Serializes cleanly for the runner's check, then yields undefined when
+      // the transport stringifies it again — the value must already be frozen.
+      handler: vi.fn(async () => ({
+        toJSON: () => (serializations++ === 0 ? { uptime: 42 } : undefined),
+      })),
+    };
+    const manager = createRealtimeManager(stub.client, {
+      tools: [tool],
+    });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    await stub.emit({
+      type: "tool.call",
+      name: "reportUptime",
+      args: {},
+      callId: "call-stateful-tojson",
+    });
+
+    expect(stub.client.sendToolResult).toHaveBeenCalledWith(
+      "call-stateful-tojson",
+      { uptime: 42 },
+    );
+
+    const sentOutput = vi.mocked(stub.client.sendToolResult).mock.calls[0]?.[1];
+    expect(JSON.stringify(sentOutput)).toBe('{"uptime":42}');
+  });
+
+  it("rejects results whose toJSON yields a non-object snapshot", async () => {
+    const cases = [
+      { name: "yieldsNull", value: null },
+      { name: "yieldsArray", value: ["happy"] },
+      { name: "yieldsPrimitive", value: 42 },
+    ];
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const tools: ToolRegistration[] = cases.map(({ name, value }) => ({
+      definition: {
+        type: "function",
+        name,
+        description: `Return ${name}.`,
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+      handler: async () => ({ toJSON: () => value }),
+    }));
+    const manager = createRealtimeManager(stub.client, { tools });
+
+    manager.setEventEmitter(eventEmitter);
+    await manager.startSession({
+      provider: "openai",
+    });
+
+    for (const [index, { name }] of cases.entries()) {
+      await stub.emit({
+        type: "tool.call",
+        name,
+        args: {},
+        callId: `call-${name}`,
+      });
+
+      expect(stub.client.sendToolResult).toHaveBeenNthCalledWith(
+        index + 1,
+        `call-${name}`,
+        {
+          success: false,
+          error: `Realtime tool "${name}" must return an object`,
+        },
+      );
+    }
+  });
+
   it("runs modality-neutral tool registrations", async () => {
     const stub = createRealtimeClientStub();
     const eventEmitter = createEventEmitter();

@@ -12,8 +12,10 @@ It exports:
   and realtime clients use to compute mouth-open RMS and emit
   `tts:lipsync:update`
 - modality-neutral tool contracts (`ToolDefinition`, `ToolRegistration`, ...)
-  and validation helpers (`validateToolArguments`, `assertToolResultObject`)
-  shared by `@charivo/llm` and `@charivo/realtime`
+  plus the validation and execution helpers (`validateToolArguments`,
+  `assertToolResultObject`, `createToolRegistry`, `withToolTimeout`,
+  `serializeToolResult`, `createToolFailureOutput`) shared by `@charivo/llm`
+  and `@charivo/realtime`
 
 ## Install
 
@@ -115,6 +117,23 @@ Validation helpers, used by both managers before/after a handler runs:
 - `assertToolResultObject(result, toolName, toolLabel?)`: throws a plain
   `Error` unless `result` is a plain object.
 
+Execution helpers, shared so both managers run tools with the same guarantees:
+
+- `createToolRegistry(): ToolRegistry`: name-keyed registry
+  (`register` / `unregister` / `get` / `size` / `getDefinitions`).
+  `getDefinitions()` deep-copies, so a provider cannot mutate a registered
+  schema.
+- `withToolTimeout(promise, timeoutMs, toolName, toolLabel?)`: rejects with
+  `${toolLabel} "${toolName}" timed out after ${timeoutMs}ms` and always clears
+  its timer.
+- `serializeToolResult(result, toolName, toolLabel?)`: returns the JSON string,
+  throwing when the result cannot be represented as JSON. Call it inside a
+  runner's failure boundary — `JSON.stringify` returns the value `undefined`
+  (without throwing) for a result whose `toJSON()` yields `undefined`, which
+  would otherwise reach the transport with its payload silently dropped.
+- `createToolFailureOutput(error)`: the always-serializable
+  `{ success: false, error }` output handed back to the model when a call fails.
+
 ### LLM Tool-Calling Contracts
 
 - `LLMMessage`: role-discriminated union (`system`/`user`, `assistant` with
@@ -163,3 +182,7 @@ Important event names include:
 - `avatar:gaze`
 - `realtime:text:delta`
 - `realtime:error`
+
+`EventBus.emit(...)` isolates each listener: one that throws is reported via
+`console.error` and does not stop the listeners queued behind it, so `emit`
+never throws into its caller.

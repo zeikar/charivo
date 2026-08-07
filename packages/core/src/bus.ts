@@ -16,7 +16,16 @@ export class EventBus implements CharivoEventBus {
   }
 
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
-    this.listeners[event]?.forEach((listener) => listener(data));
+    // Each listener is isolated: one that throws must not stop the listeners
+    // queued behind it, and emit() must stay non-throwing for its callers,
+    // which are frequently mid-teardown or inside a provider callback.
+    this.listeners[event]?.forEach((listener) => {
+      try {
+        listener(data);
+      } catch (error) {
+        console.error(`Event listener for "${String(event)}" threw:`, error);
+      }
+    });
   }
 
   off<K extends keyof EventMap>(

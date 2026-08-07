@@ -38,6 +38,13 @@ export {
   assertToolResultObject,
   validateToolArguments,
 } from "./tool-validation";
+export {
+  createToolFailureOutput,
+  createToolRegistry,
+  serializeToolResult,
+  type ToolRegistry,
+  withToolTimeout,
+} from "./tool-execution";
 
 export class Charivo {
   private eventBus: EventBus;

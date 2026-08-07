@@ -3,8 +3,12 @@ import {
   Message,
   Character,
   assertToolResultObject,
+  createToolFailureOutput,
+  createToolRegistry,
+  serializeToolResult,
   toCharivoError,
   validateToolArguments,
+  withToolTimeout,
   type CharivoEventEmitter,
   type LLMManagerWithTools,
   type LLMMessage,
@@ -18,11 +22,6 @@ import { CharacterPromptBuilder } from "./character-prompt-builder";
 import { MessageConverter, type LLMApiMessage } from "./message-converter";
 import { LLMValidators } from "./validators";
 import { ResponseMessageBuilder } from "./response-message-builder";
-import {
-  createFailureOutput,
-  LLMToolRegistry,
-  withTimeout,
-} from "./tool-execution";
 
 const DEFAULT_MAX_HISTORY_TURNS = 40;
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
@@ -51,7 +50,7 @@ export interface LLMManagerOptions {
 export class LLMManager {
   private readonly historyManager: MessageHistoryManager;
   private readonly maxHistoryMessages?: number;
-  private readonly toolRegistry = new LLMToolRegistry();
+  private readonly toolRegistry = createToolRegistry();
   private readonly resultProjectors: ToolResultProjector[];
   private readonly defaultToolTimeoutMs: number;
   private character: Character | null = null;
@@ -270,33 +269,29 @@ export class LLMManager {
 
       validateToolArguments(tool.definition, toolCall.arguments, "LLM tool");
 
-      const result = await withTimeout(
+      const result = await withToolTimeout(
         tool.handler(toolCall.arguments, {
           character: this.character,
           callId: toolCall.id,
         }),
         tool.timeoutMs ?? this.defaultToolTimeoutMs,
         tool.definition.name,
+        "LLM tool",
       );
 
       assertToolResultObject(result, tool.definition.name, "LLM tool");
 
       // Serialize inside the failure boundary: outputs that cannot be
       // stringified (bigint values, circular references) degrade to a failure
-      // output instead of aborting the reply. JSON.stringify's declared return
-      // type is `string`, but a `toJSON()` that returns `undefined` makes it
-      // return the value `undefined` at runtime, so that case is checked
-      // explicitly rather than relying on a thrown error.
-      const stringified: unknown = JSON.stringify(result);
-      if (typeof stringified !== "string") {
-        throw new Error(
-          `LLM tool "${tool.definition.name}" result could not be serialized to JSON`,
-        );
-      }
-      serialized = stringified;
+      // output instead of aborting the reply.
+      serialized = serializeToolResult(
+        result,
+        tool.definition.name,
+        "LLM tool",
+      );
       output = result;
     } catch (error) {
-      return JSON.stringify(createFailureOutput(toError(error)));
+      return JSON.stringify(createToolFailureOutput(toError(error)));
     }
 
     this.projectToolResult(toolCall.name, output, toolCall.id);

@@ -11,7 +11,11 @@ import type {
   ToolRegistration,
   ToolResultProjector,
 } from "@charivo/core";
-import { CharivoStateError, toCharivoError } from "@charivo/core";
+import {
+  CharivoStateError,
+  createToolRegistry,
+  toCharivoError,
+} from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
 import { RealtimeAudioOutput } from "./internal/audio-output";
@@ -22,7 +26,6 @@ import {
   mergeSessionConfig,
 } from "./internal/manager-state";
 import { delay } from "./internal/timing";
-import { RealtimeToolRegistry } from "./internal/tool-registry";
 import { executeRealtimeToolCall } from "./internal/tool-runner";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
@@ -65,7 +68,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private responseOutstanding = false;
   private hasPendingToolRefresh = false;
   private sessionId?: string;
-  private readonly toolRegistry = new RealtimeToolRegistry();
+  private readonly toolRegistry = createToolRegistry();
   private readonly audioOutput = new RealtimeAudioOutput((event, payload) => {
     this.eventEmitter?.emit(event, payload);
   });

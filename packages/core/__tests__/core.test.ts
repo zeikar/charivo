@@ -135,6 +135,40 @@ describe("EventBus", () => {
     });
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it("isolates a throwing listener from the listeners behind it", () => {
+    const bus = new EventBus();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const throwing = vi.fn(() => {
+      throw new Error("listener boom");
+    });
+    const afterThrowing = vi.fn();
+
+    bus.on("message:sent", throwing);
+    bus.on("message:sent", afterThrowing);
+
+    expect(() =>
+      bus.emit("message:sent", {
+        message: {
+          id: "1",
+          content: "hello",
+          timestamp: new Date(),
+          type: "user",
+        },
+      }),
+    ).not.toThrow();
+
+    expect(throwing).toHaveBeenCalledTimes(1);
+    expect(afterThrowing).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(
+      'Event listener for "message:sent" threw:',
+      expect.any(Error),
+    );
+
+    consoleError.mockRestore();
+  });
 });
 
 describe("Charivo", () => {
