@@ -51,7 +51,8 @@
   },
   "peerDependencies": {},
   "files": [
-    "dist"
+    "dist",
+    "!dist/metafile-*.json"
   ],
   "publishConfig": {
     "access": "public"

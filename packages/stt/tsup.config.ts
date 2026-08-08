@@ -9,6 +9,8 @@ export default defineConfig({
     "src/web/index.ts",
   ],
   format: ["cjs", "esm"],
+  // consumed by scripts/check-packages.mjs to prove @charivo/core stays external
+  metafile: true,
   dts: true,
   clean: true,
   target: "es2022",

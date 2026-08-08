@@ -14,7 +14,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/metafile-*.json"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",

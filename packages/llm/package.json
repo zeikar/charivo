@@ -47,7 +47,8 @@
     "typescript": "^5.9.2"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/metafile-*.json"
   ],
   "publishConfig": {
     "access": "public"

@@ -8,6 +8,8 @@ export default defineConfig({
     "src/openai-agents/index.ts",
   ],
   format: ["cjs", "esm"],
+  // consumed by scripts/check-packages.mjs to prove @charivo/core stays external
+  metafile: true,
   dts: true,
   sourcemap: true,
   clean: true,

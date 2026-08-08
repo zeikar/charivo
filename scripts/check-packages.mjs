@@ -10,6 +10,11 @@ const execFileAsync = promisify(execFile);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
 const packagesDir = path.join(rootDir, "packages");
+const corePackageDir = path.join(packagesDir, "core");
+
+// Published internal ranges must stay caret-based so consumers can dedupe:
+// either the bare `workspace:^` or an explicit stable floor like `workspace:^1.0.0`.
+const internalRangePattern = /^workspace:\^(\d+\.\d+\.\d+)?$/;
 
 const packageDirs = await readdir(packagesDir, { withFileTypes: true });
 const failures = [];
@@ -25,6 +30,20 @@ for (const dirent of packageDirs) {
 
   if (packageJson.private) {
     continue;
+  }
+
+  for (const [dependency, range] of Object.entries(
+    packageJson.dependencies ?? {},
+  )) {
+    if (!dependency.startsWith("@charivo/")) {
+      continue;
+    }
+
+    if (!internalRangePattern.test(range)) {
+      failures.push(
+        `${packageJson.name}: internal dependency "${dependency}" must use "workspace:^" or "workspace:^x.y.z", found: ${range}`,
+      );
+    }
   }
 
   const declaredEntryFields = ["main", "module", "types"];
@@ -64,6 +83,42 @@ for (const dirent of packageDirs) {
       failures.push(
         `${packageJson.name}: declared artifact is missing: ${relativeFile}`,
       );
+    }
+  }
+
+  // Core is the dedupe target, so only its dependents must keep it external.
+  if (packageJson.name !== "@charivo/core") {
+    for (const format of expectedBundleFormats(packageJson)) {
+      const metafileRelativePath = `dist/metafile-${format}.json`;
+      let metafileContent;
+
+      try {
+        metafileContent = await readFile(
+          path.join(packageDir, metafileRelativePath),
+          "utf8",
+        );
+      } catch {
+        failures.push(
+          `${packageJson.name}: build metafile is missing: ${metafileRelativePath} (run pnpm build)`,
+        );
+        continue;
+      }
+
+      const metafile = JSON.parse(metafileContent);
+
+      for (const [outputFile, output] of Object.entries(
+        metafile.outputs ?? {},
+      )) {
+        for (const input of Object.keys(output.inputs ?? {})) {
+          if (!isCoreInput(packageDir, input)) {
+            continue;
+          }
+
+          failures.push(
+            `${packageJson.name}: ${outputFile} bundles @charivo/core instead of importing it: ${input}`,
+          );
+        }
+      }
     }
   }
 
@@ -109,6 +164,46 @@ function collectExportFiles(value) {
   }
 
   return Object.values(value).flatMap((entry) => collectExportFiles(entry));
+}
+
+function expectedBundleFormats(packageJson) {
+  const formats = new Set();
+
+  if (typeof packageJson.module === "string") {
+    formats.add("esm");
+  }
+
+  for (const condition of collectExportConditions(packageJson.exports)) {
+    if (condition === "import") {
+      formats.add("esm");
+    }
+
+    if (condition === "require") {
+      formats.add("cjs");
+    }
+  }
+
+  return formats;
+}
+
+function collectExportConditions(value) {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, entry]) => [
+    key,
+    ...collectExportConditions(entry),
+  ]);
+}
+
+function isCoreInput(packageDir, input) {
+  if (input.includes("node_modules/@charivo/core")) {
+    return true;
+  }
+
+  const resolved = path.resolve(packageDir, input);
+  return resolved.startsWith(`${corePackageDir}${path.sep}`);
 }
 
 function hasPackageRootExport(exportsField) {
