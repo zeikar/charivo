@@ -10,7 +10,6 @@ import {
 import { toCharivoError, type CharivoError } from "./errors";
 
 export * from "./types";
-export { EventBus } from "./bus";
 export {
   type BrowserLifecycleCallbacks,
   subscribeBrowserLifecycle,

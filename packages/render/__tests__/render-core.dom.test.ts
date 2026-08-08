@@ -1,12 +1,48 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  EventBus,
   type Character,
+  type CharivoEventBus,
+  type EventMap,
   type GazeCoordinates,
   type Message,
   type Renderer,
 } from "@charivo/core";
 import { createRenderManager } from "../src";
+
+// Minimal CharivoEventBus double: exercises RenderManager's on/off/emit
+// wiring without reaching into @charivo/core's internal EventBus class.
+class TestEventBus implements CharivoEventBus {
+  private listeners: {
+    [K in keyof EventMap]?: Array<(data: EventMap[K]) => void>;
+  } = {};
+
+  on<K extends keyof EventMap>(
+    event: K,
+    listener: (data: EventMap[K]) => void,
+  ): void {
+    this.listeners[event] ??= [];
+    this.listeners[event]!.push(listener);
+  }
+
+  off<K extends keyof EventMap>(
+    event: K,
+    listener: (data: EventMap[K]) => void,
+  ): void {
+    const eventListeners = this.listeners[event];
+    if (!eventListeners) {
+      return;
+    }
+
+    const index = eventListeners.indexOf(listener);
+    if (index > -1) {
+      eventListeners.splice(index, 1);
+    }
+  }
+
+  emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
+    this.listeners[event]?.forEach((listener) => listener(data));
+  }
+}
 
 class StubRenderer implements Renderer {
   initialize = vi.fn(async () => undefined);
@@ -74,7 +110,7 @@ describe("RenderManager", () => {
   it("forwards TTS and canonical realtime events through the typed event bus", async () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     manager.setEventBus(bus);
 
@@ -99,7 +135,7 @@ describe("RenderManager", () => {
 
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     manager.setEventBus(bus);
 
@@ -147,7 +183,7 @@ describe("RenderManager", () => {
   it("disconnect removes bus listeners (teardown, idempotency, re-wireable)", () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     manager.setEventBus(bus);
 
@@ -172,7 +208,7 @@ describe("RenderManager", () => {
   it("disconnect stops an in-progress realtime lip-sync so the renderer gets no more RMS updates", () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     manager.setEventBus(bus);
 
@@ -215,7 +251,7 @@ describe("RenderManager", () => {
       canvas,
       mouseTracking: "document",
     });
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     await manager.initialize();
     manager.setEventBus(bus);
@@ -321,7 +357,7 @@ describe("RenderManager", () => {
 
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     manager.setEventBus(bus);
 
@@ -359,7 +395,7 @@ describe("RenderManager", () => {
       canvas,
       mouseTracking: "document",
     });
-    const bus = new EventBus();
+    const bus = new TestEventBus();
 
     await manager.initialize();
     manager.setEventBus(bus);

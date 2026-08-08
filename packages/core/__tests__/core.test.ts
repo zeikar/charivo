@@ -4,7 +4,6 @@ import {
   CharivoError,
   CharivoProviderError,
   CharivoTransportError,
-  EventBus,
 } from "@charivo/core";
 import type {
   Character,
@@ -23,6 +22,7 @@ import type {
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
+import { EventBus } from "../src/bus";
 import { createLLMManager } from "@charivo/llm";
 import { createRealtimeManager } from "@charivo/realtime";
 

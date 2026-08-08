@@ -7,7 +7,10 @@ It exports:
 - `Charivo`: the top-level orchestrator
 - shared domain types such as `Character`, `Message`, and realtime session types
 - interface contracts for LLM, render, TTS, STT, and realtime managers
-- the typed `EventBus`
+- the event contracts `CharivoEventBus` and `CharivoEventEmitter`: the render
+  manager receives a bus via `setEventBus(...)`, while the TTS/STT/LLM/Realtime
+  managers receive an emitter via `setEventEmitter(...)`; the concrete bus
+  implementation is internal, and consumers subscribe via `charivo.on/off(...)`
 - `createLipSyncAnalyzer`: the shared audio-analysis utility the TTS manager
   and realtime clients use to compute mouth-open RMS and emit
   `tts:lipsync:update`
@@ -188,6 +191,6 @@ Important event names include:
 - `avatar:gaze`
 - `realtime:error`
 
-`EventBus.emit(...)` isolates each listener: one that throws is reported via
+The event bus isolates each listener: one that throws is reported via
 `console.error` and does not stop the listeners queued behind it, so `emit`
 never throws into its caller.
