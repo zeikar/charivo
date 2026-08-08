@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*"
+    "@charivo/core": "workspace:^"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

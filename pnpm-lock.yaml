@@ -258,7 +258,7 @@ importers:
   packages/avatar:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
     devDependencies:
       tsup:
@@ -280,7 +280,7 @@ importers:
   packages/llm:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       openai:
         specifier: ^4.47.1
@@ -296,7 +296,7 @@ importers:
   packages/realtime:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       '@openai/agents-realtime':
         specifier: 0.8.5
@@ -312,7 +312,7 @@ importers:
   packages/render:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
     devDependencies:
       tsup:
@@ -325,10 +325,10 @@ importers:
   packages/render-iki:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       '@charivo/render':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../render
     devDependencies:
       tsup:
@@ -341,10 +341,10 @@ importers:
   packages/render-live2d:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       '@charivo/render':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../render
     devDependencies:
       tsup:
@@ -357,16 +357,16 @@ importers:
   packages/server:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       '@charivo/llm':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../llm
       '@charivo/stt':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../stt
       '@charivo/tts':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../tts
     devDependencies:
       tsup:
@@ -379,7 +379,7 @@ importers:
   packages/stt:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       openai:
         specifier: ^4.47.1
@@ -395,7 +395,7 @@ importers:
   packages/tts:
     dependencies:
       '@charivo/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       openai:
         specifier: ^4.47.1

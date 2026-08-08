@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
+    "@charivo/core": "workspace:^",
     "@openai/agents-realtime": "0.8.5"
   },
   "devDependencies": {

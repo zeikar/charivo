@@ -17,6 +17,8 @@ Run this from the repository root before publishing public packages.
 - Use `minor` for public API or contract changes.
 - Use `patch` for fixes, packaging corrections, and non-breaking updates.
 - Confirm the generated changeset only includes the intended publishable packages.
+- At the 1.0 cut, replace each internal `workspace:^` shorthand with an explicit floor matching that dependency's own current version — not a single literal such as `workspace:^1.0.0` applied everywhere, since siblings like `@charivo/render`, `@charivo/llm`, `@charivo/stt`, and `@charivo/tts` version independently and may still be pre-1.0. Find every site with `grep -rn 'workspace:\^' packages/*/package.json`.
+- The `minor` guidance above is safe only through the current `0.x` phase, where a caret like `^0.20.0` spans just `>=0.20.0 <0.21.0` and behaves like an exact pin. From the 1.0 cut onward, breaking changes must bump MAJOR instead of `minor` — the `workspace:^` floors above only stay safe if that discipline holds, since `^1.0.0` spans every `1.x` release.
 
 ## Release PR Review
 

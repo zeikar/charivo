@@ -39,7 +39,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
+    "@charivo/core": "workspace:^",
     "openai": "^4.47.1"
   },
   "devDependencies": {

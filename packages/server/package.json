@@ -23,10 +23,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@charivo/core": "workspace:*",
-    "@charivo/llm": "workspace:*",
-    "@charivo/stt": "workspace:*",
-    "@charivo/tts": "workspace:*"
+    "@charivo/core": "workspace:^",
+    "@charivo/llm": "workspace:^",
+    "@charivo/stt": "workspace:^",
+    "@charivo/tts": "workspace:^"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
