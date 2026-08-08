@@ -106,11 +106,12 @@ export function isCharivoError(error: unknown): error is CharivoError {
     return false;
   }
 
-  if (!(CHARIVO_ERROR_BRAND in error)) {
+  const candidate = error as Record<string | symbol, unknown>;
+
+  if (candidate[CHARIVO_ERROR_BRAND] !== true) {
     return false;
   }
 
-  const candidate = error as Record<string, unknown>;
   return (
     typeof candidate.message === "string" &&
     typeof candidate.code === "string" &&

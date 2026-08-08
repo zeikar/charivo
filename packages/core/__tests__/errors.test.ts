@@ -59,6 +59,16 @@ describe("isCharivoError", () => {
     expect(isCharivoError({ code: "CHARIVO_ERROR", message: "x" })).toBe(false);
   });
 
+  it("rejects an object with an explicitly false brand", () => {
+    const falseBrandError = {
+      [CHARIVO_ERROR_BRAND]: false,
+      code: "CHARIVO_ERROR",
+      message: "x",
+    };
+
+    expect(isCharivoError(falseBrandError)).toBe(false);
+  });
+
   it("rejects a branded object with a non-string message", () => {
     const prototype = { [CHARIVO_ERROR_BRAND]: true };
     const invalidMessageError = Object.assign(Object.create(prototype), {
