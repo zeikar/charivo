@@ -61,7 +61,7 @@ pnpm add \
 ```
 
 ```ts
-import { Charivo, CharivoError } from "@charivo/core";
+import { Charivo, isCharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
@@ -102,7 +102,7 @@ charivo.setCharacter({
 try {
   await charivo.userSay("Hello");
 } catch (error) {
-  if (error instanceof CharivoError) {
+  if (isCharivoError(error)) {
     console.error(error.code, error.message);
   }
   throw error;

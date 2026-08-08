@@ -97,7 +97,7 @@ await charivo.userSay("Hello");
 ## Minimal Browser Setup
 
 ```ts
-import { Charivo, CharivoError } from "@charivo/core";
+import { Charivo, isCharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import { createTTSManager } from "@charivo/tts";
@@ -136,7 +136,7 @@ charivo.setCharacter({
 try {
   await charivo.userSay("Hello");
 } catch (error) {
-  if (error instanceof CharivoError) {
+  if (isCharivoError(error)) {
     console.error(error.code, error.message);
   }
   throw error;
@@ -232,7 +232,7 @@ module resolution mode that supports package exports:
 ## Error Handling
 
 Public Charivo APIs now throw typed errors from `@charivo/core`. Prefer
-`instanceof CharivoError` or `error.code` checks instead of parsing messages.
+`isCharivoError(error)` or `error.code` checks instead of parsing messages.
 
 ## Related Guides
 

@@ -83,4 +83,4 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
   session requests (unsupported provider/transport/adapter, missing SDP offer).
 
 `CharivoError extends Error`, so existing `catch (e)` handling still works;
-use `instanceof CharivoError` or `error.code` to branch on the failure kind.
+use `isCharivoError(error)` or `error.code` to branch on the failure kind.

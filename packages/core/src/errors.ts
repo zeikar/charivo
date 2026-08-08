@@ -1,10 +1,17 @@
-export type CharivoErrorCode =
-  | "CHARIVO_ERROR"
-  | "CHARIVO_STATE_ERROR"
-  | "CHARIVO_TIMEOUT_ERROR"
-  | "CHARIVO_TRANSPORT_ERROR"
-  | "CHARIVO_PROVIDER_ERROR"
-  | "CHARIVO_DISPOSE_ERROR";
+// Single source of truth for the error codes: the union type and the
+// runtime Set are both derived from this tuple so they cannot diverge.
+const CHARIVO_ERROR_CODES_LIST = [
+  "CHARIVO_ERROR",
+  "CHARIVO_STATE_ERROR",
+  "CHARIVO_TIMEOUT_ERROR",
+  "CHARIVO_TRANSPORT_ERROR",
+  "CHARIVO_PROVIDER_ERROR",
+  "CHARIVO_DISPOSE_ERROR",
+] as const;
+
+export type CharivoErrorCode = (typeof CHARIVO_ERROR_CODES_LIST)[number];
+
+const CHARIVO_ERROR_CODES = new Set<CharivoErrorCode>(CHARIVO_ERROR_CODES_LIST);
 
 export interface CharivoErrorOptions extends ErrorOptions {
   code?: CharivoErrorCode;
@@ -19,6 +26,15 @@ export class CharivoError extends Error {
     this.code = options.code ?? "CHARIVO_ERROR";
   }
 }
+
+// Registry symbol: a duplicated copy of @charivo/core computes the same
+// symbol via Symbol.for, so the brand check works across package copies
+// (e.g. mismatched versions pulled in by different dependents).
+const CHARIVO_ERROR_BRAND = Symbol.for("@charivo/core/CharivoError");
+
+Object.defineProperty(CharivoError.prototype, CHARIVO_ERROR_BRAND, {
+  value: true,
+});
 
 export class CharivoStateError extends CharivoError {
   constructor(message: string, options: ErrorOptions = {}) {
@@ -78,7 +94,28 @@ export type CharivoErrorKind =
   | "dispose";
 
 export function isCharivoError(error: unknown): error is CharivoError {
-  return error instanceof CharivoError;
+  if (error instanceof CharivoError) {
+    return true;
+  }
+
+  // instanceof only works within a single installed copy of @charivo/core.
+  // Fall back to a structural check: Symbol.for is not a security boundary
+  // (any object can set the same symbol), so we also verify the shape of a
+  // CharivoError (a string code from the known set, a string message).
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+
+  if (!(CHARIVO_ERROR_BRAND in error)) {
+    return false;
+  }
+
+  const candidate = error as Record<string, unknown>;
+  return (
+    typeof candidate.message === "string" &&
+    typeof candidate.code === "string" &&
+    CHARIVO_ERROR_CODES.has(candidate.code as CharivoErrorCode)
+  );
 }
 
 export function getErrorMessage(

@@ -91,8 +91,12 @@ Public methods throw typed errors exported from `@charivo/core`:
 - `CharivoProviderError`
 - `CharivoDisposeError`
 
-Prefer `instanceof CharivoError` or `error.code` checks over
-`error.message.includes(...)`.
+Prefer `isCharivoError(error)` or `error.code` checks over
+`error.message.includes(...)`. Raw `instanceof CharivoError` is only
+guaranteed to work within a single installed copy of `@charivo/core`;
+`isCharivoError` also recognizes branded errors thrown by a duplicated copy.
+Symbol brands do not survive structured clone or JSON, so use `error.code` as
+the wire-format discriminator.
 
 ## Tool Contracts
 
