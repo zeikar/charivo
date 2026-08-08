@@ -412,7 +412,7 @@ export interface RealtimeManager {
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
-  "character:speak": { character: Character; message: string };
+  "character:speak": { character: Character; text: string };
   "tts:start": { text: string; characterId?: string };
   "tts:end": { characterId?: string };
   "tts:error": { error: Error };

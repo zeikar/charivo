@@ -219,7 +219,7 @@ describe("Charivo", () => {
     expect(receivedListener).toHaveBeenCalledTimes(1);
     expect(speakListener).toHaveBeenCalledWith({
       character,
-      message: "Nice to meet you!",
+      text: "Nice to meet you!",
     });
 
     expect(renderManager.render).toHaveBeenCalledTimes(2);

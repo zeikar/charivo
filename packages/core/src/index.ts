@@ -242,7 +242,7 @@ export class Charivo {
       this.eventBus.emit("message:received", { message: characterMessage });
       this.eventBus.emit("character:speak", {
         character: this.character,
-        message: response,
+        text: response,
       });
 
       if (this.renderManager) {
