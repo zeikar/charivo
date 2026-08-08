@@ -1,5 +1,20 @@
 # @charivo/server
 
+## 0.6.4
+
+### Patch Changes
+
+- 75174a1: Internal `@charivo/*` dependencies now publish as caret ranges (`workspace:^`) instead of exact pins (`workspace:*`), so a fresh install can dedupe this package against another compatible release of its `@charivo/*` dependencies instead of always nesting its own copy. While the workspace is on `0.x`, a caret range only spans patch releases of the same minor, so the full benefit lands once the affected packages reach `1.0.0` — installs mixing different `0.x` minors still nest separate copies today.
+
+  Published tarballs also no longer include the `dist/metafile-*.json` build artifacts (esbuild bundle metadata used for internal build verification); they were never meant to ship to consumers.
+
+- Updated dependencies [75174a1]
+- Updated dependencies [75174a1]
+  - @charivo/core@0.21.0
+  - @charivo/llm@0.8.1
+  - @charivo/tts@0.6.5
+  - @charivo/stt@0.7.1
+
 ## 0.6.3
 
 ### Patch Changes
