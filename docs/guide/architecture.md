@@ -59,6 +59,45 @@ Each manager wraps a runtime implementation behind a stable manager-facing API.
   `@charivo/llm`, adjacent to but separate from either manager package.
   (Formerly published as `@charivo/realtime-avatar`.)
 
+## Public API Contract
+
+Charivo's public surface is factory-first: components are consumed through
+interfaces, not concrete classes.
+
+- Pluggable managers, clients, players, transcribers, and renderers are
+  created via `create*` factories (e.g. `createRemoteLLMClient`,
+  `createOpenAITTSPlayer`) and consumed through their interfaces
+  (`LLMManager`, `TTSPlayer`, `RenderManager`, ...). Concrete
+  implementation classes such as `RemoteLLMClient`, `OpenAITTSPlayer`,
+  `ConsoleRenderer`, `Live2DRendererImpl`, and the `*Manager`
+  implementations are never exported from a public entry point.
+- `Charivo` is the single top-level orchestrator class, and the one
+  intentional exception to the factory-first rule: it owns the instance
+  lifecycle — wiring managers together via `attach*`, holding the event
+  bus, and owning `dispose()` — so it is constructed directly rather than
+  through a factory.
+- `CharivoError` and its subclasses (`CharivoStateError`,
+  `CharivoTimeoutError`, `CharivoTransportError`, `CharivoProviderError`,
+  `CharivoDisposeError`) are a second intentional exception: an error
+  *taxonomy* to check with `isCharivoError`/`error.code`, not a constructible
+  component.
+- The OpenAI/OpenClaw provider classes (`OpenAILLMProvider`,
+  `OpenClawLLMProvider`, `OpenAITTSProvider`, `OpenAISTTProvider`,
+  `OpenAIRealtimeProvider`) are a third intentional exception, exported as
+  concrete classes alongside their `create*Provider` factories: consumers rely
+  on `instanceof` checks and on provider methods outside the narrow core
+  interface (e.g. `OpenAITTSProvider.setModel`, absent from `TTSProvider`) — a
+  contract `packages/server/__tests__/barrel.test.ts` pins. Separately, and not
+  a "Node-only" restriction, the factories are also callable directly from a
+  browser via `dangerouslyAllowBrowser`, letting a local app or test skip
+  standing up a server. `@charivo/server/*` re-exports all five for server use;
+  `OpenAIRealtimeProvider` is implemented directly there instead of in a
+  modality package (see Server Providers below).
+- Subclassing `Charivo` is unsupported; extend it through composition
+  (attach managers, listen to events) rather than inheritance.
+- The concrete event bus implementation is internal; `CharivoEventBus` and
+  `CharivoEventEmitter` are the contract other code depends on.
+
 ## Browser Runtime Packages
 
 For most apps, start with remote packages and only use browser-direct packages

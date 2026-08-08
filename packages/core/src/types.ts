@@ -468,9 +468,11 @@ export type EventMap = {
     cause: RealtimeReconnectCause;
     lastError: Error;
   };
+  // Intentionally flat payload (no wrapper object).
   "realtime:usage": RealtimeUsageEvent;
   "avatar:expression": { expressionId: string };
   "avatar:motion": { group: string; index: number };
+  // Intentionally flat payload (no wrapper object).
   "avatar:gaze": GazeCoordinates;
   "realtime:error": { error: Error };
   "llm:error": { error: Error };

@@ -20,6 +20,23 @@ It exports:
   `snapshotToolResult`, `createToolFailureOutput`) shared by `@charivo/llm`
   and `@charivo/realtime`
 
+The public API is factory-first: pluggable managers/clients/players/
+transcribers/renderers are created via `create*` factories and consumed
+through their interfaces; concrete implementation classes are not
+exported. `Charivo`, the `CharivoError` taxonomy, and the OpenAI/OpenClaw
+provider classes (`OpenAILLMProvider`, `OpenClawLLMProvider`,
+`OpenAITTSProvider`, `OpenAISTTProvider`, `OpenAIRealtimeProvider`) are
+the three exceptions, exported directly as concrete classes: `Charivo`
+owns the instance lifecycle (wiring managers, the event bus, and
+`dispose()`) so it isn't behind a factory; `CharivoError` is a taxonomy
+checked via `isCharivoError`/`error.code`, not constructed; the
+OpenAI/OpenClaw providers are exported because consumers rely on
+`instanceof` checks and provider methods outside the narrow core
+interface — a contract `packages/server/__tests__/barrel.test.ts` pins;
+their factories are also browser-callable via `dangerouslyAllowBrowser`
+for dev/testing, not a "Node-only" restriction.
+Subclassing `Charivo` is not supported — extend via composition.
+
 ## Install
 
 ```bash
@@ -194,6 +211,10 @@ Important event names include:
 - `avatar:motion`
 - `avatar:gaze`
 - `realtime:error`
+
+`avatar:gaze` (a bare `GazeCoordinates`) and `realtime:usage` (a flat
+`RealtimeUsageEvent`) intentionally use flat payloads rather than wrapper
+objects.
 
 The event bus isolates each listener: one that throws is reported via
 `console.error` and does not stop the listeners queued behind it, so `emit`
