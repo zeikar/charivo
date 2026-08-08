@@ -1,5 +1,61 @@
 # @charivo/core
 
+## 0.20.0
+
+### Minor Changes
+
+- 666a7d4: Clean up the event contract ahead of 1.0. Four breaking changes, no back-compat aliases.
+  - The unnamespaced `error` event is now `llm:error`, consistent with `tts:error`
+    / `stt:error` / `realtime:error`. It still has a single emitter: the
+    `LLMManager` result-projector failure path. Payload is unchanged.
+  - `realtime:tool:call|result|error` are renamed to modality-neutral
+    `tool:call|result|error`, and the `LLMManager` tool loop now emits them too —
+    previously only realtime did, leaving the LLM tool path observably silent.
+    Payloads are unchanged. `tool:result` from the LLM path carries the JSON
+    snapshot of the handler result (the same value the model's tool turn
+    receives), matching what realtime already emits, so the event means the same
+    thing from both modalities. Note a deliberate divergence that this change does
+    NOT close: LLM `resultProjectors` still receive the original validated handler
+    result (so `Date`, `undefined`, and getter properties survive), while realtime
+    projectors receive the snapshot. Projectors that must behave identically
+    across both modalities should read only plain JSON values.
+  - `stt:partial` and `stt:stop` carry their transcript under `text` instead of
+    `transcription`, aligning them with `tts:start` and the realtime transcript
+    and delta events. The remote STT HTTP wire shape is a separate contract and
+    still uses `{ transcription }`; `STTTranscriber.onPartial`'s callback
+    parameter name is also unchanged.
+  - `realtime:text:delta` is removed. It was emitted back-to-back with
+    `realtime:assistant:delta` carrying an identical `{ text }` payload; use
+    `realtime:assistant:delta`.
+
+- 03559a9: Give tool-result projectors the same value on every modality, and share one
+  snapshot implementation between the tool runners.
+
+  `ToolResultProjectorContext.output` now always carries the JSON snapshot of the
+  handler result — the same value `tool:result` publishes and the same value the
+  model's tool turn receives. `@charivo/realtime` projectors already received the
+  snapshot; `@charivo/llm` projectors previously received the live handler object,
+  so a `Date` survived as a `Date` there and as an ISO string on the realtime
+  path. That divergence is gone: `output` means "the tool result as JSON",
+  whichever modality executed the tool.
+
+  Breaking for LLM projectors that read a value JSON cannot represent — a `Date`
+  now arrives as its ISO string and an `undefined` property is absent. Such values
+  were never part of what the model saw, so a projector depending on them was
+  reading a side channel that only existed on one path. Projectors that read plain
+  JSON values are unaffected.
+
+  `@charivo/core` gains `snapshotToolResult(result, toolName, toolLabel?)`
+  returning `{ serialized, snapshot }`, plus its `ToolResultSnapshot` type. Both
+  tool runners now call it instead of each maintaining their own
+  serialize/parse/re-assert sequence, so the two paths cannot drift apart again.
+
+  `serializeToolResult` is no longer exported. It became package-internal to
+  `snapshotToolResult`, which is now its only caller — callers always need the
+  parsed snapshot alongside the string, so exporting the string-only half offered
+  no supported use. Its behavior is unchanged; if you were calling it directly,
+  use `snapshotToolResult(...).serialized`.
+
 ## 0.19.0
 
 ### Minor Changes
