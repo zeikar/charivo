@@ -24,7 +24,6 @@ import {
   BeganMotionCallback,
   FinishedMotionCallback,
 } from "@framework/motion/acubismmotion";
-import { CubismExpressionMotion } from "@framework/motion/cubismexpressionmotion";
 import { CubismMotion } from "@framework/motion/cubismmotion";
 import {
   CubismMotionQueueEntryHandle,
@@ -55,11 +54,13 @@ export class LAppModel extends CubismUserModel {
   private motions = new csmMap<string, ACubismMotion>();
   private expressions = new csmMap<string, ACubismMotion>();
 
-  // Release state for the applied expression. `activeExpression` is the motion
-  // the last setExpression() started; `pendingReleaseFadeSeconds` holds a release
-  // that arrived before that expression had finished fading in, which the
+  // Release state for the applied expression. `activeExpressionFadeOutSeconds`
+  // is the clamped FadeOutTime of the motion the last setExpression() started -
+  // the only thing clearExpression() reads from that motion, so the motion
+  // itself is not kept around; `pendingReleaseFadeSeconds` holds a release that
+  // arrived before that expression had finished fading in, which the
   // per-frame expression step starts once it saturates - see clearExpression().
-  private activeExpression: ACubismMotion | null = null;
+  private activeExpressionFadeOutSeconds: number | null = null;
   private pendingReleaseFadeSeconds: number | null = null;
   private eyeBlinkIds = new csmVector<CubismIdHandle>();
   private lipSyncIds = new csmVector<CubismIdHandle>();
@@ -323,7 +324,16 @@ export class LAppModel extends CubismUserModel {
     const motion = this.expressions.getValue(expressionId);
     if (motion && this._expressionManager) {
       this._expressionManager.startMotion(motion, false);
-      this.activeExpression = motion;
+      // Math.max guards an authored negative FadeOutTime in the .exp3.json (e.g.
+      // -2): CubismExpressionMotion.parse always calls setFadeOutTime with a
+      // parsed float or its own 1.0 default, so ACubismMotion's -1 "unset"
+      // default is unreachable here. A negative fade-in keeps the easing at 0
+      // forever and would strand the face mid-expression, so the clamp turns an
+      // authored negative into an instant release instead.
+      this.activeExpressionFadeOutSeconds = Math.max(
+        0,
+        motion.getFadeOutTime(),
+      );
       // A new expression supersedes a release still waiting on the previous
       // expression's fade-in; otherwise that release would fire once THIS
       // expression saturates and cut it short.
@@ -361,15 +371,13 @@ export class LAppModel extends CubismUserModel {
    * __tests__/expression-release.test.ts rather than assumed here.
    */
   public clearExpression(): void {
-    if (!this._expressionManager || !this.activeExpression) return;
+    if (
+      !this._expressionManager ||
+      this.activeExpressionFadeOutSeconds === null
+    )
+      return;
 
-    // Math.max guards an authored negative FadeOutTime in the .exp3.json (e.g.
-    // -2): CubismExpressionMotion.parse always calls setFadeOutTime with a
-    // parsed float or its own 1.0 default, so ACubismMotion's -1 "unset"
-    // default is unreachable here. A negative fade-in keeps the easing at 0
-    // forever and would strand the face mid-expression, so the clamp turns an
-    // authored negative into an instant release instead.
-    const fadeSeconds = Math.max(0, this.activeExpression.getFadeOutTime());
+    const fadeSeconds = this.activeExpressionFadeOutSeconds;
 
     if (this.isNewestEntrySaturated()) {
       this.startNeutralExpression(fadeSeconds);
@@ -377,7 +385,7 @@ export class LAppModel extends CubismUserModel {
       this.pendingReleaseFadeSeconds = fadeSeconds;
     }
 
-    this.activeExpression = null;
+    this.activeExpressionFadeOutSeconds = null;
   }
 
   public hasMotion(group: string, index: number): boolean {
@@ -724,15 +732,18 @@ export class LAppModel extends CubismUserModel {
     });
     const buffer = new TextEncoder().encode(neutralJson).buffer;
 
+    // No null guard here: unlike loadExpressions() reading external .exp3.json
+    // files, this buffer is a JSON string we build above, so it is never empty
+    // and loadExpression()'s guard can never trigger.
     this._expressionManager.startMotion(
-      CubismExpressionMotion.create(buffer, buffer.byteLength),
+      this.loadExpression(buffer, buffer.byteLength, "neutral"),
       false,
     );
   }
 
   private releaseExpressions(): void {
     this.expressions.clear();
-    this.activeExpression = null;
+    this.activeExpressionFadeOutSeconds = null;
     this.pendingReleaseFadeSeconds = null;
   }
 

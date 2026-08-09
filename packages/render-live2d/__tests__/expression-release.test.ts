@@ -60,6 +60,15 @@ const MIXED_BLEND_EXPRESSION_JSON = JSON.stringify({
   ],
 });
 
+// FadeInTime stays at FADE_IN_SECONDS so the expression still fades IN
+// normally; only FadeOutTime is authored as 0, for the instant-release test.
+const ZERO_FADE_OUT_EXPRESSION_JSON = JSON.stringify({
+  Type: "Live2D Expression",
+  FadeInTime: FADE_IN_SECONDS,
+  FadeOutTime: 0,
+  Parameters: [{ Id: PARAMETER_ID, Value: EXPRESSED_VALUE, Blend: "Add" }],
+});
+
 /**
  * Drives the expression pipeline through production code only: expressions enter
  * via `setExpression()`, leave via `clearExpression()`, and frames run through
@@ -159,6 +168,35 @@ const makeFrame =
     );
   };
 
+/**
+ * Builds the model/parameter/frame fixture shared by most tests below: a
+ * model with `json`'s expression injected, a ParameterModel tracking
+ * PARAMETER_ID, and a frame() driver over that pair. The mixed-blend test
+ * needs two parameter ids and stays inline instead of forcing that shape here.
+ */
+const setup = (json = EXPRESSION_JSON) => {
+  const model = createModel(json);
+  const id = parameterId(PARAMETER_ID);
+  const target = new ParameterModel([id]);
+  const frame = makeFrame(model, target);
+  return { model, id, target, frame };
+};
+
+/**
+ * Pumps `times` frames of `dt` seconds through `frame` with no per-iteration
+ * work. Loops that collect values or assert per iteration stay inline - they
+ * pin distinct failures.
+ */
+const advance = (
+  frame: ReturnType<typeof makeFrame>,
+  times: number,
+  dt = 0.1,
+) => {
+  for (let i = 0; i < times; i++) {
+    frame(dt);
+  }
+};
+
 beforeAll(() => {
   stubCubismCore();
   CubismFramework.startUp();
@@ -171,17 +209,12 @@ afterAll(() => {
 
 describe("LAppModel.clearExpression", () => {
   it("fades the applied expression out over its FadeOutTime instead of snapping", () => {
-    const model = createModel(EXPRESSION_JSON);
-    const id = parameterId(PARAMETER_ID);
-    const target = new ParameterModel([id]);
-    const frame = makeFrame(model, target);
+    const { model, id, target, frame } = setup();
 
     model.setExpression(EXPRESSION_ID);
     // 8 x 0.1s = 0.8s, past the 0.5s FadeInTime, so the expression saturates and
     // clearExpression() takes the immediate path (the deferred path is separate).
-    for (let i = 0; i < 8; i++) {
-      frame(0.1);
-    }
+    advance(frame, 8);
     expect(target.read(id)).toBe(EXPRESSED_VALUE);
 
     model.clearExpression();
@@ -242,9 +275,7 @@ describe("LAppModel.clearExpression", () => {
     const frame = makeFrame(model, target);
 
     model.setExpression(EXPRESSION_ID);
-    for (let i = 0; i < 8; i++) {
-      frame(0.1);
-    }
+    advance(frame, 8);
     expect(target.read(addId)).toBe(EXPRESSED_VALUE);
     expect(target.read(overwriteId)).toBe(EXPRESSED_VALUE);
 
@@ -271,22 +302,57 @@ describe("LAppModel.clearExpression", () => {
     expect(target.read(overwriteId)).toBe(BASELINE_VALUE);
     expect(model.expressionQueueSize()).toBe(1);
   });
+
+  // An authored FadeOutTime: 0 is a documented instant-release case (see
+  // packages/render/README.md, docs/guide/rendering.md,
+  // .changeset/expression-auto-release.md), not an edge case the code merely
+  // tolerates. Frame accounting, derived from the SDK: startNeutralExpression()
+  // passes the clamped FadeOutTime as the neutral's OWN FadeInTime, and
+  // updateFadeWeight() short-circuits fadeIn to 1.0 whenever _fadeInSeconds ===
+  // 0 (acubismmotion.ts:148-150) - even at elapsed 0, unlike the nonzero-duration
+  // case above where elapsed 0 reads weight 0. So the neutral entry is already
+  // saturated (fadeWeight 1.0) on the very first frame it is processed, which is
+  // also the frame the manager's own prune runs on
+  // (cubismexpressionmotionmanager.ts:308-322 runs after every entry's
+  // fadeWeight is computed, inside that same updateMotion() call) - so the
+  // baseline value and the prune to queue size 1 both land on that one frame,
+  // with no fading frames in between.
+  it("releases instantly on a single frame when the expression's FadeOutTime is 0", () => {
+    const { model, id, target, frame } = setup(ZERO_FADE_OUT_EXPRESSION_JSON);
+
+    model.setExpression(EXPRESSION_ID);
+    advance(frame, 8);
+    expect(target.read(id)).toBe(EXPRESSED_VALUE);
+
+    model.clearExpression();
+
+    // The release is instant, not a snap after N fading frames: baseline and
+    // the prune both land on the very first frame driven after clearExpression().
+    frame(0.1);
+    expect(target.read(id)).toBe(BASELINE_VALUE);
+    expect(model.expressionQueueSize()).toBe(1);
+
+    // The release actually happened - this is not "nothing was active so
+    // nothing ran". A truthiness check on activeExpressionFadeOutSeconds (0 is
+    // falsy) would return out of clearExpression() before queuing the neutral,
+    // leaving the face stuck at EXPRESSED_VALUE forever; this loop is what goes
+    // red under that mutation.
+    for (let i = 0; i < 3; i++) {
+      frame(0.1);
+      expect(target.read(id)).toBe(BASELINE_VALUE);
+    }
+  });
 });
 
 describe("LAppModel expression release state machine", () => {
   it("defers a release requested mid-fade-in, then fades once the fade-in completes", () => {
-    const model = createModel(EXPRESSION_JSON);
-    const id = parameterId(PARAMETER_ID);
-    const target = new ParameterModel([id]);
-    const frame = makeFrame(model, target);
+    const { model, id, target, frame } = setup();
 
     model.setExpression(EXPRESSION_ID);
     // 3 x 0.1s = fade-in elapsed 0.2 of 0.5s: getEasingSine(0.4) = 0.3455.
     // Premise guard - without it the test could silently degrade into the
     // saturated path the first test already covers.
-    for (let i = 0; i < 3; i++) {
-      frame(0.1);
-    }
+    advance(frame, 3);
     expect(target.read(id)).toBeCloseTo(0.3455, 3);
 
     model.clearExpression();
@@ -352,15 +418,10 @@ describe("LAppModel expression release state machine", () => {
   });
 
   it("lets a new expression supersede a pending release", () => {
-    const model = createModel(EXPRESSION_JSON);
-    const id = parameterId(PARAMETER_ID);
-    const target = new ParameterModel([id]);
-    const frame = makeFrame(model, target);
+    const { model, id, target, frame } = setup();
 
     model.setExpression(EXPRESSION_ID);
-    for (let i = 0; i < 3; i++) {
-      frame(0.1);
-    }
+    advance(frame, 3);
     expect(target.read(id)).toBeCloseTo(0.3455, 3);
 
     model.clearExpression();
@@ -411,20 +472,13 @@ describe("LAppModel expression release state machine", () => {
   });
 
   it("dips briefly then recovers when the expression is re-applied mid-release", () => {
-    const model = createModel(EXPRESSION_JSON);
-    const id = parameterId(PARAMETER_ID);
-    const target = new ParameterModel([id]);
-    const frame = makeFrame(model, target);
+    const { model, id, target, frame } = setup();
 
     model.setExpression(EXPRESSION_ID);
-    for (let i = 0; i < 8; i++) {
-      frame(0.1);
-    }
+    advance(frame, 8);
 
     model.clearExpression();
-    for (let i = 0; i < 3; i++) {
-      frame(0.1);
-    }
+    advance(frame, 3);
     // Neutral fade elapsed 0.2 of 0.8s: 1 - getEasingSine(0.25) = 0.8536.
     // Premise guard - the release must genuinely be in flight when the new
     // expression lands, otherwise this is not the interruption path.
@@ -489,9 +543,7 @@ describe("LAppModel expression release state machine", () => {
     const saturatedTarget = new ParameterModel([id]);
     const saturatedFrame = makeFrame(saturated, saturatedTarget);
     saturated.setExpression(EXPRESSION_ID);
-    for (let i = 0; i < 8; i++) {
-      saturatedFrame(0.1);
-    }
+    advance(saturatedFrame, 8);
     saturated.clearExpression();
     expect(saturated.expressionQueueSize()).toBe(2);
     saturated.clearExpression();
@@ -543,10 +595,7 @@ describe("LAppModel expression release state machine", () => {
   });
 
   it("does not grow the queue across repeated express/release cycles", () => {
-    const model = createModel(EXPRESSION_JSON);
-    const id = parameterId(PARAMETER_ID);
-    const target = new ParameterModel([id]);
-    const frame = makeFrame(model, target);
+    const { model, id, target, frame } = setup();
 
     // Cycles 2 and 3 start their expression on top of the previous cycle's
     // residual neutral entry, so this covers "expression applied onto the
@@ -560,9 +609,7 @@ describe("LAppModel expression release state machine", () => {
 
     for (const incomingValues of incomingPerCycle) {
       model.setExpression(EXPRESSION_ID);
-      for (let i = 0; i < 8; i++) {
-        frame(0.1);
-      }
+      advance(frame, 8);
       expect(target.read(id)).toBe(EXPRESSED_VALUE);
 
       model.clearExpression();

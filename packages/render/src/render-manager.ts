@@ -298,7 +298,7 @@ export class RenderManager implements IRenderManager {
       this.expressionReleaseTimer = undefined;
     }
 
-    if (this.renderer.stopExpression) {
+    if (this.hasExpressionRelease(this.renderer)) {
       this.expressionReleaseTimer = setTimeout(
         () => this.releaseExpressionNow(),
         EXPRESSION_HOLD_MS,
@@ -416,6 +416,15 @@ export class RenderManager implements IRenderManager {
     return (
       "getAvailableExpressions" in renderer &&
       typeof renderer.getAvailableExpressions === "function"
+    );
+  }
+
+  private hasExpressionRelease(
+    renderer: Renderer,
+  ): renderer is Renderer & { stopExpression(): void } {
+    return (
+      "stopExpression" in renderer &&
+      typeof renderer.stopExpression === "function"
     );
   }
 

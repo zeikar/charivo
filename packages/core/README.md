@@ -80,9 +80,10 @@ The `Charivo` instance wires managers together:
 - `on(event, listener)`
 - `off(event, listener)`
 
-`detachRenderer()` disconnects the render manager's event-bus listeners without
-destroying the manager, so it remains reusable. Calling `attachRenderer(newManager)`
-automatically disconnects the previously-attached manager before wiring the new one.
+`detachRenderer()` disconnects the render manager's event-bus listeners and
+releases any held expression, without destroying the manager, so it remains
+reusable. Calling `attachRenderer(newManager)` automatically disconnects the
+previously-attached manager before wiring the new one.
 
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly

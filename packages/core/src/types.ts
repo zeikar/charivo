@@ -308,7 +308,7 @@ export interface RenderManager {
   /** Local-presence gaze (webcam), peer of mouse-tracking. Returns true when applied. */
   setLocalGaze?(coords: GazeCoordinates): boolean;
   setEventBus(eventBus: CharivoEventBus): void;
-  /** Removes all event-bus listeners registered by setEventBus. */
+  /** Removes all event-bus listeners registered by setEventBus and releases any held expression. */
   disconnect(): void;
   loadModel?(modelPath: string): Promise<void>;
   setMessageCallback?(
