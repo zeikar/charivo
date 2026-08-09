@@ -37,8 +37,14 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
   and realtime managers produce those numbers
 - reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
-- automatically clears an applied expression via `stopExpression` about 8
-  seconds after `avatar:expression` sets it, if the renderer supports it
+- automatically releases an applied expression via `stopExpression` about 8
+  seconds after `avatar:expression` sets it, if the renderer supports it —
+  with `@charivo/render-live2d` the release fades `Add` and `Multiply`
+  parameters back to the base face when their release duration (the
+  expression's `FadeOutTime`) is positive (`Overwrite` parameters snap — an
+  SDK constraint). The release also waits until the expression has
+  finished fading in, so it can remain visible beyond the nominal 8-second
+  hold
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
