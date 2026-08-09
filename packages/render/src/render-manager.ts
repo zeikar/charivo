@@ -19,6 +19,9 @@ const GAZE_MOUSE_SUSPEND_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
 const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
+// Covers the spoken reply that set the expression (~15-20 words at typical
+// TTS rate). Internal constant, no public knob by design.
+const EXPRESSION_HOLD_MS = 8_000;
 
 /**
  * Render Manager - Class responsible for managing the state of a rendering session
@@ -46,6 +49,7 @@ export class RenderManager implements IRenderManager {
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
+  private expressionReleaseTimer?: ReturnType<typeof setTimeout>;
   private mouseTrackingSuspendedUntil = 0;
   private localGazeSuspendUntil = 0;
   private lastExpression?: { expressionId: string; at: number };
@@ -225,6 +229,11 @@ export class RenderManager implements IRenderManager {
       this.resumeMouseTrackingTimer = undefined;
     }
 
+    if (this.expressionReleaseTimer) {
+      clearTimeout(this.expressionReleaseTimer);
+      this.expressionReleaseTimer = undefined;
+    }
+
     await this.renderer.destroy();
   }
 
@@ -266,6 +275,20 @@ export class RenderManager implements IRenderManager {
 
     this.renderer.playExpression(expressionId);
     this.lastExpression = { expressionId, at: now };
+
+    if (this.expressionReleaseTimer) {
+      clearTimeout(this.expressionReleaseTimer);
+      this.expressionReleaseTimer = undefined;
+    }
+
+    if (this.renderer.stopExpression) {
+      this.expressionReleaseTimer = setTimeout(() => {
+        this.expressionReleaseTimer = undefined;
+        this.renderer.stopExpression?.();
+        this.lastExpression = undefined;
+      }, EXPRESSION_HOLD_MS);
+    }
+
     return true;
   }
 

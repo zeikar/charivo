@@ -51,6 +51,7 @@ class StubRenderer implements Renderer {
     async (_message: Message, _character?: Character) => undefined,
   );
   playExpression = vi.fn((_expressionId: string) => undefined);
+  stopExpression = vi.fn(() => undefined);
   playMotionByGroup = vi.fn((_group: string, _index: number) => undefined);
   lookAt = vi.fn((_coords: GazeCoordinates) => undefined);
   getAvailableExpressions = vi.fn(() => ["exp_happy", "exp_sad"]);
@@ -155,6 +156,127 @@ describe("RenderManager", () => {
     expect(renderer.playExpression).toHaveBeenCalledTimes(2);
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the expression after the hold window", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new expression restarts the hold window instead of stacking with the previous one", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(5_000);
+    bus.emit("avatar:expression", { expressionId: "exp_sad" });
+
+    // If the first timer (due at 8_000) were not cancelled, it would fire here.
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("a debounced duplicate expression does not restart the hold window", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(200);
+    // Swallowed by the 300ms debounce window: must not reschedule the release.
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    await vi.advanceTimersByTimeAsync(7_800);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending expression release survives disconnect()", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    manager.disconnect();
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy() clears the pending expression-release timer without releasing", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await manager.destroy();
+
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+  });
+
+  it("a renderer without stopExpression schedules no release timer", () => {
+    vi.useFakeTimers();
+
+    class ExpressionOnlyRenderer implements Renderer {
+      initialize = vi.fn(async () => undefined);
+      destroy = vi.fn(async () => undefined);
+      render = vi.fn(
+        async (_message: Message, _character?: Character) => undefined,
+      );
+      playExpression = vi.fn((_expressionId: string) => undefined);
+      updateViewWithMouse = vi.fn(
+        (_coords: { clientX: number; clientY: number }) => undefined,
+      );
+      handleMouseTap = vi.fn(
+        (_coords: { clientX: number; clientY: number }) => undefined,
+      );
+    }
+
+    const renderer = new ExpressionOnlyRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("renders character messages without implicit avatar actions", async () => {
