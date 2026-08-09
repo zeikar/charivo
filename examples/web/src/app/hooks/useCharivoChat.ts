@@ -982,9 +982,15 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     [charivo, handleSend, input, isRealtimeMode, setInput],
   );
 
-  const playExpression = useCallback((expressionId: string) => {
-    rendererRef.current?.playExpression(expressionId);
-  }, []);
+  const playExpression = useCallback(
+    (expressionId: string) => {
+      // Routed through the event bus (not rendererRef directly) so the
+      // RenderManager stays the single owner of expression state, including
+      // its auto-release timer.
+      charivo?.emit("avatar:expression", { expressionId });
+    },
+    [charivo],
+  );
 
   const playMotion = useCallback((group: string, index: number) => {
     rendererRef.current?.playMotionByGroup(group, index);

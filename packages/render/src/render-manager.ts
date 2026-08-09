@@ -102,10 +102,10 @@ export class RenderManager implements IRenderManager {
    * Connect the event bus
    */
   setEventBus(eventBus: CharivoEventBus): void {
-    // Defensive self-clear: avoid double-registering if called again
-    if (this.eventBus) {
-      this.disconnect();
-    }
+    // Defensive self-clear: avoid double-registering if called again. Uses
+    // the listener-only unbind (not disconnect()) so a rewire preserves a
+    // pending expression release instead of abandoning it.
+    this.unbindEventBus();
 
     this.eventBus = eventBus;
     eventBus.on("tts:audio:start", this.handleTtsAudioStart);
@@ -117,9 +117,10 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * Remove the event bus listeners. Does nothing if no bus is connected, and is safe to call multiple times.
+   * Remove the event bus listeners without touching expression state. Does
+   * nothing if no bus is connected.
    */
-  disconnect(): void {
+  private unbindEventBus(): void {
     if (!this.eventBus) {
       return;
     }
@@ -135,6 +136,22 @@ export class RenderManager implements IRenderManager {
     this.eventBus.off("avatar:motion", this.handleAvatarMotion);
     this.eventBus.off("avatar:gaze", this.handleAvatarGaze);
     this.eventBus = undefined;
+  }
+
+  /**
+   * Disconnect from the event bus and relinquish the renderer: unbinds the bus
+   * listeners and, since the manager is giving up ownership of the renderer,
+   * synchronously releases any held expression rather than leaving it to a
+   * timer that may now outlive that ownership. Does nothing if no bus is
+   * connected, and is safe to call multiple times.
+   */
+  disconnect(): void {
+    if (!this.eventBus) {
+      return;
+    }
+
+    this.unbindEventBus();
+    this.releaseExpressionNow();
   }
 
   /**
@@ -282,14 +299,33 @@ export class RenderManager implements IRenderManager {
     }
 
     if (this.renderer.stopExpression) {
-      this.expressionReleaseTimer = setTimeout(() => {
-        this.expressionReleaseTimer = undefined;
-        this.renderer.stopExpression?.();
-        this.lastExpression = undefined;
-      }, EXPRESSION_HOLD_MS);
+      this.expressionReleaseTimer = setTimeout(
+        () => this.releaseExpressionNow(),
+        EXPRESSION_HOLD_MS,
+      );
     }
 
     return true;
+  }
+
+  /**
+   * Immediately release a held expression: cancels the pending release timer
+   * (a harmless no-op if it has already fired) and calls stopExpression so
+   * the model returns to its base face. Used both when the hold window
+   * elapses naturally and when disconnect() relinquishes the renderer early.
+   */
+  private releaseExpressionNow(): void {
+    if (this.expressionReleaseTimer) {
+      clearTimeout(this.expressionReleaseTimer);
+      this.expressionReleaseTimer = undefined;
+    }
+
+    if (!this.lastExpression) {
+      return;
+    }
+
+    this.renderer.stopExpression?.();
+    this.lastExpression = undefined;
   }
 
   private applyMotion(motion: MotionSelection): boolean {

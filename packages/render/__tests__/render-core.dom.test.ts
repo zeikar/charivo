@@ -215,7 +215,7 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
-  it("a pending expression release survives disconnect()", async () => {
+  it("disconnect() releases a pending expression synchronously instead of leaving it to the timer", async () => {
     vi.useFakeTimers();
 
     const renderer = new StubRenderer();
@@ -227,11 +227,36 @@ describe("RenderManager", () => {
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
     manager.disconnect();
 
+    // Released immediately: the manager is relinquishing the renderer, so a
+    // timer must not outlive that ownership (it may since have been handed
+    // to a different manager).
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // No second release when the old hold window would have elapsed.
     await vi.advanceTimersByTimeAsync(8_000);
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
-  it("destroy() clears the pending expression-release timer without releasing", async () => {
+  it("a pending expression release still fires after a setEventBus() rewire", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    // setEventBus() internally disconnects before reconnecting; the pending
+    // release must survive that rewire rather than being silently abandoned.
+    manager.setEventBus(bus);
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("destroy() disconnects first, releasing any held expression before the renderer is torn down", async () => {
     vi.useFakeTimers();
 
     const renderer = new StubRenderer();
@@ -243,11 +268,43 @@ describe("RenderManager", () => {
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
     await manager.destroy();
 
-    expect(renderer.stopExpression).not.toHaveBeenCalled();
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
 
+    // No leftover timer fires a second release later.
     await vi.advanceTimersByTimeAsync(8_000);
-    expect(renderer.stopExpression).not.toHaveBeenCalled();
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaching after an expression, then reattaching the same manager, starts clean (no leftover expression or stray timer)", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    manager.disconnect();
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Advancing past the original hold window must not trigger a second
+    // release from stale state.
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    // Reattaching the SAME manager instance is the documented reusable
+    // render-manager lifecycle (packages/core/README.md): a fresh
+    // expression must schedule a fresh hold, not be swallowed by stale
+    // state left over from before the detach.
+    manager.setEventBus(bus);
+    bus.emit("avatar:expression", { expressionId: "exp_sad" });
+    expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_sad");
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(2);
   });
 
   it("a renderer without stopExpression schedules no release timer", () => {
