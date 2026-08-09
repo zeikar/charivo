@@ -3,6 +3,8 @@ import { CubismFramework } from "@framework/live2dcubismframework";
 import { CubismIdHandle } from "@framework/id/cubismid";
 import { CubismModel } from "@framework/model/cubismmodel";
 import { CubismExpressionMotion } from "@framework/motion/cubismexpressionmotion";
+import { CubismExpressionMotionManager } from "@framework/motion/cubismexpressionmotionmanager";
+import { CubismMotionManager } from "@framework/motion/cubismmotionmanager";
 
 import { LAppModel } from "../src/cubism/lappmodel";
 
@@ -121,5 +123,116 @@ describe("LAppModel.clearExpression", () => {
     frame(0.1);
 
     expect(target.value).toBe(BASELINE_VALUE);
+  });
+});
+
+/**
+ * Drives the REAL LAppModel.update() so this test observes production call
+ * ordering directly, rather than the ordering the test above assumes by
+ * construction inside its own frame() helper.
+ *
+ * `_model`, `_motionManager` and `_expressionManager` are protected on
+ * CubismUserModel, so a subclass can swap in fakes before calling update().
+ * `ready` and `modelSetting` are private on LAppModel and are only ever set by
+ * loadAssets(), which needs the WASM core - so this subclass casts past them
+ * to satisfy update()'s `if (!this.ready || !this.modelSetting) return;` guard
+ * without going through model loading.
+ */
+class OrderingTestLAppModel extends LAppModel {
+  public installFakes(
+    model: CubismModel,
+    motionManager: CubismMotionManager,
+    expressionManager: CubismExpressionMotionManager,
+  ): void {
+    this._model = model;
+    this._motionManager = motionManager;
+    this._expressionManager = expressionManager;
+
+    // _lipsync defaults to true, so update()'s lip-sync block would otherwise
+    // run against the real LAppWavFileHandler. That is a no-op while inactive
+    // today, but this test exists to stop depending on assumptions it does not
+    // assert - so switch the branch off rather than rely on that staying true.
+    this._lipsync = false;
+
+    const readyOverride = this as unknown as {
+      ready: boolean;
+      modelSetting: unknown;
+    };
+    readyOverride.ready = true;
+    readyOverride.modelSetting = {};
+  }
+}
+
+/**
+ * Records loadParameters/saveParameters/update calls, in call order, into a
+ * shared array so the expression manager fake below can interleave its own
+ * call into the same sequence.
+ */
+class RecordingModel {
+  public readonly calls: string[] = [];
+
+  public loadParameters(): void {
+    this.calls.push("model.loadParameters");
+  }
+
+  public saveParameters(): void {
+    this.calls.push("model.saveParameters");
+  }
+
+  // Drag-follow parameters (angle/eye-ball); irrelevant to the ordering
+  // assertion, so not recorded.
+  public addParameterValueById(): void {}
+
+  public update(): void {
+    this.calls.push("model.update");
+  }
+}
+
+// isFinished() must return false so update() takes the updateMotion() branch
+// instead of startRandomMotion(), which needs real modelSetting motion data.
+class StubMotionManager {
+  public isFinished(): boolean {
+    return false;
+  }
+
+  public updateMotion(): boolean {
+    return false;
+  }
+}
+
+class RecordingExpressionManager {
+  public constructor(private readonly calls: string[]) {}
+
+  public updateMotion(): boolean {
+    this.calls.push("expressionManager.updateMotion");
+    return false;
+  }
+}
+
+describe("LAppModel.update() ordering invariant", () => {
+  it("saves parameters before the expression manager writes on top of them", () => {
+    const recordingModel = new RecordingModel();
+    const model = new OrderingTestLAppModel();
+    model.installFakes(
+      recordingModel as unknown as CubismModel,
+      new StubMotionManager() as unknown as CubismMotionManager,
+      new RecordingExpressionManager(
+        recordingModel.calls,
+      ) as unknown as CubismExpressionMotionManager,
+    );
+
+    model.update();
+
+    const loadIndex = recordingModel.calls.indexOf("model.loadParameters");
+    const saveIndex = recordingModel.calls.indexOf("model.saveParameters");
+    const expressionIndex = recordingModel.calls.indexOf(
+      "expressionManager.updateMotion",
+    );
+
+    expect(loadIndex).toBeGreaterThanOrEqual(0);
+    expect(saveIndex).toBeGreaterThanOrEqual(0);
+    expect(expressionIndex).toBeGreaterThanOrEqual(0);
+    expect(loadIndex).toBeLessThan(saveIndex);
+    expect(saveIndex).toBeLessThan(expressionIndex);
   });
 });
