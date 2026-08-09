@@ -123,6 +123,14 @@ export class Live2DRendererImpl
   }
 
   /**
+   * Drop the active expression and return to the model's base face
+   */
+  stopExpression(): void {
+    if (!this.model?.isReady()) return;
+    this.model.clearExpression();
+  }
+
+  /**
    * Play a specific motion by group and index
    */
   playMotionByGroup(group: string, index: number): void {

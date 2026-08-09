@@ -72,6 +72,7 @@ const rendererMocks = vi.hoisted(() => {
       this.expressions.includes(expressionId),
     );
     setExpression = vi.fn((_expressionId: string) => undefined);
+    clearExpression = vi.fn(() => undefined);
     hasMotion = vi.fn(
       (group: string, index: number) =>
         typeof this.motionGroups[group] === "number" &&
@@ -409,6 +410,25 @@ describe("Live2DRenderer", () => {
       LAppDefine.PriorityNormal,
     );
     expect(model.setDragging).toHaveBeenCalledWith(1, -1);
+  });
+
+  it("delegates expression release to the model once it is ready", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+
+    expect(() => renderer.stopExpression()).not.toThrow();
+
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+
+    const model = rendererMocks.MockModel.instances[0]!;
+    model.ready = false;
+
+    renderer.stopExpression();
+    expect(model.clearExpression).not.toHaveBeenCalled();
+
+    model.ready = true;
+    renderer.stopExpression();
+    expect(model.clearExpression).toHaveBeenCalledTimes(1);
   });
 
   it("maps mouse input into drag and tap interactions", async () => {

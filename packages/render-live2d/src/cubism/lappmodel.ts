@@ -317,6 +317,23 @@ export class LAppModel extends CubismUserModel {
     }
   }
 
+  /**
+   * Drops the active expression by clearing the expression queue outright.
+   *
+   * Fading out is not an option here: the expression manager never finishes or
+   * erases a lone queue entry, its applied weight is derived from fade-in only,
+   * and the sole live expression writes full parameter values regardless of fade
+   * weight — so a fade-out request would leave the face expressed forever.
+   * With an empty queue the manager applies every parameter at weight 0 (a
+   * no-op blend), and because expressions are written after saveParameters(),
+   * the next frame's loadParameters() restores the base face while idle motion,
+   * eye blink and breath keep running.
+   */
+  public clearExpression(): void {
+    if (!this._expressionManager) return;
+    this._expressionManager.stopAllMotions();
+  }
+
   public hasMotion(group: string, index: number): boolean {
     const key = `${group}_${index}`;
     return this.motions.getValue(key) !== null;
