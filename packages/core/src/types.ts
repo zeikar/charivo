@@ -291,6 +291,8 @@ export interface Renderer {
   setRealtimeLipSync?(enabled: boolean): void;
   updateRealtimeLipSyncRms?(rms: number): void;
   playExpression?(expressionId: string): void;
+  /** Clears the active expression so the model returns to its base face; renderers without expression state omit it. */
+  stopExpression?(): void;
   playMotionByGroup?(group: string, index: number): void;
   lookAt?(coords: GazeCoordinates): void;
   getAvailableExpressions?(): string[];
