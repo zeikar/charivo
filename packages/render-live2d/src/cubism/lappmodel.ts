@@ -17,12 +17,14 @@ import { ICubismModelSetting } from "@framework/icubismmodelsetting";
 import { CubismIdHandle } from "@framework/id/cubismid";
 import { CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
+import { CubismModel } from "@framework/model/cubismmodel";
 import { CubismUserModel } from "@framework/model/cubismusermodel";
 import {
   ACubismMotion,
   BeganMotionCallback,
   FinishedMotionCallback,
 } from "@framework/motion/acubismmotion";
+import { CubismExpressionMotion } from "@framework/motion/cubismexpressionmotion";
 import { CubismMotion } from "@framework/motion/cubismmotion";
 import {
   CubismMotionQueueEntryHandle,
@@ -52,6 +54,13 @@ export class LAppModel extends CubismUserModel {
   private host: CubismModelHost | null = null;
   private motions = new csmMap<string, ACubismMotion>();
   private expressions = new csmMap<string, ACubismMotion>();
+
+  // Release state for the applied expression. `activeExpression` is the motion
+  // the last setExpression() started; `pendingReleaseFadeSeconds` holds a release
+  // that arrived before that expression had finished fading in, which the
+  // per-frame expression step starts once it saturates - see clearExpression().
+  private activeExpression: ACubismMotion | null = null;
+  private pendingReleaseFadeSeconds: number | null = null;
   private eyeBlinkIds = new csmVector<CubismIdHandle>();
   private lipSyncIds = new csmVector<CubismIdHandle>();
   private ready = false;
@@ -189,7 +198,7 @@ export class LAppModel extends CubismUserModel {
     }
 
     if (this._expressionManager) {
-      this._expressionManager.updateMotion(this._model, deltaTimeSeconds);
+      this.updateExpressionFrame(this._model, deltaTimeSeconds);
     }
 
     this._model.addParameterValueById(this.idParamAngleX, dragX * 30);
@@ -314,24 +323,61 @@ export class LAppModel extends CubismUserModel {
     const motion = this.expressions.getValue(expressionId);
     if (motion && this._expressionManager) {
       this._expressionManager.startMotion(motion, false);
+      this.activeExpression = motion;
+      // A new expression supersedes a release still waiting on the previous
+      // expression's fade-in; otherwise that release would fire once THIS
+      // expression saturates and cut it short.
+      this.pendingReleaseFadeSeconds = null;
     }
   }
 
   /**
-   * Drops the active expression by clearing the expression queue outright.
+   * Releases the applied expression so the face returns to its base pose.
    *
-   * Fading out is not an option here: the expression manager never finishes or
-   * erases a lone queue entry, its applied weight is derived from fade-in only,
-   * and the sole live expression writes full parameter values regardless of fade
-   * weight — so a fade-out request would leave the face expressed forever.
-   * With an empty queue the manager applies every parameter at weight 0 (a
-   * no-op blend), and because expressions are written after saveParameters(),
-   * the next frame's loadParameters() restores the base face while idle motion,
-   * eye blink and breath keep running.
+   * The return is the SDK's own expression crossfade: an empty expression (no
+   * Parameters) is queued as a NEWER entry, so calculateExpressionParameters
+   * eases every parameter the new entry does not reference back to its default
+   * at that entry's fade weight, and the manager prunes the older entry once the
+   * new one reaches full fade weight. The neutral entry fades in over the
+   * released expression's own FadeOutTime, so an authored `FadeOutTime: 0` is
+   * honored as the author's request for an instant release.
+   *
+   * Only `Add` and `Multiply` parameters fade, and only when that duration is
+   * positive. `Overwrite` parameters snap to their base value in one frame,
+   * because the SDK rebases the overwrite value from the model at the top of
+   * every entry's parameter pass (cubismexpressionmotion.ts:140-141), leaving
+   * nothing to interpolate from.
+   *
+   * A release requested before the expression has finished fading in is
+   * deferred to the per-frame expression step below: starting the neutral
+   * against an unsaturated expression makes the face MORE expressed first
+   * (measured 0.35 -> 0.91), so the release waits for the fade-in to complete
+   * and then fades. The wait is counted in rendered frames, so a paused
+   * renderer simply defers - at the cost of an expression outliving its
+   * nominal hold.
+   *
+   * Release requests are idempotent: a second call finds no applied expression.
+   * What the residual neutral entry does to later frames is pinned by
+   * __tests__/expression-release.test.ts rather than assumed here.
    */
   public clearExpression(): void {
-    if (!this._expressionManager) return;
-    this._expressionManager.stopAllMotions();
+    if (!this._expressionManager || !this.activeExpression) return;
+
+    // Math.max guards an authored negative FadeOutTime in the .exp3.json (e.g.
+    // -2): CubismExpressionMotion.parse always calls setFadeOutTime with a
+    // parsed float or its own 1.0 default, so ACubismMotion's -1 "unset"
+    // default is unreachable here. A negative fade-in keeps the easing at 0
+    // forever and would strand the face mid-expression, so the clamp turns an
+    // authored negative into an instant release instead.
+    const fadeSeconds = Math.max(0, this.activeExpression.getFadeOutTime());
+
+    if (this.isNewestEntrySaturated()) {
+      this.startNeutralExpression(fadeSeconds);
+    } else {
+      this.pendingReleaseFadeSeconds = fadeSeconds;
+    }
+
+    this.activeExpression = null;
   }
 
   public hasMotion(group: string, index: number): boolean {
@@ -628,8 +674,66 @@ export class LAppModel extends CubismUserModel {
     this._motionManager.stopAllMotions();
   }
 
+  /**
+   * Expression step of update(), extracted so a deferred release can start on
+   * the frame after the outgoing expression is fully faded in.
+   */
+  protected updateExpressionFrame(
+    model: CubismModel,
+    deltaTimeSeconds: number,
+  ): void {
+    if (
+      this.pendingReleaseFadeSeconds !== null &&
+      this.isNewestEntrySaturated()
+    ) {
+      this.startNeutralExpression(this.pendingReleaseFadeSeconds);
+      this.pendingReleaseFadeSeconds = null;
+    }
+
+    this._expressionManager.updateMotion(model, deltaTimeSeconds);
+  }
+
+  /**
+   * Whether the newest queue entry - always the applied expression's, since the
+   * only other enqueue is a neutral that ends the expression - has reached full
+   * fade weight, the same signal the manager's own prune uses.
+   */
+  private isNewestEntrySaturated(): boolean {
+    const entries = this._expressionManager.getCubismMotionQueueEntries();
+    const lastIndex = entries.getSize() - 1;
+    if (lastIndex < 0) return false;
+
+    // isStarted() keeps getFadeWeight() off its warn-and-return-(-1) path: no
+    // frame has run since startMotion(), so there is no weight yet - which is
+    // simply "not saturated", and the release defers.
+    return (
+      entries.at(lastIndex).isStarted() &&
+      this._expressionManager.getFadeWeight(lastIndex) >= 1.0
+    );
+  }
+
+  private startNeutralExpression(fadeInSeconds: number): void {
+    // A fresh instance per release: updateFadeWeight() reads the motion's
+    // fade-in seconds live, so a shared instance would retroactively bend the
+    // curve of an earlier neutral still fading with a different duration.
+    const neutralJson = JSON.stringify({
+      Type: "Live2D Expression",
+      FadeInTime: fadeInSeconds,
+      FadeOutTime: 0,
+      Parameters: [],
+    });
+    const buffer = new TextEncoder().encode(neutralJson).buffer;
+
+    this._expressionManager.startMotion(
+      CubismExpressionMotion.create(buffer, buffer.byteLength),
+      false,
+    );
+  }
+
   private releaseExpressions(): void {
     this.expressions.clear();
+    this.activeExpression = null;
+    this.pendingReleaseFadeSeconds = null;
   }
 
   private requireGl(): WebGLRenderingContext | WebGL2RenderingContext {
