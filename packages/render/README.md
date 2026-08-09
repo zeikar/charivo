@@ -37,6 +37,8 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
   and realtime managers produce those numbers
 - reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
+- automatically clears an applied expression via `stopExpression` about 8
+  seconds after `avatar:expression` sets it, if the renderer supports it
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
@@ -48,9 +50,9 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 
 At minimum, a renderer must implement the `Renderer` contract from `@charivo/core`.
 If it also exposes optional methods such as `loadModel`, `setRealtimeLipSync`,
-`updateRealtimeLipSyncRms`, `playExpression`, `playMotionByGroup`, `lookAt`,
-`getAvailableExpressions`, or `getAvailableMotionGroups`, the render manager
-will use them automatically.
+`updateRealtimeLipSyncRms`, `playExpression`, `stopExpression`,
+`playMotionByGroup`, `lookAt`, `getAvailableExpressions`, or
+`getAvailableMotionGroups`, the render manager will use them automatically.
 
 ## Event Wiring
 

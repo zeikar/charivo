@@ -38,6 +38,7 @@ The renderer exposes:
 - `getAvailableExpressions()`
 - `getAvailableMotionGroups()`
 - `playExpression(expressionId)`
+- `stopExpression()`
 - `playMotionByGroup(group, index)`
 - `lookAt({ x, y })`
 

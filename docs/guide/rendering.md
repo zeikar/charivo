@@ -59,6 +59,13 @@ charivo.attachRenderer(renderManager);
 In normal app code, wire the manager to `Charivo` rather than handling these
 events yourself.
 
+**Expression auto-release:** expressions triggered via `avatar:expression` are
+cleared automatically about 8 seconds after they are applied, and the model
+returns to its base face. Idle motion, eye blink, and breath keep running
+throughout. This applies when the renderer implements `stopExpression` —
+`@charivo/render-live2d` does; a renderer that omits it keeps the expression
+until something else replaces it.
+
 ## Event Wiring
 
 `RenderManager` intentionally uses `setEventBus(...)`, not
@@ -81,8 +88,8 @@ The usual flow is:
 6. attach the manager to `Charivo`
 
 If the renderer exposes optional methods such as `playExpression`,
-`playMotionByGroup`, `lookAt`, or model catalog getters, `@charivo/render` will use
-them automatically.
+`stopExpression`, `playMotionByGroup`, `lookAt`, or model catalog getters,
+`@charivo/render` will use them automatically.
 
 ## Gaze Drivers
 
