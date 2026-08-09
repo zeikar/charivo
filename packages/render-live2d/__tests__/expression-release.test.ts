@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CubismFramework } from "@framework/live2dcubismframework";
 import { CubismIdHandle } from "@framework/id/cubismid";
+import { CubismMath } from "@framework/math/cubismmath";
 import { CubismModel } from "@framework/model/cubismmodel";
 import { ACubismMotion } from "@framework/motion/acubismmotion";
 import { CubismExpressionMotion } from "@framework/motion/cubismexpressionmotion";
@@ -269,6 +270,315 @@ describe("LAppModel.clearExpression", () => {
     expect(target.read(addId)).toBe(BASELINE_VALUE);
     expect(target.read(overwriteId)).toBe(BASELINE_VALUE);
     expect(model.expressionQueueSize()).toBe(1);
+  });
+});
+
+describe("LAppModel expression release state machine", () => {
+  it("defers a release requested mid-fade-in, then fades once the fade-in completes", () => {
+    const model = createModel(EXPRESSION_JSON);
+    const id = parameterId(PARAMETER_ID);
+    const target = new ParameterModel([id]);
+    const frame = makeFrame(model, target);
+
+    model.setExpression(EXPRESSION_ID);
+    // 3 x 0.1s = fade-in elapsed 0.2 of 0.5s: getEasingSine(0.4) = 0.3455.
+    // Premise guard - without it the test could silently degrade into the
+    // saturated path the first test already covers.
+    for (let i = 0; i < 3; i++) {
+      frame(0.1);
+    }
+    expect(target.read(id)).toBeCloseTo(0.3455, 3);
+
+    model.clearExpression();
+
+    // Nothing is enqueued yet. Starting the neutral against an unsaturated
+    // expression is the measured lurch (0.35 -> 0.91 two frames later), so the
+    // release is only recorded here.
+    expect(model.expressionQueueSize()).toBe(1);
+
+    // The fade-in runs to completion untouched: getEasingSine at elapsed 0.3,
+    // 0.4 and 0.5 of the 0.5s FadeInTime. A release that fired early or
+    // snapped would pull these down instead.
+    const fadingIn: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      frame(0.1);
+      fadingIn.push(target.read(id));
+      expect(model.expressionQueueSize()).toBe(1);
+    }
+    fadingIn.forEach((value, index) => {
+      expect(value).toBeLessThanOrEqual(EXPRESSED_VALUE);
+      if (index > 0) {
+        expect(value).toBeGreaterThan(fadingIn[index - 1]);
+      }
+    });
+    expect(fadingIn[0]).toBeCloseTo(0.6545, 3);
+    expect(fadingIn[1]).toBeCloseTo(0.9045, 3);
+    expect(fadingIn[2]).toBe(EXPRESSED_VALUE);
+
+    // First frame after saturation: the pending release fires. The neutral
+    // enters the queue at elapsed 0, so the handover itself is not a step -
+    // if the release never fired, the queue would stay at 1 forever.
+    frame(0.1);
+    expect(model.expressionQueueSize()).toBe(2);
+    expect(target.read(id)).toBe(EXPRESSED_VALUE);
+
+    // From here the deferred release is the ordinary fade: neutral elapsed
+    // 0.1 ... 0.7 of the released expression's 0.8s FadeOutTime.
+    const releasing: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      frame(0.1);
+      releasing.push(target.read(id));
+    }
+    releasing.forEach((value, index) => {
+      expect(value).toBeGreaterThan(BASELINE_VALUE);
+      expect(value).toBeLessThan(EXPRESSED_VALUE);
+      if (index > 0) {
+        expect(value).toBeLessThan(releasing[index - 1]);
+      }
+    });
+    // 1 - getEasingSine(0.4 / 0.8): the deferred release uses the same
+    // duration source as the immediate one, not FadeInTime or a constant.
+    expect(releasing[3]).toBeCloseTo(0.5, 5);
+
+    frame(0.1);
+    expect(target.read(id)).toBe(BASELINE_VALUE);
+    expect(model.expressionQueueSize()).toBe(1);
+
+    for (const incoming of [0.3, -0.25, 0.7, 0.42]) {
+      frame(0.1, incoming);
+      expect(target.read(id)).toBe(incoming);
+      expect(model.expressionQueueSize()).toBe(1);
+    }
+  });
+
+  it("lets a new expression supersede a pending release", () => {
+    const model = createModel(EXPRESSION_JSON);
+    const id = parameterId(PARAMETER_ID);
+    const target = new ParameterModel([id]);
+    const frame = makeFrame(model, target);
+
+    model.setExpression(EXPRESSION_ID);
+    for (let i = 0; i < 3; i++) {
+      frame(0.1);
+    }
+    expect(target.read(id)).toBeCloseTo(0.3455, 3);
+
+    model.clearExpression();
+    expect(model.expressionQueueSize()).toBe(1);
+
+    model.setExpression(EXPRESSION_ID);
+
+    const expressing: number[] = [];
+    for (let i = 0; i < 14; i++) {
+      frame(0.1);
+      expressing.push(target.read(id));
+      // Nothing ever stacks a third entry. That the second one is the new
+      // expression rather than a neutral is what the held value below proves.
+      expect(model.expressionQueueSize()).toBeLessThanOrEqual(2);
+    }
+
+    // The re-applied entry takes over on the second frame and the face then
+    // HOLDS. If setExpression left the pending release in place, the neutral
+    // would fire once this entry saturated (frame 7) and drag the tail of this
+    // sequence back down toward baseline.
+    expressing.slice(1).forEach((value) => {
+      expect(value).toBe(EXPRESSED_VALUE);
+    });
+    expect(model.expressionQueueSize()).toBe(1);
+
+    // The superseded pending state left nothing behind: the next release is a
+    // normal saturated fade that reaches baseline and prunes.
+    model.clearExpression();
+    expect(model.expressionQueueSize()).toBe(2);
+
+    let previous = EXPRESSED_VALUE;
+    for (let i = 0; i < 9; i++) {
+      frame(0.1);
+      const value = target.read(id);
+      if (i === 0) {
+        // Handover frame: the neutral starts here at elapsed 0 / weight 0, so
+        // the face is still fully expressed (same as the primary fade test).
+        expect(value).toBe(EXPRESSED_VALUE);
+      } else {
+        // Strict from here, like every other decreasing check in this file:
+        // `<=` would also be satisfied by a snap release (baseline, then flat).
+        expect(value).toBeLessThan(previous);
+      }
+      previous = value;
+    }
+    expect(target.read(id)).toBe(BASELINE_VALUE);
+    expect(model.expressionQueueSize()).toBe(1);
+  });
+
+  it("dips briefly then recovers when the expression is re-applied mid-release", () => {
+    const model = createModel(EXPRESSION_JSON);
+    const id = parameterId(PARAMETER_ID);
+    const target = new ParameterModel([id]);
+    const frame = makeFrame(model, target);
+
+    model.setExpression(EXPRESSION_ID);
+    for (let i = 0; i < 8; i++) {
+      frame(0.1);
+    }
+
+    model.clearExpression();
+    for (let i = 0; i < 3; i++) {
+      frame(0.1);
+    }
+    // Neutral fade elapsed 0.2 of 0.8s: 1 - getEasingSine(0.25) = 0.8536.
+    // Premise guard - the release must genuinely be in flight when the new
+    // expression lands, otherwise this is not the interruption path.
+    expect(target.read(id)).toBeCloseTo(0.8536, 3);
+
+    model.setExpression(EXPRESSION_ID);
+    // The SDK stacks: outgoing expression, in-flight neutral, new expression.
+    expect(model.expressionQueueSize()).toBe(3);
+
+    const values: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      frame(0.1);
+      values.push(target.read(id));
+    }
+
+    values.forEach((value, index) => {
+      // Never snaps to baseline, never overshoots the expression.
+      expect(value).toBeGreaterThan(BASELINE_VALUE);
+      expect(value).toBeLessThanOrEqual(EXPRESSED_VALUE);
+
+      // Re-expressing never leaves the face MORE released than doing nothing:
+      // the pure release curve at the same neutral fade elapsed (0.3 ... 0.8)
+      // is a lower bound. The first frame sits exactly on it (the new entry is
+      // still at weight 0), hence the epsilon.
+      const neutralElapsed = 0.3 + index * 0.1;
+      const pureRelease =
+        1 - CubismMath.getEasingSine(neutralElapsed / FADE_OUT_SECONDS);
+      expect(value).toBeGreaterThanOrEqual(pureRelease - 1e-9);
+    });
+
+    // The decided, documented shape: the in-flight neutral keeps pulling for
+    // three more frames, the value bottoms out, then the new expression's
+    // fade-in wins and it rises. Measured: 0.6913 -> 0.5477 -> 0.5475 (min) ->
+    // 0.7051 -> 0.9081 -> 1. Note frames 1->2 differ by only ~2.3e-4 (they read
+    // identically at 4 dp): that is genuine SDK float math, not a rounding bug,
+    // but it pins where the minimum lands on the 0.1s frame grid — re-derive it
+    // if FADE_OUT_SECONDS, the frame size, or the pre-interrupt frame count moves.
+    expect(values[1]).toBeLessThan(values[0]);
+    expect(values[2]).toBeLessThan(values[1]);
+    expect(values[3]).toBeGreaterThan(values[2]);
+    expect(values[4]).toBeGreaterThan(values[3]);
+    expect(values[5]).toBeGreaterThan(values[4]);
+
+    // Fully expressed again, and the prune took BOTH older entries with it.
+    expect(values[5]).toBe(EXPRESSED_VALUE);
+    expect(model.expressionQueueSize()).toBe(1);
+  });
+
+  // stopExpression() is public renderer API, so a consumer can call it
+  // repeatedly; repeated calls must not stack neutral entries or pending
+  // releases.
+  it("keeps release requests idempotent", () => {
+    const id = parameterId(PARAMETER_ID);
+
+    // A model that never expressed has nothing to release.
+    const fresh = createModel(EXPRESSION_JSON);
+    fresh.clearExpression();
+    expect(fresh.expressionQueueSize()).toBe(0);
+
+    // Saturated: the first call enqueues the neutral, the second does nothing.
+    const saturated = createModel(EXPRESSION_JSON);
+    const saturatedTarget = new ParameterModel([id]);
+    const saturatedFrame = makeFrame(saturated, saturatedTarget);
+    saturated.setExpression(EXPRESSION_ID);
+    for (let i = 0; i < 8; i++) {
+      saturatedFrame(0.1);
+    }
+    saturated.clearExpression();
+    expect(saturated.expressionQueueSize()).toBe(2);
+    saturated.clearExpression();
+    expect(saturated.expressionQueueSize()).toBe(2);
+
+    // Driven to completion the queue prunes back to the single residual entry
+    // and STAYS there. Queue size right after the second call is not enough on
+    // its own: a second release recorded behind the first (guard removed) also
+    // reads 2 there, and only shows up as a neutral starting all over again
+    // once that residual entry saturates.
+    for (let i = 0; i < 9; i++) {
+      saturatedFrame(0.1);
+    }
+    expect(saturatedTarget.read(id)).toBe(BASELINE_VALUE);
+    expect(saturated.expressionQueueSize()).toBe(1);
+    for (let i = 0; i < 6; i++) {
+      saturatedFrame(0.1);
+      expect(saturated.expressionQueueSize()).toBe(1);
+    }
+
+    // Mid-fade-in: both calls defer, and exactly one neutral fires later.
+    const deferred = createModel(EXPRESSION_JSON);
+    const deferredTarget = new ParameterModel([id]);
+    const deferredFrame = makeFrame(deferred, deferredTarget);
+    deferred.setExpression(EXPRESSION_ID);
+    for (let i = 0; i < 2; i++) {
+      deferredFrame(0.1);
+    }
+    deferred.clearExpression();
+    deferred.clearExpression();
+    expect(deferred.expressionQueueSize()).toBe(1);
+
+    let peakQueueSize = deferred.expressionQueueSize();
+    const deferredValues: number[] = [];
+    for (let i = 0; i < 16; i++) {
+      deferredFrame(0.1);
+      deferredValues.push(deferredTarget.read(id));
+      peakQueueSize = Math.max(peakQueueSize, deferred.expressionQueueSize());
+    }
+    // A second neutral would have peaked at 3 and left the queue above 1.
+    expect(peakQueueSize).toBe(2);
+    expect(deferred.expressionQueueSize()).toBe(1);
+    expect(deferredTarget.read(id)).toBe(BASELINE_VALUE);
+    // The fade-in completes on frame 4, the neutral starts on frame 5, so
+    // frame 9 is its halfway point: 1 - getEasingSine(0.4 / 0.8). The repeated
+    // call must not re-derive the duration from anything but the released
+    // expression's FadeOutTime - by then activeExpression is already gone.
+    expect(deferredValues[8]).toBeCloseTo(0.5, 5);
+  });
+
+  it("does not grow the queue across repeated express/release cycles", () => {
+    const model = createModel(EXPRESSION_JSON);
+    const id = parameterId(PARAMETER_ID);
+    const target = new ParameterModel([id]);
+    const frame = makeFrame(model, target);
+
+    // Cycles 2 and 3 start their expression on top of the previous cycle's
+    // residual neutral entry, so this covers "expression applied onto the
+    // residual entry" as well. Incoming values differ per cycle so a residual
+    // entry writing a constant cannot pass for a passthrough.
+    const incomingPerCycle = [
+      [0.3, -0.25, 0.7],
+      [0.42, 0.9, -0.6],
+      [-0.15, 0.55, 0.8],
+    ];
+
+    for (const incomingValues of incomingPerCycle) {
+      model.setExpression(EXPRESSION_ID);
+      for (let i = 0; i < 8; i++) {
+        frame(0.1);
+      }
+      expect(target.read(id)).toBe(EXPRESSED_VALUE);
+
+      model.clearExpression();
+      // 12 x 0.1s comfortably covers the 0.8s release plus its prune frame.
+      for (let i = 0; i < 12; i++) {
+        frame(0.1);
+      }
+      expect(target.read(id)).toBe(BASELINE_VALUE);
+      expect(model.expressionQueueSize()).toBe(1);
+
+      for (const incoming of incomingValues) {
+        frame(0.1, incoming);
+        expect(target.read(id)).toBe(incoming);
+        expect(model.expressionQueueSize()).toBe(1);
+      }
+    }
   });
 });
 
