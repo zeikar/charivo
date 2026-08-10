@@ -215,6 +215,104 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
+  it("releases a held expression when tts:audio:end arrives before the 8s cap", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("tts:audio:start", {});
+    await vi.advanceTimersByTimeAsync(2_000);
+    bus.emit("tts:audio:end", {});
+
+    // The utterance the expression accompanied is over: release now, well
+    // before the 8s cap would have fired.
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    // The cap must have been cancelled, not merely beaten.
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    // The hold state is cleared, so a second audio end releases nothing.
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    // The cap re-arms for the next expression.
+    bus.emit("avatar:expression", { expressionId: "exp_sad" });
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases an expression applied mid-audio at the utterance end", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    await vi.advanceTimersByTimeAsync(1_000);
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(2_000);
+    bus.emit("tts:audio:end", {});
+
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("an expression applied after audio ended falls back to the 8s cap", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    bus.emit("tts:audio:end", {});
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    // A past audio end must not release an expression applied afterwards.
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("tts:audio:end with no held expression never calls stopExpression", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+
+    // Already released by the cap: a later audio end must not release again.
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
   it("disconnect() releases a pending expression synchronously instead of leaving it to the timer", async () => {
     vi.useFakeTimers();
 
@@ -307,7 +405,7 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(2);
   });
 
-  it("a renderer without stopExpression schedules no release timer", () => {
+  it("a renderer without stopExpression schedules no release timer and ignores tts:audio:end", () => {
     vi.useFakeTimers();
 
     class ExpressionOnlyRenderer implements Renderer {
@@ -333,6 +431,15 @@ describe("RenderManager", () => {
 
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
 
+    expect(vi.getTimerCount()).toBe(0);
+
+    // The audio-end release path is inert here too: without stopExpression the
+    // manager must keep its debounce state, so a duplicate still inside the
+    // 300ms window stays swallowed instead of replaying.
+    bus.emit("tts:audio:end", {});
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    expect(renderer.playExpression).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 

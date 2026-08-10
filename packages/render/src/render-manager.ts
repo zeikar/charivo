@@ -19,8 +19,13 @@ const GAZE_MOUSE_SUSPEND_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
 const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
-// Covers the spoken reply that set the expression (~15-20 words at typical
-// TTS rate). Internal constant, no public knob by design.
+// Ceiling on how long an expression is held, not the expected duration: the
+// timer is armed on every accepted expression (when the renderer supports
+// stopExpression) and races tts:audio:end; whichever comes first releases the
+// expression. It covers a spoken reply of ~15-20 words at typical TTS rate, so
+// it fires mid-speech when an utterance outlasts it, and it is the only
+// automatic release path when no audio events flow at all (text-only configs).
+// Internal constant, no public knob by design.
 const EXPRESSION_HOLD_MS = 8_000;
 
 /**
@@ -67,6 +72,14 @@ export class RenderManager implements IRenderManager {
     _data: EventMap["tts:audio:end"],
   ): void => {
     this.deactivateRealtimeLipSync();
+
+    // The speech this expression accompanied is over, so drop the face back
+    // early instead of waiting out the hold cap. Guarded like the timer arm:
+    // a renderer without stopExpression keeps its expression until replaced,
+    // and must keep its debounce state along with it.
+    if (this.hasExpressionRelease(this.renderer)) {
+      this.releaseExpressionNow();
+    }
   };
 
   private readonly handleTtsLipsyncUpdate = (
@@ -311,8 +324,9 @@ export class RenderManager implements IRenderManager {
   /**
    * Immediately release a held expression: cancels the pending release timer
    * (a harmless no-op if it has already fired) and calls stopExpression so
-   * the model returns to its base face. Used both when the hold window
-   * elapses naturally and when disconnect() relinquishes the renderer early.
+   * the model returns to its base face. Used when the hold window elapses
+   * naturally, when tts:audio:end reports the accompanying speech is over,
+   * and when disconnect() relinquishes the renderer early.
    */
   private releaseExpressionNow(): void {
     if (this.expressionReleaseTimer) {
