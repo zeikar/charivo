@@ -34,6 +34,27 @@ export class TTSManagerImpl implements TTSManager {
   private playbackMode: TTSPlaybackMode;
   private isAudioSessionActive = false;
   private teardownBrowserLifecycle?: () => void;
+  // Settles the stateless-audio Promise that handleStatelessAudio() is
+  // currently awaiting, if any. stop() clears currentAudio's onended/onerror
+  // handlers so they can never fire on their own; without this, stopping a
+  // still-playing stateless-audio utterance would strand that speak() call's
+  // promise forever.
+  private pendingStatelessStop: (() => void) | null = null;
+  // Settles the web-speech Promise handleWebSpeech() is currently awaiting,
+  // if any. Unlike the stateless path, the manager can't sever the
+  // TTSPlayer's own onend/onerror handlers directly -- its completion is
+  // entirely owned by the player (e.g. cancel() -> onend/onerror), and that
+  // callback can arrive late, or never, after a cancellation. stop()
+  // resolves this proactively so an interrupted web-speech turn doesn't
+  // stay pending on the player's own timing.
+  private pendingWebSpeechStop: (() => void) | null = null;
+  // Bumped every time a new web-speech utterance starts. A canceled
+  // utterance's own completion (a late player callback, or another stop())
+  // can still arrive after a newer utterance has already taken over;
+  // handleWebSpeech()'s cleanup only runs when its own captured generation
+  // still matches the current one, so a stale completion can never act on
+  // a session that isn't its own.
+  private webSpeechGeneration = 0;
 
   // Only the Web Speech lip-sync simulation is needed
   private webSimulator: WebSpeechLipSyncSimulator;
@@ -114,6 +135,19 @@ export class TTSManagerImpl implements TTSManager {
 
       this.lipSync.stop();
       this.endAudioSession();
+
+      // Deterministically settle whichever playback path is still pending.
+      // Stateless-audio's onended/onerror were just cleared above and can
+      // never fire now; web-speech's completion is owned by the player and
+      // may arrive late (or never) after cancellation. Both need an
+      // explicit nudge here so an interrupted turn can't stay pending
+      // forever. A deliberate stop is a cancellation, not a failure, so
+      // both resolve rather than reject.
+      this.pendingStatelessStop?.();
+
+      const settleWebSpeech = this.pendingWebSpeechStop;
+      this.pendingWebSpeechStop = null;
+      settleWebSpeech?.();
     }
   }
 
@@ -167,6 +201,10 @@ export class TTSManagerImpl implements TTSManager {
     text: string,
     options?: TTSOptions,
   ): Promise<void> {
+    // Claims this utterance's identity so stale cleanup below can detect a
+    // newer one has since taken over (see webSpeechGeneration's comment).
+    const generation = ++this.webSpeechGeneration;
+
     // Emit audio start event
     this.startAudioSession();
 
@@ -180,12 +218,28 @@ export class TTSManagerImpl implements TTSManager {
     // Start simulated lip sync using dedicated component
     this.webSimulator.startSimulation(text, effectiveRate);
 
-    // Delegate to player and wait for completion
+    // Delegate to player and wait for completion, but let stop() settle
+    // this early too (see the pendingWebSpeechStop field comment).
+    let settleThis: (() => void) | undefined;
     try {
-      await this.ttsPlayer.speak(text, options);
+      await new Promise<void>((resolve, reject) => {
+        settleThis = resolve;
+        this.pendingWebSpeechStop = resolve;
+        this.ttsPlayer.speak(text, options).then(resolve, reject);
+      });
     } finally {
-      this.webSimulator.stopSimulation();
-      this.endAudioSession();
+      // Only clear the shared resolver if it's still this call's own -- a
+      // newer utterance may have already claimed and cleared it.
+      if (this.pendingWebSpeechStop === settleThis) {
+        this.pendingWebSpeechStop = null;
+      }
+
+      // A stale (canceled) utterance's cleanup must never act on a session
+      // that a newer utterance has since started.
+      if (generation === this.webSpeechGeneration) {
+        this.webSimulator.stopSimulation();
+        this.endAudioSession();
+      }
     }
   }
 
@@ -227,6 +281,7 @@ export class TTSManagerImpl implements TTSManager {
       const finalize = (next: () => void) => {
         if (isFinalized) return;
         isFinalized = true;
+        this.pendingStatelessStop = null;
 
         if (this.currentAudioUrl) {
           URL.revokeObjectURL(this.currentAudioUrl);
@@ -238,6 +293,10 @@ export class TTSManagerImpl implements TTSManager {
         this.endAudioSession();
         next();
       };
+
+      // Lets stop() settle this promise deterministically if it interrupts
+      // this playback (see the pendingStatelessStop field comment above).
+      this.pendingStatelessStop = () => finalize(resolve);
 
       audio.onended = () => {
         finalize(resolve);

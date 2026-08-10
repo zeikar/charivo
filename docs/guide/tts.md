@@ -79,6 +79,12 @@ browsers. Call `ttsManager.dispose?.()` to release lip-sync audio resources if
 your app tears a `TTSManager` down outside `Charivo.dispose()`, which already
 calls it automatically.
 
+`ttsManager.stop()` settles an in-flight `speak()` call it interrupts instead
+of leaving it pending — a deliberate stop resolves rather than rejects.
+`Charivo.userSay(text)` calls this at the start of every turn, so a reply
+that's still speaking gets stopped before the next turn's LLM response and
+TTS begin.
+
 ## Provider Route
 
 The remote player usually pairs with `@charivo/server/openai` on the

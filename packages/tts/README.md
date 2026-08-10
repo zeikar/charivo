@@ -63,6 +63,10 @@ When connected, the manager emits:
 
 ## Audio Lifecycle
 
+- `stop()` — stops active playback. If it interrupts an in-flight `speak()`
+  call, that call's promise settles as part of the stop instead of being left
+  pending: a deliberate stop is treated as a cancellation, not a failure, so
+  it resolves rather than rejects.
 - `prepareAudio?.()` — creates the lip-sync `AudioContext` up front. Call it
   from a user-gesture handler before the first `speak()` so mobile browsers
   that require audio to start from a gesture do not block playback.

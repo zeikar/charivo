@@ -85,6 +85,14 @@ releases any held expression, without destroying the manager, so it remains
 reusable. Calling `attachRenderer(newManager)` automatically disconnects the
 previously-attached manager before wiring the new one.
 
+`userSay(text)` stops any TTS still playing from a previous turn before
+generating a response, so — for sequential turns — the new turn's own
+audio/expression events can't be undone by the previous turn's speech ending;
+overlapping/concurrent `userSay(text)` calls are not serialized and can still
+interleave. A failure during that stop doesn't abort the turn — it's
+surfaced via `tts:error`, like other non-fatal TTS failures during
+`userSay(text)`.
+
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly
 tear down typed character, TTS, and realtime events without duck typing.

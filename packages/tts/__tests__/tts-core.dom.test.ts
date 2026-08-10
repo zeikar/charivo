@@ -89,6 +89,39 @@ class WebPlayer {
   isSupported = vi.fn(() => true);
 }
 
+/**
+ * Web-speech player whose speak() calls stay pending until settle() is
+ * called explicitly, modeling a real SpeechSynthesisUtterance whose
+ * onend/onerror (in WebTTSPlayer) fires asynchronously and independently of
+ * when stop()/cancel() was issued -- including well after replacement
+ * playback has already started.
+ */
+class ControllableWebPlayer {
+  playbackMode = "web-speech" as const;
+  private pending = new Map<
+    string,
+    { resolve: () => void; reject: (error: Error) => void }
+  >();
+
+  speak = vi.fn((text: string, _options?: unknown) => {
+    return new Promise<void>((resolve, reject) => {
+      this.pending.set(text, { resolve, reject });
+    });
+  });
+
+  // Mirrors WebTTSPlayer.stop(): issues the cancellation but does not itself
+  // wait for (or guarantee) the utterance's own callback to fire.
+  stop = vi.fn(async () => undefined);
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+
+  /** Simulates the browser's onend callback finally arriving for `text`. */
+  settle(text: string): void {
+    this.pending.get(text)?.resolve();
+    this.pending.delete(text);
+  }
+}
+
 class ExplicitAudioPlayerWithWebName {
   playbackMode = "audio" as const;
   speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
@@ -241,10 +274,7 @@ describe("TTSManagerImpl stop() failure cleanup", () => {
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
 
     // Start speaking but do NOT await — onended never fires, session stays active.
-    // Attach the rejection handler immediately: stop() clears currentAudio and
-    // orphans this promise, so suppress the unhandled rejection up front (airtight).
     const speaking = manager.speak("hello", {});
-    speaking.catch(() => undefined);
 
     // Wait deterministically for the session to become active.
     await vi.waitFor(() =>
@@ -271,6 +301,121 @@ describe("TTSManagerImpl stop() failure cleanup", () => {
     expect(revokeSpy).toHaveBeenCalled();
     // (c) tts:audio:end was emitted
     expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+    // (d) the interrupted speak() call settles on its own, even though
+    // stop() itself rejected — its audio's onended/onerror can never fire
+    // now, so cleanup's finally block must have resolved it deterministically.
+    await expect(speaking).resolves.toBeUndefined();
+  });
+});
+
+describe("TTSManagerImpl stop() settles interrupted playback", () => {
+  beforeEach(installAudioMocks);
+  afterEach(restoreAudioMocks);
+
+  it("resolves an interrupted stateless-audio speak() call instead of leaving it pending forever", async () => {
+    const player = new RemotePlayerWithAudio();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    // NonFinalizingAudio's play() resolves without ever firing onended, so
+    // without the fix this speak() call has no other way to settle.
+    globalThis.Audio = NonFinalizingAudio as unknown as typeof Audio;
+
+    const speaking = manager.speak("hello", {});
+
+    await vi.waitFor(() =>
+      expect(emitter.emit).toHaveBeenCalledWith(
+        "tts:audio:start",
+        expect.anything(),
+      ),
+    );
+
+    await manager.stop();
+
+    // No external trigger completes this on its own (onended/onerror are
+    // unreachable once stop() clears them) -- stop() must settle it itself.
+    await expect(speaking).resolves.toBeUndefined();
+  });
+
+  it("resolves an interrupted web-speech speak() call instead of leaving it pending on the player's own cancellation", async () => {
+    const player = new ControllableWebPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    // The underlying player promise for "hello" never settles on its own in
+    // this test -- only stop() can unblock it.
+    const speaking = manager.speak("hello", {});
+
+    await vi.waitFor(() =>
+      expect(emitter.emit).toHaveBeenCalledWith(
+        "tts:audio:start",
+        expect.anything(),
+      ),
+    );
+
+    await manager.stop();
+
+    await expect(speaking).resolves.toBeUndefined();
+  });
+});
+
+describe("TTSManagerImpl web-speech session scoping", () => {
+  it("does not let a late-arriving cancellation callback end a newer session, after the replacement utterance has already started", async () => {
+    const player = new ControllableWebPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    const events: string[] = [];
+    emitter.emit.mockImplementation((eventName: string) => {
+      if (eventName === "tts:audio:start" || eventName === "tts:audio:end") {
+        events.push(eventName);
+      }
+    });
+
+    // Turn A: fire-and-forget. The underlying player promise for "A" stays
+    // pending until settle("A") simulates the browser's real cancellation
+    // callback finally arriving -- independent of speak()/stop() timing.
+    const speakingA = manager.speak("A");
+    await vi.waitFor(() => expect(events).toEqual(["tts:audio:start"]));
+
+    // Turn B starts while A's browser-side cancellation hasn't landed yet.
+    // speak()'s own pre-play stop() must settle A's call itself.
+    const speakingB = manager.speak("B");
+    await expect(speakingA).resolves.toBeUndefined();
+
+    await vi.waitFor(() =>
+      expect(events).toEqual([
+        "tts:audio:start", // A
+        "tts:audio:end", // A, ended by B's pre-play stop()
+        "tts:audio:start", // B
+      ]),
+    );
+
+    // A's real cancellation callback finally arrives now, well after B's
+    // utterance became the active session.
+    player.settle("A");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A's stale completion must not end B's still-active session.
+    expect(events).toEqual([
+      "tts:audio:start",
+      "tts:audio:end",
+      "tts:audio:start",
+    ]);
+
+    player.settle("B");
+    await expect(speakingB).resolves.toBeUndefined();
+
+    expect(events).toEqual([
+      "tts:audio:start", // A
+      "tts:audio:end", // A
+      "tts:audio:start", // B
+      "tts:audio:end", // B's own natural end
+    ]);
   });
 });
 

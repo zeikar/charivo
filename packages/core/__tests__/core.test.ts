@@ -97,6 +97,72 @@ class StubLLMManager implements LLMManager {
   setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
 }
 
+/**
+ * TTS manager stub for the audio-session-overlap regression test below.
+ * Unlike StubTTSManager (which resolves immediately with no session state),
+ * this one tracks a real "active session" like TTSManagerImpl: speak() opens
+ * a session and stays pending until something ends it. A naturally-finishing
+ * utterance is released via finishUtterance(); a stop() that interrupts a
+ * still-open session settles it deterministically itself (mirroring the
+ * fixed TTSManagerImpl.stop(), which now does the same for the audio it
+ * pauses instead of leaving that speak() call pending forever).
+ */
+class ControllableTTSManager implements TTSManager {
+  private emitter?: CharivoEventEmitter;
+  private sessionSeq = 0;
+  private activeSession: number | null = null;
+  private readonly gates = new Map<number, () => void>();
+
+  speak = vi.fn(async (_text: string, _options?: TTSOptions) => {
+    // Mirrors TTSManagerImpl.speak(): stop any existing session first.
+    await this.stop();
+
+    const session = ++this.sessionSeq;
+    this.activeSession = session;
+    this.emitter?.emit("tts:audio:start", {});
+
+    await new Promise<void>((resolve) => this.gates.set(session, resolve));
+
+    // If stop() interrupted this session, it already deleted the gate,
+    // ended the session, and emitted tts:audio:end below -- skip redoing
+    // that here. Only a naturally-finishing session reaches this.
+    if (this.gates.delete(session)) {
+      this.activeSession = null;
+      this.emitter?.emit("tts:audio:end", {});
+    }
+  });
+
+  stop = vi.fn(async () => {
+    if (this.activeSession === null) return;
+    const session = this.activeSession;
+    this.activeSession = null;
+    this.emitter?.emit("tts:audio:end", {});
+
+    // Settles the interrupted speak() call itself -- a stopped session has
+    // no other way to complete, so leaving this unresolved would strand it.
+    const resolveGate = this.gates.get(session);
+    if (resolveGate) {
+      this.gates.delete(session);
+      resolveGate();
+    }
+  });
+
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+  setEventEmitter = vi.fn((eventEmitter: CharivoEventEmitter) => {
+    this.emitter = eventEmitter;
+  });
+
+  getActiveSession(): number | null {
+    return this.activeSession;
+  }
+
+  /** Lets a held-open speak() call finish naturally. */
+  finishUtterance(session: number): void {
+    this.gates.get(session)?.();
+  }
+}
+
 describe("EventBus", () => {
   it("registers, emits, and removes listeners", () => {
     const bus = new EventBus();
@@ -391,6 +457,113 @@ describe("Charivo", () => {
     expect(ttsManager.speak).not.toHaveBeenCalled();
   });
 
+  it("stops stale TTS before the next turn can project its expression, so audio:end ordering stays correct across overlapping turns", async () => {
+    // Regression for: turn A's utterance is still playing when turn B starts
+    // and projects its own expression via a tool call. TTSManagerImpl.speak()
+    // stops existing playback before starting the replacement, and that stop
+    // emits tts:audio:end. If that stop happened AFTER B's expression was
+    // projected (the pre-fix ordering), a consumer that releases the
+    // expression on tts:audio:end (RenderManager) would clear B's expression
+    // before B's own speech even starts. Charivo.userSay() now stops any
+    // active TTS at the START of the turn, before the LLM can project an
+    // expression, so A's end is pushed ahead of B's expression instead.
+    const ttsManager = new ControllableTTSManager();
+    const charivo = new Charivo();
+    const events: string[] = [];
+    let notifyAt: { length: number; resolve: () => void } | null = null;
+
+    const record = (type: string) => {
+      events.push(type);
+      if (notifyAt && events.length >= notifyAt.length) {
+        notifyAt.resolve();
+        notifyAt = null;
+      }
+    };
+    const waitForEvents = (length: number): Promise<void> => {
+      if (events.length >= length) return Promise.resolve();
+      return new Promise((resolve) => {
+        notifyAt = { length, resolve };
+      });
+    };
+
+    let emitter: CharivoEventEmitter | undefined;
+    const llmManager: LLMManager = {
+      setCharacter: vi.fn(),
+      getCharacter: vi.fn(() => null),
+      clearHistory: vi.fn(),
+      getHistory: vi.fn(() => []),
+      setEventEmitter: vi.fn((e: CharivoEventEmitter) => {
+        emitter = e;
+      }),
+      generateResponse: vi.fn(async (message: Message) => {
+        if (message.content === "turn B") {
+          // Simulates a tool-driven avatar:expression call during turn B's
+          // LLM generation, before turn B's own TTS speak() is invoked.
+          emitter?.emit("avatar:expression", { expressionId: "smile" });
+        }
+        return message.content === "turn A" ? "Reply A" : "Reply B";
+      }),
+    };
+
+    charivo.attachTTS(ttsManager);
+    charivo.attachLLM(llmManager);
+    charivo.setCharacter(character);
+
+    charivo.on("tts:audio:start", () => record("audio:start"));
+    charivo.on("tts:audio:end", () => record("audio:end"));
+    charivo.on("avatar:expression", () => record("expression"));
+
+    // Turn A: fire-and-forget. Its speak() call stays pending (audio still
+    // "playing") until finishUtterance() releases it below.
+    const turnA = charivo.userSay("turn A");
+    await waitForEvents(1);
+    const sessionA = ttsManager.getActiveSession();
+    expect(sessionA).not.toBeNull();
+
+    // Turn B starts while A's audio is still active.
+    const turnB = charivo.userSay("turn B");
+    await waitForEvents(4);
+
+    expect(events).toEqual([
+      "audio:start",
+      "audio:end",
+      "expression",
+      "audio:start",
+    ]);
+
+    const sessionB = ttsManager.getActiveSession();
+    expect(sessionB).not.toBeNull();
+    expect(sessionB).not.toBe(sessionA);
+
+    // Turn A's own userSay() call must settle on its own once B's pre-turn
+    // stop() interrupts it -- no manual finishUtterance() for session A.
+    // TTSManagerImpl.stop() now settles the playback it interrupts
+    // deterministically instead of leaving that speak() call pending
+    // forever (see packages/tts/src/tts-manager.ts), and this stub mirrors
+    // that same contract. A bounded race gives a clear failure instead of
+    // the whole test hanging if that regresses.
+    await Promise.race([
+      turnA,
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("turn A did not settle on its own")),
+          200,
+        ),
+      ),
+    ]);
+
+    ttsManager.finishUtterance(sessionB!);
+    await turnB;
+
+    expect(events).toEqual([
+      "audio:start", // A
+      "audio:end", // A, ended by B's pre-turn stop, BEFORE B's expression
+      "expression", // B
+      "audio:start", // B
+      "audio:end", // B's own natural end
+    ]);
+  });
+
   it("wraps llm manager failures in typed provider errors", async () => {
     const failingClient = {
       call: vi.fn(async () => {
@@ -466,6 +639,9 @@ describe("Charivo", () => {
     charivo.attachLLM(llmManager);
     charivo.setCharacter(character);
     await charivo.userSay("Hello");
+    // userSay's own pre-turn stop() records a "tts" entry unrelated to the
+    // dispose ordering under test; clear it so `calls` reflects dispose only.
+    calls.length = 0;
 
     await charivo.dispose();
     await charivo.dispose();

@@ -199,6 +199,20 @@ export class Charivo {
    * Orchestrates the full conversation flow: rendering, LLM generation, and TTS playback.
    */
   async userSay(content: string): Promise<void> {
+    // Stop any TTS still playing from the previous turn before the LLM can
+    // project a new expression via a tool call (avatar:expression). Without
+    // this, speak()'s own internal stop() would emit tts:audio:end for the
+    // PRIOR utterance mid-turn, which RenderManager reads as the signal to
+    // release the NEW expression before its own speech has even started.
+    if (this.ttsManager) {
+      try {
+        await this.ttsManager.stop();
+      } catch (error) {
+        const typedError = toCharivoError("provider", error);
+        this.eventBus.emit("tts:error", { error: typedError });
+      }
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
