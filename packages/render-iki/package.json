@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-iki",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Iki-engine rendering adapter for Charivo (local dogfood; consumes the unpublished @iki engine)",
   "private": true,
   "type": "module",
