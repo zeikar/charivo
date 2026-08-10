@@ -59,23 +59,28 @@ charivo.attachRenderer(renderManager);
 In normal app code, wire the manager to `Charivo` rather than handling these
 events yourself.
 
-**Expression auto-release:** expressions triggered via `avatar:expression` are
-released automatically about 8 seconds after they are applied, and the model
-fades back to its base face over the expression's `FadeOutTime` (1 second when
-the `.exp3.json` does not set one) instead of snapping. Two qualifications:
+**Expression auto-release:** expressions triggered via `avatar:expression`
+are released automatically when `tts:audio:end` arrives or about 8 seconds
+after they were applied, whichever happens first, and the model fades back
+to its base face over the expression's `FadeOutTime` (1 second when the
+`.exp3.json` does not set one) instead of snapping. Two qualifications:
 parameters using the `Add` or `Multiply` blend fade smoothly when their
-release duration is positive — an authored `FadeOutTime: 0` is honored as an
-instant release, a knob model authors have — while parameters using
-`Overwrite` snap to their base value, because the Cubism SDK rebases overwrite
-values from the model every frame (uncommon in practice: none of the bundled
-demo models use `Overwrite`). If the release is requested before the
-expression has finished fading in — a long authored `FadeInTime`, or
-rendering paused in a hidden tab — it waits for the fade-in to complete and
-then fades, so an expression can remain visible beyond the nominal 8-second
-hold. Idle motion, eye blink, and breath keep running throughout. This
-applies when the renderer implements `stopExpression` —
-`@charivo/render-live2d` does; a renderer that omits it keeps the expression
-until something else replaces it.
+release duration is positive — an authored `FadeOutTime: 0` is honored as
+an instant release, a knob model authors have — while parameters using
+`Overwrite` snap to their base value, because the Cubism SDK rebases
+overwrite values from the model every frame (uncommon in practice: none of
+the bundled demo models use `Overwrite`). If the release is requested
+before the expression has finished fading in — a long authored
+`FadeInTime`, or rendering paused in a hidden tab — it waits for the
+fade-in to complete and then fades, so an expression can remain visible
+beyond the nominal 8-second hold. Idle motion, eye blink, and breath keep
+running throughout. This applies when the renderer implements
+`stopExpression` — `@charivo/render-live2d` does; a renderer that omits it
+keeps the expression until something else replaces it. The same ~8-second
+ceiling runs independently of `tts:audio:end`, so it can fire mid-speech
+for utterances that outlast the hold, and it is the only release trigger
+in setups where no audio events are emitted at all (e.g. text-only LLM
+configurations).
 
 ## Event Wiring
 

@@ -35,16 +35,21 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 - toggles the renderer's `setRealtimeLipSync` on `tts:audio:start` /
   `tts:audio:end` and feeds `updateRealtimeLipSyncRms` from the RMS numbers
   carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
-  and realtime managers produce those numbers
+  and realtime managers produce those numbers; `tts:audio:end` also triggers
+  the expression release described below
 - reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
-- automatically releases an applied expression via `stopExpression` about 8
-  seconds after `avatar:expression` sets it, if the renderer supports it —
-  with `@charivo/render-live2d` the release fades `Add` and `Multiply`
+- automatically releases an applied expression via `stopExpression` when
+  `tts:audio:end` arrives or about 8 seconds after `avatar:expression` set
+  it, whichever happens first, if the renderer supports it — with
+  `@charivo/render-live2d` the release fades `Add` and `Multiply`
   parameters back to the base face when their release duration (the
   expression's `FadeOutTime`) is positive (`Overwrite` parameters snap — an
   SDK constraint). The release also waits until the expression has
   finished fading in, so it can remain visible beyond the nominal 8-second
-  hold
+  hold. The same ~8-second ceiling runs independently of `tts:audio:end`,
+  so it can fire mid-speech for long utterances and is the sole release
+  trigger in setups that never emit audio events (e.g. text-only LLM
+  configurations)
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
