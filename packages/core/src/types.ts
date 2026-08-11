@@ -270,6 +270,23 @@ export interface GenerateResponseOptions {
    * message.
    */
   callerOwnsHistory?: boolean;
+  /**
+   * Reports that this call has been superseded, so it should stop doing work
+   * on the caller's behalf. It is consulted before each new unit of tool work
+   * — before each tool call in a round, between a call's `tool:call` emission
+   * and its handler, and before each follow-up request — and on every
+   * projected emission, including repeated emissions from inside a single
+   * projector. Once it returns `true` the call starts nothing further and
+   * projects nothing further, then resolves with the latest response text.
+   *
+   * It does not govern history writes, and it aborts neither an in-flight
+   * request nor an already-running handler, so tool side effects are not
+   * rolled back. Note the resulting event split: `tool:call` records an
+   * attempted, dispatched call and can be the last event for a call whose
+   * handler was skipped, while `tool:result` and `tool:error` report a
+   * handler that actually ran.
+   */
+  isCancelled?: () => boolean;
 }
 
 // LLM manager (session management, history, character management)

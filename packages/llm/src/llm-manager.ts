@@ -31,6 +31,12 @@ const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 /** Tool rounds actually executed before the reply is forced to finish. */
 const MAX_TOOL_ROUNDS = 3;
 
+/**
+ * Internal loop signal: a superseded turn skips the handler entirely, so there
+ * is no tool turn to append and the round has to stop.
+ */
+type ToolCallOutcome = { executed: true; output: string } | { executed: false };
+
 export interface LLMManagerOptions {
   maxHistoryTurns?: number | null;
   tools?: ToolRegistration[];
@@ -221,7 +227,10 @@ export class LLMManager {
     try {
       // Generate a response via the LLM client
       const assistantMessage = this.shouldUseToolLoop()
-        ? await this.runToolLoop(apiMessages)
+        ? await this.runToolLoop(
+            apiMessages,
+            options.isCancelled ?? (() => false),
+          )
         : await this.llmClient.call(apiMessages);
 
       // Build the AI response message and add it to the history.
@@ -260,10 +269,15 @@ export class LLMManager {
   }
 
   /**
-   * Run the tool-calling conversation until the model answers with text or the
-   * round cap is reached.
+   * Run the tool-calling conversation until the model answers with text, the
+   * round cap is reached, or the turn is superseded. A superseded turn starts
+   * no further tool call and issues no further request; it returns the latest
+   * text the model produced.
    */
-  private async runToolLoop(apiMessages: LLMApiMessage[]): Promise<string> {
+  private async runToolLoop(
+    apiMessages: LLMApiMessage[],
+    isCancelled: () => boolean,
+  ): Promise<string> {
     // Guarded by shouldUseToolLoop(): callWithTools exists on this path
     const callWithTools = this.llmClient.callWithTools!.bind(this.llmClient);
     const definitions = this.getRegisteredTools();
@@ -284,11 +298,27 @@ export class LLMManager {
       });
 
       for (const toolCall of toolCalls) {
+        // An earlier handler in this same round can supersede the turn, and so
+        // can a listener of the tool:call this executes - which is why the
+        // outcome, not this check alone, decides whether the round continues.
+        if (isCancelled()) {
+          return response.content;
+        }
+
+        const outcome = await this.executeToolCall(toolCall, isCancelled);
+        if (!outcome.executed) {
+          return response.content;
+        }
+
         working.push({
           role: "tool",
-          content: await this.executeToolCall(toolCall),
+          content: outcome.output,
           toolCallId: toolCall.id,
         });
+      }
+
+      if (isCancelled()) {
+        return response.content;
       }
 
       // Terminal call offers no tools so the reply is text, not an unexecuted tool request.
@@ -324,8 +354,14 @@ export class LLMManager {
    * Every failure - unknown tool, invalid arguments, handler throw/timeout,
    * non-object result, unserializable output - becomes a failure output so the
    * reply always continues.
+   *
+   * Returns "not executed" when the turn is superseded before the handler
+   * starts: there is no tool turn to push, so the caller stops the round.
    */
-  private async executeToolCall(toolCall: LLMToolCall): Promise<string> {
+  private async executeToolCall(
+    toolCall: LLMToolCall,
+    isCancelled: () => boolean,
+  ): Promise<ToolCallOutcome> {
     let outcome: ToolResultSnapshot;
 
     this.eventEmitter?.emit("tool:call", {
@@ -333,6 +369,12 @@ export class LLMManager {
       args: toolCall.arguments,
       callId: toolCall.id,
     });
+
+    // Emission is synchronous, so a tool:call listener runs - and can start a
+    // new turn - before the handler this event announces.
+    if (isCancelled()) {
+      return { executed: false };
+    }
 
     try {
       const tool = this.toolRegistry.get(toolCall.name);
@@ -366,7 +408,10 @@ export class LLMManager {
         error: failure,
         callId: toolCall.id,
       });
-      return JSON.stringify(createToolFailureOutput(failure));
+      return {
+        executed: true,
+        output: JSON.stringify(createToolFailureOutput(failure)),
+      };
     }
 
     // The event and the projectors both receive the snapshot — the same value
@@ -377,19 +422,26 @@ export class LLMManager {
       output: outcome.snapshot,
       callId: toolCall.id,
     });
-    this.projectToolResult(toolCall.name, outcome.snapshot, toolCall.id);
+    this.projectToolResult(
+      toolCall.name,
+      outcome.snapshot,
+      toolCall.id,
+      isCancelled,
+    );
 
-    return outcome.serialized;
+    return { executed: true, output: outcome.serialized };
   }
 
   /**
    * Turn a successful tool result into avatar-style events. Projection is
-   * skipped entirely without an event emitter.
+   * skipped entirely without an event emitter, and a superseded turn projects
+   * nothing further - its avatar state would land on top of the live turn's.
    */
   private projectToolResult(
     name: string,
     output: Record<string, unknown>,
     callId: string,
+    isCancelled: () => boolean,
   ): void {
     const eventEmitter = this.eventEmitter;
     if (!eventEmitter) {
@@ -397,16 +449,33 @@ export class LLMManager {
     }
 
     for (const projector of this.resultProjectors) {
+      // Checked per projector, which is also the check for the projector that
+      // just returned: any of them can supersede the turn.
+      if (isCancelled()) {
+        return;
+      }
+
       try {
         projector({
           name,
           output,
           callId,
           emit: (event, payload) => {
+            // Listeners run synchronously, so an earlier emission from this
+            // same projector can supersede the turn mid-projection.
+            if (isCancelled()) {
+              return;
+            }
             eventEmitter.emit(event, payload);
           },
         });
       } catch (error) {
+        // A projector that superseded the turn and then threw belongs to a
+        // stale turn: it reports no error either.
+        if (isCancelled()) {
+          return;
+        }
+
         eventEmitter.emit("llm:error", {
           error: new Error(
             `LLM result projector failed for tool "${name}": ${toError(error).message}`,

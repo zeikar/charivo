@@ -1371,4 +1371,263 @@ describe("LLMManager tool loop", () => {
     expect(call).toHaveBeenCalledTimes(1);
     expect(callWithTools).toHaveBeenCalledTimes(1);
   });
+
+  describe("cancellation", () => {
+    const sadToolCall: LLMToolCall = {
+      id: "call-2",
+      name: "setExpression",
+      arguments: { expressionId: "sad" },
+    };
+
+    const emittedEvents = (emit: ReturnType<typeof vi.fn>): string[] =>
+      emit.mock.calls.map(([event]) => event as string);
+
+    /**
+     * Emitter whose listener runs synchronously inside emit(), like the real
+     * bus, so an event listener can supersede the turn mid-flight.
+     */
+    const buildCancellingEmitter = (
+      cancelOn: string,
+      cancel: () => void,
+    ): {
+      eventEmitter: CharivoEventEmitter;
+      emit: ReturnType<typeof vi.fn>;
+    } => {
+      const emit = vi.fn((event: string) => {
+        if (event === cancelOn) {
+          cancel();
+        }
+      });
+      return { eventEmitter: { emit }, emit };
+    };
+
+    it("stops a round at the tool call that follows the superseding handler", async () => {
+      const { client, callWithTools } = buildToolClient([
+        { content: "partial", toolCalls: [buildToolCall(), sadToolCall] },
+        { content: FINAL_TEXT },
+      ]);
+      let cancelled = false;
+      const handler = vi.fn(async (args: Record<string, unknown>) => {
+        cancelled = true;
+        return { success: true, expressionId: args.expressionId };
+      });
+      const { eventEmitter, emit } = buildEmitterSpy();
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(handler)],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => cancelled },
+      );
+
+      expect(response).toBe("partial");
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(handler).toHaveBeenCalledWith(
+        { expressionId: "smile" },
+        { character, callId: "call-1" },
+      );
+      expect(
+        emit.mock.calls.filter(([event]) => event === "tool:call"),
+      ).toHaveLength(1);
+      // A superseded turn issues no further request.
+      expect(callWithTools).toHaveBeenCalledTimes(1);
+      // The predicate governs tool work and projections only — never history
+      // writes, which follow the caller-owned history contract instead. Without
+      // this, an isCancelled gate added around the commit would pass the suite.
+      expect(
+        manager.getHistory().map((entry) => [entry.type, entry.content]),
+      ).toEqual([
+        ["user", "hello"],
+        ["character", "partial"],
+      ]);
+    });
+
+    it("skips the handler when a tool:call listener supersedes the turn", async () => {
+      const { client, callWithTools } = buildToolClient([
+        { content: "partial", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      let cancelled = false;
+      const handler = vi.fn(expressionHandler);
+      const { eventEmitter, emit } = buildCancellingEmitter("tool:call", () => {
+        cancelled = true;
+      });
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(handler)],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => cancelled },
+      );
+
+      expect(response).toBe("partial");
+      expect(handler).not.toHaveBeenCalled();
+      // tool:call records the attempted dispatch even though nothing ran.
+      expect(
+        emit.mock.calls.filter(([event]) => event === "tool:call"),
+      ).toHaveLength(1);
+      expect(
+        emittedEvents(emit).filter(
+          (event) => event === "tool:result" || event === "tool:error",
+        ),
+      ).toEqual([]);
+      expect(callWithTools).toHaveBeenCalledTimes(1);
+    });
+
+    it("drops a projector's later emissions once its first one supersedes the turn", async () => {
+      const { client } = buildToolClient([
+        { content: "partial", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      let cancelled = false;
+      const { eventEmitter, emit } = buildCancellingEmitter(
+        "avatar:expression",
+        () => {
+          cancelled = true;
+        },
+      );
+      const projector: ToolResultProjector = ({ emit: project }) => {
+        project("avatar:expression", { expressionId: "smile" });
+        project("avatar:motion", { group: "idle", index: 0 });
+      };
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(expressionHandler)],
+        resultProjectors: [projector],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => cancelled },
+      );
+
+      expect(response).toBe("partial");
+      expect(emit).toHaveBeenCalledWith("avatar:expression", {
+        expressionId: "smile",
+      });
+      expect(
+        emit.mock.calls.filter(([event]) => event === "avatar:motion"),
+      ).toEqual([]);
+    });
+
+    it("stops projecting at the projector that supersedes the turn", async () => {
+      const { client } = buildToolClient([
+        { content: "partial", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      let cancelled = false;
+      const first = vi.fn(() => {
+        cancelled = true;
+      });
+      const second = vi.fn();
+      const { eventEmitter, emit } = buildEmitterSpy();
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(expressionHandler)],
+        resultProjectors: [first, second],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => cancelled },
+      );
+
+      expect(response).toBe("partial");
+      expect(first).toHaveBeenCalledTimes(1);
+      expect(second).not.toHaveBeenCalled();
+      // The handler ran, so its result is still reported.
+      expect(emit).toHaveBeenCalledWith("tool:result", {
+        name: "setExpression",
+        output: { success: true, expressionId: "smile" },
+        callId: "call-1",
+      });
+    });
+
+    it("emits no llm:error for a projector that supersedes the turn and then throws", async () => {
+      const { client } = buildToolClient([
+        { content: "partial", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      let cancelled = false;
+      const { eventEmitter, emit } = buildEmitterSpy();
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(expressionHandler)],
+        resultProjectors: [
+          () => {
+            cancelled = true;
+            throw new Error("projector exploded");
+          },
+        ],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => cancelled },
+      );
+
+      expect(response).toBe("partial");
+      expect(
+        emit.mock.calls.filter(([event]) => event === "llm:error"),
+      ).toEqual([]);
+    });
+
+    it("leaves the multi-round tool flow unchanged when the predicate never cancels", async () => {
+      const { client, callWithTools } = buildToolClient([
+        { content: "", toolCalls: [buildToolCall()] },
+        { content: "", toolCalls: [sadToolCall] },
+        { content: FINAL_TEXT },
+      ]);
+      const handler = vi.fn(expressionHandler);
+      const projector: ToolResultProjector = ({ output, emit: project }) => {
+        project("avatar:expression", {
+          expressionId: String(output.expressionId),
+        });
+        project("avatar:motion", { group: "idle", index: 0 });
+      };
+      const { eventEmitter, emit } = buildEmitterSpy();
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(handler)],
+        resultProjectors: [projector],
+      });
+
+      manager.setEventEmitter(eventEmitter);
+      manager.setCharacter(character);
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { isCancelled: () => false },
+      );
+
+      expect(response).toBe(FINAL_TEXT);
+      expect(callWithTools).toHaveBeenCalledTimes(3);
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(
+        emittedEvents(emit).filter((event) => event.startsWith("tool:")),
+      ).toEqual(["tool:call", "tool:result", "tool:call", "tool:result"]);
+      expect(emit).toHaveBeenCalledWith("avatar:expression", {
+        expressionId: "smile",
+      });
+      expect(emit).toHaveBeenCalledWith("avatar:expression", {
+        expressionId: "sad",
+      });
+      expect(
+        emit.mock.calls.filter(([event]) => event === "avatar:motion"),
+      ).toHaveLength(2);
+    });
+  });
 });
