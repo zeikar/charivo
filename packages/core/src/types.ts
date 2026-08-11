@@ -254,13 +254,54 @@ export interface LLMClient {
   ): Promise<LLMToolResponse>;
 }
 
+/**
+ * Undoes a single `addToHistory` call. Idempotent: invoking it more than once
+ * changes nothing after the first call.
+ */
+export type HistoryRollback = () => void;
+
+export interface GenerateResponseOptions {
+  /**
+   * The caller has already placed the message in history via `addToHistory`
+   * and commits the reply itself, so the manager must perform no history
+   * writes for this call — no append, no reply commit, no rollback on
+   * failure. Character and message validation and prompt building are
+   * unchanged; the prompt still comes from history, which already holds the
+   * message.
+   */
+  callerOwnsHistory?: boolean;
+}
+
 // LLM manager (session management, history, character management)
 export interface LLMManager {
   setCharacter(character: Character): void;
   getCharacter(): Character | null;
   clearHistory(): void;
   getHistory(): Message[];
-  generateResponse(message: Message): Promise<string>;
+  /**
+   * Ensure `message` is present in this manager's history, synchronously —
+   * it appends and returns a handle, never a promise — and without emitting
+   * events or calling back into `Charivo`.
+   *
+   * A message this manager cannot store is rejected with a typed state error
+   * (`CharivoStateError`). The built-in manager mirrors each of its two write
+   * paths as they behave today: a `type: "user"` message needs non-empty
+   * string content, while a `type: "character"` message is stored exactly as
+   * produced, empty content included.
+   *
+   * Appends only when that exact object is not already present (reference
+   * identity, not id), then holds the configured history bound. The returned
+   * handle removes the message if it is still present and restores what *this*
+   * call evicted, but only when no other write has intervened. When nothing
+   * was appended — the object was already there — the call mutates nothing and
+   * returns a no-op handle, so it can neither delete the message nor
+   * invalidate an earlier handle.
+   */
+  addToHistory(message: Message): HistoryRollback;
+  generateResponse(
+    message: Message,
+    options?: GenerateResponseOptions,
+  ): Promise<string>;
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
   registerTool?(tool: ToolRegistration): void;
   unregisterTool?(name: string): void;

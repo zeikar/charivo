@@ -12,6 +12,7 @@ import type {
   ToolRegistration,
   ToolResultProjector,
 } from "@charivo/core";
+import { CharivoStateError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { CharacterPromptBuilder } from "../src/character-prompt-builder";
 import { LLMValidators } from "../src/validators";
@@ -26,6 +27,29 @@ const character: Character = {
   description: "A cheerful assister",
   personality: "Optimistic",
 };
+
+class MockClient implements LLMClient {
+  call = vi.fn(
+    async (messages: Array<{ role: string; content: string }>) =>
+      messages[messages.length - 1]?.content.toUpperCase() ?? "",
+  );
+}
+
+const buildUserMessage = (content: string): Message => ({
+  id: `msg-${content}`,
+  content,
+  timestamp: new Date("2024-01-01T00:00:00Z"),
+  type: "user",
+});
+
+// Every message carries the same id, so a rollback that keys on the id
+// cannot tell two turns apart.
+const buildDuplicateIdMessage = (content: string): Message => ({
+  id: "duplicate-id",
+  content,
+  timestamp: new Date("2024-01-01T00:00:00Z"),
+  type: "user",
+});
 
 describe("CharacterPromptBuilder", () => {
   it("builds descriptive system prompts", () => {
@@ -208,20 +232,6 @@ describe("LLMValidators", () => {
 });
 
 describe("LLMManager", () => {
-  class MockClient implements LLMClient {
-    call = vi.fn(
-      async (messages: Array<{ role: string; content: string }>) =>
-        messages[messages.length - 1]?.content.toUpperCase() ?? "",
-    );
-  }
-
-  const buildUserMessage = (content: string): Message => ({
-    id: `msg-${content}`,
-    content,
-    timestamp: new Date("2024-01-01T00:00:00Z"),
-    type: "user",
-  });
-
   it("adds history and returns responses", async () => {
     const client = new MockClient();
     const manager = createLLMManager(client);
@@ -433,6 +443,279 @@ describe("LLMManager", () => {
     expect(() => createLLMManager(client, { maxHistoryTurns: NaN })).toThrow(
       "maxHistoryTurns must be a positive integer or null",
     );
+  });
+
+  /**
+   * Client whose calls stay pending until the test settles them, so two
+   * overlapping generateResponse calls can be finished in either order.
+   */
+  class DeferredClient implements LLMClient {
+    readonly pending: Array<{
+      resolve: (value: string) => void;
+      reject: (reason: unknown) => void;
+    }> = [];
+
+    call = vi.fn(
+      () =>
+        new Promise<string>((resolve, reject) => {
+          this.pending.push({ resolve, reject });
+        }),
+    );
+  }
+
+  it("rolls back the failing turn's own message when the earlier turn fails", async () => {
+    const client = new DeferredClient();
+    const manager = createLLMManager(client);
+    manager.setCharacter(character);
+
+    const first = buildDuplicateIdMessage("A");
+    const second = buildDuplicateIdMessage("B");
+    const pendingFirst = manager.generateResponse(first);
+    const pendingSecond = manager.generateResponse(second);
+
+    client.pending[0]!.reject(new Error("network"));
+    await expect(pendingFirst).rejects.toThrow("network");
+
+    client.pending[1]!.resolve("Reply B");
+    await expect(pendingSecond).resolves.toBe("Reply B");
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "B",
+      "Reply B",
+    ]);
+  });
+
+  it("rolls back the failing turn's own message when the later turn fails", async () => {
+    const client = new DeferredClient();
+    const manager = createLLMManager(client);
+    manager.setCharacter(character);
+
+    const first = buildDuplicateIdMessage("A");
+    const second = buildDuplicateIdMessage("B");
+    const pendingFirst = manager.generateResponse(first);
+    const pendingSecond = manager.generateResponse(second);
+
+    client.pending[1]!.reject(new Error("network"));
+    await expect(pendingSecond).rejects.toThrow("network");
+
+    client.pending[0]!.resolve("Reply A");
+    await expect(pendingFirst).resolves.toBe("Reply A");
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "A",
+      "Reply A",
+    ]);
+  });
+});
+
+describe("LLMManager caller-owned history", () => {
+  const buildCharacterMessage = (content: string): Message => ({
+    id: `ai-${content}`,
+    content,
+    timestamp: new Date("2024-01-01T00:00:00Z"),
+    type: "character",
+    characterId: character.id,
+  });
+
+  /** Bounded manager already holding one completed turn, i.e. at its bound. */
+  const prefillBoundedManager = async () => {
+    const manager = createLLMManager(new MockClient(), { maxHistoryTurns: 1 });
+    manager.setCharacter(character);
+    await manager.generateResponse(buildUserMessage("first"));
+
+    return { manager, prefilled: manager.getHistory() };
+  };
+
+  it("rejects an empty user message with a state error and appends nothing", () => {
+    const manager = createLLMManager(new MockClient());
+    manager.setCharacter(character);
+
+    let thrown: unknown;
+    try {
+      manager.addToHistory(buildUserMessage(""));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(CharivoStateError);
+    expect((thrown as CharivoStateError).code).toBe("CHARIVO_STATE_ERROR");
+    expect(manager.getHistory()).toEqual([]);
+  });
+
+  it("stores an empty character message exactly as produced", () => {
+    const manager = createLLMManager(new MockClient());
+    manager.setCharacter(character);
+
+    const reply = buildCharacterMessage("");
+    manager.addToHistory(reply);
+
+    expect(manager.getHistory()).toEqual([reply]);
+  });
+
+  it("appends within the configured bound and returns a callable handle", () => {
+    const manager = createLLMManager(new MockClient(), { maxHistoryTurns: 1 });
+    manager.setCharacter(character);
+
+    for (const content of ["one", "two", "three"]) {
+      expect(typeof manager.addToHistory(buildUserMessage(content))).toBe(
+        "function",
+      );
+    }
+
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "two",
+      "three",
+    ]);
+  });
+
+  it("appends a message once and re-appends it after a clear", () => {
+    const manager = createLLMManager(new MockClient());
+    manager.setCharacter(character);
+    const message = buildUserMessage("hello");
+
+    manager.addToHistory(message);
+    manager.addToHistory(message);
+    expect(manager.getHistory()).toEqual([message]);
+
+    manager.clearHistory();
+    manager.addToHistory(message);
+    expect(manager.getHistory()).toEqual([message]);
+  });
+
+  it("keeps a duplicate call inert so it cannot damage the first handle", async () => {
+    const { manager, prefilled } = await prefillBoundedManager();
+    const message = buildUserMessage("second");
+
+    const rollback = manager.addToHistory(message);
+    const duplicateRollback = manager.addToHistory(message);
+
+    duplicateRollback();
+    expect(manager.getHistory()).toEqual([message]);
+
+    rollback();
+    expect(manager.getHistory()).toEqual(prefilled);
+  });
+
+  it("restores exactly what its append evicted and stays idempotent", async () => {
+    const { manager, prefilled } = await prefillBoundedManager();
+    const message = buildUserMessage("second");
+
+    const rollback = manager.addToHistory(message);
+    expect(manager.getHistory()).toEqual([message]);
+
+    rollback();
+    expect(manager.getHistory()).toEqual(prefilled);
+
+    // A spent handle stays inert even when the caller legitimately re-adds the
+    // message it rolled back.
+    manager.addToHistory(message);
+    rollback();
+    expect(manager.getHistory()).toEqual([message]);
+  });
+
+  it("does not resurrect evicted messages after an intervening write", async () => {
+    const { manager } = await prefillBoundedManager();
+    const rollback = manager.addToHistory(buildUserMessage("second"));
+
+    manager.clearHistory();
+    rollback();
+
+    expect(manager.getHistory()).toEqual([]);
+  });
+
+  it("binds each handle to its own message object, in either order", () => {
+    // Duplicate ids: only reference identity can tell these two apart.
+    const earlierManager = createLLMManager(new MockClient());
+    earlierManager.setCharacter(character);
+    const earlierFirst = buildDuplicateIdMessage("A");
+    const earlierSecond = buildDuplicateIdMessage("B");
+    const rollbackEarlier = earlierManager.addToHistory(earlierFirst);
+    earlierManager.addToHistory(earlierSecond);
+
+    rollbackEarlier();
+    expect(earlierManager.getHistory()).toEqual([earlierSecond]);
+
+    const laterManager = createLLMManager(new MockClient());
+    laterManager.setCharacter(character);
+    const laterFirst = buildDuplicateIdMessage("A");
+    const laterSecond = buildDuplicateIdMessage("B");
+    laterManager.addToHistory(laterFirst);
+    const rollbackLater = laterManager.addToHistory(laterSecond);
+
+    rollbackLater();
+    expect(laterManager.getHistory()).toEqual([laterFirst]);
+  });
+
+  it("never strands an orphan reply at the head when pruning", () => {
+    const manager = createLLMManager(new MockClient(), { maxHistoryTurns: 1 });
+    manager.setCharacter(character);
+
+    const userA = buildUserMessage("A");
+    const replyA = buildCharacterMessage("Reply A");
+    const userB = buildUserMessage("B");
+
+    manager.addToHistory(userA);
+    manager.addToHistory(replyA); // at the bound
+    manager.addToHistory(userB); // evicts userA, stranding replyA at the head
+
+    expect(manager.getHistory()).toEqual([userB]);
+  });
+
+  it("keeps the message it was asked to store when the window is all replies", () => {
+    const manager = createLLMManager(new MockClient(), { maxHistoryTurns: 1 });
+    manager.setCharacter(character);
+
+    manager.addToHistory(buildUserMessage("A"));
+    manager.addToHistory(buildCharacterMessage("Reply A"));
+    const followUp = buildCharacterMessage("Follow up");
+    manager.addToHistory(followUp);
+
+    expect(manager.getHistory()).toEqual([followUp]);
+  });
+
+  it("preserves a character message appended to an empty history", () => {
+    const manager = createLLMManager(new MockClient(), { maxHistoryTurns: 1 });
+    manager.setCharacter(character);
+
+    const greeting = buildCharacterMessage("Hello there");
+    manager.addToHistory(greeting);
+
+    expect(manager.getHistory()).toEqual([greeting]);
+  });
+
+  it("writes no history when the caller owns it", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client);
+    manager.setCharacter(character);
+
+    const message = buildUserMessage("hello");
+    manager.addToHistory(message);
+
+    await expect(
+      manager.generateResponse(message, { callerOwnsHistory: true }),
+    ).resolves.toBe("HELLO");
+
+    expect(client.call.mock.calls[0]![0]).toEqual([
+      { role: "system", content: expect.stringContaining("You are Hiyori") },
+      { role: "user", content: "hello" },
+    ]);
+    expect(manager.getHistory()).toEqual([message]);
+  });
+
+  it("keeps the caller's message in history when a caller-owned call fails", async () => {
+    const client = new MockClient();
+    client.call.mockRejectedValueOnce(new Error("network"));
+    const manager = createLLMManager(client);
+    manager.setCharacter(character);
+
+    const message = buildUserMessage("hello");
+    manager.addToHistory(message);
+
+    await expect(
+      manager.generateResponse(message, { callerOwnsHistory: true }),
+    ).rejects.toThrow("network");
+
+    expect(manager.getHistory()).toEqual([message]);
   });
 });
 

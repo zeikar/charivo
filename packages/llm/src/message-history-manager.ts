@@ -18,6 +18,7 @@ export interface AddMessageOptions {
  */
 export class MessageHistoryManager {
   private history: Message[] = [];
+  private writeCount = 0;
   private readonly maxMessages?: number;
   private readonly pruneBatchSize: number;
 
@@ -44,6 +45,7 @@ export class MessageHistoryManager {
 
   add(message: Message, options: AddMessageOptions = {}): void {
     this.history.push(message);
+    this.writeCount += 1;
 
     if (options.prune !== false) {
       this.pruneToMax();
@@ -51,11 +53,50 @@ export class MessageHistoryManager {
   }
 
   removeLast(): Message | undefined {
-    return this.history.pop();
+    const removed = this.history.pop();
+
+    if (removed !== undefined) {
+      this.writeCount += 1;
+    }
+
+    return removed;
+  }
+
+  /**
+   * Remove the entry that *is* the given object and report whether it was
+   * found. Reference identity, not id: overlapping turns can carry duplicate
+   * ids, so an id lookup can drop another turn's message.
+   */
+  remove(message: Message): boolean {
+    const index = this.history.indexOf(message);
+
+    if (index === -1) {
+      return false;
+    }
+
+    this.history.splice(index, 1);
+    this.writeCount += 1;
+    return true;
+  }
+
+  /** Reference-identity membership check, matching remove(). */
+  contains(message: Message): boolean {
+    return this.history.includes(message);
+  }
+
+  /** Put previously evicted entries back at the head, in their original order. */
+  restoreToHead(messages: Message[]): void {
+    if (messages.length === 0) {
+      return;
+    }
+
+    this.history.unshift(...messages);
+    this.writeCount += 1;
   }
 
   clear(): void {
     this.history = [];
+    this.writeCount += 1;
   }
 
   getAll(): Message[] {
@@ -81,6 +122,11 @@ export class MessageHistoryManager {
     return this.history.length;
   }
 
+  /** Monotonic counter of the write attempts this store has taken. */
+  getWriteCount(): number {
+    return this.writeCount;
+  }
+
   pruneToMax(): void {
     if (this.maxMessages === undefined) {
       return;
@@ -93,6 +139,49 @@ export class MessageHistoryManager {
         this.history.length,
       );
       this.history.splice(0, removeCount);
+      this.writeCount += 1;
     }
+  }
+
+  /**
+   * Prune in one step, down to the exact bound, and report what was
+   * evicted in its original order. pruneBatchSize is deliberately ignored:
+   * the batch encodes a user/assistant pairing that a single caller-owned
+   * append does not have, so batching would evict a message too many.
+   */
+  pruneToBound(): Message[] {
+    if (
+      this.maxMessages === undefined ||
+      this.history.length <= this.maxMessages
+    ) {
+      return [];
+    }
+
+    const evicted = this.history.splice(
+      0,
+      this.history.length - this.maxMessages,
+    );
+    this.writeCount += 1;
+    return evicted;
+  }
+
+  /** Drop the leading character messages and report them in their original order. */
+  removeLeadingCharacterMessages(): Message[] {
+    let count = 0;
+    // Stop before the last entry: the newest message is never a stranded reply.
+    while (
+      count < this.history.length - 1 &&
+      this.history[count].type === "character"
+    ) {
+      count += 1;
+    }
+
+    if (count === 0) {
+      return [];
+    }
+
+    const removed = this.history.splice(0, count);
+    this.writeCount += 1;
+    return removed;
   }
 }

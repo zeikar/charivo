@@ -10,6 +10,7 @@ import type {
   CharivoEventBus,
   CharivoEventEmitter,
   GazeCoordinates,
+  HistoryRollback,
   LLMClient,
   LLMManager,
   Message,
@@ -93,6 +94,11 @@ class StubLLMManager implements LLMManager {
   getCharacter = vi.fn((): Character | null => null);
   clearHistory = vi.fn(() => undefined);
   getHistory = vi.fn((): Message[] => []);
+  addToHistory = vi.fn(
+    (_message: Message): HistoryRollback =>
+      () =>
+        undefined,
+  );
   generateResponse = vi.fn(async (_message: Message) => "");
   setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
 }
@@ -492,6 +498,11 @@ describe("Charivo", () => {
       getCharacter: vi.fn(() => null),
       clearHistory: vi.fn(),
       getHistory: vi.fn(() => []),
+      addToHistory: vi.fn(
+        (_message: Message): HistoryRollback =>
+          () =>
+            undefined,
+      ),
       setEventEmitter: vi.fn((e: CharivoEventEmitter) => {
         emitter = e;
       }),

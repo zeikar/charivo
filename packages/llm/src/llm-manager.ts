@@ -10,6 +10,8 @@ import {
   validateToolArguments,
   withToolTimeout,
   type CharivoEventEmitter,
+  type GenerateResponseOptions,
+  type HistoryRollback,
   type LLMManagerWithTools,
   type LLMMessage,
   type LLMToolCall,
@@ -135,9 +137,63 @@ export class LLMManager {
   }
 
   /**
+   * Ensure the message is present in the history and return an undo handle.
+   * Callers that own the turn (see GenerateResponseOptions.callerOwnsHistory)
+   * write both the user message and the reply through here, so the transcript
+   * they present and the transcript the next prompt is built from are the
+   * same one.
+   */
+  addToHistory(message: Message): HistoryRollback {
+    // Only user messages are validated: the reply commit has never been, so
+    // an empty model response is still stored exactly as produced.
+    if (message.type === "user") {
+      try {
+        LLMValidators.validateMessage(message);
+      } catch (error) {
+        throw toCharivoError("state", error);
+      }
+    }
+
+    if (this.historyManager.contains(message)) {
+      return () => {};
+    }
+
+    this.historyManager.add(message, { prune: false });
+    const evicted = this.historyManager.pruneToBound();
+    if (evicted.length > 0) {
+      // Pruning a user message can strand its reply at the head. Only an
+      // eviction-bearing prune drops it, so a deliberately character-first
+      // history - a reply committed after clearHistory() - survives.
+      evicted.push(...this.historyManager.removeLeadingCharacterMessages());
+    }
+    const writeCount = this.historyManager.getWriteCount();
+
+    let spent = false;
+    return () => {
+      if (spent) {
+        return;
+      }
+      spent = true;
+
+      // Restore only what this call evicted, and only when nothing else has
+      // written since: a clearHistory() plus re-append can leave the array
+      // looking untouched while the app deliberately discarded everything.
+      const untouched = this.historyManager.getWriteCount() === writeCount;
+      this.historyManager.remove(message);
+
+      if (untouched) {
+        this.historyManager.restoreToHead(evicted);
+      }
+    };
+  }
+
+  /**
    * Generate a response to a message
    */
-  async generateResponse(message: Message): Promise<string> {
+  async generateResponse(
+    message: Message,
+    options: GenerateResponseOptions = {},
+  ): Promise<string> {
     try {
       LLMValidators.validateCharacterSet(this.character);
       LLMValidators.validateMessage(message);
@@ -145,10 +201,16 @@ export class LLMManager {
       throw toCharivoError("state", error);
     }
 
+    // The caller placed the message itself and commits the reply itself, so
+    // this call writes nothing - not even a rollback on failure.
+    const callerOwnsHistory = options.callerOwnsHistory === true;
+
     // Defer pruning until the assistant message is appended. On failure we
-    // only removeLast() the in-flight user message, so older history must
-    // remain intact during the API call.
-    this.historyManager.add(message, { prune: false });
+    // only remove this call's own user message, so older history must remain
+    // intact during the API call.
+    if (!callerOwnsHistory) {
+      this.historyManager.add(message, { prune: false });
+    }
 
     // Get the history messages
     const historyMessages = this.getHistoryForApiCall();
@@ -166,17 +228,22 @@ export class LLMManager {
       // Only the final assistant text is persisted: tool-call and tool-result
       // turns stay inside the loop so the stored history remains a plain
       // user/character transcript that other modalities can reuse.
-      const responseMessage = ResponseMessageBuilder.create(
-        assistantMessage,
-        this.character!.id, // character is guaranteed non-null after validateCharacterSet
-      );
-      this.historyManager.add(responseMessage, { prune: false });
-      this.historyManager.pruneToMax();
+      if (!callerOwnsHistory) {
+        const responseMessage = ResponseMessageBuilder.create(
+          assistantMessage,
+          this.character!.id, // character is guaranteed non-null after validateCharacterSet
+        );
+        this.historyManager.add(responseMessage, { prune: false });
+        this.historyManager.pruneToMax();
+      }
 
       return assistantMessage;
     } catch (error) {
-      // On error, remove the last message from the history
-      this.historyManager.removeLast();
+      // Remove this call's own message by identity: an overlapping turn may
+      // have appended after it, and duplicate ids make a lookup ambiguous.
+      if (!callerOwnsHistory) {
+        this.historyManager.remove(message);
+      }
       throw toCharivoError("provider", error);
     }
   }
