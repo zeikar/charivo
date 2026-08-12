@@ -178,6 +178,16 @@ growing memory and context cost without additional app code.
 Override the limit with `createLLMManager(client, { maxHistoryTurns })`, or use
 `maxHistoryTurns: null` if your app needs the previous unbounded behavior.
 
+Under `Charivo` orchestration the turn's history writes belong to `Charivo`,
+not to the manager: `userSay(text)` places the user message through
+`addToHistory(...)`, calls `generateResponse(..., { callerOwnsHistory: true })`
+so the manager writes nothing for that call, and commits the reply itself once
+the turn has reached presentation. That is what keeps a superseded turn's user
+message in history while its unspoken reply never enters it — see the
+latest-wins turn contract in the
+[core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md#charivo).
+`maxHistoryTurns` then applies to those messages like any other.
+
 Realtime sessions maintain conversation state on the provider side and are not
 affected by `maxHistoryTurns`.
 

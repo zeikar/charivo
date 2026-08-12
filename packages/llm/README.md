@@ -166,9 +166,66 @@ modalities can reuse.
 
 - `setCharacter(character)`
 - `getCharacter()`
-- `generateResponse(message)`
+- `addToHistory(message)`
+- `generateResponse(message, options?)`
 - `getHistory()`
 - `clearHistory()`
 - `setEventEmitter(eventEmitter)` — wired automatically by `Charivo.attachLLM(...)`
 - `registerTool(tool)` / `unregisterTool(name)` / `getRegisteredTools()`
 - `setToolInstructions(instructions | null)`
+
+### Caller-Owned History
+
+`addToHistory(message)` ensures `message` is present in the manager's history
+and returns a `HistoryRollback` (from `@charivo/core`) — a zero-argument,
+idempotent undo handle. It is synchronous, and it appends only when that exact
+object is not already present (reference identity, not id), then prunes to the
+configured bound. That prune repairs orphans: when it actually evicts
+something it also drops leading character messages, so an eviction never
+leaves history starting with a reply whose user message is gone, while a
+deliberately character-first history — a seeded greeting, or a reply committed
+after `clearHistory()` — is preserved.
+
+The returned handle removes its message if it is still present and restores
+what *that* call evicted, but only while nothing else has written to history
+since; a call that appended nothing returns an inert handle, so it can neither
+delete the message nor invalidate an earlier handle. A message the manager
+cannot store is rejected with a typed `CharivoStateError`: a `type: "user"`
+message needs non-empty string content, while a `type: "character"` message is
+stored as produced, empty content included — each rule matching the existing
+write path it takes over.
+
+`generateResponse(message, options?)` accepts `GenerateResponseOptions`:
+
+- `callerOwnsHistory` — the caller has already placed the message via
+  `addToHistory` and commits the reply itself, so the call performs **no**
+  history writes: no append, no reply commit, no rollback on failure.
+  Character and message validation and prompt building are unchanged, and the
+  prompt still comes from history, which already holds the message.
+- `isCancelled` — reports that the call has been superseded. It is consulted
+  before each further tool call, between a call's `tool:call` emission and its
+  handler, before each follow-up request, and on every projected emission,
+  including repeated emissions from inside one projector. Once it returns
+  `true` the call starts nothing further and projects nothing further, then
+  resolves with the latest response text. It aborts neither an in-flight
+  request nor an already-running handler, and it does not govern history
+  writes.
+
+`Charivo.userSay(text)` always passes both — see the latest-wins turn contract
+in the [core README](../core/README.md#charivo).
+
+Direct, manager-only use is otherwise unchanged: omit the options and
+`generateResponse(...)` stays self-contained, appending the user message,
+committing the reply, pruning the completed pair as before, and rolling back
+on failure — that rollback now works by reference identity, so overlapping
+direct calls no longer roll back each other's messages.
+
+**Migrating a custom `LLMManager`:** `addToHistory(message)` is now a required
+member. Implement it synchronously; reject what you cannot store with a typed
+state error; append only when the exact object is absent; return an inert
+handle when you appended nothing, and otherwise an idempotent handle that
+removes its own message and restores its own evictions only when nothing else
+has written since; hold your own bound; and neither emit events nor call back
+into `Charivo`. Honor `callerOwnsHistory` by suppressing every history write
+for that call, and `isCancelled` by starting no new tool work and dropping
+every further projected emission once it returns `true`.

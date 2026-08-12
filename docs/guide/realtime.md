@@ -245,6 +245,13 @@ session active and attempts recovery with the latest effective config.
 - `realtime:reconnect:attempt`, `realtime:reconnect:success`, and
   `realtime:reconnect:exhausted` are emitted for observability
 
+`sendMessage(...)` also rejects while a response is already in progress; the
+app must call `interrupt()` first, because the transport allows one active
+response at a time. This deliberately diverges from the cascade path, where
+`Charivo.userSay(text)` is latest-wins: a newer call supersedes the in-flight
+turn, announces it with `turn:cancelled`, and the superseded call resolves.
+The two contracts are intentionally different — don't normalize them.
+
 ## Observability
 
 - `realtime:usage` is emitted whenever the transport reports usage on an

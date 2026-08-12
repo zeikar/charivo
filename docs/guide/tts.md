@@ -83,7 +83,9 @@ calls it automatically.
 of leaving it pending — a deliberate stop resolves rather than rejects.
 `Charivo.userSay(text)` calls this at the start of every turn, so a reply
 that's still speaking gets stopped before the next turn's LLM response and
-TTS begin.
+TTS begin. Under the latest-wins `userSay(text)` contract that same stop is
+how a superseding turn silences the turn it replaces, and the superseded
+`userSay(text)` call resolves rather than rejecting.
 
 ## Provider Route
 

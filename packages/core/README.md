@@ -85,13 +85,110 @@ releases any held expression, without destroying the manager, so it remains
 reusable. Calling `attachRenderer(newManager)` automatically disconnects the
 previously-attached manager before wiring the new one.
 
-`userSay(text)` stops any TTS still playing from a previous turn before
-generating a response, so — for sequential turns — the new turn's own
-audio/expression events can't be undone by the previous turn's speech ending;
-overlapping/concurrent `userSay(text)` calls are not serialized and can still
-interleave. A failure during that stop doesn't abort the turn — it's
-surfaced via `tts:error`, like other non-fatal TTS failures during
-`userSay(text)`.
+`userSay(text)` is **latest-wins**: a newer call supersedes the turn still in
+flight, so only the newest turn goes on to speak. It still stops any TTS
+playing from a previous turn before generating a response, so the new turn's
+own audio/expression events can't be undone by the previous turn's speech
+ending. A failure during that stop doesn't abort the turn — it's surfaced via
+`tts:error`, like other non-fatal TTS failures during `userSay(text)`.
+
+The superseded call **resolves**; it never rejects, and once superseded it
+does no further work for that turn and emits no further events for it, beyond
+finishing the bookkeeping of its own entry (see Ordering below).
+`turn:cancelled` (`{ userMessageId }`) fires exactly once for it, and
+supersession by a newer `userSay(text)` is its only cause. What the superseded
+turn leaves behind is its **user message**: it is retained no matter which
+phase the cancellation landed in, always ordered ahead of the superseding
+turn's own message, and from then on it is an ordinary history entry subject
+to normal `maxHistoryTurns` eviction. Input the LLM manager refuses to store —
+empty content, exactly as today — is never stored. The unspoken reply is
+dropped.
+
+A reply reaches history only at the **presentation boundary**: after its own
+character message has rendered (immediately, when no renderer is attached) and
+before playback would begin. It commits there even with no TTS manager
+attached — the boundary is presentation, not playback. So a turn superseded
+while generating, while emitting `message:received`/`character:speak`, or
+while rendering its reply never commits that reply, while a reply that is
+already speaking when the next turn arrives stays in history in full.
+(Truncating it to what was actually heard needs word-level playback alignment
+Charivo doesn't have; that's a follow-up, not a guarantee.)
+
+Where the history writes happen: a live turn writes its own user message at
+the LLM step — the point where it reads the attached manager and character,
+exactly as today — so a turn that completes or fails without ever reaching an
+attached manager and character writes nothing at all. A turn superseded before
+that point has its message written by the **next** `userSay(text)`, in call
+order, ahead of that turn's own message. `attachLLM(...)` and
+`setCharacter(...)` write no history, so `getHistory()` does not change at
+attachment, and `dispose()` discards whatever is still unwritten.
+
+Ordering:
+
+- History order is call order, at any reentrancy depth — including a turn
+  started synchronously from inside a `message:sent` listener.
+- The `message:sent` carrying an id always precedes any `turn:cancelled`
+  carrying that id.
+- A turn superseded during its own entry still emits its `message:sent`, still
+  announces its predecessor's cancellation, and still keeps its user message:
+  those steps run to completion before the turn checks whether it is still the
+  live one.
+- `turn:cancelled` is a per-turn fact, not an ordered log. A listener that
+  starts a turn from inside an event can observe an inner turn's cancellation
+  before an outer turn's; each superseded turn is still announced exactly once.
+- `message:sent` is now emitted **before** the pre-turn TTS stop rather than
+  after it. The stop targets the TTS manager attached when `userSay(text)` was
+  called, so a `message:sent` listener that calls `attachTTS(...)` or
+  `detachTTS()` does not change which audio is stopped — it governs that
+  turn's playback only, exactly as before.
+
+Failures on a **live** turn behave as they did, with one deliberate
+divergence:
+
+- A generation failure rejects and rolls the turn's user message back,
+  restoring what that write evicted at the history bound (unless history has
+  been written again meanwhile, which the rollback deliberately doesn't
+  undo). It rolls back only the manager the turn actually wrote into, even if
+  a different one was attached in the meantime.
+- A failure before the LLM step — a rejected user-message render — has written
+  nothing yet, so there is nothing to roll back.
+- A **character-render failure now rejects without committing the reply**,
+  where previously the reply was already in history by then. The turn's user
+  message stays. This is the one intentional change on the failure paths.
+- Playback failures stay non-fatal: `tts:error`, then resolve, with the
+  committed reply left in history.
+- A **superseded** turn never rolls back and never emits an error event on any
+  of these paths.
+
+A tool handler that has already started runs to completion, and cancellation
+does not undo its side effects. What stops is new work. `Charivo` hands the
+manager a cancellation predicate, and the built-in `@charivo/llm` manager
+checks it in four places: before each further tool call, between a call's
+`tool:call` emission and its handler, before each follow-up request, and on
+every projected emission. A custom `LLMManager` should honor the same four
+checkpoints, since only the manager can enforce them. That is also why
+`tool:call` records an *attempted, dispatched* call, and can be the last event
+for a call whose handler was skipped, while `tool:result`/`tool:error` report
+a handler that actually ran. The superseded turn's in-flight LLM request is
+abandoned but keeps running; request-level `AbortSignal` threading is a
+follow-up. There is
+no guard interval either — a stray duplicate send is indistinguishable from a
+deliberate rapid correction, so debouncing belongs in the input layer.
+
+Nothing else cancels a turn: `setCharacter(...)`, `attachLLM(...)`,
+`detachLLM(...)`, `clearHistory()` and `dispose()` neither cancel an in-flight
+turn nor move the point at which a turn reads the manager or the character.
+Message validation is unchanged — `userSay("")` still emits `message:sent`,
+still runs the pre-turn stop and renders the user message, and still rejects
+with `CharivoStateError` from the LLM step (and still resolves when no manager
+and character are attached) — and an empty assistant reply is still stored,
+presented, and spoken exactly as before.
+
+The realtime path deliberately keeps the opposite contract:
+`RealtimeManager.sendMessage(...)` rejects while a response is in progress and
+requires an explicit `interrupt()`, because the transport allows one active
+response at a time. The divergence is intentional, not an inconsistency to
+normalize.
 
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly
@@ -196,6 +293,7 @@ Important event names include:
 
 - `message:sent`
 - `message:received`
+- `turn:cancelled`
 - `character:speak`
 - `tts:start`
 - `tts:end`
