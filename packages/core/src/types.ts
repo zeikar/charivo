@@ -472,6 +472,23 @@ export interface RealtimeManager {
 export type EventMap = {
   "message:sent": { message: Message };
   "message:received": { message: Message };
+  /**
+   * An in-flight turn was superseded by a newer `userSay`. Emitted exactly
+   * once for every superseded turn, on the cascade path only — the realtime
+   * path keeps its own contract and never emits this. Supersession is the
+   * only cause, so the payload needs no cause discriminator, and the
+   * superseded `userSay` call still **resolves**.
+   *
+   * What the event reports is supersession. Retention is the separate
+   * guarantee: with an LLM manager and a character attached, the superseded
+   * turn's valid user message is already in history when this fires, ahead of
+   * the superseding turn's own message; with none attached it holds its queue
+   * position and is written by the next `userSay`. Input the manager refuses
+   * to store is announced here too but never stored, exactly as today.
+   *
+   * The `message:sent` carrying the same id always precedes this event.
+   */
+  "turn:cancelled": { userMessageId: string };
   "character:speak": { character: Character; text: string };
   "tts:start": { text: string; characterId?: string };
   "tts:end": { characterId?: string };

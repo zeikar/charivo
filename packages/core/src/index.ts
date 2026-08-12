@@ -1,6 +1,7 @@
 import { EventBus } from "./bus";
 import {
   Character,
+  HistoryRollback,
   Message,
   RenderManager,
   TTSManager,
@@ -46,6 +47,29 @@ export {
   withToolTimeout,
 } from "./tool-execution";
 
+/**
+ * One `userSay()` turn. `epoch` identifies it: only the newest turn is live,
+ * so a turn is stale as soon as a newer one installs itself. `rollback` holds
+ * the single `{ manager, handle }` pair produced by the turn's own history
+ * write, the only write a live pre-boundary failure undoes.
+ */
+interface TurnRecord {
+  epoch: number;
+  userMessageId: string;
+  rollback?: { manager: LLMManager; handle: HistoryRollback };
+}
+
+/**
+ * A queue position reserved at install, holding the user message until some
+ * flush writes it. `inProgress` marks the entry a flush is currently writing,
+ * which is what stops a reentrant flush from jumping ahead of it.
+ */
+interface TurnEntry {
+  message: Message;
+  turn: TurnRecord;
+  inProgress: boolean;
+}
+
 export class Charivo {
   private eventBus: EventBus;
   private llmManager?: LLMManager;
@@ -55,6 +79,10 @@ export class Charivo {
   private realtimeManager?: import("./types").RealtimeManager;
   private character?: Character;
   private isRealtimeMode = false;
+  private turnEpoch = 0;
+  private activeTurn?: TurnRecord;
+  private readonly turnQueue: TurnEntry[] = [];
+  private messageSeq = 0;
 
   constructor() {
     this.eventBus = new EventBus();
@@ -195,104 +223,329 @@ export class Charivo {
   }
 
   /**
-   * Process a user message and generate a character response.
-   * Orchestrates the full conversation flow: rendering, LLM generation, and TTS playback.
+   * Ids are for observability only, so a timestamp plus a per-instance
+   * counter is enough: same-millisecond turns no longer collide, which
+   * matters because turn:cancelled names its turn by user message id.
    */
-  async userSay(content: string): Promise<void> {
-    // Stop any TTS still playing from the previous turn before the LLM can
-    // project a new expression via a tool call (avatar:expression). Without
-    // this, speak()'s own internal stop() would emit tts:audio:end for the
-    // PRIOR utterance mid-turn, which RenderManager reads as the signal to
-    // release the NEW expression before its own speech has even started.
-    if (this.ttsManager) {
+  private nextMessageId(): string {
+    this.messageSeq += 1;
+    return `${Date.now()}-${this.messageSeq}`;
+  }
+
+  /** A turn is live only while it is the newest one. */
+  private isStale(turn: TurnRecord): boolean {
+    return this.turnEpoch !== turn.epoch;
+  }
+
+  private removeQueueEntry(entry: TurnEntry): void {
+    const index = this.turnQueue.indexOf(entry);
+    if (index !== -1) {
+      this.turnQueue.splice(index, 1);
+    }
+  }
+
+  /**
+   * Head-first drain shared by both flushes, so history order is call order at
+   * any reentrancy depth. Both return immediately on an in-progress head.
+   *
+   * With `requester` null this is flush-superseded: it writes entries whose
+   * owner is no longer the active turn, stops at the first entry the active
+   * turn owns, and swallows rejections. With a requester it is flush-through:
+   * it writes older entries first, then the requester's own entry, recording
+   * that write's rollback handle and propagating a rejection of that entry
+   * alone.
+   */
+  private writeQueuedEntries(
+    manager: LLMManager,
+    requester: TurnRecord | null,
+  ): void {
+    while (this.turnQueue.length > 0) {
+      const head = this.turnQueue[0]!;
+
+      if (head.inProgress) {
+        return;
+      }
+
+      const isOwnEntry = head.turn === requester;
+      if (!isOwnEntry && head.turn === this.activeTurn) {
+        return;
+      }
+
+      head.inProgress = true;
+
       try {
-        await this.ttsManager.stop();
+        const handle = manager.addToHistory(head.message);
+        this.removeQueueEntry(head);
+
+        if (isOwnEntry) {
+          head.turn.rollback = { manager, handle };
+          return;
+        }
       } catch (error) {
-        const typedError = toCharivoError("provider", error);
-        this.eventBus.emit("tts:error", { error: typedError });
+        this.removeQueueEntry(head);
+
+        if (isOwnEntry) {
+          throw error;
+        }
       }
     }
+  }
 
+  /** Entry-block flush: drains the superseded backlog into the live manager. */
+  private flushSupersededEntries(): void {
+    if (!this.llmManager || !this.character) {
+      return;
+    }
+
+    this.writeQueuedEntries(this.llmManager, null);
+  }
+
+  /**
+   * Process a user message and generate a character response.
+   * Orchestrates the full conversation flow: rendering, LLM generation, and TTS playback.
+   *
+   * Latest-wins: a newer call supersedes the in-flight turn, which then
+   * resolves without performing any further turn-scoped effect or emitting
+   * any further turn-scoped event. Its user message is retained regardless of
+   * the phase the supersession lands in.
+   */
+  async userSay(content: string): Promise<void> {
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: this.nextMessageId(),
       content,
       timestamp: new Date(),
       type: "user",
     };
 
-    this.eventBus.emit("message:sent", { message: userMessage });
+    // message:sent now precedes the pre-turn stop, so an ambient re-read could
+    // be redirected by one of its listeners. Stopping the manager attached
+    // when userSay() was called keeps today's semantics; every later TTS read
+    // stays ambient, so a mid-turn attach still governs playback.
+    const entryTTSManager = this.ttsManager;
 
-    // Render user message
-    if (this.renderManager) {
-      try {
-        await this.renderManager.render(userMessage);
-      } catch (error) {
-        throw toCharivoError("state", error, "Failed to render user message");
-      }
-    }
+    this.turnEpoch += 1;
+    const turn: TurnRecord = {
+      epoch: this.turnEpoch,
+      userMessageId: userMessage.id,
+    };
+    const superseded = this.activeTurn;
+    this.activeTurn = turn;
 
-    // Generate and render character response
-    if (this.llmManager && this.character) {
-      const response = await this.llmManager
-        .generateResponse(userMessage)
-        .catch((error) =>
-          Promise.reject(
-            toCharivoError(
-              "provider",
-              error,
-              "Failed to generate a character response",
-            ),
-          ),
-        );
+    // The position is reserved before anything reentrant can run, so queue
+    // order is call order and retention no longer depends on the phase.
+    const entry: TurnEntry = { message: userMessage, turn, inProgress: false };
+    this.turnQueue.push(entry);
 
-      const characterMessage: Message = {
-        id: Date.now().toString() + "_response",
-        content: response,
-        timestamp: new Date(),
-        characterId: this.character.id,
-        type: "character",
-      };
+    try {
+      this.eventBus.emit("message:sent", { message: userMessage });
 
-      this.eventBus.emit("message:received", { message: characterMessage });
-      this.eventBus.emit("character:speak", {
-        character: this.character,
-        text: response,
-      });
+      this.flushSupersededEntries();
 
-      if (this.renderManager) {
-        try {
-          await this.renderManager.render(characterMessage, this.character);
-        } catch (error) {
-          throw toCharivoError(
-            "state",
-            error,
-            "Failed to render character response",
-          );
-        }
+      if (superseded) {
+        this.eventBus.emit("turn:cancelled", {
+          userMessageId: superseded.userMessageId,
+        });
       }
 
-      if (this.ttsManager) {
+      if (this.isStale(turn)) {
+        return;
+      }
+
+      // Stop any TTS still playing from the previous turn before the LLM can
+      // project a new expression via a tool call (avatar:expression). Without
+      // this, speak()'s own internal stop() would emit tts:audio:end for the
+      // PRIOR utterance mid-turn, which RenderManager reads as the signal to
+      // release the NEW expression before its own speech has even started.
+      if (entryTTSManager) {
         try {
-          this.eventBus.emit("tts:start", {
-            text: response,
-            characterId: this.character.id,
-          });
-
-          const ttsOptions = this.character.voice
-            ? {
-                rate: this.character.voice.rate,
-                pitch: this.character.voice.pitch,
-                volume: this.character.voice.volume,
-                voice: this.character.voice.voiceId,
-              }
-            : undefined;
-
-          await this.ttsManager.speak(response, ttsOptions);
-          this.eventBus.emit("tts:end", { characterId: this.character.id });
+          await entryTTSManager.stop();
         } catch (error) {
+          if (this.isStale(turn)) {
+            return;
+          }
+
           const typedError = toCharivoError("provider", error);
           this.eventBus.emit("tts:error", { error: typedError });
         }
+
+        if (this.isStale(turn)) {
+          return;
+        }
+      }
+
+      // Render user message
+      if (this.renderManager) {
+        try {
+          await this.renderManager.render(userMessage);
+        } catch (error) {
+          if (this.isStale(turn)) {
+            return;
+          }
+
+          throw toCharivoError("state", error, "Failed to render user message");
+        }
+
+        if (this.isStale(turn)) {
+          return;
+        }
+      }
+
+      // Generate and render character response
+      if (this.llmManager && this.character) {
+        const generatingManager = this.llmManager;
+        let response: string;
+
+        try {
+          // Nothing generates until the queue has reached this turn's own
+          // entry: an older entry can be mid-write in a reentrant flush, and
+          // this turn's prompt must contain every message ahead of it.
+          for (;;) {
+            this.writeQueuedEntries(generatingManager, turn);
+
+            if (!this.turnQueue.includes(entry)) {
+              break;
+            }
+
+            await Promise.resolve();
+
+            if (this.isStale(turn)) {
+              return;
+            }
+          }
+
+          if (this.isStale(turn)) {
+            return;
+          }
+
+          response = await generatingManager.generateResponse(userMessage, {
+            callerOwnsHistory: true,
+            isCancelled: () => this.isStale(turn),
+          });
+        } catch (error) {
+          if (this.isStale(turn)) {
+            return;
+          }
+
+          turn.rollback?.handle();
+          throw toCharivoError(
+            "provider",
+            error,
+            "Failed to generate a character response",
+          );
+        }
+
+        if (this.isStale(turn)) {
+          return;
+        }
+
+        const characterMessage: Message = {
+          id: this.nextMessageId() + "_response",
+          content: response,
+          timestamp: new Date(),
+          characterId: this.character.id,
+          type: "character",
+        };
+
+        this.eventBus.emit("message:received", { message: characterMessage });
+
+        if (this.isStale(turn)) {
+          return;
+        }
+
+        this.eventBus.emit("character:speak", {
+          character: this.character,
+          text: response,
+        });
+
+        if (this.isStale(turn)) {
+          return;
+        }
+
+        if (this.renderManager) {
+          try {
+            await this.renderManager.render(characterMessage, this.character);
+          } catch (error) {
+            if (this.isStale(turn)) {
+              return;
+            }
+
+            throw toCharivoError(
+              "state",
+              error,
+              "Failed to render character response",
+            );
+          }
+
+          if (this.isStale(turn)) {
+            return;
+          }
+        }
+
+        // Presentation boundary: the reply enters history only once its still
+        // live turn has rendered it and is about to play it, so a superseded
+        // turn's unspoken reply is never committed. A presented reply is never
+        // rolled back, so the handle is discarded.
+        try {
+          generatingManager.addToHistory(characterMessage);
+        } catch (error) {
+          if (this.isStale(turn)) {
+            return;
+          }
+
+          throw toCharivoError(
+            "provider",
+            error,
+            "Failed to generate a character response",
+          );
+        }
+
+        if (this.isStale(turn)) {
+          return;
+        }
+
+        if (this.ttsManager) {
+          try {
+            this.eventBus.emit("tts:start", {
+              text: response,
+              characterId: this.character.id,
+            });
+
+            if (this.isStale(turn)) {
+              return;
+            }
+
+            const ttsOptions = this.character.voice
+              ? {
+                  rate: this.character.voice.rate,
+                  pitch: this.character.voice.pitch,
+                  volume: this.character.voice.volume,
+                  voice: this.character.voice.voiceId,
+                }
+              : undefined;
+
+            await this.ttsManager.speak(response, ttsOptions);
+
+            if (this.isStale(turn)) {
+              return;
+            }
+
+            this.eventBus.emit("tts:end", { characterId: this.character.id });
+          } catch (error) {
+            if (this.isStale(turn)) {
+              return;
+            }
+
+            const typedError = toCharivoError("provider", error);
+            this.eventBus.emit("tts:error", { error: typedError });
+          }
+        }
+      }
+    } finally {
+      // A turn that was never superseded leaves nothing behind: it either
+      // wrote its message itself or never reached a manager at all.
+      if (!this.isStale(turn)) {
+        this.removeQueueEntry(entry);
+        this.activeTurn = undefined;
       }
     }
   }
@@ -479,6 +732,7 @@ export class Charivo {
     this.renderManager = undefined;
     this.character = undefined;
     this.isRealtimeMode = false;
+    this.turnQueue.length = 0;
     this.eventBus.clear();
 
     return this.finishDispose(firstError);
