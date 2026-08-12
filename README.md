@@ -20,6 +20,10 @@ rewriting the whole stack.
 - Live2D web app — https://charivo.vercel.app/
 - Companion (Realtime voice + cross-session memory) — https://charivo-companion.vercel.app/
 
+## Built with Charivo
+
+- LiveClaw (Electron desktop companion driven by a local OpenClaw agent) — https://github.com/zeikar/liveclaw
+
 ## Documentation
 
 - [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
