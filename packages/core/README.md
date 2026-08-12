@@ -94,7 +94,11 @@ ending. A failure during that stop doesn't abort the turn — it's surfaced via
 
 The superseded call **resolves**; it never rejects, and once superseded it
 does no further work for that turn and emits no further events for it, beyond
-finishing the bookkeeping of its own entry (see Ordering below).
+finishing the bookkeeping of its own entry (see Ordering below) and reporting
+the outcome of a tool handler that had already started: that handler's
+`tool:result`/`tool:error` still fires, because it reports work that genuinely
+happened, so `turn:cancelled` is not an event barrier. Projections still stop,
+and no new tool work or request starts.
 `turn:cancelled` (`{ userMessageId }`) fires exactly once for it, and
 supersession by a newer `userSay(text)` is its only cause. What the superseded
 turn leaves behind is its **user message**: it is retained no matter which

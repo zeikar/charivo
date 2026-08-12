@@ -2589,15 +2589,24 @@ describe("Charivo latest-wins turns", () => {
   });
 
   it("keeps the bound after a cancellation without stranding an orphan reply", async () => {
-    const { charivo, client } = createHarness({
+    const { charivo, client, manager } = createHarness({
       renderer: false,
       maxHistoryTurns: 1,
     });
+    // Start already at the bound, so the cancelled turn's own user write is
+    // what evicts the completed turn ahead of it and strands its reply.
+    manager.addToHistory(buildMessage("prior", "user"));
+    manager.addToHistory(buildMessage("reply-prior", "character"));
     client.responder = (content) =>
       content === "A" ? null : `reply-${content}`;
 
     const turnA = charivo.userSay("A");
     await client.waitForCalls(1);
+    // Evicting the completed turn strands its reply at the head, and every
+    // later write prunes the head again - so the strand is only observable
+    // while the turn about to be cancelled is still in flight.
+    expect(transcript(charivo.getHistory())).toEqual(["user:A"]);
+
     await charivo.userSay("B");
 
     client.resolveCall("A", "reply-A");
