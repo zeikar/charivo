@@ -15,15 +15,18 @@ export const HARU_CHARACTER_CONFIG = defineCharacterConfig({
   },
   live2d: {
     modelPath: "/live2d/Haru/Haru.model3.json",
+    // Affect only — these ride in the setExpression schema on every request, and
+    // the model picks on feeling, not on how the mesh deforms. F01/F02/F05 and
+    // F04/F08 overlap in kind, so each carries just enough to stay distinct.
     expressionDescriptions: {
-      F01: "Soft, gentle smile — subtle warmth, close to neutral",
-      F02: "Bright open-mouth laugh — cheerful, excited",
-      F03: "Angry — brows driven down and inward, narrowed eyes, protesting mouth",
-      F04: "Sad — troubled brows, clearly downturned mouth",
-      F05: "Joyful delight — eyes fully closed in happy crescents",
-      F06: "Surprised — wide eyes, shrunk pupils, raised brows",
-      F07: "Embarrassed/shy — visible cheek blush with a shy smile",
-      F08: "Flatly displeased — downturned mouth with unengaged brows and half-lidded eyes; deadpan and unimpressed rather than sad",
+      F01: "gentle smile",
+      F02: "big laugh, excited",
+      F03: "angry",
+      F04: "sad",
+      F05: "beaming, eyes closed",
+      F06: "surprised",
+      F07: "shy, blushing",
+      F08: "unimpressed, deadpan",
     },
   },
 });
