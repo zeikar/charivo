@@ -42,6 +42,16 @@ What it proves:
 - the remote client and OpenAI agents client work together over WebRTC
 - the realtime manager receives a real tool call and emits a canonical avatar
   event
+- the per-expression description channel survives the realtime tool path — the
+  evaluation modes register a catalog of OPAQUE expression IDs (`F01`..`F08`,
+  the shape a real Cubism model ships) whose meaning reaches the model only via
+  `expressionDescriptions` in the `setExpression` schema. The
+  `picks a contextually correct expression from opaque IDs` test asks for anger
+  and requires an angry ID back. Deleting the `expressionDescriptions` block in
+  `src/main.ts` makes it fail (observed: the model answered with a smiling ID),
+  so its discriminating power was verified rather than assumed — the realtime
+  session config normalizes tool parameters, which is where the channel could
+  silently be dropped
 
 This harness intentionally provides its own minimal `/api/realtime`
 implementation. It does not validate the `examples/web` route. That route is
@@ -58,10 +68,11 @@ selection.
 Model outputs are nondeterministic, so treat failures as a signal to inspect
 the instructions or the prompt, not as a blocking regression.
 
-Cost note: `realtime-avatar-prompt.spec.ts` drives 4–5 live model turns per
-run (connect + per-tool prompts, an optional gaze fallback turn, and a final
-pairing probe), so each run incurs meaningfully more OpenAI usage than
-`realtime-webrtc.spec.ts`, which drives a single turn.
+Cost note: `realtime-avatar-prompt.spec.ts` opens two live sessions per run —
+the prompt-evaluation test drives 4–5 model turns (connect + per-tool prompts,
+an optional gaze fallback turn, and a final pairing probe) and the
+opaque-ID test drives one — so each run incurs meaningfully more OpenAI usage
+than `realtime-webrtc.spec.ts`, which drives a single turn.
 
 The voice suite runs through its own Playwright config so the fake-audio
 flag only affects this run. Both voice specs share the same config and

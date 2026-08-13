@@ -16,6 +16,23 @@ const LOOK_AT_TOOL_NAME = "lookAt";
 const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
+// Mirrors AVATAR_CATALOG in src/main.ts. The IDs are opaque; the sets below are
+// derived from the `expressionDescriptions` that give them meaning. `F03` is the
+// only outright angry face, `F08` ("unimpressed, deadpan") the acceptable
+// softer read of the same request.
+const CATALOG_EXPRESSIONS = [
+  "F01",
+  "F02",
+  "F03",
+  "F04",
+  "F05",
+  "F06",
+  "F07",
+  "F08",
+];
+const DISPLEASED_EXPRESSIONS = ["F03", "F08"];
+const SMILING_EXPRESSIONS = ["F01", "F02", "F05", "F07"];
+
 test.describe("realtime avatar prompt evaluation", () => {
   test.skip(
     !LIVE_ENABLED || !HAS_API_KEY,
@@ -246,5 +263,61 @@ test.describe("realtime avatar prompt evaluation", () => {
     console.log(
       `[avatar-prompt-eval] total usage events: ${JSON.stringify(afterPairing.usageEvents)}`,
     );
+  });
+
+  // The realtime harness catalog uses OPAQUE expression IDs (`F01`..`F08`), so
+  // their meaning reaches the model only through `expressionDescriptions` —
+  // carried in the setExpression tool schema the realtime session registers,
+  // plus the avatar instruction addendum. This asserts that channel survives
+  // the realtime tool-definition path, which normalizes parameters on its way
+  // into the session config and is where it could silently be dropped.
+  //
+  // The utterance asks for anger on purpose. With the descriptions stripped the
+  // model picks arbitrarily, and a "smile" request would let it land on the
+  // right answer by luck; asking for anger makes a lucky guess a FAILING one.
+  // Keep it that way — the same control was run for the cascade suite, where
+  // deleting the descriptions turns this style of assertion red.
+  test("picks a contextually correct expression from opaque IDs", async ({
+    page,
+  }) => {
+    await page.goto("/?mode=avatar-prompt-eval");
+
+    await page.getByTestId("connect-button").click();
+
+    await waitForConnected(page);
+    await waitForNoHarnessError(page);
+
+    const before = await getSnapshot(page);
+
+    await sendPrompt(page, "Please be angry at me, and show it on your face.");
+    await waitForAssistantCompletion(page, before.assistantCompletions + 1);
+    await waitForAssistantSettled(page);
+    await waitForNoHarnessError(page);
+
+    const after = await getSnapshot(page);
+    const newEvents = after.avatarEvents.slice(before.avatarEvents.length);
+    const chosen = newEvents
+      .filter((event) => event.type === "expression")
+      .map((event) => (event as { expressionId: string }).expressionId);
+
+    console.log(
+      `[avatar-prompt-eval] angry turn response: ${JSON.stringify(after.assistantText)}`,
+    );
+    console.log(
+      `[avatar-prompt-eval] angry turn expressions: ${JSON.stringify(chosen)}`,
+    );
+
+    expect(chosen.length, "no setExpression call was made").toBeGreaterThan(0);
+    for (const id of chosen) {
+      expect(CATALOG_EXPRESSIONS).toContain(id);
+    }
+    expect(
+      chosen.filter((id) => SMILING_EXPRESSIONS.includes(id)),
+      `model answered an angry request with a smile: ${JSON.stringify(chosen)}`,
+    ).toEqual([]);
+    expect(
+      chosen.some((id) => DISPLEASED_EXPRESSIONS.includes(id)),
+      `expected an angry/displeased expression, got: ${JSON.stringify(chosen)}`,
+    ).toBe(true);
   });
 });
