@@ -16,7 +16,7 @@ type CharacterStore = {
 };
 
 export const useCharacterStore = create<CharacterStore>((set) => ({
-  selectedCharacter: "Hiyori",
+  selectedCharacter: "Haru",
   setSelectedCharacter: (id) => set({ selectedCharacter: id }),
   getCharacter: (id) => {
     const config = CHARACTER_CONFIGS[id];
