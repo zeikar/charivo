@@ -74,6 +74,24 @@ const DEBUG_EVENT_ALLOWLIST = new Set([
 const TOOL_RESULT_TIMEOUT_MESSAGE =
   "Realtime session ended before tool result was returned";
 
+// The SDK's `audio_stopped` fires on the server's `response.output_audio.done`,
+// which means the server finished SENDING audio — not that the browser finished
+// PLAYING it. Over WebRTC there is still buffered audio, so reporting the end
+// there cuts consumers off mid-sentence (`RenderManager` drops a held
+// expression on `tts:audio:end`, and lip-sync stops with it). The SDK exposes
+// no playback-drained signal, so we derive one from the lip-sync analyzer,
+// which measures the audio actually coming out: once its RMS has stayed silent
+// for a beat, playback really is over.
+const AUDIO_DRAIN_RMS_THRESHOLD = 0.02;
+const AUDIO_DRAIN_SILENCE_MS = 250;
+// The drain is decided on a timer that samples the latest RMS, NOT on the
+// analyzer's own callback cadence: that runs on requestAnimationFrame, which a
+// backgrounded tab throttles or halts outright. Sampling keeps the decision on
+// a clock we control, and the ceiling bounds the case where RMS goes stale
+// while still reading loud.
+const AUDIO_DRAIN_POLL_MS = 50;
+const AUDIO_DRAIN_MAX_WAIT_MS = 5_000;
+
 export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;
   private transport: OpenAIRealtimeWebRTC | null = null;
@@ -98,8 +116,13 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     (event: RealtimeTransportEvent) => void
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
+  private lastAudioRms = 0;
+  private audioDrainSilentSince: number | null = null;
+  private audioDrainPoll: ReturnType<typeof setInterval> | null = null;
+  private audioDrainTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
+      this.lastAudioRms = rms;
       this.emitEvent({ type: "audio.lipsync", rms });
     },
     onError: (error) => {
@@ -296,12 +319,15 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("audio_start", () => {
+      // A new segment began before the previous one drained — the character is
+      // still speaking, so the pending end is void.
+      this.cancelAudioDrain();
       this.lipSyncAnalyzer.resume();
       this.emitEvent({ type: "audio.output.started" });
     });
 
     session.on("audio_stopped", () => {
-      this.emitEvent({ type: "audio.output.ended" });
+      this.beginAudioDrain();
     });
 
     session.on("history_updated", (history) => {
@@ -355,7 +381,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     transport.on("audio_interrupted", () => {
-      this.emitEvent({ type: "audio.output.ended" });
+      // Barge-in cuts playback outright — nothing left to drain.
+      this.endAudioOutputNow();
       this.lipSyncAnalyzer.pause();
     });
 
@@ -685,6 +712,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       new Error("Realtime session interrupted during reconnect"),
     );
     this.resetAssistantTracking();
+    // The stream is gone, so no further RMS will arrive to resolve a drain.
+    this.cancelAudioDrain();
     this.lipSyncAnalyzer.stop();
     this.emitEvent({
       type: "connection.lost",
@@ -715,9 +744,68 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     return true;
   }
 
+  /**
+   * The server finished sending audio. Playback is still draining, so hold the
+   * end back until the analyzer reports silence (or the ceiling trips).
+   */
+  private beginAudioDrain(): void {
+    if (this.audioDrainPoll !== null) {
+      return;
+    }
+
+    this.audioDrainSilentSince = null;
+    this.audioDrainPoll = setInterval(() => {
+      this.sampleAudioDrain();
+    }, AUDIO_DRAIN_POLL_MS);
+    this.audioDrainTimeout = setTimeout(() => {
+      this.endAudioOutputNow();
+    }, AUDIO_DRAIN_MAX_WAIT_MS);
+  }
+
+  private sampleAudioDrain(): void {
+    if (this.lastAudioRms > AUDIO_DRAIN_RMS_THRESHOLD) {
+      // Still audible — either playback is ongoing or the model resumed.
+      this.audioDrainSilentSince = null;
+      return;
+    }
+
+    const now = Date.now();
+    if (this.audioDrainSilentSince === null) {
+      this.audioDrainSilentSince = now;
+      return;
+    }
+
+    if (now - this.audioDrainSilentSince >= AUDIO_DRAIN_SILENCE_MS) {
+      this.endAudioOutputNow();
+    }
+  }
+
+  /** Drop a pending drain WITHOUT reporting an end — audio resumed. */
+  private cancelAudioDrain(): void {
+    this.audioDrainSilentSince = null;
+    if (this.audioDrainPoll !== null) {
+      clearInterval(this.audioDrainPoll);
+      this.audioDrainPoll = null;
+    }
+    if (this.audioDrainTimeout !== null) {
+      clearTimeout(this.audioDrainTimeout);
+      this.audioDrainTimeout = null;
+    }
+  }
+
+  /**
+   * Report the end now, cancelling any pending drain. Used for the paths where
+   * audio genuinely stops rather than drains: barge-in, teardown, errors.
+   */
+  private endAudioOutputNow(): void {
+    this.cancelAudioDrain();
+    this.emitEvent({ type: "audio.output.ended" });
+  }
+
   private cleanup(error?: unknown): void {
     this.connectionWasActive = false;
     this.isCleaningUp = true;
+    this.cancelAudioDrain();
     this.iceDisconnectDebouncer.cancel();
     this.unbindTransportLifecycleEvents();
     this.cleanupPendingToolCalls(error);

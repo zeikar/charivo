@@ -107,13 +107,18 @@ class MockRealtimeSession extends MockEmitter {
   }
 }
 
+// Drives the analyzed output level. Tests that exercise the playback-drain
+// path drop it to 0 to simulate audio finishing; everything else leaves the
+// default, which reads as audible.
+let mockAnalyserLevel = 128;
+
 class MockAnalyser {
   fftSize = 256;
   smoothingTimeConstant = 0.8;
   frequencyBinCount = 4;
 
   getByteFrequencyData(target: Uint8Array): void {
-    target.fill(128);
+    target.fill(mockAnalyserLevel);
   }
 
   disconnect(): void {}
@@ -175,7 +180,21 @@ beforeEach(() => {
   sdkState.transport = null;
   sdkState.audioElement = null;
   sdkState.peerConnection = null;
+  mockAnalyserLevel = 128;
   vi.useFakeTimers();
+  // Drive the analyzer's frame loop off the fake timer clock. jsdom's own
+  // requestAnimationFrame does not survive this file's repeated fake/real timer
+  // cycles — it stalls after a couple of frames once earlier tests have run —
+  // which silently starves any assertion that depends on RMS updating.
+  Object.defineProperty(window, "requestAnimationFrame", {
+    value: (callback: FrameRequestCallback) =>
+      setTimeout(() => callback(Date.now()), 16) as unknown as number,
+    configurable: true,
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    value: (handle: number) => clearTimeout(handle),
+    configurable: true,
+  });
   Object.defineProperty(window, "AudioContext", {
     value: MockAudioContext,
     configurable: true,
@@ -667,6 +686,12 @@ describe("OpenAIRealtimeAgentsClient", () => {
       text: "hello there",
     });
     expect(events).toContainEqual({ type: "audio.output.started" });
+    // `audio_stopped` only means the server stopped SENDING. With no analyzed
+    // stream here, the end arrives on the drain ceiling rather than at once.
+    expect(events).not.toContainEqual({ type: "audio.output.ended" });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
     expect(events).toContainEqual({ type: "audio.output.ended" });
   });
 
@@ -845,6 +870,124 @@ describe("OpenAIRealtimeAgentsClient", () => {
     await expect(doomed).rejects.toThrow(
       "Realtime session ended before tool result was returned",
     );
+  });
+
+  // The SDK's `audio_stopped` fires when the SERVER finished sending audio, not
+  // when the browser finished playing it. Reporting the end there cut consumers
+  // off mid-sentence — `RenderManager` drops a held expression on
+  // `tts:audio:end`. These cover the drain that closes that gap.
+  describe("playback drain before reporting audio end", () => {
+    async function connectWithAnalyzedStream(events: RealtimeTransportEvent[]) {
+      globalThis.fetch = vi.fn(async () =>
+        Response.json({
+          adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+          transport: "webrtc",
+          clientSecret: "client-secret",
+        }),
+      ) as typeof fetch;
+
+      const client = new OpenAIRealtimeAgentsClient({
+        apiEndpoint: "/api/realtime",
+      });
+      client.onEvent((event) => events.push(event));
+      await client.connect({ provider: "openai" });
+
+      if (sdkState.audioElement) {
+        sdkState.audioElement.srcObject = new MediaStream();
+        sdkState.audioElement.dispatchEvent(new Event("loadedmetadata"));
+      }
+      await vi.advanceTimersByTimeAsync(20);
+
+      return client;
+    }
+
+    const endedCount = (events: RealtimeTransportEvent[]) =>
+      events.filter((event) => event.type === "audio.output.ended").length;
+
+    it("holds the end while audio is still audible, then reports it once silent", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      // Still playing out the buffer — this is the window that used to end early.
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(endedCount(events)).toBe(0);
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(endedCount(events)).toBe(1);
+    });
+
+    it("restarts the silence window when audio becomes audible again", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(100); // silent, but not long enough
+      mockAnalyserLevel = 128;
+      await vi.advanceTimersByTimeAsync(100); // audible again — window resets
+      expect(endedCount(events)).toBe(0);
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(400);
+
+      expect(endedCount(events)).toBe(1);
+    });
+
+    it("cancels a pending drain when a new audio segment starts", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+      sdkState.session?.emit("audio_start", {}, {});
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      // The character kept speaking, so the earlier end must never land — not
+      // even via the ceiling.
+      expect(endedCount(events)).toBe(0);
+    });
+
+    it("reports the end immediately on barge-in instead of draining", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+      expect(endedCount(events)).toBe(0);
+
+      sdkState.transport?.emit("audio_interrupted");
+
+      expect(endedCount(events)).toBe(1);
+
+      // The cancelled drain must not fire a second end later.
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(endedCount(events)).toBe(1);
+    });
+
+    it("falls back to the ceiling when RMS stops arriving", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      // Level stays audible, so silence never resolves the drain — a
+      // backgrounded tab that halts requestAnimationFrame looks the same.
+      await vi.advanceTimersByTimeAsync(5_100);
+
+      expect(endedCount(events)).toBe(1);
+      await client.disconnect();
+    });
   });
 
   it("derives lip sync from the MediaStream on the audio element and resets on disconnect", async () => {
