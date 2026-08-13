@@ -13,20 +13,20 @@ and real-time conversation. It separates orchestration, stateful managers,
 browser-side clients, and server-side providers so you can swap pieces without
 rewriting the whole stack.
 
-![Charivo Demo](./docs/images/screenshot.png)
+![A message typed into the demo, the model calling setExpression, and the character replying with lip sync](./docs/images/demo.gif)
 
 ## Live demos
 
 - Live2D web app — https://charivo.vercel.app/
 - Companion (Realtime voice + cross-session memory) — https://charivo-companion.vercel.app/
 
-## Built with Charivo
-
-- LiveClaw (Electron desktop companion driven by a local OpenClaw agent) — https://github.com/zeikar/liveclaw
-
 ## Documentation
 
 - [https://zeikar.dev/charivo/](https://zeikar.dev/charivo/)
+
+## Built with Charivo
+
+- LiveClaw (Electron desktop companion driven by a local OpenClaw agent) — https://github.com/zeikar/liveclaw
 
 ## Try it locally
 
