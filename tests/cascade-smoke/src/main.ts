@@ -38,12 +38,26 @@ const TEST_CHARACTER: Character = {
   personality: "Gentle and attentive. Answers in one short, warm sentence.",
 };
 
-// Fixed catalog for the LLM avatar-control tool loop. IDs are arbitrary since
-// this harness's renderer is a stub, not a real avatar model — only the
-// tool-calling round trip (LLM → tool → result projector → avatar:* event)
-// is under test here.
+// Fixed catalog for the LLM avatar-control tool loop. The IDs are deliberately
+// OPAQUE (`F01`..`F08`), mirroring what a real Cubism model ships — Haru's
+// expressions are named exactly this in the demo app, with the same meanings.
+// Their meaning reaches the model ONLY through `expressionDescriptions`, which
+// is what the spec's semantic test exercises: a control run with this block
+// deleted makes that test fail, because the model then has nothing to choose on
+// but the bare enum. See the rationale on that test for why the utterance it
+// sends matters.
 const AVATAR_CATALOG = {
-  expressions: ["happy", "sad", "surprised"],
+  expressions: ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08"],
+  expressionDescriptions: {
+    F01: "gentle smile",
+    F02: "big laugh, excited",
+    F03: "angry",
+    F04: "sad",
+    F05: "beaming, eyes closed",
+    F06: "surprised",
+    F07: "shy, blushing",
+    F08: "unimpressed, deadpan",
+  },
   motions: { greeting: 2 },
 } satisfies AvatarControlCatalog;
 
@@ -176,6 +190,31 @@ async function ensureRendererReady(): Promise<void> {
   await ttsManager.prepareAudio?.();
 }
 
+// Text-driven turn: same LLM → TTS path as runTurn, minus STT. Lets a spec
+// choose the utterance instead of being limited to whatever the shared canned
+// WAV happens to say.
+async function runTextTurn(text: string): Promise<void> {
+  reset();
+  const startedAt = performance.now();
+
+  try {
+    await ensureRendererReady();
+
+    transcript = text;
+    status = "responding";
+    await charivo.userSay(text);
+    const finishedAt = performance.now();
+    timings.turnMs = Math.round(finishedAt - startedAt);
+    timings.totalMs = timings.turnMs;
+
+    status = "done";
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error);
+    status = "error";
+    record("error", { message: lastError });
+  }
+}
+
 async function runTurn(recordMs = DEFAULT_RECORD_MS): Promise<void> {
   reset();
   const startedAt = performance.now();
@@ -231,6 +270,6 @@ function getSnapshot(): CascadeSnapshot {
   };
 }
 
-const api: CascadeHarnessApi = { runTurn, getSnapshot, reset };
+const api: CascadeHarnessApi = { runTurn, runTextTurn, getSnapshot, reset };
 (window as CascadeWindow).__charivoCascade = api;
 record("harness:ready", { character: TEST_CHARACTER.id });

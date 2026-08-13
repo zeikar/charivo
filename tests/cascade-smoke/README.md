@@ -37,6 +37,13 @@ What it proves:
   tools and result projector, so the reply to the canned "smile for me"
   utterance drives a real `setExpression` tool call and an `avatar:expression`
   event, not just plain text
+- the per-expression description channel — a second test drives a text-only turn
+  (`runTextTurn`, no STT) asking the character to be angry, against a catalog of
+  OPAQUE IDs (`F01`..`F08`, the shape a real Cubism model ships). The meanings
+  reach the model only via `expressionDescriptions`, so landing on the angry ID
+  proves the channel works end-to-end against a live model. Deleting the
+  `expressionDescriptions` block in `src/main.ts` makes that test fail — its
+  discriminating power was verified that way, not assumed
 
 The harness intentionally provides its own minimal `/api/stt`, `/api/chat`, and
 `/api/tts` implementations (mirroring the `examples/web` route contracts). It
@@ -48,5 +55,6 @@ What it does not prove:
 - Live2D rendering behavior (the harness renderer only records RMS calls)
 - `examples/web` app behavior
 
-Cost note: each run makes three live OpenAI calls (one transcription, one chat
-completion, one speech synthesis).
+Cost note: each run makes five live OpenAI calls — three for the cascade test
+(one transcription, one chat completion, one speech synthesis) and two more for
+the description test (one chat completion, one speech synthesis; it skips STT).

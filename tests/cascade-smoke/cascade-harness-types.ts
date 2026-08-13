@@ -49,6 +49,12 @@ export type CascadeHarnessApi = {
    * transcribe (STT), generate a reply (LLM), and synthesize + play it (TTS).
    */
   runTurn: (recordMs?: number) => Promise<void>;
+  /**
+   * Drive a turn from supplied text, skipping STT. Used to assert avatar-tool
+   * behavior against a chosen utterance without minting a new audio fixture —
+   * the canned WAV is shared with the webrtc suite and says only one thing.
+   */
+  runTextTurn: (text: string) => Promise<void>;
   getSnapshot: () => CascadeSnapshot;
   reset: () => void;
 };

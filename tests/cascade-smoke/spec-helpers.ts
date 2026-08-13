@@ -29,6 +29,18 @@ export async function startTurn(page: Page, recordMs?: number): Promise<void> {
   }, recordMs);
 }
 
+export async function startTextTurn(page: Page, text: string): Promise<void> {
+  // Same fire-and-poll shape as startTurn; the spec polls for completion.
+  await page.evaluate((value: string) => {
+    const cascade = (window as CascadeWindow).__charivoCascade;
+    if (!cascade) {
+      throw new Error("Cascade harness API is not available");
+    }
+
+    void cascade.runTextTurn(value);
+  }, text);
+}
+
 export async function waitForTurnSettled(
   page: Page,
   timeout = 90_000,

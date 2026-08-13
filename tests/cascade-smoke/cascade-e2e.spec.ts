@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import {
   getSnapshot,
+  startTextTurn,
   startTurn,
   waitForHarnessReady,
   waitForTurnSettled,
@@ -30,7 +31,22 @@ const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
 // Mirrors the AVATAR_CATALOG expressions in src/main.ts, so the assertion
 // below can prove the model only ever picked from the enum offered to it.
-const AVATAR_CATALOG_EXPRESSIONS = ["happy", "sad", "surprised"];
+const AVATAR_CATALOG_EXPRESSIONS = [
+  "F01",
+  "F02",
+  "F03",
+  "F04",
+  "F05",
+  "F06",
+  "F07",
+  "F08",
+];
+
+// Sets for the semantic assertion below, derived from the descriptions in
+// src/main.ts. `F03` is the only outright angry face; `F08` ("unimpressed,
+// deadpan") is the acceptable softer read of the same request.
+const DISPLEASED_EXPRESSIONS = ["F03", "F08"];
+const SMILING_EXPRESSIONS = ["F01", "F02", "F05", "F07"];
 
 test.describe("cascade stt → llm → tts e2e", () => {
   test.skip(
@@ -93,5 +109,63 @@ test.describe("cascade stt → llm → tts e2e", () => {
     for (const event of expressionEvents) {
       expect(AVATAR_CATALOG_EXPRESSIONS).toContain(event.expressionId);
     }
+    // No semantic assertion here on purpose. The canned utterance asks for a
+    // smile, whose match (`F01`) is also the ID the model gravitates to with
+    // the descriptions stripped — see the next test, which picks an utterance
+    // where those two answers diverge.
+  });
+
+  // The expression IDs are opaque (`F01`..`F08`), so their meaning reaches the
+  // model ONLY through `expressionDescriptions` in the setExpression schema and
+  // the avatar instructions. This test asks for anger, whose match is `F03`.
+  //
+  // The utterance is chosen to have discriminating power. Control runs with the
+  // descriptions stripped showed the model answering `F01` every time — it
+  // gravitates to the lowest-numbered ID regardless of position or content. The
+  // canned "smile for me" request also maps to `F01`, so a semantic assertion
+  // there passes even with the channel disabled. Asking for anger makes the two
+  // answers diverge: `F01` is now the WRONG answer, so this assertion can only
+  // pass if the meanings actually reached the model. Keep it that way — an
+  // utterance whose match is `F01` would silently neuter this test.
+  test("picks a contextually correct expression from opaque IDs", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await waitForHarnessReady(page);
+
+    await startTextTurn(page, "Please be angry at me.");
+    await waitForTurnSettled(page);
+
+    const snapshot = await getSnapshot(page);
+
+    console.log(
+      `[cascade] assistant: ${JSON.stringify(snapshot.assistantText)}`,
+    );
+    console.log(
+      `[cascade] avatar events: ${JSON.stringify(snapshot.avatarEvents)}`,
+    );
+
+    expect(
+      snapshot.lastError,
+      `harness error: ${snapshot.lastError}`,
+    ).toBeNull();
+    expect(snapshot.status).toBe("done");
+
+    const chosen = snapshot.avatarEvents
+      .filter((event) => event.type === "expression")
+      .map((event) => event.expressionId);
+
+    expect(chosen.length, "no setExpression call was made").toBeGreaterThan(0);
+    for (const id of chosen) {
+      expect(AVATAR_CATALOG_EXPRESSIONS).toContain(id);
+    }
+    expect(
+      chosen.filter((id) => SMILING_EXPRESSIONS.includes(id)),
+      `model answered an angry request with a smile: ${JSON.stringify(chosen)}`,
+    ).toEqual([]);
+    expect(
+      chosen.some((id) => DISPLEASED_EXPRESSIONS.includes(id)),
+      `expected an angry/displeased expression, got: ${JSON.stringify(chosen)}`,
+    ).toBe(true);
   });
 });
