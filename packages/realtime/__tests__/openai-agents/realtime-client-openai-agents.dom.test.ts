@@ -930,6 +930,40 @@ describe("OpenAIRealtimeAgentsClient", () => {
       await client.disconnect();
     });
 
+    it("stops analysis at the end so residue cannot re-open output", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.stopped",
+      });
+      expect(endedCount(events)).toBe(1);
+
+      // The analyzer smooths, so it would keep reporting a decaying level. Any
+      // sample above RealtimeManager's floor would re-open audio output with no
+      // further buffer event left to close it.
+      events.length = 0;
+      mockAnalyserLevel = 128;
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(
+        events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+      ).toBe(false);
+      expect(
+        events.some((event) => event.type === "audio.output.started"),
+      ).toBe(false);
+
+      // The next response resumes analysis without re-attaching the stream.
+      sdkState.session?.emit("audio_start", {}, {});
+      await vi.advanceTimersByTimeAsync(100);
+      expect(
+        events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+      ).toBe(true);
+
+      await client.disconnect();
+    });
+
     it("does not end from silence alone", async () => {
       const events: RealtimeTransportEvent[] = [];
       const client = await connectWithAnalyzedStream(events);

@@ -502,10 +502,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           return;
         }
         this.responseOutstanding = false;
-        // Playback can outlive the response now that the end is reported from
-        // the output buffer, so close audio output whenever it is open rather
-        // than only mid-response. `end()` is a no-op when inactive.
-        this.audioOutput.end();
         if (this.state.response.status === "responding") {
           this.state = {
             ...this.state,

@@ -349,9 +349,12 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         event.type === "output_audio_buffer.stopped" ||
         event.type === "output_audio_buffer.cleared"
       ) {
-        if (event.type === "output_audio_buffer.cleared") {
-          this.lipSyncAnalyzer.pause();
-        }
+        // Pause before reporting the end. The analyzer smooths its readings, so
+        // it keeps emitting a decaying level afterwards, and `RealtimeManager`
+        // re-opens audio output from any sample above its floor — with no
+        // further buffer event left to close it. The next `audio_start`
+        // resumes analysis.
+        this.lipSyncAnalyzer.pause();
         this.endAudioOutputNow();
         return;
       }
