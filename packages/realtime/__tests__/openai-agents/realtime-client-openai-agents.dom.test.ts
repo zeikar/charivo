@@ -916,8 +916,30 @@ describe("OpenAIRealtimeAgentsClient", () => {
       expect(endedCount(events)).toBe(0);
 
       mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(400);
+      await vi.advanceTimersByTimeAsync(1_000);
 
+      expect(endedCount(events)).toBe(1);
+    });
+
+    it("rides out a pause inside speech instead of ending on it", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      // A gap between sentences in the still-buffered reply.
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(500);
+      expect(endedCount(events)).toBe(0);
+
+      // ...and the rest of the reply plays out.
+      mockAnalyserLevel = 128;
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(endedCount(events)).toBe(0);
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(1_000);
       expect(endedCount(events)).toBe(1);
     });
 
@@ -929,13 +951,13 @@ describe("OpenAIRealtimeAgentsClient", () => {
       sdkState.session?.emit("audio_stopped", {}, {});
 
       mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(100); // silent, but not long enough
+      await vi.advanceTimersByTimeAsync(400); // silent, but not long enough
       mockAnalyserLevel = 128;
       await vi.advanceTimersByTimeAsync(100); // audible again — window resets
       expect(endedCount(events)).toBe(0);
 
       mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(400);
+      await vi.advanceTimersByTimeAsync(1_000);
 
       expect(endedCount(events)).toBe(1);
     });
@@ -974,17 +996,78 @@ describe("OpenAIRealtimeAgentsClient", () => {
       expect(endedCount(events)).toBe(1);
     });
 
-    it("falls back to the ceiling when RMS stops arriving", async () => {
+    it("never ends on a clock while the meter still reads audible", async () => {
       const events: RealtimeTransportEvent[] = [];
       const client = await connectWithAnalyzedStream(events);
 
       sdkState.session?.emit("audio_start", {}, {});
       sdkState.session?.emit("audio_stopped", {}, {});
 
-      // Level stays audible, so silence never resolves the drain — a
-      // backgrounded tab that halts requestAnimationFrame looks the same.
-      await vi.advanceTimersByTimeAsync(5_100);
+      // A long reply keeps playing well past the blind-fallback ceiling. Ending
+      // here on a timer is exactly the mid-speech cut this drain exists to
+      // prevent, so the wait has no deadline while samples keep arriving.
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(endedCount(events)).toBe(0);
 
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(endedCount(events)).toBe(1);
+      await client.disconnect();
+    });
+
+    it("falls back to the ceiling when the meter never reports", async () => {
+      const events: RealtimeTransportEvent[] = [];
+
+      globalThis.fetch = vi.fn(async () =>
+        Response.json({
+          adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+          transport: "webrtc",
+          clientSecret: "client-secret",
+        }),
+      ) as typeof fetch;
+      const client = new OpenAIRealtimeAgentsClient({
+        apiEndpoint: "/api/realtime",
+      });
+      client.onEvent((event) => events.push(event));
+      await client.connect({ provider: "openai" });
+
+      // No stream attached, so the analyzer never runs. A zero reading here is
+      // absence of data, NOT observed silence — it must not be mistaken for the
+      // end of playback.
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(endedCount(events)).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(3_500);
+      expect(endedCount(events)).toBe(1);
+      await client.disconnect();
+    });
+
+    it("falls back to the ceiling when the meter goes stale mid-playback", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      await vi.advanceTimersByTimeAsync(300);
+      expect(endedCount(events)).toBe(0);
+
+      // Freeze the frame loop the way a backgrounded tab does, leaving the last
+      // sample reading audible. Nothing further can be observed, so the blind
+      // ceiling is what closes it out rather than an indefinite wait.
+      Object.defineProperty(window, "requestAnimationFrame", {
+        value: () => 0,
+        configurable: true,
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(endedCount(events)).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(5_000);
       expect(endedCount(events)).toBe(1);
       await client.disconnect();
     });

@@ -83,14 +83,21 @@ const TOOL_RESULT_TIMEOUT_MESSAGE =
 // which measures the audio actually coming out: once its RMS has stayed silent
 // for a beat, playback really is over.
 const AUDIO_DRAIN_RMS_THRESHOLD = 0.02;
-const AUDIO_DRAIN_SILENCE_MS = 250;
+// Terminal silence has to outlast the pauses inside natural speech — between
+// sentences, or around a breath — otherwise the drain resolves in a gap and the
+// rest of the buffered reply plays with the expression already dropped.
+const AUDIO_DRAIN_SILENCE_MS = 800;
 // The drain is decided on a timer that samples the latest RMS, NOT on the
 // analyzer's own callback cadence: that runs on requestAnimationFrame, which a
-// backgrounded tab throttles or halts outright. Sampling keeps the decision on
-// a clock we control, and the ceiling bounds the case where RMS goes stale
-// while still reading loud.
+// backgrounded tab throttles or halts outright.
 const AUDIO_DRAIN_POLL_MS = 50;
-const AUDIO_DRAIN_MAX_WAIT_MS = 5_000;
+// A sample older than this means the feed is not reporting — a halted frame
+// loop, a suspended AudioContext, or a stream that never attached.
+const AUDIO_DRAIN_STALE_RMS_MS = 200;
+// Bounds ONLY the no-usable-feed case. While samples keep arriving the drain
+// waits them out however long playback runs; ending on a clock while the meter
+// still reads audible is the very bug this code exists to fix.
+const AUDIO_DRAIN_BLIND_MAX_WAIT_MS = 5_000;
 
 export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;
@@ -117,12 +124,15 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
   private lastAudioRms = 0;
+  /** When the last RMS sample arrived; `null` means the feed never reported. */
+  private lastAudioRmsAt: number | null = null;
+  private audioDrainStartedAt: number | null = null;
   private audioDrainSilentSince: number | null = null;
   private audioDrainPoll: ReturnType<typeof setInterval> | null = null;
-  private audioDrainTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
       this.lastAudioRms = rms;
+      this.lastAudioRmsAt = Date.now();
       this.emitEvent({ type: "audio.lipsync", rms });
     },
     onError: (error) => {
@@ -753,23 +763,41 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       return;
     }
 
+    this.audioDrainStartedAt = Date.now();
     this.audioDrainSilentSince = null;
     this.audioDrainPoll = setInterval(() => {
       this.sampleAudioDrain();
     }, AUDIO_DRAIN_POLL_MS);
-    this.audioDrainTimeout = setTimeout(() => {
-      this.endAudioOutputNow();
-    }, AUDIO_DRAIN_MAX_WAIT_MS);
   }
 
   private sampleAudioDrain(): void {
+    const now = Date.now();
+    const measuring =
+      this.lastAudioRmsAt !== null &&
+      now - this.lastAudioRmsAt <= AUDIO_DRAIN_STALE_RMS_MS;
+
+    if (!measuring) {
+      // No usable meter: the frame loop is halted, the context is suspended, or
+      // no stream ever attached. We cannot see playback, so a zero here is
+      // absence of data rather than observed silence — fall back to the blind
+      // ceiling instead of treating it as the end.
+      this.audioDrainSilentSince = null;
+      if (
+        this.audioDrainStartedAt !== null &&
+        now - this.audioDrainStartedAt >= AUDIO_DRAIN_BLIND_MAX_WAIT_MS
+      ) {
+        this.endAudioOutputNow();
+      }
+      return;
+    }
+
     if (this.lastAudioRms > AUDIO_DRAIN_RMS_THRESHOLD) {
-      // Still audible — either playback is ongoing or the model resumed.
+      // Still audible. Keep waiting for as long as that holds — there is no
+      // deadline here on purpose.
       this.audioDrainSilentSince = null;
       return;
     }
 
-    const now = Date.now();
     if (this.audioDrainSilentSince === null) {
       this.audioDrainSilentSince = now;
       return;
@@ -782,14 +810,11 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
   /** Drop a pending drain WITHOUT reporting an end — audio resumed. */
   private cancelAudioDrain(): void {
+    this.audioDrainStartedAt = null;
     this.audioDrainSilentSince = null;
     if (this.audioDrainPoll !== null) {
       clearInterval(this.audioDrainPoll);
       this.audioDrainPoll = null;
-    }
-    if (this.audioDrainTimeout !== null) {
-      clearTimeout(this.audioDrainTimeout);
-      this.audioDrainTimeout = null;
     }
   }
 
