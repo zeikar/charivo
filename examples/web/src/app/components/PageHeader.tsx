@@ -3,7 +3,7 @@ const FEATURES = [
     icon: "🎭",
     title: "Avatar Control",
     description:
-      "Expression, motion, and gaze driven by AI tools — Natori has full expression support",
+      "Expression, motion, and gaze driven by AI tools — expression meanings guide the AI's reactions",
   },
   {
     icon: "💋",
