@@ -319,11 +319,6 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.emitEvent({ type: "audio.output.started" });
     });
 
-    session.on("audio_stopped", () => {
-      // Server-side send completion only — playback is still draining. The end
-      // is reported from `output_audio_buffer.stopped` above.
-    });
-
     session.on("history_updated", (history) => {
       this.latestAssistantText = this.extractLatestAssistantText(history);
     });
@@ -344,7 +339,19 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       // SDK raises on `response.output_audio.done`, i.e. the server finished
       // SENDING — this reports that the WebRTC output buffer actually stopped
       // playing. `@charivo/realtime/openai` already treats it as completion.
-      if (event.type === "output_audio_buffer.stopped") {
+      // `stopped` is playback finishing on its own; `cleared` is the buffer
+      // being discarded by an interruption — `OpenAIRealtimeWebRTC.interrupt()`
+      // sends `output_audio_buffer.clear`, and automatic VAD barge-in produces
+      // the same event. Note the SDK's `audio_interrupted` is emitted only by
+      // its WebSocket transport, so on WebRTC this is the only interruption
+      // signal that arrives.
+      if (
+        event.type === "output_audio_buffer.stopped" ||
+        event.type === "output_audio_buffer.cleared"
+      ) {
+        if (event.type === "output_audio_buffer.cleared") {
+          this.lipSyncAnalyzer.pause();
+        }
         this.endAudioOutputNow();
         return;
       }

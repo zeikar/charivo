@@ -21,6 +21,8 @@ already treats as completion.
 No timer or audio-level heuristic stands in for that event. A speculative end
 reproduces the original defect, and an expression released mid-reply cannot be
 un-released by a later correction; a session that never sees the event instead
-holds the expression until `RenderManager`'s existing cap releases it. Paths
-where audio genuinely stops rather than drains are unchanged and still report
-immediately: barge-in, reconnect, errors, and session teardown.
+holds the expression until `RenderManager`'s existing cap releases it. Interruption is reported from `output_audio_buffer.cleared`, which is what
+`interrupt()` and automatic VAD barge-in actually produce on this transport —
+the SDK's `audio_interrupted` is emitted only by its WebSocket transport and
+never arrives over WebRTC. Reconnect, errors, and session teardown continue to
+end audio output immediately as before.

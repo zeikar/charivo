@@ -942,7 +942,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       await client.disconnect();
     });
 
-    it("ends immediately on barge-in", async () => {
+    it("ends immediately when an interruption clears the buffer", async () => {
       const events: RealtimeTransportEvent[] = [];
       const client = await connectWithAnalyzedStream(events);
 
@@ -950,7 +950,12 @@ describe("OpenAIRealtimeAgentsClient", () => {
       sdkState.session?.emit("audio_stopped", {}, {});
       expect(endedCount(events)).toBe(0);
 
-      sdkState.transport?.emit("audio_interrupted");
+      // The real barge-in signal on WebRTC. `interrupt()` sends
+      // `output_audio_buffer.clear` and the server answers with this; the SDK's
+      // `audio_interrupted` is WebSocket-only and never arrives here.
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.cleared",
+      });
 
       expect(endedCount(events)).toBe(1);
       await client.disconnect();
