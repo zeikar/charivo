@@ -13,6 +13,9 @@ type CharacterStore = {
   setSelectedCharacter: (id: CharacterId) => void;
   getCharacter: (id: CharacterId) => AppCharacter;
   getLive2DModelPath: (id: CharacterId) => string;
+  getExpressionDescriptions: (
+    id: CharacterId,
+  ) => Record<string, string> | undefined;
 };
 
 export const useCharacterStore = create<CharacterStore>((set) => ({
@@ -31,5 +34,12 @@ export const useCharacterStore = create<CharacterStore>((set) => ({
       throw new Error(`Character config not found: ${id}`);
     }
     return config.live2d.modelPath;
+  },
+  getExpressionDescriptions: (id) => {
+    const config = CHARACTER_CONFIGS[id];
+    if (!config) {
+      throw new Error(`Character config not found: ${id}`);
+    }
+    return config.live2d.expressionDescriptions;
   },
 }));

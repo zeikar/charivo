@@ -2,6 +2,7 @@ import type { Character } from "@charivo/core";
 
 export interface Live2DConfig {
   modelPath: string;
+  expressionDescriptions?: Record<string, string>;
 }
 
 export interface CharacterConfig<TId extends string = string> {

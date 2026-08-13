@@ -15,5 +15,15 @@ export const HARU_CHARACTER_CONFIG = defineCharacterConfig({
   },
   live2d: {
     modelPath: "/live2d/Haru/Haru.model3.json",
+    expressionDescriptions: {
+      F01: "Soft, gentle smile — subtle warmth, close to neutral",
+      F02: "Bright open-mouth laugh — cheerful, excited",
+      F03: "Angry — brows driven down and inward, narrowed eyes, protesting mouth",
+      F04: "Sad — troubled brows, clearly downturned mouth",
+      F05: "Joyful delight — eyes fully closed in happy crescents",
+      F06: "Surprised — wide eyes, shrunk pupils, raised brows",
+      F07: "Embarrassed/shy — visible cheek blush with a shy smile",
+      F08: "Flatly displeased — downturned mouth with unengaged brows and half-lidded eyes; deadpan and unimpressed rather than sad",
+    },
   },
 });

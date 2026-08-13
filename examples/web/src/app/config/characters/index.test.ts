@@ -31,3 +31,25 @@ describe("demo character voice defaults", () => {
     }
   });
 });
+
+describe("Haru expression descriptions", () => {
+  it("declares a non-empty description for exactly F01..F08", () => {
+    const descriptions = CHARACTER_CONFIGS.Haru.live2d.expressionDescriptions;
+
+    expect(descriptions).toBeDefined();
+    expect(Object.keys(descriptions ?? {}).sort()).toEqual([
+      "F01",
+      "F02",
+      "F03",
+      "F04",
+      "F05",
+      "F06",
+      "F07",
+      "F08",
+    ]);
+    for (const value of Object.values(descriptions ?? {})) {
+      expect(typeof value).toBe("string");
+      expect(value.length).toBeGreaterThan(0);
+    }
+  });
+});

@@ -166,15 +166,17 @@ async function stopRealtime(instance: Charivo | null): Promise<void> {
 
 function readAvatarCatalog(
   renderer: Live2DRendererHandle | null,
+  expressionDescriptions?: Record<string, string>,
 ): AvatarControlCatalog {
   return {
     expressions: renderer?.getAvailableExpressions() ?? [],
     motions: renderer?.getAvailableMotionGroups() ?? {},
+    ...(expressionDescriptions ? { expressionDescriptions } : {}),
   };
 }
 
 export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
-  const { getLive2DModelPath } = useCharacterStore();
+  const { getLive2DModelPath, getExpressionDescriptions } = useCharacterStore();
   const { canvas, character } = useLive2D({ canvasContainerRef });
 
   const {
@@ -460,12 +462,16 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         await renderManager.loadModel?.(
           getLive2DModelPath(initialCharacter.id),
         );
-        const initialCatalog = readAvatarCatalog(renderer);
+        const initialCatalog = readAvatarCatalog(
+          renderer,
+          getExpressionDescriptions(initialCharacter.id),
+        );
         setAvatarCatalog(initialCatalog);
         logAvatarControl("catalog.loaded", {
           characterId: initialCharacter.id,
           expressions: initialCatalog.expressions,
           motions: initialCatalog.motions,
+          expressionDescriptions: initialCatalog.expressionDescriptions,
         });
 
         if (disposed) {
@@ -815,6 +821,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     createLLMClient,
     createSTTTranscriber,
     createTTSPlayer,
+    getExpressionDescriptions,
     getLive2DModelPath,
     selectedLLMClient,
     selectedSTTTranscriber,
@@ -865,12 +872,16 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         await renderManagerRef.current?.loadModel?.(
           getLive2DModelPath(character.id),
         );
-        const nextCatalog = readAvatarCatalog(rendererRef.current);
+        const nextCatalog = readAvatarCatalog(
+          rendererRef.current,
+          getExpressionDescriptions(character.id),
+        );
         setAvatarCatalog(nextCatalog);
         logAvatarControl("catalog.loaded", {
           characterId: character.id,
           expressions: nextCatalog.expressions,
           motions: nextCatalog.motions,
+          expressionDescriptions: nextCatalog.expressionDescriptions,
         });
 
         if (cancelled) {
@@ -933,6 +944,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     character,
     charivo,
     clearMessages,
+    getExpressionDescriptions,
     getLive2DModelPath,
     isRealtimeMode,
     resetRealtimeUiState,
