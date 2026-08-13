@@ -107,7 +107,11 @@ import {
   createAvatarResultProjector,
 } from "@charivo/avatar";
 
-const catalog = { expressions: ["Smile", "Sad"], motions: { Idle: 2 } };
+const catalog = {
+  expressions: ["Smile", "Sad"],
+  motions: { Idle: 2 },
+  expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
+};
 
 const manager = createLLMManager(
   createRemoteLLMClient({ apiEndpoint: "/api/chat" }),

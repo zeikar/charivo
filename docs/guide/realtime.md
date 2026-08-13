@@ -44,6 +44,7 @@ const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
 const avatarTools = createAvatarControlTools({
   expressions: ["Smile", "Sad"],
   motions: { Idle: 2, TapBody: 3 },
+  expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
 });
 
 const tools: ToolRegistration[] = [

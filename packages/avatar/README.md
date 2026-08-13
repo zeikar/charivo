@@ -45,7 +45,11 @@ import {
   createAvatarResultProjector,
 } from "@charivo/avatar";
 
-const catalog = { expressions: ["Smile", "Sad"], motions: { Idle: 2, TapBody: 3 } };
+const catalog = {
+  expressions: ["Smile", "Sad"],
+  motions: { Idle: 2, TapBody: 3 },
+  expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
+};
 
 const manager = createRealtimeManager(client, {
   tools: createAvatarControlTools(catalog),
@@ -108,6 +112,16 @@ const instructions = [
   "Keep replies short and natural for this product.",
 ].join("\n");
 ```
+
+## Expression Descriptions
+
+`catalog.expressionDescriptions` is an optional `Record<string, string>` of
+expression IDs to short meanings. Keys are expression IDs from
+`catalog.expressions`; keys that don't match are ignored. When present,
+matching meanings are appended to the `setExpression` tool's `expressionId`
+parameter description and to `buildAvatarControlInstructions(...)` output.
+When absent, or when none of its keys match, both outputs are unchanged. The
+formatting is internal to this package — the Exports list above is unchanged.
 
 ## Migrating From `@charivo/realtime-avatar`
 
