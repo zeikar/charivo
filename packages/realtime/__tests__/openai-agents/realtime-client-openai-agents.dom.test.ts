@@ -686,11 +686,13 @@ describe("OpenAIRealtimeAgentsClient", () => {
       text: "hello there",
     });
     expect(events).toContainEqual({ type: "audio.output.started" });
-    // `audio_stopped` only means the server stopped SENDING. With no analyzed
-    // stream here, the end arrives on the drain ceiling rather than at once.
+    // `audio_stopped` only means the server stopped SENDING; playback is still
+    // draining, so the end waits for the buffer to actually stop.
     expect(events).not.toContainEqual({ type: "audio.output.ended" });
 
-    await vi.advanceTimersByTimeAsync(5_500);
+    sdkState.session?.emit("transport_event", {
+      type: "output_audio_buffer.stopped",
+    });
 
     expect(events).toContainEqual({ type: "audio.output.ended" });
   });
@@ -872,11 +874,9 @@ describe("OpenAIRealtimeAgentsClient", () => {
     );
   });
 
-  // The SDK's `audio_stopped` fires when the SERVER finished sending audio, not
-  // when the browser finished playing it. Reporting the end there cut consumers
-  // off mid-sentence — `RenderManager` drops a held expression on
-  // `tts:audio:end`. These cover the drain that closes that gap.
-  describe("playback drain before reporting audio end", () => {
+  // `audio_stopped` means the SERVER finished sending; playback is still
+  // draining. Reporting the end there released a held expression mid-reply.
+  describe("audio output lifecycle", () => {
     async function connectWithAnalyzedStream(events: RealtimeTransportEvent[]) {
       globalThis.fetch = vi.fn(async () =>
         Response.json({
@@ -904,33 +904,15 @@ describe("OpenAIRealtimeAgentsClient", () => {
     const endedCount = (events: RealtimeTransportEvent[]) =>
       events.filter((event) => event.type === "audio.output.ended").length;
 
-    it("holds the end while audio is still audible, then reports it once silent", async () => {
+    it("ends on output_audio_buffer.stopped, not on audio_stopped", async () => {
       const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
+      const client = await connectWithAnalyzedStream(events);
 
       sdkState.session?.emit("audio_start", {}, {});
       sdkState.session?.emit("audio_stopped", {}, {});
 
-      // Still playing out the buffer — this is the window that used to end early.
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(endedCount(events)).toBe(0);
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      expect(endedCount(events)).toBe(1);
-    });
-
-    it("ends on output_audio_buffer.stopped without waiting for the fallback", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      // Level stays audible, so the fallback drain would keep waiting. The
-      // authoritative buffer event is what actually closes playback.
-      await vi.advanceTimersByTimeAsync(300);
+      // The window that used to end early — buffered audio is still playing.
+      await vi.advanceTimersByTimeAsync(10_000);
       expect(endedCount(events)).toBe(0);
 
       sdkState.session?.emit("transport_event", {
@@ -938,110 +920,31 @@ describe("OpenAIRealtimeAgentsClient", () => {
       });
 
       expect(endedCount(events)).toBe(1);
-
-      // Definitive, so residual level must not re-open the segment.
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(200);
-      mockAnalyserLevel = 128;
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(endedCount(events)).toBe(1);
-      expect(
-        events.filter((event) => event.type === "audio.output.started").length,
-      ).toBe(1);
+      await client.disconnect();
     });
 
-    it("re-opens its own segment when speech resumes after a drain ended it", async () => {
+    it("does not end from silence alone", async () => {
       const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
+      const client = await connectWithAnalyzedStream(events);
 
       sdkState.session?.emit("audio_start", {}, {});
       sdkState.session?.emit("audio_stopped", {}, {});
 
-      // A pause long enough to satisfy the terminal-silence heuristic — the
-      // limit of what this transport can observe, since it exposes no
-      // playout-buffer signal.
+      // A pause inside the reply must not be mistaken for its end: no level
+      // reading is authoritative, and a released expression cannot be restored.
       mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_500);
-      expect(endedCount(events)).toBe(1);
-
-      const startsBefore = events.filter(
-        (event) => event.type === "audio.output.started",
-      ).length;
-
-      // Buffered speech was in fact still coming. The segment must re-open so
-      // it gets a matching end rather than leaving audio state dangling with no
-      // server completion left to close it.
-      mockAnalyserLevel = 128;
-      await vi.advanceTimersByTimeAsync(200);
-      expect(
-        events.filter((event) => event.type === "audio.output.started").length,
-      ).toBe(startsBefore + 1);
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_500);
-      expect(endedCount(events)).toBe(2);
-    });
-
-    it("rides out a pause inside speech instead of ending on it", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      // A gap between sentences in the still-buffered reply.
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(5_000);
       expect(endedCount(events)).toBe(0);
 
-      // ...and the rest of the reply plays out.
       mockAnalyserLevel = 128;
       await vi.advanceTimersByTimeAsync(2_000);
       expect(endedCount(events)).toBe(0);
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(endedCount(events)).toBe(1);
+      await client.disconnect();
     });
 
-    it("restarts the silence window when audio becomes audible again", async () => {
+    it("ends immediately on barge-in", async () => {
       const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(400); // silent, but not long enough
-      mockAnalyserLevel = 128;
-      await vi.advanceTimersByTimeAsync(100); // audible again — window resets
-      expect(endedCount(events)).toBe(0);
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      expect(endedCount(events)).toBe(1);
-    });
-
-    it("cancels a pending drain when a new audio segment starts", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-      sdkState.session?.emit("audio_start", {}, {});
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(6_000);
-
-      // The character kept speaking, so the earlier end must never land — not
-      // even via the ceiling.
-      expect(endedCount(events)).toBe(0);
-    });
-
-    it("reports the end immediately on barge-in instead of draining", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      await connectWithAnalyzedStream(events);
+      const client = await connectWithAnalyzedStream(events);
 
       sdkState.session?.emit("audio_start", {}, {});
       sdkState.session?.emit("audio_stopped", {}, {});
@@ -1049,86 +952,6 @@ describe("OpenAIRealtimeAgentsClient", () => {
 
       sdkState.transport?.emit("audio_interrupted");
 
-      expect(endedCount(events)).toBe(1);
-
-      // The cancelled drain must not fire a second end later.
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(6_000);
-      expect(endedCount(events)).toBe(1);
-    });
-
-    it("never ends on a clock while the meter still reads audible", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      const client = await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      // A long reply keeps playing well past the blind-fallback ceiling. Ending
-      // here on a timer is exactly the mid-speech cut this drain exists to
-      // prevent, so the wait has no deadline while samples keep arriving.
-      await vi.advanceTimersByTimeAsync(15_000);
-      expect(endedCount(events)).toBe(0);
-
-      mockAnalyserLevel = 0;
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      expect(endedCount(events)).toBe(1);
-      await client.disconnect();
-    });
-
-    it("falls back to the ceiling when the meter never reports", async () => {
-      const events: RealtimeTransportEvent[] = [];
-
-      globalThis.fetch = vi.fn(async () =>
-        Response.json({
-          adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
-          transport: "webrtc",
-          clientSecret: "client-secret",
-        }),
-      ) as typeof fetch;
-      const client = new OpenAIRealtimeAgentsClient({
-        apiEndpoint: "/api/realtime",
-      });
-      client.onEvent((event) => events.push(event));
-      await client.connect({ provider: "openai" });
-
-      // No stream attached, so the analyzer never runs. A zero reading here is
-      // absence of data, NOT observed silence — it must not be mistaken for the
-      // end of playback.
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      await vi.advanceTimersByTimeAsync(2_000);
-      expect(endedCount(events)).toBe(0);
-
-      await vi.advanceTimersByTimeAsync(3_500);
-      expect(endedCount(events)).toBe(1);
-      await client.disconnect();
-    });
-
-    it("falls back to the ceiling when the meter goes stale mid-playback", async () => {
-      const events: RealtimeTransportEvent[] = [];
-      const client = await connectWithAnalyzedStream(events);
-
-      sdkState.session?.emit("audio_start", {}, {});
-      sdkState.session?.emit("audio_stopped", {}, {});
-
-      await vi.advanceTimersByTimeAsync(300);
-      expect(endedCount(events)).toBe(0);
-
-      // Freeze the frame loop the way a backgrounded tab does, leaving the last
-      // sample reading audible. Nothing further can be observed, so the blind
-      // ceiling is what closes it out rather than an indefinite wait.
-      Object.defineProperty(window, "requestAnimationFrame", {
-        value: () => 0,
-        configurable: true,
-      });
-
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(endedCount(events)).toBe(0);
-
-      await vi.advanceTimersByTimeAsync(5_000);
       expect(endedCount(events)).toBe(1);
       await client.disconnect();
     });

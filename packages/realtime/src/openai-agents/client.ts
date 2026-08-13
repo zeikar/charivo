@@ -74,38 +74,24 @@ const DEBUG_EVENT_ALLOWLIST = new Set([
 const TOOL_RESULT_TIMEOUT_MESSAGE =
   "Realtime session ended before tool result was returned";
 
-// The SDK's `audio_stopped` fires on the server's `response.output_audio.done`,
-// which means the server finished SENDING audio — not that the browser finished
-// PLAYING it. Over WebRTC there is still buffered audio, so reporting the end
-// there cuts consumers off mid-sentence (`RenderManager` drops a held
-// expression on `tts:audio:end`, and lip-sync stops with it).
+// Two different "audio is done" signals reach this client, and only one means
+// playback finished.
 //
-// `output_audio_buffer.stopped` is the authoritative completion and is handled
-// in the `transport_event` listener. The constants below drive a FALLBACK drain
-// for sessions where that event never arrives: it reads the lip-sync analyzer,
-// which measures the audio actually coming out, and calls playback over once
-// that has gone quiet. Terminal silence cannot prove a buffer is empty, so any
-// end it decides stays recoverable — see `endAudioOutputHeuristically`.
-const AUDIO_DRAIN_RMS_THRESHOLD = 0.02;
-// Must match the floor `RealtimeManager` uses to synthesize a start from
-// lip-sync alone. If this were higher, a sample between the two would reopen
-// output there while leaving no drain armed here to ever close it.
-const MANAGER_LIPSYNC_START_RMS = 0.001;
-// Terminal silence has to outlast the pauses inside natural speech — between
-// sentences, or around a breath — otherwise the drain resolves in a gap and the
-// rest of the buffered reply plays with the expression already dropped.
-const AUDIO_DRAIN_SILENCE_MS = 800;
-// The drain is decided on a timer that samples the latest RMS, NOT on the
-// analyzer's own callback cadence: that runs on requestAnimationFrame, which a
-// backgrounded tab throttles or halts outright.
-const AUDIO_DRAIN_POLL_MS = 50;
-// A sample older than this means the feed is not reporting — a halted frame
-// loop, a suspended AudioContext, or a stream that never attached.
-const AUDIO_DRAIN_STALE_RMS_MS = 200;
-// Bounds ONLY the no-usable-feed case. While samples keep arriving the drain
-// waits them out however long playback runs; ending on a clock while the meter
-// still reads audible is the very bug this code exists to fix.
-const AUDIO_DRAIN_BLIND_MAX_WAIT_MS = 5_000;
+// `audio_stopped` is raised by the SDK on the server's
+// `response.output_audio.done` — the server finished SENDING audio. Over WebRTC
+// there is still buffered audio playing at that point, so treating it as the
+// end cut consumers off mid-sentence: `RenderManager` releases a held
+// expression on `tts:audio:end`, so an avatar's face reset partway through its
+// own reply, and lip-sync stopped with it.
+//
+// `output_audio_buffer.stopped` is the WebRTC event for the output buffer
+// actually stopping, and is the one this client reports the end from.
+//
+// No timer or level-based guess stands in for it. A speculative end is the
+// original bug — an expression released mid-reply cannot be un-released by a
+// later correction — whereas a session that somehow never sees the event just
+// holds the expression until `RenderManager`'s own cap releases it, and the
+// interrupt, connection-loss, and teardown paths still end it explicitly.
 
 export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;
@@ -131,33 +117,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     (event: RealtimeTransportEvent) => void
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
-  private lastAudioRms = 0;
-  /** When the last RMS sample arrived; `null` means the feed never reported. */
-  private lastAudioRmsAt: number | null = null;
-  /** When the meter first became unreadable during the current drain. */
-  private audioDrainBlindSince: number | null = null;
-  private audioDrainSilentSince: number | null = null;
-  private audioDrainPoll: ReturnType<typeof setInterval> | null = null;
-  /**
-   * Set when a drain reported the end. Terminal silence cannot prove the
-   * playout buffer is empty — no such signal exists on this transport — so a
-   * long enough pause inside a reply can end a segment that still has speech
-   * behind it. This lets audible output re-open its own segment and re-arm the
-   * drain, which keeps the lifecycle consistent instead of leaving downstream
-   * audio state open with no completion left to close it.
-   */
-  private audioResumeArmed = false;
   private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
-      this.lastAudioRms = rms;
-      this.lastAudioRmsAt = Date.now();
-      if (this.audioResumeArmed && rms > MANAGER_LIPSYNC_START_RMS) {
-        // Speech resumed after a drain called it done — re-open the segment we
-        // closed so it gets a matching end rather than dangling.
-        this.audioResumeArmed = false;
-        this.emitEvent({ type: "audio.output.started" });
-        this.beginAudioDrain();
-      }
       this.emitEvent({ type: "audio.lipsync", rms });
     },
     onError: (error) => {
@@ -354,16 +315,13 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("audio_start", () => {
-      // A new segment began before the previous one drained — the character is
-      // still speaking, so the pending end is void.
-      this.cancelAudioDrain();
-      this.audioResumeArmed = false;
       this.lipSyncAnalyzer.resume();
       this.emitEvent({ type: "audio.output.started" });
     });
 
     session.on("audio_stopped", () => {
-      this.beginAudioDrain();
+      // Server-side send completion only — playback is still draining. The end
+      // is reported from `output_audio_buffer.stopped` above.
     });
 
     session.on("history_updated", (history) => {
@@ -757,8 +715,6 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       new Error("Realtime session interrupted during reconnect"),
     );
     this.resetAssistantTracking();
-    // The stream is gone, so no further RMS will arrive to resolve a drain.
-    this.cancelAudioDrain();
     this.lipSyncAnalyzer.stop();
     this.emitEvent({
       type: "connection.lost",
@@ -789,103 +745,14 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     return true;
   }
 
-  /**
-   * The server finished sending audio. Playback is still draining, so hold the
-   * end back until the analyzer reports silence (or the ceiling trips).
-   */
-  private beginAudioDrain(): void {
-    if (this.audioDrainPoll !== null) {
-      return;
-    }
-
-    this.audioDrainBlindSince = null;
-    this.audioDrainSilentSince = null;
-    this.audioDrainPoll = setInterval(() => {
-      this.sampleAudioDrain();
-    }, AUDIO_DRAIN_POLL_MS);
-  }
-
-  private sampleAudioDrain(): void {
-    const now = Date.now();
-    const measuring =
-      this.lastAudioRmsAt !== null &&
-      now - this.lastAudioRmsAt <= AUDIO_DRAIN_STALE_RMS_MS;
-
-    if (!measuring) {
-      // No usable meter: the frame loop is halted, the context is suspended, or
-      // no stream ever attached. We cannot see playback, so a zero here is
-      // absence of data rather than observed silence — fall back to the blind
-      // ceiling. It runs from when the meter WENT blind, not from the start of
-      // the drain, so a gap after minutes of measured playback still gets its
-      // own full grace period.
-      this.audioDrainSilentSince = null;
-      if (this.audioDrainBlindSince === null) {
-        this.audioDrainBlindSince = now;
-        return;
-      }
-      if (now - this.audioDrainBlindSince >= AUDIO_DRAIN_BLIND_MAX_WAIT_MS) {
-        this.endAudioOutputHeuristically();
-      }
-      return;
-    }
-
-    // Measurement resumed — the blind clock restarts if it is ever needed again.
-    this.audioDrainBlindSince = null;
-
-    if (this.lastAudioRms > AUDIO_DRAIN_RMS_THRESHOLD) {
-      // Still audible. Keep waiting for as long as that holds — there is no
-      // deadline here on purpose.
-      this.audioDrainSilentSince = null;
-      return;
-    }
-
-    if (this.audioDrainSilentSince === null) {
-      this.audioDrainSilentSince = now;
-      return;
-    }
-
-    if (now - this.audioDrainSilentSince >= AUDIO_DRAIN_SILENCE_MS) {
-      this.endAudioOutputHeuristically();
-    }
-  }
-
-  /**
-   * End reported by the fallback drain rather than by the authoritative
-   * `output_audio_buffer.stopped`. It can be wrong — a long pause or a blind
-   * meter — so it stays recoverable: audible output re-opens the segment and
-   * re-arms the drain. Barge-in and teardown use `endAudioOutputNow` instead,
-   * which is definitive.
-   */
-  private endAudioOutputHeuristically(): void {
-    this.cancelAudioDrain();
-    this.audioResumeArmed = true;
-    this.emitEvent({ type: "audio.output.ended" });
-  }
-
-  /** Drop a pending drain WITHOUT reporting an end — audio resumed. */
-  private cancelAudioDrain(): void {
-    this.audioDrainBlindSince = null;
-    this.audioDrainSilentSince = null;
-    if (this.audioDrainPoll !== null) {
-      clearInterval(this.audioDrainPoll);
-      this.audioDrainPoll = null;
-    }
-  }
-
-  /**
-   * Report the end now, cancelling any pending drain. Used for the paths where
-   * audio genuinely stops rather than drains: barge-in, teardown, errors.
-   */
+  /** Report that audio output has ended. */
   private endAudioOutputNow(): void {
-    this.cancelAudioDrain();
-    this.audioResumeArmed = false;
     this.emitEvent({ type: "audio.output.ended" });
   }
 
   private cleanup(error?: unknown): void {
     this.connectionWasActive = false;
     this.isCleaningUp = true;
-    this.cancelAudioDrain();
     this.iceDisconnectDebouncer.cancel();
     this.unbindTransportLifecycleEvents();
     this.cleanupPendingToolCalls(error);
