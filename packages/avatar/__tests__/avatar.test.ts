@@ -1,11 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EventMap } from "@charivo/core";
+import type { EventMap, ToolDefinition } from "@charivo/core";
 import {
   AVATAR_CONTROL_TOOL_NAMES,
   buildAvatarControlInstructions,
   createAvatarControlTools,
   createAvatarResultProjector,
+  SET_EXPRESSION_TOOL_NAME,
 } from "@charivo/avatar";
+
+/** Reads one generated property schema out of the untyped `properties` bag. */
+function propertySchema(
+  definition: ToolDefinition,
+  property: string,
+): { description?: string; enum?: unknown[] } {
+  return definition.parameters.properties[property] as {
+    description?: string;
+    enum?: unknown[];
+  };
+}
 
 const TOOL_CONTEXT = {
   character: null,
@@ -61,6 +73,164 @@ describe("avatar", () => {
     expect(gazeOnlyInstructions).not.toContain(
       "Richer beats can combine two avatar actions",
     );
+  });
+
+  it("includes expression meanings in setExpression description and instructions when descriptions are provided", () => {
+    const catalog = {
+      expressions: ["F01", "F02"],
+      expressionDescriptions: {
+        F01: "soft gentle smile",
+        F02: "wide happy grin",
+      },
+      motions: {},
+    };
+
+    const tools = createAvatarControlTools(catalog);
+    const expressionIdDescription = propertySchema(
+      tools[0]!.definition,
+      "expressionId",
+    ).description;
+
+    expect(expressionIdDescription).toContain("F01 = soft gentle smile");
+    expect(expressionIdDescription).toContain("F02 = wide happy grin");
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).toContain("F01 = soft gentle smile");
+    expect(instructions).toContain("F02 = wide happy grin");
+  });
+
+  it("orders meanings by catalog.expressions order, not by expressionDescriptions key order", () => {
+    const catalog = {
+      expressions: ["F01", "F02"],
+      expressionDescriptions: {
+        // Declared in reverse of `expressions` order on purpose.
+        F02: "wide happy grin",
+        F01: "soft gentle smile",
+      },
+      motions: {},
+    };
+
+    const tools = createAvatarControlTools(catalog);
+    const expressionIdDescription = propertySchema(
+      tools[0]!.definition,
+      "expressionId",
+    ).description;
+
+    expect(expressionIdDescription).toContain(
+      "F01 = soft gentle smile; F02 = wide happy grin",
+    );
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).toContain(
+      "F01 = soft gentle smile; F02 = wide happy grin",
+    );
+  });
+
+  it("matches today's exact expressionId description and instructions when no descriptions are provided", () => {
+    const catalog = {
+      expressions: ["Smile"],
+      motions: {},
+    };
+
+    const tools = createAvatarControlTools(catalog);
+    const expressionIdDescription = propertySchema(
+      tools[0]!.definition,
+      "expressionId",
+    ).description;
+
+    expect(expressionIdDescription).toBe(
+      "Expression ID available for your current model.",
+    );
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).toBe(
+      [
+        "Use avatar tools only when they make the moment feel present. Quiet exchanges can pass without an avatar action.",
+        "Use lookAt when your attention shifts or a small gaze reaction is enough.",
+        "React with your face when feelings come up: greetings, gratitude, jokes, teasing, concern, reassurance, surprise, or sympathy. Use setExpression with a fitting expression before you speak, even when the user did not ask for it.",
+      ].join("\n"),
+    );
+  });
+
+  it("ignores description keys not present in expressions, matching the no-descriptions output when nothing survives the intersection", () => {
+    const catalogWithoutDescriptions = {
+      expressions: ["Smile"],
+      motions: {},
+    };
+    const catalogWithUnmatchedDescriptions = {
+      expressions: ["Smile"],
+      expressionDescriptions: {
+        Unrelated: "does not exist in expressions",
+      },
+      motions: {},
+    };
+
+    const toolsWithoutDescriptions = createAvatarControlTools(
+      catalogWithoutDescriptions,
+    );
+    const toolsWithUnmatchedDescriptions = createAvatarControlTools(
+      catalogWithUnmatchedDescriptions,
+    );
+
+    expect(
+      propertySchema(
+        toolsWithUnmatchedDescriptions[0]!.definition,
+        "expressionId",
+      ).description,
+    ).toBe(
+      propertySchema(toolsWithoutDescriptions[0]!.definition, "expressionId")
+        .description,
+    );
+
+    expect(
+      buildAvatarControlInstructions(catalogWithUnmatchedDescriptions),
+    ).toBe(buildAvatarControlInstructions(catalogWithoutDescriptions));
+
+    const catalogWithPartialMatch = {
+      expressions: ["Smile", "Frown"],
+      expressionDescriptions: {
+        Smile: "happy face",
+        Unrelated: "does not exist in expressions",
+      },
+      motions: {},
+    };
+
+    const toolsWithPartialMatch = createAvatarControlTools(
+      catalogWithPartialMatch,
+    );
+    const partialDescription = propertySchema(
+      toolsWithPartialMatch[0]!.definition,
+      "expressionId",
+    ).description;
+
+    expect(partialDescription).toContain("Smile = happy face");
+    expect(partialDescription).not.toContain("Unrelated");
+
+    const partialInstructions = buildAvatarControlInstructions(
+      catalogWithPartialMatch,
+    );
+    expect(partialInstructions).toContain("Smile = happy face");
+    expect(partialInstructions).not.toContain("Unrelated");
+  });
+
+  it("omits everything expression-related, including any meanings line, for zero-expression catalogs", () => {
+    const catalog = {
+      expressions: [],
+      expressionDescriptions: {
+        F01: "soft gentle smile",
+      },
+      motions: {},
+    };
+
+    const tools = createAvatarControlTools(catalog);
+    expect(
+      tools.some((tool) => tool.definition.name === SET_EXPRESSION_TOOL_NAME),
+    ).toBe(false);
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).not.toContain("setExpression");
+    expect(instructions).not.toContain("meanings");
+    expect(instructions).not.toContain("F01");
   });
 
   it("creates avatar control tools with the expected names and validation", async () => {

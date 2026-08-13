@@ -27,6 +27,30 @@ export const AVATAR_CONTROL_TOOL_NAMES = [
   LOOK_AT_TOOL_NAME,
 ] as const;
 
+// Iterates `catalog.expressions` (not `Object.keys(descriptions)`) because this
+// function is the single enforcement point for the key-intersection contract:
+// output order must follow the catalog's own expression order, and description
+// keys with no matching expression must be silently dropped rather than
+// validated by callers.
+function formatExpressionMeanings(
+  catalog: AvatarControlCatalog,
+): string | null {
+  const descriptions = catalog.expressionDescriptions;
+  if (!descriptions) {
+    return null;
+  }
+
+  const entries = catalog.expressions
+    .filter((expressionId) => Object.hasOwn(descriptions, expressionId))
+    .map((expressionId) => `${expressionId} = ${descriptions[expressionId]}`);
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return entries.join("; ");
+}
+
 export function buildAvatarControlInstructions(
   catalog: AvatarControlCatalog,
 ): string {
@@ -41,6 +65,11 @@ export function buildAvatarControlInstructions(
     instructions.push(
       "React with your face when feelings come up: greetings, gratitude, jokes, teasing, concern, reassurance, surprise, or sympathy. Use setExpression with a fitting expression before you speak, even when the user did not ask for it.",
     );
+
+    const meanings = formatExpressionMeanings(catalog);
+    if (meanings !== null) {
+      instructions.push(`Expression meanings: ${meanings}`);
+    }
   }
 
   if (hasMotions) {
@@ -76,6 +105,11 @@ export function createAvatarControlTools(
 
   if (catalog.expressions.length > 0) {
     const expressionValues = [...catalog.expressions];
+    const meanings = formatExpressionMeanings(catalog);
+    const expressionIdDescription =
+      meanings === null
+        ? "Expression ID available for your current model."
+        : `Expression ID available for your current model. Meanings: ${meanings}`;
     tools.push({
       definition: {
         type: "function",
@@ -86,7 +120,7 @@ export function createAvatarControlTools(
           properties: {
             expressionId: {
               type: "string",
-              description: "Expression ID available for your current model.",
+              description: expressionIdDescription,
               enum: expressionValues,
             },
           },
