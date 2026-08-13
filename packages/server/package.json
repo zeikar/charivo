@@ -1,6 +1,6 @@
 {
   "name": "@charivo/server",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "Server-side provider adapters for Charivo",
   "exports": {
     "./openai": {
