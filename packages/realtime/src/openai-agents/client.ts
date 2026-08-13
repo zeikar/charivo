@@ -78,11 +78,19 @@ const TOOL_RESULT_TIMEOUT_MESSAGE =
 // which means the server finished SENDING audio — not that the browser finished
 // PLAYING it. Over WebRTC there is still buffered audio, so reporting the end
 // there cuts consumers off mid-sentence (`RenderManager` drops a held
-// expression on `tts:audio:end`, and lip-sync stops with it). The SDK exposes
-// no playback-drained signal, so we derive one from the lip-sync analyzer,
-// which measures the audio actually coming out: once its RMS has stayed silent
-// for a beat, playback really is over.
+// expression on `tts:audio:end`, and lip-sync stops with it).
+//
+// `output_audio_buffer.stopped` is the authoritative completion and is handled
+// in the `transport_event` listener. The constants below drive a FALLBACK drain
+// for sessions where that event never arrives: it reads the lip-sync analyzer,
+// which measures the audio actually coming out, and calls playback over once
+// that has gone quiet. Terminal silence cannot prove a buffer is empty, so any
+// end it decides stays recoverable — see `endAudioOutputHeuristically`.
 const AUDIO_DRAIN_RMS_THRESHOLD = 0.02;
+// Must match the floor `RealtimeManager` uses to synthesize a start from
+// lip-sync alone. If this were higher, a sample between the two would reopen
+// output there while leaving no drain armed here to ever close it.
+const MANAGER_LIPSYNC_START_RMS = 0.001;
 // Terminal silence has to outlast the pauses inside natural speech — between
 // sentences, or around a breath — otherwise the drain resolves in a gap and the
 // rest of the buffered reply plays with the expression already dropped.
@@ -143,7 +151,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     onRms: (rms) => {
       this.lastAudioRms = rms;
       this.lastAudioRmsAt = Date.now();
-      if (this.audioResumeArmed && rms > AUDIO_DRAIN_RMS_THRESHOLD) {
+      if (this.audioResumeArmed && rms > MANAGER_LIPSYNC_START_RMS) {
         // Speech resumed after a drain called it done — re-open the segment we
         // closed so it gets a matching end rather than dangling.
         this.audioResumeArmed = false;
@@ -372,6 +380,15 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     session.on("transport_event", (event) => {
       if (this.options.debug && DEBUG_EVENT_ALLOWLIST.has(event.type)) {
         this.log("📡 [OpenAI Agents Transport Event]", event.type, event);
+      }
+
+      // Authoritative playback completion. Unlike `audio_stopped` — which the
+      // SDK raises on `response.output_audio.done`, i.e. the server finished
+      // SENDING — this reports that the WebRTC output buffer actually stopped
+      // playing. `@charivo/realtime/openai` already treats it as completion.
+      if (event.type === "output_audio_buffer.stopped") {
+        this.endAudioOutputNow();
+        return;
       }
 
       if (
@@ -807,7 +824,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         return;
       }
       if (now - this.audioDrainBlindSince >= AUDIO_DRAIN_BLIND_MAX_WAIT_MS) {
-        this.endAudioOutputNow();
+        this.endAudioOutputHeuristically();
       }
       return;
     }
@@ -828,12 +845,21 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     }
 
     if (now - this.audioDrainSilentSince >= AUDIO_DRAIN_SILENCE_MS) {
-      this.cancelAudioDrain();
-      // Only a drain-decided end can be re-opened: it is the one that rests on
-      // a heuristic. Barge-in and teardown are definitive.
-      this.audioResumeArmed = true;
-      this.emitEvent({ type: "audio.output.ended" });
+      this.endAudioOutputHeuristically();
     }
+  }
+
+  /**
+   * End reported by the fallback drain rather than by the authoritative
+   * `output_audio_buffer.stopped`. It can be wrong — a long pause or a blind
+   * meter — so it stays recoverable: audible output re-opens the segment and
+   * re-arms the drain. Barge-in and teardown use `endAudioOutputNow` instead,
+   * which is definitive.
+   */
+  private endAudioOutputHeuristically(): void {
+    this.cancelAudioDrain();
+    this.audioResumeArmed = true;
+    this.emitEvent({ type: "audio.output.ended" });
   }
 
   /** Drop a pending drain WITHOUT reporting an end — audio resumed. */

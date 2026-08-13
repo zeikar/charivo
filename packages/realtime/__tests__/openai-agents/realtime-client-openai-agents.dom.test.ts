@@ -921,6 +921,35 @@ describe("OpenAIRealtimeAgentsClient", () => {
       expect(endedCount(events)).toBe(1);
     });
 
+    it("ends on output_audio_buffer.stopped without waiting for the fallback", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      // Level stays audible, so the fallback drain would keep waiting. The
+      // authoritative buffer event is what actually closes playback.
+      await vi.advanceTimersByTimeAsync(300);
+      expect(endedCount(events)).toBe(0);
+
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.stopped",
+      });
+
+      expect(endedCount(events)).toBe(1);
+
+      // Definitive, so residual level must not re-open the segment.
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(200);
+      mockAnalyserLevel = 128;
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(endedCount(events)).toBe(1);
+      expect(
+        events.filter((event) => event.type === "audio.output.started").length,
+      ).toBe(1);
+    });
+
     it("re-opens its own segment when speech resumes after a drain ended it", async () => {
       const events: RealtimeTransportEvent[] = [];
       await connectWithAnalyzedStream(events);
