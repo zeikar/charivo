@@ -355,7 +355,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         // further buffer event left to close it. The next `audio_start`
         // resumes analysis.
         this.lipSyncAnalyzer.pause();
-        this.endAudioOutputNow();
+        this.emitEvent({ type: "audio.output.ended" });
         return;
       }
 
@@ -747,11 +747,6 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     }
 
     return true;
-  }
-
-  /** Report that audio output has ended. */
-  private endAudioOutputNow(): void {
-    this.emitEvent({ type: "audio.output.ended" });
   }
 
   private cleanup(error?: unknown): void {
