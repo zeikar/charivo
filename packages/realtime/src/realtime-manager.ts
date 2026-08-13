@@ -502,8 +502,11 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           return;
         }
         this.responseOutstanding = false;
+        // Playback can outlive the response now that the end is reported from
+        // the output buffer, so close audio output whenever it is open rather
+        // than only mid-response. `end()` is a no-op when inactive.
+        this.audioOutput.end();
         if (this.state.response.status === "responding") {
-          this.audioOutput.end();
           this.state = {
             ...this.state,
             response: { status: "interrupted", text: this.state.response.text },
@@ -550,8 +553,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.reconnectToken += 1;
     const reconnectToken = this.reconnectToken;
 
+    // Same reasoning as the error path: the buffer may still be playing after
+    // the response completed, and dropping the connection must not strand it.
+    this.audioOutput.end();
     if (this.state.response.status === "responding") {
-      this.audioOutput.end();
       this.state = {
         ...this.state,
         connection: "connecting",

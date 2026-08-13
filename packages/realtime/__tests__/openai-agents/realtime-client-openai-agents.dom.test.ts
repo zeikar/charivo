@@ -53,7 +53,12 @@ class MockRealtimeTransport extends MockEmitter {
   }
 
   interrupt(): void {
-    this.emit("audio_interrupted");
+    // WebRTC sends `output_audio_buffer.clear` and the server answers with the
+    // cleared event; it never emits the SDK's WebSocket-only
+    // `audio_interrupted`.
+    sdkState.session?.emit("transport_event", {
+      type: "output_audio_buffer.cleared",
+    });
   }
 }
 
@@ -96,7 +101,9 @@ class MockRealtimeSession extends MockEmitter {
     sdkState.transport?.emit("connection_change", "disconnected");
   });
   interrupt = vi.fn(() => {
-    sdkState.transport?.emit("audio_interrupted");
+    sdkState.session?.emit("transport_event", {
+      type: "output_audio_buffer.cleared",
+    });
   });
 
   constructor(agent: MockRealtimeAgent, options: Record<string, unknown>) {
@@ -1035,7 +1042,9 @@ describe("OpenAIRealtimeAgentsClient", () => {
     // Interrupt should pause analysis (rms reset to 0) without tearing down
     // the persistent MediaStream attachment.
     events.length = 0;
-    sdkState.transport?.emit("audio_interrupted");
+    sdkState.session?.emit("transport_event", {
+      type: "output_audio_buffer.cleared",
+    });
 
     expect(events).toContainEqual({ type: "audio.lipsync", rms: 0 });
 

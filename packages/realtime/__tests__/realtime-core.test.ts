@@ -533,6 +533,42 @@ describe("realtime-core", () => {
     );
   });
 
+  // Playback now outlives the response: the end is reported from the output
+  // buffer, which stops after the assistant response completes. A connection
+  // drop inside that window must still close audio output, or `tts:audio:end`
+  // never fires and a held expression is stranded.
+  it("ends audio output on connection loss after the response completed", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter!(eventEmitter);
+    await manager.startSession({ provider: "openai" });
+
+    await stub.emit({ type: "audio.output.started" });
+    await stub.emit({
+      type: "assistant.response.completed",
+      text: "all done",
+    });
+
+    const emitted = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls;
+    expect(emitted.some(([event]) => event === "tts:audio:end")).toBe(false);
+
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+      error: new Error("network"),
+    });
+
+    expect(
+      (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.some(
+        ([event]) => event === "tts:audio:end",
+      ),
+    ).toBe(true);
+
+    await manager.stopSession();
+  });
+
   it("rejects handler results that cannot be serialized to JSON", async () => {
     const stub = createRealtimeClientStub();
     const eventEmitter = createEventEmitter();

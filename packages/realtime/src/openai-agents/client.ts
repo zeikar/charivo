@@ -390,12 +390,6 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.handleAssistantTranscriptDelta(event);
     });
 
-    transport.on("audio_interrupted", () => {
-      // Barge-in cuts playback outright — nothing left to drain.
-      this.endAudioOutputNow();
-      this.lipSyncAnalyzer.pause();
-    });
-
     transport.on("connection_change", (status) => {
       if (status === "disconnected" && this.connectionWasActive) {
         this.cleanupPendingToolCalls();
