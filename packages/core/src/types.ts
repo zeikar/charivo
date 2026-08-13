@@ -11,6 +11,13 @@ export interface GazeCoordinates {
 export interface AvatarControlCatalog {
   expressions: string[];
   motions: Record<string, number>;
+  /**
+   * Optional semantic descriptions for each expression.
+   * Keys should correspond to IDs in the `expressions` array.
+   * Entries whose key is not present in `expressions` are ignored by consumers.
+   * When omitted or empty, no semantic hints are provided (preserving today's behavior).
+   */
+  expressionDescriptions?: Record<string, string>;
 }
 
 export interface Character {
