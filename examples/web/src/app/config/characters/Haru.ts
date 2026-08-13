@@ -18,6 +18,13 @@ export const HARU_CHARACTER_CONFIG = defineCharacterConfig({
     // Affect only — these ride in the setExpression schema on every request, and
     // the model picks on feeling, not on how the mesh deforms. F01/F02/F05 and
     // F04/F08 overlap in kind, so each carries just enough to stay distinct.
+    //
+    // The meanings were established by rendering each expression in this demo and
+    // reading the result, then cross-checking the .exp3.json deltas. There is NO
+    // authoritative published source for Haru's F01..F08 — and the mapping that
+    // circulates in Open-LLM-VTuber's docs is WRONG (it calls F04 "joy"; F04 is a
+    // frown). Do not "correct" these from the web. Note also that F04 and F08 share
+    // an identical ParamMouthForm: they differ in brows and eyes, not mouth.
     expressionDescriptions: {
       F01: "gentle smile",
       F02: "big laugh, excited",
