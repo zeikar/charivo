@@ -29,8 +29,6 @@ import { delay } from "./internal/timing";
 import { executeRealtimeToolCall } from "./internal/tool-runner";
 
 const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
-/** Level at which analyzed output counts as speech rather than residue. */
-const AUDIBLE_RMS_THRESHOLD = 0.02;
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 5_000] as const;
 
 export interface RealtimeManagerOptions {
@@ -448,12 +446,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "audio.lipsync":
-        // Safety net for transports that never announce the start. The floor is
-        // an audibility threshold, not "any signal at all": a trailing whisper
-        // of residual level after a segment has properly ended would otherwise
-        // re-open output that no further server completion will ever close,
-        // leaving the audio lifecycle stuck active.
-        if (event.rms > AUDIBLE_RMS_THRESHOLD && !this.audioOutput.isActive()) {
+        if (event.rms > 0.001 && !this.audioOutput.isActive()) {
           this.audioOutput.start();
         }
         this.eventEmitter?.emit("tts:lipsync:update", { rms: event.rms });

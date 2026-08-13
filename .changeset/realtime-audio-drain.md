@@ -24,10 +24,12 @@ when the meter cannot be read at all — a halted frame loop, a suspended
 `AudioContext`, or a stream that never attached — where a zero reading means
 absence of data rather than observed silence.
 
-`RealtimeManager`'s safety net that opens audio output from lip-sync alone now
-uses the same audibility floor. Residual level after a segment properly ended
-could previously re-open output that no further server completion would close,
-leaving the audio lifecycle stuck active.
+Terminal silence cannot prove the playout buffer is empty — this transport
+exposes no such signal — so a pause longer than the window can still end a
+segment that has speech behind it. That case is now self-correcting rather than
+terminal: audible output re-opens its own segment and re-arms the drain, so it
+still receives a matching end instead of leaving downstream audio state open
+with no server completion left to close it.
 
 Paths where audio genuinely stops rather than drains are unchanged and still
 report immediately: barge-in, reconnect, errors, and session teardown.

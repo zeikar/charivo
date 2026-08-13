@@ -690,7 +690,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
     // stream here, the end arrives on the drain ceiling rather than at once.
     expect(events).not.toContainEqual({ type: "audio.output.ended" });
 
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(5_500);
 
     expect(events).toContainEqual({ type: "audio.output.ended" });
   });
@@ -919,6 +919,38 @@ describe("OpenAIRealtimeAgentsClient", () => {
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(endedCount(events)).toBe(1);
+    });
+
+    it("re-opens its own segment when speech resumes after a drain ended it", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("audio_stopped", {}, {});
+
+      // A pause long enough to satisfy the terminal-silence heuristic — the
+      // limit of what this transport can observe, since it exposes no
+      // playout-buffer signal.
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(endedCount(events)).toBe(1);
+
+      const startsBefore = events.filter(
+        (event) => event.type === "audio.output.started",
+      ).length;
+
+      // Buffered speech was in fact still coming. The segment must re-open so
+      // it gets a matching end rather than leaving audio state dangling with no
+      // server completion left to close it.
+      mockAnalyserLevel = 128;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(
+        events.filter((event) => event.type === "audio.output.started").length,
+      ).toBe(startsBefore + 1);
+
+      mockAnalyserLevel = 0;
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(endedCount(events)).toBe(2);
     });
 
     it("rides out a pause inside speech instead of ending on it", async () => {

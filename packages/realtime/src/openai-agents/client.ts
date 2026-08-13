@@ -126,13 +126,30 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private lastAudioRms = 0;
   /** When the last RMS sample arrived; `null` means the feed never reported. */
   private lastAudioRmsAt: number | null = null;
-  private audioDrainStartedAt: number | null = null;
+  /** When the meter first became unreadable during the current drain. */
+  private audioDrainBlindSince: number | null = null;
   private audioDrainSilentSince: number | null = null;
   private audioDrainPoll: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Set when a drain reported the end. Terminal silence cannot prove the
+   * playout buffer is empty — no such signal exists on this transport — so a
+   * long enough pause inside a reply can end a segment that still has speech
+   * behind it. This lets audible output re-open its own segment and re-arm the
+   * drain, which keeps the lifecycle consistent instead of leaving downstream
+   * audio state open with no completion left to close it.
+   */
+  private audioResumeArmed = false;
   private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
       this.lastAudioRms = rms;
       this.lastAudioRmsAt = Date.now();
+      if (this.audioResumeArmed && rms > AUDIO_DRAIN_RMS_THRESHOLD) {
+        // Speech resumed after a drain called it done — re-open the segment we
+        // closed so it gets a matching end rather than dangling.
+        this.audioResumeArmed = false;
+        this.emitEvent({ type: "audio.output.started" });
+        this.beginAudioDrain();
+      }
       this.emitEvent({ type: "audio.lipsync", rms });
     },
     onError: (error) => {
@@ -332,6 +349,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       // A new segment began before the previous one drained — the character is
       // still speaking, so the pending end is void.
       this.cancelAudioDrain();
+      this.audioResumeArmed = false;
       this.lipSyncAnalyzer.resume();
       this.emitEvent({ type: "audio.output.started" });
     });
@@ -763,7 +781,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       return;
     }
 
-    this.audioDrainStartedAt = Date.now();
+    this.audioDrainBlindSince = null;
     this.audioDrainSilentSince = null;
     this.audioDrainPoll = setInterval(() => {
       this.sampleAudioDrain();
@@ -780,16 +798,22 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       // No usable meter: the frame loop is halted, the context is suspended, or
       // no stream ever attached. We cannot see playback, so a zero here is
       // absence of data rather than observed silence — fall back to the blind
-      // ceiling instead of treating it as the end.
+      // ceiling. It runs from when the meter WENT blind, not from the start of
+      // the drain, so a gap after minutes of measured playback still gets its
+      // own full grace period.
       this.audioDrainSilentSince = null;
-      if (
-        this.audioDrainStartedAt !== null &&
-        now - this.audioDrainStartedAt >= AUDIO_DRAIN_BLIND_MAX_WAIT_MS
-      ) {
+      if (this.audioDrainBlindSince === null) {
+        this.audioDrainBlindSince = now;
+        return;
+      }
+      if (now - this.audioDrainBlindSince >= AUDIO_DRAIN_BLIND_MAX_WAIT_MS) {
         this.endAudioOutputNow();
       }
       return;
     }
+
+    // Measurement resumed — the blind clock restarts if it is ever needed again.
+    this.audioDrainBlindSince = null;
 
     if (this.lastAudioRms > AUDIO_DRAIN_RMS_THRESHOLD) {
       // Still audible. Keep waiting for as long as that holds — there is no
@@ -804,13 +828,17 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     }
 
     if (now - this.audioDrainSilentSince >= AUDIO_DRAIN_SILENCE_MS) {
-      this.endAudioOutputNow();
+      this.cancelAudioDrain();
+      // Only a drain-decided end can be re-opened: it is the one that rests on
+      // a heuristic. Barge-in and teardown are definitive.
+      this.audioResumeArmed = true;
+      this.emitEvent({ type: "audio.output.ended" });
     }
   }
 
   /** Drop a pending drain WITHOUT reporting an end — audio resumed. */
   private cancelAudioDrain(): void {
-    this.audioDrainStartedAt = null;
+    this.audioDrainBlindSince = null;
     this.audioDrainSilentSince = null;
     if (this.audioDrainPoll !== null) {
       clearInterval(this.audioDrainPoll);
@@ -824,6 +852,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
    */
   private endAudioOutputNow(): void {
     this.cancelAudioDrain();
+    this.audioResumeArmed = false;
     this.emitEvent({ type: "audio.output.ended" });
   }
 
