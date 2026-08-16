@@ -460,12 +460,19 @@ export interface RealtimeManager {
  * without a core change:
  *
  * ```ts
+ * import "@charivo/core";
+ *
  * declare module "@charivo/core" {
  *   interface EventMap {
  *     "vrm:blendshape": { name: string; weight: number };
  *   }
  * }
  * ```
+ *
+ * The `import` line matters: it makes the declaring file a module, so
+ * `declare module` *augments* the package. In a plain script or `.d.ts` with
+ * no top-level import/export, the same block *shadows* `@charivo/core`
+ * entirely and every other export vanishes from the compiler's view.
  */
 export interface EventMap {
   "message:sent": { message: Message };

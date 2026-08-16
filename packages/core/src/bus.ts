@@ -5,7 +5,12 @@ type ListenerStore = {
 };
 
 export class EventBus implements CharivoEventBus {
-  private listeners: ListenerStore = {};
+  // Object.create(null), not {}: EventMap is open to declaration merging, so
+  // an augmented event may be named after an Object.prototype member
+  // ("constructor", "toString", ...). On a prototype-backed store those keys
+  // inherit a truthy value, so `??=` skips the array init and on()/emit()
+  // throw. A null-prototype store has no inherited keys.
+  private listeners: ListenerStore = Object.create(null);
 
   on<K extends keyof EventMap>(
     event: K,
@@ -51,6 +56,6 @@ export class EventBus implements CharivoEventBus {
   }
 
   clear(): void {
-    this.listeners = {};
+    this.listeners = Object.create(null);
   }
 }

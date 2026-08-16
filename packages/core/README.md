@@ -362,4 +362,24 @@ objects.
 
 The event bus isolates each listener: one that throws is reported via
 `console.error` and does not stop the listeners queued behind it, so `emit`
-never throws into its caller.
+never throws into its caller. Each `emit` dispatches to a snapshot of the
+listener list, so a listener removed mid-emit (its own `off`, or a
+`disconnect()` that removes several) still fires for that emit; the removal
+applies from the next one.
+
+`EventMap` is an interface, so a package can carry its own events through the
+bus by augmenting it — no core change needed:
+
+```ts
+import "@charivo/core";
+
+declare module "@charivo/core" {
+  interface EventMap {
+    "vrm:blendshape": { name: string; weight: number };
+  }
+}
+```
+
+Keep the `import` line: it makes the declaring file a module, so the block
+augments the package. In a standalone `.d.ts` without it, the same block
+shadows `@charivo/core` and every other export disappears.

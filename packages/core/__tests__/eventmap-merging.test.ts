@@ -8,6 +8,11 @@ import { EventBus } from "../src/bus";
 declare module "@charivo/core" {
   interface EventMap {
     "vrm:blendshape": { name: string; weight: number };
+    // Deliberately collide with Object.prototype members: an open EventMap
+    // makes these names type-valid, so the bus's listener store must not be
+    // prototype-backed (see the Object.create(null) comment in bus.ts).
+    constructor: { collide: boolean };
+    __proto__: { collide: boolean };
   }
 }
 
@@ -27,5 +32,33 @@ describe("EventMap declaration merging", () => {
     bus.off("vrm:blendshape", listener);
     bus.emit("vrm:blendshape", { name: "smile", weight: 0 });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles augmented events named after Object.prototype members", () => {
+    // Regression: a `{}`-backed store inherits `constructor`/`__proto__`, so
+    // `??=` skipped the array init and on()/emit() threw for these names.
+    const bus = new EventBus();
+    const onConstructor = vi.fn();
+    const onProto = vi.fn();
+
+    bus.on("constructor", onConstructor);
+    bus.on("__proto__", onProto);
+
+    bus.emit("constructor", { collide: true });
+    bus.emit("__proto__", { collide: true });
+
+    expect(onConstructor).toHaveBeenCalledTimes(1);
+    expect(onConstructor).toHaveBeenCalledWith({ collide: true });
+    expect(onProto).toHaveBeenCalledTimes(1);
+
+    bus.off("constructor", onConstructor);
+    bus.emit("constructor", { collide: false });
+    expect(onConstructor).toHaveBeenCalledTimes(1);
+
+    // clear() must also rebuild a null-prototype store.
+    bus.clear();
+    bus.on("constructor", onConstructor);
+    bus.emit("constructor", { collide: true });
+    expect(onConstructor).toHaveBeenCalledTimes(2);
   });
 });
