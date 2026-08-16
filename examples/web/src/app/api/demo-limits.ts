@@ -40,8 +40,16 @@ export const REALTIME_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
  * browser talks to OpenAI directly, so the server is out of the loop and cannot
  * hang up — this bounds an ordinary visitor's cost, and a caller who ignores it
  * is bounded by the spend limit instead.
+ *
+ * Development loosens it rather than removing it. 90 seconds is pure friction
+ * while debugging a realtime session, but realtime bills on wall clock, so a
+ * session left open on your own key overnight is expensive too — 15 minutes
+ * clears any working session while still catching a walked-away tab. Next.js
+ * substitutes `NODE_ENV` with a literal at build time, so a deployed bundle
+ * keeps only the 90s branch; there is no runtime switch to get wrong.
  */
-export const REALTIME_SESSION_MAX_MS = 90_000;
+export const REALTIME_SESSION_MAX_MS =
+  process.env.NODE_ENV === "production" ? 90_000 : 15 * 60_000;
 
 /** Ample for the demo's character prompt plus its avatar catalog (~2 KB). */
 export const REALTIME_MAX_INSTRUCTIONS_CHARS = 8_000;

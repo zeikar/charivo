@@ -36,7 +36,9 @@ What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
   serialized tool payloads; TTS input characters; STT upload size; realtime
   instruction and tool size.
 - **Voices are restricted** to the ones the shipped characters use.
-- **Realtime sessions and STT recordings stop after 90 seconds.** Both are
+- **Realtime sessions and STT recordings stop after 90 seconds** in a production
+  build; `pnpm dev:web` loosens that to 15 minutes so a debugging session is not
+  cut off, and nothing but the build mode selects between them. Both are
   client-side timers: after bootstrap the browser talks to OpenAI directly, so
   the server cannot hang up. They bound an ordinary visitor, not a determined
   caller.
