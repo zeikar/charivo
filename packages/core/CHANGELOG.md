@@ -1,5 +1,51 @@
 # @charivo/core
 
+## 0.26.0
+
+### Minor Changes
+
+- 1cb4c27: Add `Charivo.getTTSManager()` and `Charivo.getLLMManager()`.
+
+  `getRenderManager()`, `getSTTManager()`, and `getRealtimeManager()` already
+  existed, so reading back the TTS or LLM manager was the one gap — apps had to
+  keep their own reference to a manager Charivo was already holding. All five
+  modalities now have a getter, each returning `undefined` when nothing is
+  attached.
+
+- 22a8f65: Add `createCharivo(options)`, and remove three unimplemented public types.
+
+  `createCharivo` builds a `Charivo` with its managers already attached, so the
+  quick-start path is one declarative call instead of `new Charivo()` followed by
+  several `attach*` calls and `setCharacter()`. It brings the top-level
+  orchestrator in line with the `create*` factories every other component already
+  uses — `Charivo` was the only public type you instantiated with `new`.
+
+  ```ts
+  const charivo = createCharivo({
+    renderer: renderManager,
+    llm: createLLMManager(createOpenAILLMClient({ apiKey })),
+    tts: createTTSManager(createOpenAITTSPlayer({ apiKey })),
+    character,
+  });
+  ```
+
+  Every option is optional, and each accepts `null` as well as `undefined`, so a
+  manager held as nullable state can be passed straight through. The character is
+  applied after the managers are attached, so it reaches every character-aware
+  one — LLM, renderer, and realtime — without depending on call order.
+
+  The `Charivo` class is still exported and `attach*` is unchanged, so existing
+  code keeps working. The factory returns an ordinary instance, so you can supply
+  what you have up front and still attach the rest later.
+
+  **Breaking for anyone importing them:** the `Conversation`, `Plugin`, and
+  `CharivoConfig` types are removed. All three were declared but never
+  implemented or referenced anywhere in the codebase — `Plugin` described a
+  plugin architecture that does not exist, and `CharivoConfig` described a
+  provider-by-name configuration shape incompatible with the current layering.
+  `CharivoOptions` is the new configuration type and is not a replacement for
+  `CharivoConfig`'s shape.
+
 ## 0.25.0
 
 ### Minor Changes

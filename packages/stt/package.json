@@ -1,6 +1,6 @@
 {
   "name": "@charivo/stt",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "STT manager and browser adapters for Charivo",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
