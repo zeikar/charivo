@@ -27,25 +27,24 @@ This keeps the browser client simple and vendor credentials on the server.
 ## Basic Setup
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 
-const charivo = new Charivo();
-
-charivo.attachLLM(
-  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
-);
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
+const charivo = createCharivo({
+  llm: createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+  },
 });
 ```
 
-Set the character through `charivo.setCharacter(...)` after attaching managers.
-That keeps character state aligned across LLM, rendering, and realtime
-managers.
+`createCharivo` applies the character after attaching, so it reaches the LLM,
+rendering, and realtime managers together. When you attach by hand instead,
+call `charivo.setCharacter(...)` after the `attach*` calls to keep that
+character state aligned.
 
 ## Client Choices
 

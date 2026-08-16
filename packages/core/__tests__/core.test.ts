@@ -5,6 +5,7 @@ import {
   CharivoProviderError,
   CharivoStateError,
   CharivoTransportError,
+  createCharivo,
 } from "@charivo/core";
 import type {
   Character,
@@ -2615,5 +2616,89 @@ describe("Charivo latest-wins turns", () => {
     const history = charivo.getHistory();
     expect(transcript(history)).toEqual(["user:B", "character:reply-B"]);
     expect(history[0].type).toBe("user");
+  });
+});
+
+describe("createCharivo", () => {
+  const character: Character = {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful",
+    voice: { voiceId: "marin" },
+  };
+
+  it("attaches every supplied manager", () => {
+    const renderer = new StubRenderManager();
+    const llm = new StubLLMManager();
+    const tts = new StubTTSManager();
+    const stt = new StubSTTManager();
+
+    const charivo = createCharivo({ renderer, llm, tts, stt });
+
+    // attach* is what wires the event plumbing, so a wired manager proves it ran
+    expect(renderer.setEventBus).toHaveBeenCalledTimes(1);
+    expect(llm.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(tts.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(stt.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(charivo.getRenderManager()).toBe(renderer);
+    expect(charivo.getSTTManager()).toBe(stt);
+  });
+
+  it("applies the character to each character-aware manager exactly once", () => {
+    const renderer = new StubRenderManager();
+    const llm = new StubLLMManager();
+    const realtime = new StubRealtimeManager();
+
+    const charivo = createCharivo({ renderer, llm, realtime, character });
+
+    // The factory attaches first and sets the character last, so no manager
+    // gets it twice — attach* only re-applies a character that is already set.
+    expect(renderer.setCharacter).toHaveBeenCalledTimes(1);
+    expect(renderer.setCharacter).toHaveBeenCalledWith(character);
+    expect(llm.setCharacter).toHaveBeenCalledTimes(1);
+    expect(realtime.setCharacter).toHaveBeenCalledTimes(1);
+    expect(charivo.getCurrentCharacter()).toEqual(character);
+  });
+
+  it("matches hand-wiring with attach* plus setCharacter", () => {
+    const manual = new Charivo();
+    const manualRenderer = new StubRenderManager();
+    const manualLLM = new StubLLMManager();
+    manual.attachRenderer(manualRenderer);
+    manual.attachLLM(manualLLM);
+    manual.setCharacter(character);
+
+    const renderer = new StubRenderManager();
+    const llm = new StubLLMManager();
+    const built = createCharivo({ renderer, llm, character });
+
+    expect(built.getCurrentCharacter()).toEqual(manual.getCurrentCharacter());
+    expect(built.getRenderManager()).toBe(renderer);
+    expect(renderer.setCharacter.mock.calls).toEqual(
+      manualRenderer.setCharacter.mock.calls,
+    );
+    expect(llm.setCharacter.mock.calls).toEqual(
+      manualLLM.setCharacter.mock.calls,
+    );
+  });
+
+  it("enables realtime mode only when a realtime manager is supplied", () => {
+    expect(
+      createCharivo({ llm: new StubLLMManager() }).isRealtimeModeEnabled(),
+    ).toBe(false);
+
+    const realtime = new StubRealtimeManager();
+    const charivo = createCharivo({ realtime });
+    expect(charivo.isRealtimeModeEnabled()).toBe(true);
+    expect(charivo.getRealtimeManager()).toBe(realtime);
+  });
+
+  it("builds a usable instance with no options", () => {
+    const charivo = createCharivo();
+
+    expect(charivo).toBeInstanceOf(Charivo);
+    expect(charivo.getCurrentCharacter()).toBeNull();
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.getHistory()).toEqual([]);
   });
 });

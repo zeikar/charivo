@@ -29,7 +29,7 @@ see [LLM — Avatar Tool Calling](./llm.md#avatar-tool-calling).
 ## Basic Setup
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import {
   createRealtimeManager,
   type ToolRegistration,
@@ -88,9 +88,7 @@ const manager = createRealtimeManager(client, {
   resultProjectors: [createAvatarResultProjector()],
 });
 
-const charivo = new Charivo();
-charivo.attachRealtime(manager);
-charivo.setCharacter(character);
+const charivo = createCharivo({ realtime: manager, character });
 ```
 
 `attachRealtime(...)` installs the event bridge that relays realtime output

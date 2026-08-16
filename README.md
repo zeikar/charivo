@@ -65,7 +65,7 @@ pnpm add \
 ```
 
 ```ts
-import { Charivo, isCharivoError } from "@charivo/core";
+import { createCharivo, isCharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
@@ -78,29 +78,23 @@ const OPENAI_API_KEY = "sk-...";
 
 const canvas = document.querySelector("canvas")!;
 
-const charivo = new Charivo();
-
-const renderer = createLive2DRenderer({ canvas });
-const renderManager = createRenderManager(renderer, {
+const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
   canvas,
   mouseTracking: "document",
 });
 await renderManager.initialize();
 await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
-charivo.attachRenderer(renderManager);
-charivo.attachLLM(
-  createLLMManager(createOpenAILLMClient({ apiKey: OPENAI_API_KEY })),
-);
-charivo.attachTTS(
-  createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
-);
-
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
-  voice: { voiceId: "marin" },
+const charivo = createCharivo({
+  renderer: renderManager,
+  llm: createLLMManager(createOpenAILLMClient({ apiKey: OPENAI_API_KEY })),
+  tts: createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+    voice: { voiceId: "marin" },
+  },
 });
 
 try {
@@ -140,7 +134,7 @@ pnpm add \
 ```
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import {
   buildRealtimeSessionConfig,
   createRealtimeManager,
@@ -154,28 +148,24 @@ const OPENAI_API_KEY = "sk-...";
 
 const canvas = document.querySelector("canvas")!;
 
-const charivo = new Charivo();
-
-const renderer = createLive2DRenderer({ canvas });
-const renderManager = createRenderManager(renderer, {
+const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
   canvas,
   mouseTracking: "document",
 });
 await renderManager.initialize();
 await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
-charivo.attachRenderer(renderManager);
-charivo.attachRealtime(
-  createRealtimeManager(
+const charivo = createCharivo({
+  renderer: renderManager,
+  realtime: createRealtimeManager(
     createOpenAIRealtimeAgentsClient({ apiKey: OPENAI_API_KEY }),
   ),
-);
-
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
-  voice: { voiceId: "marin" },
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+    voice: { voiceId: "marin" },
+  },
 });
 
 // Start a live mic session (speech in, voice out). Call this from a user

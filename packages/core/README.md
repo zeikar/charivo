@@ -46,14 +46,14 @@ pnpm add @charivo/core
 ## Usage
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 
-const charivo = new Charivo();
-
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
+const charivo = createCharivo({
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+  },
 });
 
 charivo.on("message:received", ({ message }) => {
@@ -62,6 +62,24 @@ charivo.on("message:received", ({ message }) => {
 ```
 
 ## `Charivo`
+
+`createCharivo(options)` builds an instance with its managers already attached.
+Every option is optional:
+
+```ts
+const charivo = createCharivo({
+  renderer: renderManager,
+  llm: llmManager,
+  tts: ttsManager,
+  stt: sttManager,
+  realtime: realtimeManager,
+  character,
+});
+```
+
+It is exactly `new Charivo()` plus the matching `attach*` calls followed by
+`setCharacter()`, so reach for the class directly when you need to attach
+managers later — for example when swapping a provider at runtime.
 
 The `Charivo` instance wires managers together:
 

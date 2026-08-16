@@ -7,6 +7,7 @@ import {
   TTSManager,
   STTManager,
   LLMManager,
+  RealtimeManager,
 } from "./types";
 import { toCharivoError, type CharivoError } from "./errors";
 
@@ -743,4 +744,60 @@ export class Charivo {
       throw firstError;
     }
   }
+}
+
+/**
+ * Managers and character to wire into a new {@link Charivo}.
+ *
+ * Every field is optional — an instance with no managers is valid, and each
+ * modality is attached only when supplied.
+ */
+export interface CharivoOptions {
+  llm?: LLMManager;
+  tts?: TTSManager;
+  stt?: STTManager;
+  realtime?: RealtimeManager;
+  renderer?: RenderManager;
+  character?: Character;
+}
+
+/**
+ * Create a Charivo instance with its managers already attached.
+ *
+ * Equivalent to `new Charivo()` followed by the matching `attach*` calls, then
+ * `setCharacter()`. The character is applied last so it reaches every manager
+ * supplied above it; hand-wiring works in either order only because `attach*`
+ * re-applies an already-set character, and that coupling is easy to miss.
+ *
+ * Note that supplying `realtime` also enables realtime mode, exactly as
+ * `attachRealtime()` does.
+ */
+export function createCharivo(options: CharivoOptions = {}): Charivo {
+  const charivo = new Charivo();
+
+  if (options.renderer) {
+    charivo.attachRenderer(options.renderer);
+  }
+
+  if (options.llm) {
+    charivo.attachLLM(options.llm);
+  }
+
+  if (options.tts) {
+    charivo.attachTTS(options.tts);
+  }
+
+  if (options.stt) {
+    charivo.attachSTT(options.stt);
+  }
+
+  if (options.realtime) {
+    charivo.attachRealtime(options.realtime);
+  }
+
+  if (options.character) {
+    charivo.setCharacter(options.character);
+  }
+
+  return charivo;
 }

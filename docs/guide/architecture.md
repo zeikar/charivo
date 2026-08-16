@@ -71,11 +71,13 @@ interfaces, not concrete classes.
   implementation classes such as `RemoteLLMClient`, `OpenAITTSPlayer`,
   `ConsoleRenderer`, `Live2DRendererImpl`, and the `*Manager`
   implementations are never exported from a public entry point.
-- `Charivo` is the single top-level orchestrator class, and the one
-  intentional exception to the factory-first rule: it owns the instance
-  lifecycle — wiring managers together via `attach*`, holding the event
-  bus, and owning `dispose()` — so it is constructed directly rather than
-  through a factory.
+- `Charivo` is the single top-level orchestrator: it owns the instance
+  lifecycle — wiring managers together via `attach*`, holding the event bus,
+  and owning `dispose()`. `createCharivo(options)` is the factory-first way in,
+  attaching the managers you supply and applying the character last. The class
+  itself stays exported — a partial exception to the rule above — because
+  orchestration is exactly the case where you may need to construct first and
+  attach later, such as when swapping a provider at runtime.
 - `CharivoError` and its subclasses (`CharivoStateError`,
   `CharivoTimeoutError`, `CharivoTransportError`, `CharivoProviderError`,
   `CharivoDisposeError`) are a second intentional exception: an error

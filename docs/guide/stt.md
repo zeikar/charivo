@@ -24,15 +24,15 @@ The browser records locally. The backend handles transcription.
 ## Basic Setup
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
 import { createRemoteSTTTranscriber } from "@charivo/stt/remote";
 
-const charivo = new Charivo();
-
-charivo.attachSTT(
-  createSTTManager(createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" })),
-);
+const charivo = createCharivo({
+  stt: createSTTManager(
+    createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" }),
+  ),
+});
 
 await charivo.getSTTManager()?.start({ language: "en" });
 const text = await charivo.getSTTManager()?.stop();

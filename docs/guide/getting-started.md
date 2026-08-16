@@ -54,7 +54,7 @@ move to [Minimal Browser Setup](#minimal-browser-setup) and
 server. The rest of the app stays the same — only the client factories change.
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
@@ -66,29 +66,25 @@ const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 
 const canvas = document.querySelector("canvas")!;
 
-const charivo = new Charivo();
-
-const renderer = createLive2DRenderer({ canvas });
-const renderManager = createRenderManager(renderer, { canvas });
+const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
+  canvas,
+});
 
 await renderManager.initialize();
 await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
-charivo.attachRenderer(renderManager);
-charivo.attachLLM(
-  createLLMManager(
+const charivo = createCharivo({
+  renderer: renderManager,
+  llm: createLLMManager(
     createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-4.1-nano" }),
   ),
-);
-charivo.attachTTS(
-  createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
-);
-
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
-  voice: { voiceId: "marin" },
+  tts: createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+    voice: { voiceId: "marin" },
+  },
 });
 
 await charivo.userSay("Hello");
@@ -97,7 +93,7 @@ await charivo.userSay("Hello");
 ## Minimal Browser Setup
 
 ```ts
-import { Charivo, isCharivoError } from "@charivo/core";
+import { createCharivo, isCharivoError } from "@charivo/core";
 import { createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import { createTTSManager } from "@charivo/tts";
@@ -107,10 +103,7 @@ import { createLive2DRenderer } from "@charivo/render-live2d";
 
 const canvas = document.querySelector("canvas")!;
 
-const charivo = new Charivo();
-
-const renderer = createLive2DRenderer({ canvas });
-const renderManager = createRenderManager(renderer, {
+const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
   canvas,
   mouseTracking: "document",
 });
@@ -118,19 +111,16 @@ const renderManager = createRenderManager(renderer, {
 await renderManager.initialize();
 await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
 
-charivo.attachRenderer(renderManager);
-charivo.attachLLM(
-  createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
-);
-charivo.attachTTS(
-  createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
-);
-
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
-  voice: { voiceId: "marin" },
+const charivo = createCharivo({
+  renderer: renderManager,
+  llm: createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  tts: createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
+  character: {
+    id: "hiyori",
+    name: "Hiyori",
+    personality: "Cheerful and helpful assistant",
+    voice: { voiceId: "marin" },
+  },
 });
 
 try {

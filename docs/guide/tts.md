@@ -22,15 +22,13 @@ your /api/tts route
 ## Basic Setup
 
 ```ts
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import { createTTSManager } from "@charivo/tts";
 import { createRemoteTTSPlayer } from "@charivo/tts/remote";
 
-const charivo = new Charivo();
-
-charivo.attachTTS(
-  createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
-);
+const charivo = createCharivo({
+  tts: createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
+});
 ```
 
 ## Player Choices
