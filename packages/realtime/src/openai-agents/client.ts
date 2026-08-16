@@ -89,9 +89,10 @@ const TOOL_RESULT_TIMEOUT_MESSAGE =
 //
 // No timer or level-based guess stands in for it. A speculative end is the
 // original bug — an expression released mid-reply cannot be un-released by a
-// later correction — whereas a session that somehow never sees the event just
-// holds the expression until `RenderManager`'s own cap releases it, and the
-// interrupt, connection-loss, and teardown paths still end it explicitly.
+// later correction. A session that somehow never sees the event holds the
+// expression until something replaces it — `RenderManager`'s fallback timer is
+// disarmed during speech — while the interrupt, connection-loss, and teardown
+// paths still end audio output explicitly.
 
 export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private session: RealtimeSession | null = null;

@@ -79,11 +79,11 @@ fade-in to complete and then fades, so an expression can remain visible
 beyond the nominal 8-second hold. Idle motion, eye blink, and breath keep
 running throughout. This applies when the renderer implements
 `stopExpression` — `@charivo/render-live2d` does; a renderer that omits it
-keeps the expression until something else replaces it. The same ~8-second
-ceiling runs independently of `tts:audio:end`, so it can fire mid-speech
-for utterances that outlast the hold, and it is the only release trigger
-in setups where no audio events are emitted at all (e.g. text-only LLM
-configurations).
+keeps the expression until something else replaces it. The ~8-second timer
+never competes with speech: it is disarmed while an utterance is playing,
+so it only ever fires before speech starts, or in setups where no audio
+events are emitted at all (e.g. text-only LLM configurations), where it is
+the sole release trigger.
 
 ## Event Wiring
 

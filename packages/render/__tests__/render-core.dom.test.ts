@@ -291,6 +291,27 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
+  it("re-arms the fallback when the bus is replaced mid-utterance", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("tts:audio:start", {});
+
+    // Rewiring preserves the held expression on purpose, but the new bus will
+    // never deliver the old utterance's end — so the fallback has to come back
+    // or the face stays stuck forever.
+    const nextBus = new TestEventBus();
+    manager.setEventBus(nextBus);
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
   it("re-arms the fallback after detaching mid-utterance", async () => {
     vi.useFakeTimers();
 

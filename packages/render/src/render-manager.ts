@@ -148,10 +148,16 @@ export class RenderManager implements IRenderManager {
     // be left with the mouth open after the bus is cleared.
     this.deactivateRealtimeLipSync();
 
-    // Detaching mid-utterance means tts:audio:end will never be seen, so the
-    // speaking state has to end here. Leaving it set would keep the fallback
-    // release disarmed for every expression this manager handles afterwards.
+    // Detaching mid-utterance means this manager will never see that
+    // utterance's tts:audio:end. Leaving the speaking state set would keep the
+    // fallback disarmed for every expression handled afterwards, and a still
+    // held expression would have nothing left to release it — setEventBus()
+    // rewiring deliberately preserves it — so give it the fallback back.
+    const wasSpeaking = this.isSpeaking;
     this.isSpeaking = false;
+    if (wasSpeaking && this.lastExpression) {
+      this.armExpressionReleaseFallback();
+    }
 
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
@@ -318,11 +324,8 @@ export class RenderManager implements IRenderManager {
 
     // Arming while speech is playing would race tts:audio:end and cut the
     // expression off mid-sentence on any reply longer than the window.
-    if (this.hasExpressionRelease(this.renderer) && !this.isSpeaking) {
-      this.expressionReleaseTimer = setTimeout(
-        () => this.releaseExpressionNow(),
-        EXPRESSION_HOLD_MS,
-      );
+    if (!this.isSpeaking) {
+      this.armExpressionReleaseFallback();
     }
 
     return true;
@@ -344,6 +347,18 @@ export class RenderManager implements IRenderManager {
 
     this.renderer.stopExpression?.();
     this.lastExpression = undefined;
+  }
+
+  private armExpressionReleaseFallback(): void {
+    if (!this.hasExpressionRelease(this.renderer)) {
+      return;
+    }
+
+    this.clearExpressionReleaseTimer();
+    this.expressionReleaseTimer = setTimeout(
+      () => this.releaseExpressionNow(),
+      EXPRESSION_HOLD_MS,
+    );
   }
 
   private clearExpressionReleaseTimer(): void {

@@ -48,10 +48,10 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   expression's `FadeOutTime`) is positive (`Overwrite` parameters snap — an
   SDK constraint). The release also waits until the expression has
   finished fading in, so it can remain visible beyond the nominal 8-second
-  hold. The same ~8-second ceiling runs independently of `tts:audio:end`,
-  so it can fire mid-speech for long utterances and is the sole release
-  trigger in setups that never emit audio events (e.g. text-only LLM
-  configurations)
+  hold. That timer is disarmed while an utterance is playing, so it only
+  fires before speech starts or in setups that never emit audio events
+  (e.g. text-only LLM configurations), where it is the sole release
+  trigger
 - optionally wires mouse tracking to a canvas or the full document
 
 ## Exports
