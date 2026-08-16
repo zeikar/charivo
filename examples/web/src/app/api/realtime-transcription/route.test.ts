@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
+import { REALTIME_TRANSCRIPTION_MODEL } from "../demo-limits";
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 const CALLS_URL = "https://api.openai.com/v1/realtime/calls";
@@ -55,19 +56,41 @@ describe("examples/web /api/realtime-transcription route", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a bootstrap request without a session model", async () => {
-    const response = await POST(
+  it("pins the transcription model, ignoring the caller's choice", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ value: "ephemeral-secret" })),
+    );
+    fetchMock.mockResolvedValueOnce(new Response(ANSWER_SDP));
+
+    await POST(
       bootstrapRequest({
         sdpOffer: "v=0\r\na=offer\r\n",
-        session: {},
+        session: { model: "gpt-4o-realtime-preview" },
       }) as never,
     );
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "session.model is required",
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
+    const { init } = upstreamCall(0);
+    const payload = JSON.parse(String(init.body));
+    expect(payload.session.audio.input.transcription.model).toBe(
+      REALTIME_TRANSCRIPTION_MODEL,
+    );
+  });
+
+  it("mints a session when the caller omits the model entirely", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ value: "ephemeral-secret" })),
+    );
+    fetchMock.mockResolvedValueOnce(new Response(ANSWER_SDP));
+
+    const response = await POST(
+      bootstrapRequest({ sdpOffer: "v=0\r\na=offer\r\n" }) as never,
+    );
+
+    expect(response.status).toBe(200);
+    const { init } = upstreamCall(0);
+    expect(
+      JSON.parse(String(init.body)).session.audio.input.transcription.model,
+    ).toBe(REALTIME_TRANSCRIPTION_MODEL);
   });
 
   it("fails when the OpenAI key is not configured", async () => {

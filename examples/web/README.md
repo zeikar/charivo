@@ -13,6 +13,38 @@ current architecture as it is actually shipped:
 - Avatar expression/motion/gaze tool calling from `@charivo/avatar`, wired into
   both LLM chat and realtime voice sessions
 
+## Deploying this demo
+
+> **These API routes have no authentication and no rate limiting. Do not deploy
+> them as-is.**
+
+Every route under `src/app/api/` puts your paid `OPENAI_API_KEY` behind a public
+URL that anyone can POST to. That is fine for `pnpm dev:web` on your own machine
+and it is what the hosted demo accepts deliberately — it is not a production
+template, however much it looks like one.
+
+What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
+
+- **Model and parameters are pinned server-side.** `/api/realtime` rebuilds the
+  session config instead of forwarding the caller's, so nobody can repoint the
+  key at an expensive model or supply their own system prompt. Same for the
+  transcription model on `/api/realtime-transcription`.
+- **Single requests are bounded.** Caps on chat message count and length, TTS
+  input characters, STT upload size, and realtime instruction/tool size, so no
+  one request can cost real money.
+- **Voices are restricted** to the ones the shipped characters use.
+- **Realtime sessions stop after 90 seconds.** This one is a client-side timer:
+  after bootstrap the browser talks to OpenAI directly, so the server cannot
+  hang up. It bounds an ordinary visitor, not a determined caller.
+
+What they do **not** defend against — you have to add these yourself:
+
+- No auth, no per-IP quota, no concurrency limit. One script can open many
+  small sessions, and realtime bills on wall clock.
+- Nothing caps total spend. Put a **hard per-project spend limit** on the
+  OpenAI key you use, in its own project — enforcement is not instantaneous, so
+  treat it as a backstop rather than a control.
+
 ## Environment
 
 Copy the example file and fill in the values you actually plan to use:

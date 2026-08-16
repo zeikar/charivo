@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenAITTSProvider } from "@charivo/server/openai";
+import {
+  TTS_ALLOWED_VOICES,
+  TTS_DEFAULT_VOICE,
+  TTS_MAX_TEXT_CHARS,
+} from "../demo-limits";
 
 function getOpenAIKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -13,11 +18,15 @@ export async function POST(request: NextRequest) {
   try {
     const ttsProvider = createOpenAITTSProvider({
       apiKey: getOpenAIKey(),
-      defaultVoice: "marin",
+      defaultVoice: TTS_DEFAULT_VOICE,
       defaultModel: "gpt-4o-mini-tts",
     });
 
-    const { text, voice = "marin", speed = 1.0 } = await request.json();
+    const {
+      text,
+      voice = TTS_DEFAULT_VOICE,
+      speed = 1.0,
+    } = await request.json();
 
     if (!text || typeof text !== "string") {
       return NextResponse.json(
@@ -26,10 +35,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // TTS bills per input character, so an unbounded string is an unbounded bill.
+    if (text.length > TTS_MAX_TEXT_CHARS) {
+      return NextResponse.json(
+        { error: `Text exceeds ${TTS_MAX_TEXT_CHARS} characters` },
+        { status: 400 },
+      );
+    }
+
+    if (typeof voice !== "string" || !TTS_ALLOWED_VOICES.has(voice)) {
+      return NextResponse.json({ error: "Unsupported voice" }, { status: 400 });
+    }
+
+    if (typeof speed !== "number" || !Number.isFinite(speed)) {
+      return NextResponse.json(
+        { error: "speed must be a finite number" },
+        { status: 400 },
+      );
+    }
+    const rate = Math.min(Math.max(speed, 0.25), 4);
+
     // TTS generation
     const audioBuffer = await ttsProvider.generateSpeech(text, {
       voice,
-      rate: speed,
+      rate,
     });
 
     return new NextResponse(audioBuffer, {

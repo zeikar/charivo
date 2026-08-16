@@ -9,6 +9,7 @@ vi.mock("@charivo/server/openai", () => ({
 }));
 
 import { POST } from "./route";
+import { STT_MAX_AUDIO_BYTES } from "../demo-limits";
 
 describe("examples/web /api/stt route", () => {
   beforeEach(() => {
@@ -40,5 +41,24 @@ describe("examples/web /api/stt route", () => {
     await expect(response.json()).resolves.toEqual({
       transcription: "Hello",
     });
+  });
+
+  it("rejects audio past the demo size cap before paying to transcribe it", async () => {
+    const formData = new FormData();
+    formData.append(
+      "audio",
+      new File([new Uint8Array(STT_MAX_AUDIO_BYTES + 1)], "huge.webm", {
+        type: "audio/webm",
+      }),
+    );
+
+    const request = new Request("http://localhost/api/stt", {
+      method: "POST",
+      body: formData,
+    });
+    const response = await POST(request as never);
+
+    expect(response.status).toBe(413);
+    expect(transcribe).not.toHaveBeenCalled();
   });
 });

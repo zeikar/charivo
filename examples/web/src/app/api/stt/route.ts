@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenAISTTProvider } from "@charivo/server/openai";
+import { STT_MAX_AUDIO_BYTES } from "../demo-limits";
 
 function getOpenAIKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -25,6 +26,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Audio file is required" },
         { status: 400 },
+      );
+    }
+
+    // Transcription bills per audio minute; file size is the only proxy for
+    // that available before paying for the request.
+    if (audioFile.size > STT_MAX_AUDIO_BYTES) {
+      return NextResponse.json(
+        { error: `Audio exceeds ${STT_MAX_AUDIO_BYTES} bytes` },
+        { status: 413 },
       );
     }
 

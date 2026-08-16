@@ -1,10 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createRealtimeManager } from "@charivo/realtime";
 import { createAvatarResultProjector } from "@charivo/avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
+import { REALTIME_MODEL, REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -29,6 +30,18 @@ export function useRealtimeMode() {
     resetRealtimeUiState,
     avatarCatalog,
   } = useChatStore();
+
+  const sessionCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // `disableRealtimeMode` is defined below and the cap timer has to reach it,
+  // so route the call through a ref instead of reordering the callbacks.
+  const disableRef = useRef<() => Promise<void>>(async () => {});
+
+  const clearSessionCap = useCallback(() => {
+    if (sessionCapRef.current !== null) {
+      clearTimeout(sessionCapRef.current);
+      sessionCapRef.current = null;
+    }
+  }, []);
 
   const enableRealtimeMode = useCallback(async () => {
     if (!charivo) {
@@ -68,7 +81,9 @@ export function useRealtimeMode() {
 
       await realtimeManager.startSession({
         provider: "openai",
-        model: "gpt-realtime-2.1-mini",
+        // The route pins this server-side regardless; sending the same value
+        // keeps the client honest about what it is asking for.
+        model: REALTIME_MODEL,
         instructions: buildDemoRealtimeInstructions(
           charivo.getCurrentCharacter(),
           avatarCatalog,
@@ -76,6 +91,18 @@ export function useRealtimeMode() {
       });
 
       setIsRealtimeMode(true);
+
+      // Realtime bills on wall clock, and after bootstrap the browser talks to
+      // OpenAI directly — the server is out of the loop and cannot hang up. So
+      // this timer is what bounds an ordinary visitor's session cost. It is a
+      // courtesy cap, not an abuse control: see `api/demo-limits.ts`.
+      clearSessionCap();
+      sessionCapRef.current = setTimeout(() => {
+        logRealtimeMode("session-cap.reached", {
+          ms: REALTIME_SESSION_MAX_MS,
+        });
+        void disableRef.current();
+      }, REALTIME_SESSION_MAX_MS);
 
       console.log("✅ Realtime mode enabled");
     } catch (error) {
@@ -99,9 +126,12 @@ export function useRealtimeMode() {
     setRealtimeError,
     resetRealtimeUiState,
     avatarCatalog,
+    clearSessionCap,
   ]);
 
   const disableRealtimeMode = useCallback(async () => {
+    clearSessionCap();
+
     if (!charivo || !isRealtimeMode) {
       return;
     }
@@ -134,7 +164,16 @@ export function useRealtimeMode() {
     setIsConnected,
     setRealtimeError,
     resetRealtimeUiState,
+    clearSessionCap,
   ]);
+
+  // Keep the cap timer pointed at the current teardown, and make sure an
+  // unmount mid-session does not leave it armed.
+  useEffect(() => {
+    disableRef.current = disableRealtimeMode;
+  }, [disableRealtimeMode]);
+
+  useEffect(() => clearSessionCap, [clearSessionCap]);
 
   const toggleRealtimeMode = useCallback(async () => {
     if (isRealtimeMode) {

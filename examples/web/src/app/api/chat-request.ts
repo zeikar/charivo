@@ -5,8 +5,18 @@
  * protocol-invalid OpenAI request (an unknown role, `toolCalls` on a
  * `system`/`user` turn, a `tool` turn without a `toolCallId`, ...) is
  * rejected here instead of reaching the provider.
+ *
+ * Size bounds live alongside it: these routes proxy an unauthenticated caller
+ * onto a paid key, so a payload that is merely *shaped* correctly is not enough
+ * — see `demo-limits.ts`.
  */
 import type { LLMMessage, LLMToolCall, ToolDefinition } from "@charivo/core";
+import {
+  CHAT_MAX_MESSAGE_CHARS,
+  CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOLS,
+  CHAT_MAX_TOTAL_CHARS,
+} from "./demo-limits";
 
 export interface ParsedChatRequest {
   messages: LLMMessage[];
@@ -34,11 +44,22 @@ export function parseChatRequest(
     return fail("Messages array is required");
   }
 
+  if (messages.length > CHAT_MAX_MESSAGES) {
+    return fail(`messages exceeds ${CHAT_MAX_MESSAGES} entries`);
+  }
+
   const parsedMessages: LLMMessage[] = [];
+  let totalChars = 0;
   for (let index = 0; index < messages.length; index++) {
     const result = parseChatMessage(messages[index], index);
     if (!result.success) {
       return result;
+    }
+    totalChars += result.value.content.length;
+    if (totalChars > CHAT_MAX_TOTAL_CHARS) {
+      return fail(
+        `messages exceed ${CHAT_MAX_TOTAL_CHARS} characters in total`,
+      );
     }
     parsedMessages.push(result.value);
   }
@@ -90,6 +111,12 @@ function parseChatMessage(
 
   if (typeof content !== "string") {
     return fail(`messages[${index}].content must be a string`);
+  }
+
+  if (content.length > CHAT_MAX_MESSAGE_CHARS) {
+    return fail(
+      `messages[${index}].content exceeds ${CHAT_MAX_MESSAGE_CHARS} characters`,
+    );
   }
 
   if (role === "system" || role === "user") {
@@ -185,6 +212,10 @@ function parseToolCall(
 function parseTools(raw: unknown): ParseResult<ToolDefinition[]> {
   if (!Array.isArray(raw)) {
     return fail("tools must be an array");
+  }
+
+  if (raw.length > CHAT_MAX_TOOLS) {
+    return fail(`tools exceeds ${CHAT_MAX_TOOLS} entries`);
   }
 
   const tools: ToolDefinition[] = [];

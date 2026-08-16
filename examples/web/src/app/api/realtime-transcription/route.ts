@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { REALTIME_TRANSCRIPTION_MODEL } from "../demo-limits";
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 const CALLS_URL = "https://api.openai.com/v1/realtime/calls";
@@ -20,6 +21,10 @@ const BOOTSTRAP_DEADLINE_MS = 12_000;
 
 type TranscriptionBootstrapRequest = {
   sdpOffer?: string;
+  /**
+   * `model` is accepted for wire compatibility with the transcriber but
+   * ignored — this route pays for whatever it mints, so it picks the model.
+   */
   session?: { model?: string; language?: string };
 };
 
@@ -163,13 +168,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!body.session?.model) {
-      return NextResponse.json(
-        { error: "session.model is required" },
-        { status: 400 },
-      );
-    }
-
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -187,8 +185,8 @@ export async function POST(request: NextRequest) {
     try {
       const ephemeralKey = await mintTranscriptionSecret(
         apiKey,
-        body.session.model,
-        body.session.language,
+        REALTIME_TRANSCRIPTION_MODEL,
+        body.session?.language,
         controller.signal,
       );
       const answerSdp = await exchangeSdp(

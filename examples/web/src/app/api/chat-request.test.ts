@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseChatRequest, requiresToolCallingPath } from "./chat-request";
+import {
+  CHAT_MAX_MESSAGE_CHARS,
+  CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOLS,
+  CHAT_MAX_TOTAL_CHARS,
+} from "./demo-limits";
 
 describe("parseChatRequest", () => {
   describe("accepts", () => {
@@ -300,5 +306,64 @@ describe("requiresToolCallingPath", () => {
         tools: [],
       }),
     ).toBe(true);
+  });
+});
+
+describe("parseChatRequest cost bounds", () => {
+  it("rejects more messages than the demo cap", () => {
+    const result = parseChatRequest({
+      messages: Array.from({ length: CHAT_MAX_MESSAGES + 1 }, () => ({
+        role: "user",
+        content: "hi",
+      })),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a single message past the per-message cap", () => {
+    const result = parseChatRequest({
+      messages: [
+        { role: "user", content: "x".repeat(CHAT_MAX_MESSAGE_CHARS + 1) },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a conversation past the total-character cap", () => {
+    const perMessage = "x".repeat(CHAT_MAX_MESSAGE_CHARS);
+    const count = Math.floor(CHAT_MAX_TOTAL_CHARS / CHAT_MAX_MESSAGE_CHARS) + 1;
+
+    const result = parseChatRequest({
+      messages: Array.from({ length: count }, () => ({
+        role: "user",
+        content: perMessage,
+      })),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects more tools than the demo cap", () => {
+    const result = parseChatRequest({
+      messages: [{ role: "user", content: "hi" }],
+      tools: Array.from({ length: CHAT_MAX_TOOLS + 1 }, () => ({
+        type: "function",
+        name: "noop",
+        description: "",
+        parameters: { type: "object", properties: {} },
+      })),
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("still accepts a conversation inside every bound", () => {
+    const result = parseChatRequest({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.success).toBe(true);
   });
 });
