@@ -350,12 +350,16 @@ License. Every other `@charivo/*` package is MIT.
 Publishing a product built on it requires a **Live2D Publication License
 Agreement** — marketed as the *Cubism SDK Release License*, one instrument under
 two names. Individuals and organizations under 10,000,000 JPY in recent-year
-sales may be exempt from it, **but that exemption does not cover an "Expandable
-Application"**, and a renderer that loads arbitrary models plausibly is one
-regardless of revenue. Publishing an Expandable Application needs Live2D's prior
-approval on top of the agreement.
+sales may be exempt, **except for an "Expandable Application"**, which needs
+Live2D's prior approval on top of the agreement. Whether that category reaches a
+developer library is unsettled; a product that lets end users load their own
+models is much closer to it.
 
-Charivo has not sought that approval and cannot grant you anything here. See
+Note also that this package **bundles the Cubism Core** rather than having you
+fetch it from Live2D — permitted by Live2D's own `RedistributableFiles.txt`, but
+not what most Live2D libraries do.
+
+Charivo has not sought Live2D's approval and cannot grant you anything here. See
 [`packages/render-live2d/LICENSE.md`](./packages/render-live2d/LICENSE.md) for
 the clause-by-clause breakdown, and settle your own position with Live2D before
 you ship.

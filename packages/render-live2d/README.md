@@ -56,10 +56,14 @@ bundle carries a notice banner that must not be stripped.
 
 Shipping a product built on this package requires a **Live2D Publication License
 Agreement** (also marketed as the *Cubism SDK Release License* — the same
-instrument). Small users may be exempt, but **that exemption does not cover an
-"Expandable Application"**, and this package — a renderer that loads arbitrary
-models — plausibly is one regardless of your revenue. Publishing an Expandable
-Application additionally needs Live2D's prior approval.
+instrument). Small users may be exempt, **except for an "Expandable
+Application"**, which additionally needs Live2D's prior approval. Whether that
+category reaches a developer library is unsettled; a product that lets end users
+load their own models is much closer to it than this package is.
 
-Charivo has not sought that approval and cannot grant it. See
+This package also **bundles the Cubism Core** instead of having you fetch it from
+Live2D — permitted by `RedistributableFiles.txt`, but not what most Live2D
+libraries do.
+
+Charivo has not sought Live2D's approval and cannot grant it. See
 [LICENSE.md](./LICENSE.md) for the clause-by-clause breakdown before you ship.

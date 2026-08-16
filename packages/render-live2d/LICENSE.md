@@ -21,6 +21,15 @@ using the Redistributable Code (§5.1, §5.2.1). Downstream distributors and end
 users are bound by protections equivalent to that agreement (§5.2.2) — by
 depending on this package you accept those terms.
 
+Worth knowing: **this package ships the Core itself**, so installing it gives you
+the Core without visiting live2d.com. That is the less common arrangement. Most
+Live2D libraries — `pixi-live2d-display`, and every project in Live2D's own
+[Community SDK](https://docs.live2d.com/en/cubism-sdk-tutorials/community-sdk/)
+list — leave the Core out and have you fetch it from Live2D yourself. Bundling
+it is what `RedistributableFiles.txt` provides for, and the notices above travel
+with it either way; the difference is only that you meet Live2D's terms through
+this file rather than at their download page.
+
 ## Live2D Cubism Framework and Samples — Live2D Open Software License
 
 `Framework/src/**` and the sample-derived code in `src/cubism/**` are
@@ -55,10 +64,21 @@ including one that "uses and generates any indefinite number of models by
 adding or combining files or data (e.g. avatars, live streaming applications,
 video generators/video makers)".
 
-Read that definition before assuming the exemption applies to you. A renderer
-that loads arbitrary models — which is exactly what this package is — plausibly
-falls inside it **regardless of your revenue**. Charivo has not sought or
-obtained Live2D's approval, and takes no position on your behalf.
+Whether a **developer library** can be an Expandable Application is unsettled.
+The wording points at end-user products: it describes generating models "by
+adding or combining files or data", Live2D's own
+[summary page](https://www.live2d.com/en/sdk/license/expandable/) frames the
+category as "services or content", and the application form asks for release
+platforms, age ratings, and a monetization model — none of which a library has.
+Live2D also runs a Community SDK program that lists open-source SDK wrappers
+without any sign of Expandable review. But the agreement defines Derivative Work
+as "any work", Live2D has declined to answer this publicly and handles it case
+by case, and no library in this ecosystem has ever tested it.
+
+So: read §1.5 yourself. **A product you build on this package is far likelier to
+qualify than the package is** — especially one that lets your end users load
+their own models, which is the definition's own example. Charivo has not asked
+Live2D and takes no position on your behalf.
 
 Charivo does not and cannot grant this license. Resolve your own position with
 Live2D before you ship.
