@@ -1,4 +1,4 @@
-import { Charivo } from "@charivo/core";
+import { createCharivo } from "@charivo/core";
 import { createRenderManager } from "@charivo/render";
 import { createIkiRenderer } from "@charivo/render-iki";
 
@@ -18,8 +18,7 @@ async function main(): Promise<void> {
     mouseTracking: "document",
   });
 
-  const charivo = new Charivo();
-  charivo.attachRenderer(renderManager);
+  const charivo = createCharivo({ renderer: renderManager });
 
   await renderManager.initialize();
   await renderManager.loadModel("/sample.iki.json");

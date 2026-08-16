@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Charivo,
+  createCharivo,
+  type Charivo,
   type GazeCoordinates,
   type RealtimeState,
   type RenderManager,
@@ -346,12 +347,13 @@ export function useRealtimeSession(
           });
           rendererRef.current = renderer;
           renderManagerRef.current = renderManager;
-          // One Charivo instance owns the internal bus; attaching the renderer
-          // here (and the realtime manager later, in start()) wires lip-sync +
-          // avatar control automatically.
-          charivo = new Charivo();
-          charivo.setCharacter(resolvedCharacter);
-          charivo.attachRenderer(renderManager);
+          // One Charivo instance owns the internal bus; supplying the renderer
+          // here (and attaching the realtime manager later, in start()) wires
+          // lip-sync + avatar control automatically.
+          charivo = createCharivo({
+            renderer: renderManager,
+            character: resolvedCharacter,
+          });
           charivoRef.current = charivo;
           await renderManager.initialize();
           await renderManager.loadModel?.(resolvedCharacter.modelPath);

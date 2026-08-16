@@ -2701,4 +2701,25 @@ describe("createCharivo", () => {
     expect(charivo.getRealtimeManager()).toBeUndefined();
     expect(charivo.getHistory()).toEqual([]);
   });
+
+  it("treats a null manager the same as an omitted one", () => {
+    // Apps commonly hold optional managers as nullable state, so null has to
+    // mean "not supplied" rather than being attached or throwing.
+    const llm = new StubLLMManager();
+    const charivo = createCharivo({
+      llm,
+      tts: null,
+      stt: null,
+      realtime: null,
+      renderer: null,
+      character: null,
+    });
+
+    expect(llm.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(charivo.getCurrentCharacter()).toBeNull();
+    expect(charivo.getRenderManager()).toBeUndefined();
+    expect(charivo.getSTTManager()).toBeUndefined();
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.isRealtimeModeEnabled()).toBe(false);
+  });
 });

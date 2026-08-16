@@ -750,15 +750,17 @@ export class Charivo {
  * Managers and character to wire into a new {@link Charivo}.
  *
  * Every field is optional — an instance with no managers is valid, and each
- * modality is attached only when supplied.
+ * modality is attached only when supplied. `null` is accepted alongside
+ * `undefined` so callers can pass a manager they hold as nullable state (a
+ * React ref, a feature-flagged modality) without converting it first.
  */
 export interface CharivoOptions {
-  llm?: LLMManager;
-  tts?: TTSManager;
-  stt?: STTManager;
-  realtime?: RealtimeManager;
-  renderer?: RenderManager;
-  character?: Character;
+  llm?: LLMManager | null;
+  tts?: TTSManager | null;
+  stt?: STTManager | null;
+  realtime?: RealtimeManager | null;
+  renderer?: RenderManager | null;
+  character?: Character | null;
 }
 
 /**

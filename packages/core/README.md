@@ -77,6 +77,9 @@ const charivo = createCharivo({
 });
 ```
 
+Each option also accepts `null`, treated the same as omitting it, so a manager
+that resolves conditionally can be passed through without a fallback.
+
 It is exactly `new Charivo()` plus the matching `attach*` calls followed by
 `setCharacter()`, so reach for the class directly when you need to attach
 managers later — for example when swapping a provider at runtime.

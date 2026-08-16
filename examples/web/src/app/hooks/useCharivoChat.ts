@@ -9,7 +9,8 @@ import {
 } from "react";
 import {
   type AvatarControlCatalog,
-  Charivo,
+  createCharivo,
+  type Charivo,
   type Character,
   type GazeCoordinates,
   type LLMClient,
@@ -503,14 +504,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           toolInstructions: buildAvatarControlInstructions(initialCatalog),
         });
         llmManagerRef.current = llmManager;
-        instance = new Charivo();
-        instance.attachRenderer(renderManager);
-        instance.attachLLM(llmManager);
 
         const nextTtsPlayer = await createTTSPlayer(selectedTTSPlayer);
         if (nextTtsPlayer) {
           ttsManager = createTTSManager(nextTtsPlayer);
-          instance.attachTTS(ttsManager);
         }
 
         const nextSttTranscriber = await createSTTTranscriber(
@@ -518,11 +515,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         );
         if (nextSttTranscriber) {
           sttManager = createSTTManager(nextSttTranscriber);
-          instance.attachSTT(sttManager);
           sttManagerRef.current = sttManager;
         }
 
-        instance.setCharacter(initialCharacter);
+        // TTS and STT are user-selectable and may resolve to nothing, so both
+        // are built before the instance — createCharivo reads a null manager as
+        // "not supplied", the same as omitting it.
+        instance = createCharivo({
+          renderer: renderManager,
+          llm: llmManager,
+          tts: ttsManager,
+          stt: sttManager,
+          character: initialCharacter,
+        });
         syncedCharacterIdRef.current = initialCharacter.id;
 
         instance.on("tts:start", () => {

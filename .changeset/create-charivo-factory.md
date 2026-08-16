@@ -19,8 +19,10 @@ const charivo = createCharivo({
 });
 ```
 
-Every option is optional. The character is applied after the managers are
-attached, so it reaches all of them without depending on call order.
+Every option is optional, and each accepts `null` as well as `undefined`, so a
+manager held as nullable state can be passed straight through. The character is
+applied after the managers are attached, so it reaches all of them without
+depending on call order.
 
 The `Charivo` class is still exported and `attach*` is unchanged, so existing
 code keeps working. Reach for the class when you need to construct first and
