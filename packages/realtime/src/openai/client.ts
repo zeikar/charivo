@@ -368,13 +368,25 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
         if (!this.hasStartedAudioOutput) {
           this.hasStartedAudioOutput = true;
+          this.lipSyncAnalyzer.resume();
           this.emitEvent({ type: "audio.output.started" });
         }
         return;
 
-      case "response.audio.done":
-      case "response.output_audio.done":
+      // `response.audio.done` / `response.output_audio.done` report that the
+      // SERVER finished sending audio, not that the browser finished playing
+      // it — there is still buffered audio at that point. Ending there cut
+      // consumers off mid-sentence: `RenderManager` releases a held expression
+      // on `tts:audio:end`, so a face reset partway through its own reply.
+      // Only the output-buffer events describe actual playback: `stopped` when
+      // it finishes, `cleared` when an interruption discards it.
       case "output_audio_buffer.stopped":
+      case "output_audio_buffer.cleared":
+        // Pause before reporting the end. The analyzer smooths its readings and
+        // would keep emitting a decaying level, which `RealtimeManager` turns
+        // back into a start — with no further buffer event left to close it.
+        this.lipSyncAnalyzer.pause();
+
         if (this.cancelInFlight) {
           this.hasStartedAudioOutput = false;
           return;

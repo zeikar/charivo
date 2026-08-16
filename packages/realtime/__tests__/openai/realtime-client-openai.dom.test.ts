@@ -944,6 +944,112 @@ describe("OpenAIRealtimeClient", () => {
     );
   });
 
+  // `response.audio.done` reports that the SERVER stopped sending; the browser
+  // is still playing buffered audio. Ending there released a held expression
+  // mid-reply — only the output-buffer events describe real playback.
+  it("ends audio output on the output buffer, not on server send completion", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+    const peer = MockPeerConnection.instances[0]!;
+    const send = (payload: Record<string, unknown>) =>
+      peer.dataChannel.onmessage?.(
+        new MessageEvent("message", { data: JSON.stringify(payload) }),
+      );
+    const endedCount = () =>
+      events.filter((event) => event.type === "audio.output.ended").length;
+
+    send({ type: "output_audio_buffer.started" });
+    expect(events).toContainEqual({ type: "audio.output.started" });
+
+    // Both of these are server-send completions, and playback continues past
+    // them. Neither may end audio output.
+    send({ type: "response.audio.done" });
+    send({ type: "response.output_audio.done" });
+    expect(endedCount()).toBe(0);
+
+    send({ type: "output_audio_buffer.stopped" });
+    expect(endedCount()).toBe(1);
+  });
+
+  it("ends audio output when an interruption clears the buffer", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const events: RealtimeTransportEvent[] = [];
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    client.onEvent((event) => {
+      events.push(event);
+    });
+
+    await client.connect();
+    const peer = MockPeerConnection.instances[0]!;
+    const send = (payload: Record<string, unknown>) =>
+      peer.dataChannel.onmessage?.(
+        new MessageEvent("message", { data: JSON.stringify(payload) }),
+      );
+
+    send({ type: "output_audio_buffer.started" });
+    send({ type: "output_audio_buffer.cleared" });
+
+    expect(
+      events.filter((event) => event.type === "audio.output.ended").length,
+    ).toBe(1);
+  });
+
   it("normalizes assistant, transcript, tool, and error events", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],
@@ -1018,7 +1124,7 @@ describe("OpenAIRealtimeClient", () => {
     peer.dataChannel.onmessage?.(
       new MessageEvent("message", {
         data: JSON.stringify({
-          type: "response.audio.done",
+          type: "output_audio_buffer.stopped",
         }),
       }),
     );
