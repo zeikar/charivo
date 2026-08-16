@@ -400,6 +400,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         this.isResponseInProgress = false;
         if (this.cancelInFlight) {
           this.cancelInFlight = false;
+          this.hasStartedAudioOutput = false;
           this.resetResponseTracking();
           return;
         }
@@ -675,6 +676,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.connectionLossNotified = true;
     this.isResponseInProgress = false;
     this.cancelInFlight = false;
+    this.hasStartedAudioOutput = false;
     this.resetResponseTracking();
     this.lipSyncAnalyzer.stop();
     this.emitEvent({
@@ -745,10 +747,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.cancelInFlight = false;
     this.connectionLossNotified = false;
     this.isCleaningUp = false;
+    this.hasStartedAudioOutput = false;
     this.resetResponseTracking();
   }
 
   private beginResponseRequest(): void {
+    this.hasStartedAudioOutput = false;
     this.resetResponseTracking();
     this.isResponseInProgress = true;
     this.cancelInFlight = false;
@@ -882,10 +886,15 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     return bootstrap.answerSdp;
   }
 
+  /**
+   * Resets per-response text state only. `hasStartedAudioOutput` deliberately
+   * survives this: buffered audio keeps playing after `response.done`, and
+   * conflating the two is the defect this transport's audio handling exists to
+   * avoid. It is cleared where playback genuinely ends instead.
+   */
   private resetResponseTracking(): void {
     this.assistantText = "";
     this.hasStartedAssistantResponse = false;
-    this.hasStartedAudioOutput = false;
   }
 
   private ensureAssistantResponseStarted(): void {

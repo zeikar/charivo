@@ -7,7 +7,11 @@ import type { RealtimeTransportEvent } from "@charivo/realtime";
 // with it collapses to `never`; this is a standalone view of those internals.
 type RealtimeClientTestInternals = {
   audioElement: HTMLAudioElement | null;
-  lipSyncAnalyzer: { attachMediaStream: (stream: MediaStream) => void };
+  lipSyncAnalyzer: {
+    attachMediaStream: (stream: MediaStream) => void;
+    resume: () => void;
+    pause: () => void;
+  };
 };
 
 class MockMediaTrack {
@@ -1000,6 +1004,78 @@ describe("OpenAIRealtimeClient", () => {
 
     send({ type: "output_audio_buffer.stopped" });
     expect(endedCount()).toBe(1);
+  });
+
+  it("keeps lip-sync alive across hide/show between response.done and playback end", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const internals = client as unknown as RealtimeClientTestInternals;
+    const resumeSpy = vi
+      .spyOn(internals.lipSyncAnalyzer, "resume")
+      .mockImplementation(() => undefined);
+
+    await client.connect();
+    const peer = MockPeerConnection.instances[0]!;
+    const send = (payload: Record<string, unknown>) =>
+      peer.dataChannel.onmessage?.(
+        new MessageEvent("message", { data: JSON.stringify(payload) }),
+      );
+    const toggleVisibility = (state: "hidden" | "visible") => {
+      Object.defineProperty(document, "visibilityState", {
+        value: state,
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    send({ type: "output_audio_buffer.started" });
+    // Text is required for response.done to take its completing path rather
+    // than the tool-cycle early return.
+    send({ type: "response.audio_transcript.delta", delta: "hello" });
+    // The server is done SENDING, but buffered speech is still playing. The
+    // playback flag must survive this, or the guard below mistakes an
+    // in-progress segment for a finished one.
+    send({ type: "response.done" });
+
+    resumeSpy.mockClear();
+    toggleVisibility("hidden");
+    toggleVisibility("visible");
+
+    expect(resumeSpy).toHaveBeenCalled();
+
+    // Playback is genuinely over now — hide/show must NOT restart metering, or
+    // residual level re-opens output that no later buffer event would close.
+    send({ type: "output_audio_buffer.stopped" });
+    resumeSpy.mockClear();
+    toggleVisibility("hidden");
+    toggleVisibility("visible");
+
+    expect(resumeSpy).not.toHaveBeenCalled();
   });
 
   it("ends audio output when an interruption clears the buffer", async () => {
