@@ -964,6 +964,47 @@ describe("OpenAIRealtimeAgentsClient", () => {
       await client.disconnect();
     });
 
+    it("does not resume analysis on page visibility after playback ended", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("audio_start", {}, {});
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.stopped",
+      });
+
+      events.length = 0;
+      mockAnalyserLevel = 128;
+
+      // Hiding and showing the tab must not restart metering on residual audio:
+      // RealtimeManager would read that as a new audio start with no buffer
+      // event left to close it.
+      Object.defineProperty(document, "visibilityState", {
+        value: "hidden",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "visibilityState", {
+        value: "visible",
+        configurable: true,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(
+        events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+      ).toBe(false);
+
+      // The next real segment still resumes analysis.
+      sdkState.session?.emit("audio_start", {}, {});
+      await vi.advanceTimersByTimeAsync(100);
+      expect(
+        events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+      ).toBe(true);
+
+      await client.disconnect();
+    });
+
     it("does not end from silence alone", async () => {
       const events: RealtimeTransportEvent[] = [];
       const client = await connectWithAnalyzedStream(events);

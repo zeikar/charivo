@@ -610,7 +610,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   };
 
   private readonly handleVisible = (): void => {
-    this.lipSyncAnalyzer.resume();
+    // Only resume while a segment is actually playing. Resuming after playback
+    // ended would meter residual level, which `RealtimeManager` reads as a new
+    // audio start that no later buffer event would close.
+    if (this.hasStartedAudioOutput) {
+      this.lipSyncAnalyzer.resume();
+    }
     this.emitConnectionLost("visibility");
   };
 
@@ -619,7 +624,9 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   };
 
   private readonly handlePageShow = (event: PageTransitionEvent): void => {
-    this.lipSyncAnalyzer.resume();
+    if (this.hasStartedAudioOutput) {
+      this.lipSyncAnalyzer.resume();
+    }
     if (event.persisted) {
       this.emitConnectionLost("pageshow");
     }

@@ -17,3 +17,9 @@ when playback finishes, and `output_audio_buffer.cleared` when an interruption
 discards the buffer (previously unhandled). Lip-sync analysis is paused at the
 end and resumed when the next segment starts, so a decaying residual level
 cannot re-open output that no further buffer event would close.
+
+Both WebRTC transports also stop resuming lip-sync analysis from page
+visibility and pageshow handlers unless a playback segment is actually open.
+Resuming after playback ended would meter residual level, which
+`RealtimeManager` reads as a new audio start that no later buffer event would
+close.

@@ -117,6 +117,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     (event: RealtimeTransportEvent) => void
   >();
   private readonly pendingToolCalls = new Map<string, PendingToolCall>();
+  /** Whether a playback segment is open, so lip-sync analysis belongs running. */
+  private audioOutputActive = false;
   private readonly lipSyncAnalyzer = createLipSyncAnalyzer({
     onRms: (rms) => {
       this.emitEvent({ type: "audio.lipsync", rms });
@@ -315,6 +317,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("audio_start", () => {
+      this.audioOutputActive = true;
       this.lipSyncAnalyzer.resume();
       this.emitEvent({ type: "audio.output.started" });
     });
@@ -354,6 +357,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         // re-opens audio output from any sample above its floor — with no
         // further buffer event left to close it. The next `audio_start`
         // resumes analysis.
+        this.audioOutputActive = false;
         this.lipSyncAnalyzer.pause();
         this.emitEvent({ type: "audio.output.ended" });
         return;
@@ -627,7 +631,12 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   };
 
   private readonly handleVisible = (): void => {
-    this.lipSyncAnalyzer.resume();
+    // Only resume while a segment is actually playing. Resuming after playback
+    // ended would meter residual level, which `RealtimeManager` reads as a new
+    // audio start that no later buffer event would close.
+    if (this.audioOutputActive) {
+      this.lipSyncAnalyzer.resume();
+    }
     this.emitConnectionLost("visibility");
   };
 
@@ -636,7 +645,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   };
 
   private readonly handlePageShow = (event: PageTransitionEvent): void => {
-    this.lipSyncAnalyzer.resume();
+    if (this.audioOutputActive) {
+      this.lipSyncAnalyzer.resume();
+    }
     if (event.persisted) {
       this.emitConnectionLost("pageshow");
     }
