@@ -48,7 +48,14 @@ export const REALTIME_MAX_TOOLS_BYTES = 32_768;
 /** TTS is billed per input character. */
 export const TTS_MAX_TEXT_CHARS = 2_000;
 
-export const TTS_DEFAULT_VOICE = "marin";
+/**
+ * Only used when a request carries no voice at all — a character's own
+ * `voice.voiceId` always wins, because `Charivo` passes it down as a TTS option
+ * (`packages/core/src/index.ts`) and the remote player prefers it over its own
+ * default. Deliberately a voice no shipped character uses: if this ever does
+ * fire, a voiceless character should not end up impersonating Hiyori.
+ */
+export const TTS_FALLBACK_VOICE = "sage";
 
 /**
  * Derived from the characters the demo actually ships, so adding a character
@@ -56,7 +63,7 @@ export const TTS_DEFAULT_VOICE = "marin";
  */
 export const TTS_ALLOWED_VOICES: ReadonlySet<string> = new Set(
   [
-    TTS_DEFAULT_VOICE,
+    TTS_FALLBACK_VOICE,
     ...Object.values(CHARACTER_CONFIGS).map(
       (config) => config.character.voice?.voiceId,
     ),

@@ -9,7 +9,8 @@ vi.mock("@charivo/server/openai", () => ({
 }));
 
 import { POST } from "./route";
-import { TTS_DEFAULT_VOICE, TTS_MAX_TEXT_CHARS } from "../demo-limits";
+import { TTS_FALLBACK_VOICE, TTS_MAX_TEXT_CHARS } from "../demo-limits";
+import { CHARACTER_CONFIGS } from "../../config/characters";
 
 function postRequest(body: unknown): Request {
   return new Request("http://localhost/api/tts", {
@@ -26,16 +27,37 @@ describe("examples/web /api/tts route", () => {
     generateSpeech.mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
   });
 
-  it("synthesizes with a voice a shipped character uses", async () => {
+  it("uses the character's own voice rather than the fallback", async () => {
+    const characterVoice = CHARACTER_CONFIGS.Wanko.character.voice?.voiceId;
+    expect(characterVoice).toBeDefined();
+    expect(characterVoice).not.toBe(TTS_FALLBACK_VOICE);
+
     const response = await POST(
-      postRequest({ text: "Hello", voice: TTS_DEFAULT_VOICE }) as never,
+      postRequest({ text: "Hello", voice: characterVoice }) as never,
     );
 
     expect(response.status).toBe(200);
     expect(generateSpeech).toHaveBeenCalledWith("Hello", {
-      voice: TTS_DEFAULT_VOICE,
+      voice: characterVoice,
       rate: 1.0,
     });
+  });
+
+  it("falls back only when the request names no voice", async () => {
+    await POST(postRequest({ text: "Hello" }) as never);
+
+    expect(generateSpeech).toHaveBeenCalledWith("Hello", {
+      voice: TTS_FALLBACK_VOICE,
+      rate: 1.0,
+    });
+  });
+
+  it("keeps the fallback off every shipped character's voice", () => {
+    const characterVoices = Object.values(CHARACTER_CONFIGS).map(
+      (config) => config.character.voice?.voiceId,
+    );
+
+    expect(characterVoices).not.toContain(TTS_FALLBACK_VOICE);
   });
 
   it("rejects text past the demo cap, since TTS bills per character", async () => {
@@ -60,7 +82,7 @@ describe("examples/web /api/tts route", () => {
     await POST(postRequest({ text: "Hello", speed: 99 }) as never);
 
     expect(generateSpeech).toHaveBeenCalledWith("Hello", {
-      voice: TTS_DEFAULT_VOICE,
+      voice: TTS_FALLBACK_VOICE,
       rate: 4,
     });
   });

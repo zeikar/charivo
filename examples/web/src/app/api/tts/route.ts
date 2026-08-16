@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createOpenAITTSProvider } from "@charivo/server/openai";
 import {
   TTS_ALLOWED_VOICES,
-  TTS_DEFAULT_VOICE,
+  TTS_FALLBACK_VOICE,
   TTS_MAX_TEXT_CHARS,
 } from "../demo-limits";
 
@@ -16,15 +16,16 @@ function getOpenAIKey(): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // No `defaultVoice`: this route always resolves a voice itself and passes
+    // it explicitly, so the provider's own default is never consulted.
     const ttsProvider = createOpenAITTSProvider({
       apiKey: getOpenAIKey(),
-      defaultVoice: TTS_DEFAULT_VOICE,
       defaultModel: "gpt-4o-mini-tts",
     });
 
     const {
       text,
-      voice = TTS_DEFAULT_VOICE,
+      voice = TTS_FALLBACK_VOICE,
       speed = 1.0,
     } = await request.json();
 
