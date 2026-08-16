@@ -28,7 +28,9 @@ provider classes (`OpenAILLMProvider`, `OpenClawLLMProvider`,
 `OpenAITTSProvider`, `OpenAISTTProvider`, `OpenAIRealtimeProvider`) are
 the three exceptions, exported directly as concrete classes: `Charivo`
 owns the instance lifecycle (wiring managers, the event bus, and
-`dispose()`) so it isn't behind a factory; `CharivoError` is a taxonomy
+`dispose()`), so although `createCharivo()` is the preferred way in, the
+class stays exported for wiring that happens after construction;
+`CharivoError` is a taxonomy
 checked via `isCharivoError`/`error.code`, not constructed; the
 OpenAI/OpenClaw providers are exported because consumers rely on
 `instanceof` checks and provider methods outside the narrow core

@@ -510,12 +510,26 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           ttsManager = createTTSManager(nextTtsPlayer);
         }
 
+        // Assign the manager above before this check so teardown can dispose
+        // it; bail after it so a torn-down effect never reaches the factory.
+        // Attaching a render manager that teardown already destroyed would
+        // re-register the event-bus listeners its destroy() just removed.
+        if (disposed) {
+          await teardown();
+          return;
+        }
+
         const nextSttTranscriber = await createSTTTranscriber(
           selectedSTTTranscriber,
         );
         if (nextSttTranscriber) {
           sttManager = createSTTManager(nextSttTranscriber);
           sttManagerRef.current = sttManager;
+        }
+
+        if (disposed) {
+          await teardown();
+          return;
         }
 
         // TTS and STT are user-selectable and may resolve to nothing, so both
