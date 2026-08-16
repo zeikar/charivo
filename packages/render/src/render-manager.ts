@@ -121,6 +121,15 @@ export class RenderManager implements IRenderManager {
    * Connect the event bus
    */
   setEventBus(eventBus: CharivoEventBus): void {
+    // Re-attaching the same bus is a no-op. `Charivo.attachRenderer()` calls
+    // this even for an already-attached manager, and tearing down would end
+    // the speaking state mid-utterance — rearming the fallback that is meant
+    // to stand down during speech, and dropping realtime lip sync until the
+    // next audio start.
+    if (this.eventBus === eventBus) {
+      return;
+    }
+
     // Defensive self-clear: avoid double-registering if called again. Uses
     // the listener-only unbind (not disconnect()) so a rewire preserves a
     // pending expression release instead of abandoning it.

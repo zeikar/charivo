@@ -291,6 +291,29 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores re-attaching the same bus mid-utterance", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("tts:audio:start", {});
+
+    // Charivo.attachRenderer() re-attaches an already-attached manager, which
+    // must not be read as a rewire: doing so would end the speaking state and
+    // cut the expression off mid-sentence.
+    manager.setEventBus(bus);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
   it("re-arms the fallback when the bus is replaced mid-utterance", async () => {
     vi.useFakeTimers();
 
