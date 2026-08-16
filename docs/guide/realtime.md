@@ -41,11 +41,26 @@ import {
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 
 const client = createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" });
-const avatarTools = createAvatarControlTools({
+
+// Declared once and reused below — the instruction-layering example further
+// down builds on both of these.
+const character = {
+  id: "hiyori",
+  name: "Hiyori",
+  personality: "Cheerful and helpful assistant",
+  voice: { voiceId: "marin" },
+};
+
+const avatarCatalog = {
   expressions: ["Smile", "Sad"],
   motions: { Idle: 2, TapBody: 3 },
-  expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
-});
+  expressionDescriptions: {
+    Smile: "happy or amused",
+    Sad: "downcast or disappointed",
+  },
+};
+
+const avatarTools = createAvatarControlTools(avatarCatalog);
 
 const tools: ToolRegistration[] = [
   ...avatarTools,
@@ -75,12 +90,7 @@ const manager = createRealtimeManager(client, {
 
 const charivo = new Charivo();
 charivo.attachRealtime(manager);
-charivo.setCharacter({
-  id: "hiyori",
-  name: "Hiyori",
-  personality: "Cheerful and helpful assistant",
-  voice: { voiceId: "marin" },
-});
+charivo.setCharacter(character);
 ```
 
 `attachRealtime(...)` installs the event bridge that relays realtime output
@@ -140,6 +150,8 @@ If you need stronger product-specific acting guidance, append it in the app
 layer on top of the library-generated base instead of making
 `@charivo/realtime` own product persona rules:
 
+Continuing from Basic Setup, with the same `character` and `avatarCatalog`:
+
 ```ts
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
 import { buildAvatarControlInstructions } from "@charivo/avatar";
@@ -163,22 +175,16 @@ await manager.startSession({
 defaults. OpenAI-specific model and voice fallbacks live in the OpenAI
 transport/provider packages, not in the provider-agnostic manager helper.
 
-## Why `@charivo/realtime/remote` Is The Default
-
-- it is the recommended production path
-- it works through your own server route
-- it resolves a browser transport adapter from its registry
-- the built-in resolver maps OpenAI WebRTC traffic to the current adapter defaults
-
-Today, that usually means the OpenAI Agents WebRTC bootstrap flow.
-
 ## Client Choices
 
 ### Remote
 
 - `@charivo/realtime/remote`
-- best default for production browser apps
-- adapter-aware and server-mediated
+- the default recommended in [Recommended Stack](#recommended-stack): it runs
+  through your own server route, so no key reaches the browser
+- resolves a browser transport adapter from its registry; the built-in resolver
+  maps OpenAI WebRTC traffic to the current adapter defaults, which today means
+  the OpenAI Agents WebRTC bootstrap flow
 
 ### OpenAI Agents SDK Transport
 
@@ -217,6 +223,14 @@ short-lived and re-minted per session. Use the server-mediated
 - in-place `updateSession(...)` session patching
 - reconnect orchestration and reconnect observability events
 - relaying realtime output into the Charivo event stream
+
+`registerTool(...)` / `unregisterTool(...)` work on a live session: each one
+patches the active session so the model sees the new tool surface without a
+reconnect. Nothing is sent while the session is idle — the next
+`startSession(...)` picks the registry up — and a change made while a response
+is in flight is deferred rather than applied mid-response. Several deferred
+changes collapse into a single refresh once that response completes, so
+registering a batch of tools costs one session patch, not one per tool.
 
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
 bus. It emits realtime, tool, text, and lip-sync related events back into core.
@@ -300,32 +314,62 @@ The two contracts are intentionally different — don't normalize them.
 
 ## Provider Route
 
-The server route typically uses `@charivo/server/openai`:
+The browser posts a complete `RealtimeSessionRequest` — the selected adapter,
+the transport, the effective session config (instructions, tools, voice), and an
+SDP offer when the transport needs one. Your route's job is to authenticate the
+caller, add the API key, and forward that request; rebuilding the session server
+side would discard whatever the client resolved.
 
 ```ts
-const provider = createOpenAIRealtimeProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+import {
+  createOpenAIRealtimeProvider,
+  type OpenAIRealtimeProviderConfig,
+} from "@charivo/server/openai";
+import type { RealtimeSessionRequest } from "@charivo/core";
 
-const bootstrap = await provider.createSession({
-  adapter: "openai-agents-webrtc",
-  transport: "webrtc",
-  session: {
-    provider: "openai",
-    model: "gpt-realtime-2.1-mini",
-    voice: "marin",
-  },
-});
+export async function POST(request: Request) {
+  const body = (await request.json()) as Partial<RealtimeSessionRequest>;
+
+  if (!body.transport || !body.session) {
+    return Response.json(
+      { error: "transport and session are required" },
+      { status: 400 },
+    );
+  }
+
+  if (body.session.provider !== "openai") {
+    return Response.json(
+      { error: `Unsupported realtime provider: ${body.session.provider}` },
+      { status: 501 },
+    );
+  }
+
+  const config: OpenAIRealtimeProviderConfig = {
+    apiKey: process.env.OPENAI_API_KEY!,
+  };
+  const provider = createOpenAIRealtimeProvider(config);
+
+  const bootstrap = await provider.createSession({
+    adapter: body.adapter,
+    transport: body.transport,
+    session: body.session,
+    sdpOffer: body.sdpOffer,
+  });
+
+  return Response.json(bootstrap);
+}
 ```
+
+A complete route, including error handling, is at
+[`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts).
 
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can
 still pass those fields explicitly when they need deterministic provider
 configuration.
 
-For local development without a server, the direct Agents transport can mint the
-client secret in the browser via `apiKey` — see
-[OpenAI Agents SDK Transport](#openai-agents-sdk-transport) (dev/testing only).
+For a no-server development setup, see
+[OpenAI Agents SDK Transport](#openai-agents-sdk-transport).
 
 ## Alternatives
 
