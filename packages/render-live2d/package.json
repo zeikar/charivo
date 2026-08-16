@@ -15,7 +15,13 @@
   },
   "files": [
     "dist",
-    "!dist/metafile-*.json"
+    "!dist/metafile-*.json",
+    "LICENSE.md",
+    "CubismSdkForWeb-5-r.4/LICENSE.md",
+    "CubismSdkForWeb-5-r.4/NOTICE.md",
+    "CubismSdkForWeb-5-r.4/Core/LICENSE.md",
+    "CubismSdkForWeb-5-r.4/Core/RedistributableFiles.txt",
+    "CubismSdkForWeb-5-r.4/Framework/LICENSE.md"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
@@ -33,7 +39,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
     "type": "git",
     "url": "https://github.com/zeikar/charivo.git",

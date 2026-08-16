@@ -110,3 +110,19 @@ user-gesture path intact on iOS or the first realtime lipsync pass may stay
 silent.
 
 That split keeps renderer lifecycle separate from conversation/session lifecycle.
+
+## Credits
+
+The bundled Live2D models are © Live2D Inc. and are included only to
+demonstrate Charivo. All seven are official Live2D sample models distributed
+under the
+[Live2D Free Material License](https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html):
+
+- **Haru**, **Hiyori**, **Mao**, **Mark**, **Natori**, **Rice**, **Wanko**
+
+Using these models requires agreeing to the
+[per-model terms](https://docs.live2d.com/cubism-editor-manual/sample-model/).
+
+No model ships in any published `@charivo/*` package — they exist only in this
+demo. The Cubism SDK itself carries separate terms; see
+[`packages/render-live2d/LICENSE.md`](../../packages/render-live2d/LICENSE.md).

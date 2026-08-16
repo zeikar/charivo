@@ -341,5 +341,19 @@ require a module resolution mode that understands package exports:
 
 ## Live2D Note
 
-`@charivo/render-live2d` vendors parts of the Live2D Cubism SDK for Web.
-If you ship or republish that package, review the Live2D license terms before release.
+`@charivo/render-live2d` is the only package that is **not MIT**. It bundles the
+Live2D Cubism SDK for Web: Cubism Core under the Live2D Proprietary Software
+License (bundled as Redistributable Code, which that license permits) and the
+Cubism Framework plus sample-derived code under the Live2D Open Software
+License. Every other `@charivo/*` package is MIT.
+
+Two obligations do not transfer to you from Charivo:
+
+- Publishing a product built on it may require a **Live2D Publication License**.
+- Any business with annual gross revenue of 10,000,000 JPY or more in its most
+  recent fiscal year must obtain a **Cubism SDK Release License**.
+
+See [`packages/render-live2d/LICENSE.md`](./packages/render-live2d/LICENSE.md)
+for the full breakdown. The Live2D models in the demos are separate again —
+they are Free Material License assets credited in each demo's README, and no
+model ships on npm.
