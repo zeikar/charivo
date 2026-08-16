@@ -305,3 +305,12 @@ When connected, the manager relays:
 - `tts:lipsync:update`
 - `tts:audio:start`
 - `tts:audio:end`
+
+`tts:audio:end` reports that playback finished, not that the server finished
+sending. Over WebRTC those are seconds apart: the transports derive it from
+`output_audio_buffer.stopped` (and `output_audio_buffer.cleared` on an
+interruption), never from `response.audio.done` / `response.output_audio.done`.
+Consumers act on this event — `RenderManager` releases a held expression and
+stops lip-sync there — so a custom transport that reports it at send completion
+will reset the avatar's face mid-reply. See
+[docs/guide/realtime.md](../../docs/guide/realtime.md#audio-output-lifecycle).

@@ -232,6 +232,38 @@ Avatar expression/motion/gaze tools are optional and now live in
 Use a result projector when you want those tool results bridged back into
 `avatar:expression`, `avatar:motion`, and `avatar:gaze`.
 
+## Audio Output Lifecycle
+
+`tts:audio:start` / `tts:audio:end` mark when the character's voice is actually
+audible, not when the server finished producing it. That distinction matters
+because consumers act on the end: `RenderManager` releases a held expression
+there and stops lip-sync, so reporting it early resets the avatar's face partway
+through its own reply.
+
+Over WebRTC the two are seconds apart, and only one server event describes real
+playback:
+
+| Event | Meaning | Ends audio output? |
+| --- | --- | --- |
+| `response.audio.done`, `response.output_audio.done` | the server finished SENDING audio; the browser is still playing what it buffered | no |
+| `output_audio_buffer.stopped` | playback finished | yes |
+| `output_audio_buffer.cleared` | an interruption discarded the buffer | yes |
+
+Both WebRTC transports report the end from the output-buffer events. Note that
+the OpenAI Agents SDK raises `audio_stopped` on `response.output_audio.done`, so
+that SDK event is a send completion despite its name, and its `audio_interrupted`
+is emitted only by the SDK's WebSocket transport — never over WebRTC.
+
+No timer or audio-level heuristic stands in for the buffer events. A guessed end
+cannot be undone once an expression has been released, so a session that somehow
+never observes one holds the expression until something replaces it rather than
+risk cutting it short; interruption, connection loss, and teardown still end
+audio output explicitly.
+
+If you implement a custom transport, emit `audio.output.ended` when playback
+truly stops. Emitting it when your provider finishes streaming will look correct
+in logs and wrong on screen.
+
 ## Reconnect Behavior
 
 When the browser transport drops temporarily, the manager keeps the realtime
