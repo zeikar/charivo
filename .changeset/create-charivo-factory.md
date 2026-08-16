@@ -25,8 +25,8 @@ applied after the managers are attached, so it reaches every character-aware
 one — LLM, renderer, and realtime — without depending on call order.
 
 The `Charivo` class is still exported and `attach*` is unchanged, so existing
-code keeps working. Reach for the class when you need to construct first and
-attach later.
+code keeps working. The factory returns an ordinary instance, so you can supply
+what you have up front and still attach the rest later.
 
 **Breaking for anyone importing them:** the `Conversation`, `Plugin`, and
 `CharivoConfig` types are removed. All three were declared but never

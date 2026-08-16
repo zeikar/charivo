@@ -516,19 +516,12 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           toolInstructions: buildAvatarControlInstructions(initialCatalog),
         });
         llmManagerRef.current = llmManager;
+        instance = createCharivo({ renderer: renderManager, llm: llmManager });
 
         const nextTtsPlayer = await createTTSPlayer(selectedTTSPlayer);
         if (nextTtsPlayer) {
           ttsManager = createTTSManager(nextTtsPlayer);
-        }
-
-        // Assign the manager above before this check so teardown can dispose
-        // it; bail after it so a torn-down effect never reaches the factory.
-        // Attaching a render manager that teardown already destroyed would
-        // re-register the event-bus listeners its destroy() just removed.
-        if (disposed) {
-          await teardown();
-          return;
+          instance.attachTTS(ttsManager);
         }
 
         const nextSttTranscriber = await createSTTTranscriber(
@@ -536,29 +529,11 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         );
         if (nextSttTranscriber) {
           sttManager = createSTTManager(nextSttTranscriber);
-        }
-
-        if (disposed) {
-          await teardown();
-          return;
-        }
-
-        // Published only once this effect is known to still be current, so a
-        // stale run cannot hand its transcriber to a newer session.
-        if (sttManager) {
+          instance.attachSTT(sttManager);
           sttManagerRef.current = sttManager;
         }
 
-        // TTS and STT are user-selectable and may resolve to nothing, so both
-        // are built before the instance — createCharivo reads a null manager as
-        // "not supplied", the same as omitting it.
-        instance = createCharivo({
-          renderer: renderManager,
-          llm: llmManager,
-          tts: ttsManager,
-          stt: sttManager,
-          character: initialCharacter,
-        });
+        instance.setCharacter(initialCharacter);
         syncedCharacterIdRef.current = initialCharacter.id;
 
         instance.on("tts:start", () => {

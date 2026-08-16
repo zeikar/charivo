@@ -74,10 +74,11 @@ interfaces, not concrete classes.
 - `Charivo` is the single top-level orchestrator: it owns the instance
   lifecycle — wiring managers together via `attach*`, holding the event bus,
   and owning `dispose()`. `createCharivo(options)` is the factory-first way in,
-  attaching the managers you supply and applying the character last. The class
-  itself stays exported — a partial exception to the rule above — because
-  orchestration is exactly the case where you may need to construct first and
-  attach later, such as when swapping a provider at runtime.
+  attaching the managers you supply and applying the character last; it returns
+  an ordinary instance, so late `attach*` calls work on it just as they do on a
+  hand-constructed one. The class itself remains exported — a partial exception
+  to the rule above — because it predates the factory and direct construction
+  stays supported, not because the factory is limited to up-front wiring.
 - `CharivoError` and its subclasses (`CharivoStateError`,
   `CharivoTimeoutError`, `CharivoTransportError`, `CharivoProviderError`,
   `CharivoDisposeError`) are a second intentional exception: an error
