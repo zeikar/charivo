@@ -295,9 +295,16 @@ in logs and wrong on screen.
 
 `updateSession(...)` is safe to call at any point. While no session is active it
 just caches the configuration for the next `startSession(...)`. While one is
-active it patches in place — with one exception: while the connection is
-recovering the status still reads `"active"`, and an update is cached rather
-than sent, to be picked up by the next reconnect attempt's effective config.
+active it patches in place — with one exception worth knowing: while the
+connection is recovering the status still reads `"active"`, and an update is
+cached instead of sent.
+
+That cached value only reaches a reconnect attempt that has not built its config
+yet. Each attempt resolves its effective config before awaiting recovery, so an
+update made after that point does not apply to an attempt that then succeeds —
+recovery commits the config it already built and issues no follow-up patch. If
+you update during recovery and it matters, call `updateSession(...)` again once
+the connection is back.
 
 Updates that arrive while a patch is in flight do
 not each get their own round trip: they collapse into one follow-up refresh
