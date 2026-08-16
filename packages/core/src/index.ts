@@ -769,9 +769,8 @@ export interface CharivoOptions {
  * Equivalent to `new Charivo()` followed by the matching `attach*` calls, then
  * `setCharacter()`. The character is applied last so it reaches every
  * character-aware manager supplied above it — the LLM, renderer, and realtime
- * managers; TTS and STT take the character's voice per call instead.
- * Hand-wiring works in either order only because `attach*` re-applies an
- * already-set character, and that coupling is easy to miss.
+ * managers. Hand-wiring works in either order only because `attach*` re-applies
+ * an already-set character, and that coupling is easy to miss.
  *
  * Note that supplying `realtime` also enables realtime mode, exactly as
  * `attachRealtime()` does.
