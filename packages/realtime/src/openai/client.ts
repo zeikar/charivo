@@ -752,7 +752,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
   }
 
   private beginResponseRequest(): void {
-    this.hasStartedAudioOutput = false;
+    // Deliberately does NOT clear `hasStartedAudioOutput`: a new request can be
+    // sent while the previous response is still playing out, and clearing here
+    // would again treat request boundaries as playback boundaries. The buffer
+    // events own that flag.
     this.resetResponseTracking();
     this.isResponseInProgress = true;
     this.cancelInFlight = false;

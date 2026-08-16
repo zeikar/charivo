@@ -1068,6 +1068,15 @@ describe("OpenAIRealtimeClient", () => {
 
     expect(resumeSpy).toHaveBeenCalled();
 
+    // A follow-up request can be sent while the previous reply is still
+    // playing; that is a request boundary, not a playback boundary.
+    await client.sendText("another question");
+    resumeSpy.mockClear();
+    toggleVisibility("hidden");
+    toggleVisibility("visible");
+
+    expect(resumeSpy).toHaveBeenCalled();
+
     // Playback is genuinely over now — hide/show must NOT restart metering, or
     // residual level re-opens output that no later buffer event would close.
     send({ type: "output_audio_buffer.stopped" });
