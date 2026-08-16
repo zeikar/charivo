@@ -8,6 +8,7 @@ import { CubismExpressionMotion } from "@framework/motion/cubismexpressionmotion
 import { CubismExpressionMotionManager } from "@framework/motion/cubismexpressionmotionmanager";
 import { CubismMotionManager } from "@framework/motion/cubismmotionmanager";
 import { csmMap } from "@framework/type/csmmap";
+import { csmVector } from "@framework/type/csmvector";
 
 import { LAppModel } from "../src/cubism/lappmodel";
 
@@ -642,6 +643,17 @@ describe("LAppModel expression release state machine", () => {
  * without going through model loading.
  */
 class OrderingTestLAppModel extends LAppModel {
+  /** Stands in for the LipSync group loadAssets() would read from model3.json. */
+  public installLipSyncIds(ids: CubismIdHandle[]): void {
+    this._lipsync = true;
+    const lipSyncOverride = this as unknown as {
+      lipSyncIds: csmVector<CubismIdHandle>;
+    };
+    for (const id of ids) {
+      lipSyncOverride.lipSyncIds.pushBack(id);
+    }
+  }
+
   public installFakes(
     model: CubismModel,
     motionManager: CubismMotionManager,
@@ -737,5 +749,98 @@ describe("LAppModel.update() ordering invariant", () => {
     expect(expressionIndex).toBeGreaterThanOrEqual(0);
     expect(loadIndex).toBeLessThan(saveIndex);
     expect(saveIndex).toBeLessThan(expressionIndex);
+  });
+});
+
+/**
+ * Writes parameters the way CubismModel does for the calls update()'s lip-sync
+ * step makes, so a test can read back what the mouth ended up at.
+ */
+class MouthModel {
+  private value = 0;
+
+  public loadParameters(): void {}
+  public saveParameters(): void {}
+  public update(): void {}
+
+  public addParameterValueById(
+    _id: CubismIdHandle,
+    value: number,
+    weight = 1,
+  ): void {
+    this.value += value * weight;
+  }
+
+  public setParameterValueById(_id: CubismIdHandle, value: number): void {
+    this.value = value;
+  }
+
+  public read(): number {
+    return this.value;
+  }
+}
+
+/** Stands in for an expression that pins the mouth open every frame. */
+class MouthPinningExpressionManager {
+  public constructor(
+    private readonly model: MouthModel,
+    private readonly id: CubismIdHandle,
+  ) {}
+
+  public updateMotion(): boolean {
+    this.model.addParameterValueById(this.id, 1);
+    return true;
+  }
+}
+
+// Haru's "big laugh" expression pins ParamMouthOpenY, which is also its lip-sync
+// parameter, so the two fight every frame. Realtime lip sync has to win for the
+// whole utterance or the mouth stops following the voice.
+describe("LAppModel realtime lip sync vs mouth-moving expressions", () => {
+  // Resolved lazily: the id manager only exists after CubismFramework.startUp()
+  // in beforeAll, which runs after this describe body is evaluated.
+  function buildModel() {
+    const MOUTH_ID = CubismFramework.getIdManager().getId("ParamMouthOpenY");
+    const mouth = new MouthModel();
+    const model = new OrderingTestLAppModel();
+    model.installFakes(
+      mouth as unknown as CubismModel,
+      new StubMotionManager() as unknown as CubismMotionManager,
+      new MouthPinningExpressionManager(
+        mouth,
+        MOUTH_ID,
+      ) as unknown as CubismExpressionMotionManager,
+    );
+    model.installLipSyncIds([MOUTH_ID]);
+    return { model, mouth };
+  }
+
+  it("overrides the expression's mouth while speaking", () => {
+    const { model, mouth } = buildModel();
+
+    model.setRealtimeLipSync(true, 0.5);
+    model.update();
+
+    expect(mouth.read()).toBeCloseTo(0.5 * 1.8, 5);
+  });
+
+  it("drives the mouth closed at silence instead of letting the expression reopen it", () => {
+    const { model, mouth } = buildModel();
+
+    // The gaps between syllables. Leaving the expression's value in place here
+    // is what made lip sync read as broken: the mouth snapped open every pause.
+    model.setRealtimeLipSync(true, 0);
+    model.update();
+
+    expect(mouth.read()).toBe(0);
+  });
+
+  it("leaves the mouth to the expression once the utterance ends", () => {
+    const { model, mouth } = buildModel();
+
+    model.setRealtimeLipSync(false);
+    model.update();
+
+    expect(mouth.read()).toBe(1);
   });
 });

@@ -217,17 +217,12 @@ export class LAppModel extends CubismUserModel {
       this._physics.evaluate(this._model, deltaTimeSeconds);
     }
 
-    if (this._lipsync) {
-      let lipSyncValue = 0;
-
-      if (this.useRealtimeLipSync) {
-        // Use real-time TTS audio analysis with increased amplification for web TTS
-        lipSyncValue = this.realtimeLipSyncRms * 1.8; // Increase web TTS mouth movement
-      } else {
-        // Use traditional WAV file analysis for motion files
-        this.wavHandler.update(deltaTimeSeconds);
-        lipSyncValue = this.wavHandler.getRms();
-      }
+    // WAV-driven lip sync (motion files) blends on top of whatever the motion
+    // and expression steps produced. Realtime lip sync is handled below instead,
+    // because it has to REPLACE those values rather than add to them.
+    if (this._lipsync && !this.useRealtimeLipSync) {
+      this.wavHandler.update(deltaTimeSeconds);
+      const lipSyncValue = this.wavHandler.getRms();
 
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
         this._model.addParameterValueById(
@@ -242,11 +237,20 @@ export class LAppModel extends CubismUserModel {
       this._pose.updateParameters(this._model, deltaTimeSeconds);
     }
 
-    // Apply TTS lip sync after all other updates to ensure it takes priority
-    if (this.useRealtimeLipSync && this.realtimeLipSyncRms > 0) {
-      const lipSyncValue = this.realtimeLipSyncRms * 1.8; // Amplify web TTS lip sync
+    // Realtime lip sync runs last and OVERWRITES, so the mouth follows the voice
+    // for the whole utterance. Expressions re-apply their own mouth values every
+    // frame — Haru's "big laugh" pins ParamMouthOpenY, which is also its lip-sync
+    // parameter — so anything additive here loses to the expression, and any gap
+    // in the overwrite lets the expression show through. That is why this is not
+    // conditioned on the level: at rms 0 the mouth must be driven CLOSED, not
+    // left wherever the expression put it, or silences between syllables snap it
+    // back open and lip sync reads as broken.
+    //
+    // Outside an utterance `useRealtimeLipSync` is false, so expressions keep
+    // full control of the mouth.
+    if (this.useRealtimeLipSync) {
+      const lipSyncValue = this.realtimeLipSyncRms * 1.8;
 
-      // Override lip sync parameters with TTS data
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
         this._model.setParameterValueById(this.lipSyncIds.at(i), lipSyncValue);
       }
