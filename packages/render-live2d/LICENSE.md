@@ -32,19 +32,36 @@ notices, and proprietary notices (§5.1, §5.7). The bundled output therefore
 carries a preserved notice banner; **do not strip it when re-bundling this
 package.**
 
-## Publication and Release License — your responsibility
+## Publication License — your responsibility
 
-Publishing or distributing a derivative work generally requires a separate
-[Live2D Publication License Agreement](https://www.live2d.com/en/download/cubism-sdk/release-license/)
-(Proprietary §2.1). General Users, Small-Scale Enterprises, and Qualified
-Educational Institutions may be exempt (§2.2).
+Publishing or distributing a derivative work requires a **Live2D Publication
+License Agreement** (Proprietary §2.1). Live2D also calls this the *Cubism SDK
+Release License* — the
+[release-license page](https://www.live2d.com/en/download/cubism-sdk/release-license/)
+is titled "SDK Release License (Publication License Agreement)". It is one
+instrument under two names, not two separate obligations.
 
-Separately, **any business with annual gross revenue of 10,000,000 JPY or more
-in its most recent fiscal year must obtain a Cubism SDK Release License**
-before shipping.
+General Users, Small-Scale Enterprises, and Qualified Educational Institutions
+— broadly, individuals and organizations whose sales for the most recent fiscal
+year are under 10,000,000 JPY — may be exempt from executing it and from the
+license fee (§2.2).
 
-Charivo does not and cannot grant these licenses. If you ship a product built
-on this package, resolve your own position with Live2D first.
+**That exemption does not cover an Expandable Application.** §2.2: "this
+exemption is not applicable for Publishing the Expandable Application". §2.1
+adds that publishing one requires making "an application in advance" and
+obtaining "approval by Live2D", on top of the agreement itself. §1.5 defines an
+Expandable Application as a derivative work "having significant expandability",
+including one that "uses and generates any indefinite number of models by
+adding or combining files or data (e.g. avatars, live streaming applications,
+video generators/video makers)".
+
+Read that definition before assuming the exemption applies to you. A renderer
+that loads arbitrary models — which is exactly what this package is — plausibly
+falls inside it **regardless of your revenue**. Charivo has not sought or
+obtained Live2D's approval, and takes no position on your behalf.
+
+Charivo does not and cannot grant this license. Resolve your own position with
+Live2D before you ship.
 
 ## Model assets — not included
 

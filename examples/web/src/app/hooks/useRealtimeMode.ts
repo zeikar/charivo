@@ -32,9 +32,6 @@ export function useRealtimeMode() {
   } = useChatStore();
 
   const sessionCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // `disableRealtimeMode` is defined below and the cap timer has to reach it,
-  // so route the call through a ref instead of reordering the callbacks.
-  const disableRef = useRef<() => Promise<void>>(async () => {});
 
   const clearSessionCap = useCallback(() => {
     if (sessionCapRef.current !== null) {
@@ -42,6 +39,44 @@ export function useRealtimeMode() {
       sessionCapRef.current = null;
     }
   }, []);
+
+  const disableRealtimeMode = useCallback(async () => {
+    clearSessionCap();
+
+    if (!charivo || !isRealtimeMode) {
+      return;
+    }
+
+    try {
+      console.log("🔌 Disabling Realtime mode...");
+
+      const realtimeManager = charivo.getRealtimeManager();
+      if (realtimeManager) {
+        await realtimeManager.stopSession();
+      }
+
+      charivo.detachRealtime();
+
+      setIsRealtimeMode(false);
+      setIsConnected(false);
+      resetRealtimeUiState();
+
+      console.log("✅ Realtime mode disabled");
+    } catch (error) {
+      console.error("❌ Failed to disable Realtime mode:", error);
+      setRealtimeError(
+        error instanceof Error ? error.message : "Unknown error",
+      );
+    }
+  }, [
+    charivo,
+    isRealtimeMode,
+    setIsRealtimeMode,
+    setIsConnected,
+    setRealtimeError,
+    resetRealtimeUiState,
+    clearSessionCap,
+  ]);
 
   const enableRealtimeMode = useCallback(async () => {
     if (!charivo) {
@@ -101,7 +136,7 @@ export function useRealtimeMode() {
         logRealtimeMode("session-cap.reached", {
           ms: REALTIME_SESSION_MAX_MS,
         });
-        void disableRef.current();
+        void disableRealtimeMode();
       }, REALTIME_SESSION_MAX_MS);
 
       console.log("✅ Realtime mode enabled");
@@ -127,52 +162,10 @@ export function useRealtimeMode() {
     resetRealtimeUiState,
     avatarCatalog,
     clearSessionCap,
+    disableRealtimeMode,
   ]);
 
-  const disableRealtimeMode = useCallback(async () => {
-    clearSessionCap();
-
-    if (!charivo || !isRealtimeMode) {
-      return;
-    }
-
-    try {
-      console.log("🔌 Disabling Realtime mode...");
-
-      const realtimeManager = charivo.getRealtimeManager();
-      if (realtimeManager) {
-        await realtimeManager.stopSession();
-      }
-
-      charivo.detachRealtime();
-
-      setIsRealtimeMode(false);
-      setIsConnected(false);
-      resetRealtimeUiState();
-
-      console.log("✅ Realtime mode disabled");
-    } catch (error) {
-      console.error("❌ Failed to disable Realtime mode:", error);
-      setRealtimeError(
-        error instanceof Error ? error.message : "Unknown error",
-      );
-    }
-  }, [
-    charivo,
-    isRealtimeMode,
-    setIsRealtimeMode,
-    setIsConnected,
-    setRealtimeError,
-    resetRealtimeUiState,
-    clearSessionCap,
-  ]);
-
-  // Keep the cap timer pointed at the current teardown, and make sure an
-  // unmount mid-session does not leave it armed.
-  useEffect(() => {
-    disableRef.current = disableRealtimeMode;
-  }, [disableRealtimeMode]);
-
+  // An unmount mid-session must not leave the cap timer armed.
   useEffect(() => clearSessionCap, [clearSessionCap]);
 
   const toggleRealtimeMode = useCallback(async () => {

@@ -54,8 +54,12 @@ Software License). Both are bundled as permitted — `live2dcubismcore.min.js` i
 listed as Redistributable Code in `Core/RedistributableFiles.txt` — and the
 bundle carries a notice banner that must not be stripped.
 
-Shipping a product built on this package may require a **Live2D Publication
-License**, and any business with annual gross revenue of 10,000,000 JPY or more
-must obtain a **Cubism SDK Release License**. Charivo cannot grant either.
+Shipping a product built on this package requires a **Live2D Publication License
+Agreement** (also marketed as the *Cubism SDK Release License* — the same
+instrument). Small users may be exempt, but **that exemption does not cover an
+"Expandable Application"**, and this package — a renderer that loads arbitrary
+models — plausibly is one regardless of your revenue. Publishing an Expandable
+Application additionally needs Live2D's prior approval.
 
-See [LICENSE.md](./LICENSE.md) for the full breakdown before you ship.
+Charivo has not sought that approval and cannot grant it. See
+[LICENSE.md](./LICENSE.md) for the clause-by-clause breakdown before you ship.

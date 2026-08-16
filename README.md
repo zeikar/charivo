@@ -347,13 +347,18 @@ License (bundled as Redistributable Code, which that license permits) and the
 Cubism Framework plus sample-derived code under the Live2D Open Software
 License. Every other `@charivo/*` package is MIT.
 
-Two obligations do not transfer to you from Charivo:
+Publishing a product built on it requires a **Live2D Publication License
+Agreement** — marketed as the *Cubism SDK Release License*, one instrument under
+two names. Individuals and organizations under 10,000,000 JPY in recent-year
+sales may be exempt from it, **but that exemption does not cover an "Expandable
+Application"**, and a renderer that loads arbitrary models plausibly is one
+regardless of revenue. Publishing an Expandable Application needs Live2D's prior
+approval on top of the agreement.
 
-- Publishing a product built on it may require a **Live2D Publication License**.
-- Any business with annual gross revenue of 10,000,000 JPY or more in its most
-  recent fiscal year must obtain a **Cubism SDK Release License**.
+Charivo has not sought that approval and cannot grant you anything here. See
+[`packages/render-live2d/LICENSE.md`](./packages/render-live2d/LICENSE.md) for
+the clause-by-clause breakdown, and settle your own position with Live2D before
+you ship.
 
-See [`packages/render-live2d/LICENSE.md`](./packages/render-live2d/LICENSE.md)
-for the full breakdown. The Live2D models in the demos are separate again —
-they are Free Material License assets credited in each demo's README, and no
-model ships on npm.
+The Live2D models in the demos are separate again — they are Free Material
+License assets credited in each demo's README, and no model ships on npm.

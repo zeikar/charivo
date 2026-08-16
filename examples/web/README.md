@@ -25,22 +25,31 @@ template, however much it looks like one.
 
 What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
 
-- **Model and parameters are pinned server-side.** `/api/realtime` rebuilds the
-  session config instead of forwarding the caller's, so nobody can repoint the
-  key at an expensive model or supply their own system prompt. Same for the
-  transcription model on `/api/realtime-transcription`.
-- **Single requests are bounded.** Caps on chat message count and length, TTS
-  input characters, STT upload size, and realtime instruction/tool size, so no
-  one request can cost real money.
+- **The model is pinned server-side.** `/api/realtime` rebuilds the session
+  config instead of forwarding the caller's, so nobody can repoint the key at an
+  expensive model or raise `maxTokens`. Same for the transcription model on
+  `/api/realtime-transcription`.
+- **Single requests are bounded.** Caps on chat message count, length, and
+  serialized tool payloads; TTS input characters; STT upload size; realtime
+  instruction and tool size.
 - **Voices are restricted** to the ones the shipped characters use.
-- **Realtime sessions stop after 90 seconds.** This one is a client-side timer:
-  after bootstrap the browser talks to OpenAI directly, so the server cannot
-  hang up. It bounds an ordinary visitor, not a determined caller.
+- **Realtime sessions and STT recordings stop after 90 seconds.** Both are
+  client-side timers: after bootstrap the browser talks to OpenAI directly, so
+  the server cannot hang up. They bound an ordinary visitor, not a determined
+  caller.
+
+One thing the routes deliberately do **not** pin is `instructions`. The demo
+composes them in the browser from the avatar catalog of whichever Live2D model
+finished loading, so the server cannot rebuild them. They are size-capped, but a
+caller can still supply their own system prompt on the pinned model — worth
+knowing before you treat this as a template.
 
 What they do **not** defend against — you have to add these yourself:
 
 - No auth, no per-IP quota, no concurrency limit. One script can open many
   small sessions, and realtime bills on wall clock.
+- The STT cap is a byte cap, not a duration cap. Low-bitrate audio packs more
+  minutes into the same upload, and transcription bills per minute.
 - Nothing caps total spend. Put a **hard per-project spend limit** on the
   OpenAI key you use, in its own project — enforcement is not instantaneous, so
   treat it as a backstop rather than a control.
@@ -86,7 +95,9 @@ The demo ships these routes:
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
 - `POST /api/tts`
-  Uses `@charivo/server/openai` with default voice `marin` and model `gpt-4o-mini-tts`
+  Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The voice comes
+  from the request (restricted to the shipped characters' voices); a character's
+  own voice always wins, and `TTS_FALLBACK_VOICE` applies only when none is sent
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
@@ -96,7 +107,9 @@ The demo ships these routes:
 - `POST /api/realtime-transcription`
   Mints an ephemeral transcription session secret and performs the SDP exchange
   for `@charivo/stt/openai-realtime`
-  Accepts `{ sdpOffer, session: { model, language? } }` and returns `{ answerSdp }`
+  Accepts `{ sdpOffer, session: { model?, language? } }` and returns
+  `{ answerSdp }`. `model` is accepted for wire compatibility but ignored — the
+  route pins the transcription model itself
 
 There is no `GET /api/tts` route in the current demo.
 

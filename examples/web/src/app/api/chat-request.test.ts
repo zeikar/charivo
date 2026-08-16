@@ -3,7 +3,10 @@ import { parseChatRequest, requiresToolCallingPath } from "./chat-request";
 import {
   CHAT_MAX_MESSAGE_CHARS,
   CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOL_CALLS_BYTES,
+  CHAT_MAX_TOOL_CALLS_PER_MESSAGE,
   CHAT_MAX_TOOLS,
+  CHAT_MAX_TOOLS_BYTES,
   CHAT_MAX_TOTAL_CHARS,
 } from "./demo-limits";
 
@@ -365,5 +368,62 @@ describe("parseChatRequest cost bounds", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+
+  it("rejects a tool schema that is large despite a legal entry count", () => {
+    const result = parseChatRequest({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [
+        {
+          type: "function",
+          name: "noop",
+          description: "x".repeat(CHAT_MAX_TOOLS_BYTES + 1),
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects more tool calls per message than the cap", () => {
+    const result = parseChatRequest({
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: Array.from(
+            { length: CHAT_MAX_TOOL_CALLS_PER_MESSAGE + 1 },
+            (_, index) => ({
+              id: `call_${index}`,
+              name: "noop",
+              arguments: {},
+            }),
+          ),
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects oversized tool-call arguments, which no content cap covers", () => {
+    const result = parseChatRequest({
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            {
+              id: "call_1",
+              name: "noop",
+              arguments: { blob: "x".repeat(CHAT_MAX_TOOL_CALLS_BYTES + 1) },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 });

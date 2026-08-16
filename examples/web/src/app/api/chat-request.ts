@@ -14,7 +14,10 @@ import type { LLMMessage, LLMToolCall, ToolDefinition } from "@charivo/core";
 import {
   CHAT_MAX_MESSAGE_CHARS,
   CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOL_CALLS_BYTES,
+  CHAT_MAX_TOOL_CALLS_PER_MESSAGE,
   CHAT_MAX_TOOLS,
+  CHAT_MAX_TOOLS_BYTES,
   CHAT_MAX_TOTAL_CHARS,
 } from "./demo-limits";
 
@@ -173,6 +176,20 @@ function parseToolCalls(
     );
   }
 
+  if (raw.length > CHAT_MAX_TOOL_CALLS_PER_MESSAGE) {
+    return fail(
+      `messages[${messageIndex}].toolCalls exceeds ${CHAT_MAX_TOOL_CALLS_PER_MESSAGE} entries`,
+    );
+  }
+
+  // Names, ids, and `arguments` are all forwarded as paid input, and none of
+  // them are covered by the per-message content cap.
+  if (serializedSize(raw) > CHAT_MAX_TOOL_CALLS_BYTES) {
+    return fail(
+      `messages[${messageIndex}].toolCalls exceeds ${CHAT_MAX_TOOL_CALLS_BYTES} bytes`,
+    );
+  }
+
   const toolCalls: LLMToolCall[] = [];
   for (let index = 0; index < raw.length; index++) {
     const result = parseToolCall(raw[index], messageIndex, index);
@@ -216,6 +233,12 @@ function parseTools(raw: unknown): ParseResult<ToolDefinition[]> {
 
   if (raw.length > CHAT_MAX_TOOLS) {
     return fail(`tools exceeds ${CHAT_MAX_TOOLS} entries`);
+  }
+
+  // A tool definition carries a free-form description and JSON Schema, so entry
+  // count alone bounds nothing.
+  if (serializedSize(raw) > CHAT_MAX_TOOLS_BYTES) {
+    return fail(`tools exceeds ${CHAT_MAX_TOOLS_BYTES} bytes`);
   }
 
   const tools: ToolDefinition[] = [];
@@ -301,6 +324,22 @@ function ok<T>(value: T): ParseResult<T> {
 
 function fail(error: string): ParseResult<never> {
   return { success: false, error };
+}
+
+/**
+ * UTF-8 byte length of the payload as it will be forwarded. Returns Infinity for
+ * anything JSON cannot represent (a cycle, a BigInt), so unserializable input
+ * fails the bound rather than slipping past it.
+ */
+function serializedSize(value: unknown): number {
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined
+      ? Infinity
+      : new TextEncoder().encode(json).length;
+  } catch {
+    return Infinity;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

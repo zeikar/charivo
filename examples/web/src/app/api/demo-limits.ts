@@ -71,13 +71,26 @@ export const TTS_ALLOWED_VOICES: ReadonlySet<string> = new Set(
 );
 
 /**
- * STT is billed per audio minute, and size is the only proxy available before
- * paying for the transcription. 10 MB is roughly ten minutes — about $0.06 at
- * `whisper-1` rates, and well under OpenAI's own 25 MB ceiling.
+ * STT is billed per audio *minute*, which bytes bound only loosely: a low-bitrate
+ * Opus stream packs far more speech into a megabyte than a typical recording
+ * does. Measuring duration would mean decoding audio in the route, which is out
+ * of proportion here — so this is sized for the worst case instead of the
+ * typical one. A demo utterance runs well under 1 MB at ordinary bitrates, while
+ * 1 MB of 8 kbps audio is still only ~17 minutes, or roughly $0.10 at
+ * `whisper-1` rates. Treat it as an upload bound, not a cost guarantee.
  */
-export const STT_MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+export const STT_MAX_AUDIO_BYTES = 1024 * 1024;
 
 export const CHAT_MAX_MESSAGES = 40;
+
+/**
+ * Everything below is paid input. `content` is not the only part of it — tool
+ * schemas, tool-call arguments, names, and ids are all forwarded to the
+ * provider, so the serialized payload is what actually has to be bounded.
+ */
 export const CHAT_MAX_MESSAGE_CHARS = 8_000;
 export const CHAT_MAX_TOTAL_CHARS = 60_000;
 export const CHAT_MAX_TOOLS = 24;
+export const CHAT_MAX_TOOL_CALLS_PER_MESSAGE = 16;
+export const CHAT_MAX_TOOLS_BYTES = 32_768;
+export const CHAT_MAX_TOOL_CALLS_BYTES = 16_384;

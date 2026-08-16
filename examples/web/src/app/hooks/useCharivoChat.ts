@@ -22,6 +22,7 @@ import {
   type TTSPlayer,
 } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
+import { REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import type { Live2DRenderer } from "@charivo/render-live2d";
@@ -218,6 +219,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const renderManagerRef = useRef<RenderManager | null>(null);
   const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
+  const recordingCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentCharacterRef = useRef(character);
   const syncedCharacterIdRef = useRef<string | null>(null);
   const isRealtimeRefreshPendingRef = useRef(false);
@@ -1020,24 +1022,16 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     return rendererRef.current?.getAvailableMotionGroups() ?? {};
   }, []);
 
-  const handleStartRecording = useCallback(async () => {
-    if (!sttManagerRef.current) {
-      setSttError(
-        "STT is not initialized. Use the remote/browser path or provide a direct-testing API key.",
-      );
-      return;
+  const clearRecordingCap = useCallback(() => {
+    if (recordingCapRef.current !== null) {
+      clearTimeout(recordingCapRef.current);
+      recordingCapRef.current = null;
     }
-
-    try {
-      setSttError(null);
-      await sttManagerRef.current.start();
-    } catch (error) {
-      setSttError(error instanceof Error ? error.message : "Recording failed");
-      setIsRecording(false);
-    }
-  }, [setIsRecording, setSttError]);
+  }, []);
 
   const handleStopRecording = useCallback(async () => {
+    clearRecordingCap();
+
     if (!sttManagerRef.current || !isRecording) {
       return;
     }
@@ -1052,7 +1046,42 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setIsRecording(false);
       setIsTranscribing(false);
     }
-  }, [isRecording, setIsRecording, setIsTranscribing, setSttError]);
+  }, [
+    isRecording,
+    setIsRecording,
+    setIsTranscribing,
+    setSttError,
+    clearRecordingCap,
+  ]);
+
+  const handleStartRecording = useCallback(async () => {
+    if (!sttManagerRef.current) {
+      setSttError(
+        "STT is not initialized. Use the remote/browser path or provide a direct-testing API key.",
+      );
+      return;
+    }
+
+    try {
+      setSttError(null);
+      await sttManagerRef.current.start();
+
+      // The streaming transcriber holds an open, wall-clock-billed realtime
+      // session for as long as it records, so an abandoned tab bills until the
+      // browser is closed. Same courtesy cap as a realtime voice session; on
+      // the batch and browser-native paths it simply bounds the clip.
+      clearRecordingCap();
+      recordingCapRef.current = setTimeout(() => {
+        void handleStopRecording();
+      }, REALTIME_SESSION_MAX_MS);
+    } catch (error) {
+      setSttError(error instanceof Error ? error.message : "Recording failed");
+      setIsRecording(false);
+    }
+  }, [setIsRecording, setSttError, clearRecordingCap, handleStopRecording]);
+
+  // An unmount mid-recording must not leave the cap timer armed.
+  useEffect(() => clearRecordingCap, [clearRecordingCap]);
 
   return {
     handleSend,
