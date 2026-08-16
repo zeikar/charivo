@@ -276,11 +276,13 @@ manager.registerTool({
 });
 ```
 
-Current limitation:
+Live registration:
 
-- `registerTool(...)` and `unregisterTool(...)` update the local manager registry immediately
-- active provider sessions are not updated until `updateSession(...)` or the next `startSession(...)`
-- unregistered tools may still be called by an already-active provider session and will return a failure result
+- `registerTool(...)` and `unregisterTool(...)` update the local registry immediately
+- an active session is patched automatically, so no explicit `updateSession(...)` is needed
+- a change made while a response is in flight is deferred to just after it, and several deferred changes collapse into one refresh
+- both return `void`; a failed patch surfaces as `realtime:error`, not a rejection
+- until that patch lands, an already-active session may still call a just-unregistered tool, which returns a failure result
 
 ## Event Bridge
 

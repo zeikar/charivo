@@ -232,8 +232,18 @@ is in flight is deferred rather than applied mid-response. Several deferred
 changes collapse into a single refresh once that response completes, so
 registering a batch of tools costs one session patch, not one per tool.
 
+Both methods return `void` and the refresh is fire-and-forget: if the provider
+rejects the patch, the failure surfaces as `realtime:error` rather than as a
+rejected call, so watch that event instead of awaiting these.
+
 `RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
 bus. It emits realtime, tool, text, and lip-sync related events back into core.
+
+Tool handlers time out after 10 seconds by default; set `timeoutMs` on a
+registration to override it per tool, or `defaultToolTimeoutMs` on the manager
+to move the default. A handler must resolve to a plain JSON-serializable object
+— the result is snapshotted before it reaches the transport and any result
+projectors, so later mutation of the returned object has no effect.
 
 Local tool calls are checked against the registered tool definition before the
 handler runs. The built-in validator covers `required`, `enum`, and basic JSON
@@ -281,11 +291,22 @@ If you implement a custom transport, emit `audio.output.ended` when playback
 truly stops. Emitting it when your provider finishes streaming will look correct
 in logs and wrong on screen.
 
+## Session Updates
+
+`updateSession(...)` is safe to call at any point. While no session is active it
+just caches the configuration for the next `startSession(...)`. While one is
+active it patches in place, and overlapping patches coalesce into a single
+refresh rather than queueing one round trip each. A patch that fails leaves the
+previously active configuration in force.
+
 ## Reconnect Behavior
 
 When the browser transport drops temporarily, the manager keeps the realtime
 session active and attempts recovery with the latest effective config.
 
+- recovery is attempted five times, after `500ms`, `1s`, `2s`, `4s`, and `5s`;
+  exhausting them stops the session, sets the connection to `"error"`, and emits
+  `realtime:error`
 - `state.session.status` stays `"active"` during recovery
 - `state.connection` switches back to `"connecting"` until recovery succeeds
 - successful reconnects do not emit synthetic `realtime:session:start/end`
@@ -316,9 +337,12 @@ The two contracts are intentionally different — don't normalize them.
 
 The browser posts a complete `RealtimeSessionRequest` — the selected adapter,
 the transport, the effective session config (instructions, tools, voice), and an
-SDP offer when the transport needs one. Your route's job is to authenticate the
-caller, add the API key, and forward that request; rebuilding the session server
-side would discard whatever the client resolved.
+SDP offer when the transport needs one. Your route forwards that request with
+your API key attached; rebuilding the session server side would discard whatever
+the client resolved.
+
+The route mints billable sessions, so gate it. Nothing in Charivo does that for
+you — add your own auth and rate limiting where the placeholder sits below.
 
 ```ts
 import {
@@ -328,6 +352,12 @@ import {
 import type { RealtimeSessionRequest } from "@charivo/core";
 
 export async function POST(request: Request) {
+  // Your auth goes here. Without it, anyone who can reach this route can spend
+  // your OpenAI budget.
+  // if (!(await isAuthorized(request))) {
+  //   return Response.json({ error: "unauthorized" }, { status: 401 });
+  // }
+
   const body = (await request.json()) as Partial<RealtimeSessionRequest>;
 
   if (!body.transport || !body.session) {
@@ -360,8 +390,9 @@ export async function POST(request: Request) {
 }
 ```
 
-A complete route, including error handling, is at
-[`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts).
+[`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts)
+is the same flow with full error handling. It is a demo route: it covers request
+forwarding, not authentication or abuse prevention.
 
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can

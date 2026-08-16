@@ -225,10 +225,12 @@ Direct browser packages are for local development, demos, and testing only:
 
 - `@charivo/llm/openai`
 - `@charivo/llm/openclaw`
-- `@charivo/realtime/openai`
 - `@charivo/realtime/openai-agents` (dev `apiKey` mints the client secret in-browser)
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
+
+`@charivo/realtime/openai` is server-mediated despite being a direct transport —
+it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
 or transcriber factory on each of these four subpaths

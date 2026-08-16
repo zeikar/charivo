@@ -62,7 +62,11 @@ Examples:
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
 - `@charivo/realtime/openai-agents`
-- `@charivo/realtime/openai`
+
+`@charivo/realtime/openai` is NOT in this list: the legacy low-level transport
+takes only `apiEndpoint` or `sessionBootstrap`, so it always goes through your
+server and never holds a provider credential. It is a legacy/debugging path,
+not a credential-exposing one.
 
 The browser-direct caveat above is about the browser client, player, or
 transcriber factory (`createOpenAILLMClient`, `createOpenClawLLMClient`,
