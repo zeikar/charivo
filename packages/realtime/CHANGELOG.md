@@ -1,5 +1,13 @@
 # @charivo/realtime
 
+## 0.15.8
+
+### Patch Changes
+
+- Updated dependencies [1cb4c27]
+- Updated dependencies [22a8f65]
+  - @charivo/core@0.26.0
+
 ## 0.15.7
 
 ### Patch Changes

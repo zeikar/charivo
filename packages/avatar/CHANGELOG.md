@@ -1,5 +1,13 @@
 # @charivo/avatar
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [1cb4c27]
+- Updated dependencies [22a8f65]
+  - @charivo/core@0.26.0
+
 ## 0.3.0
 
 ### Minor Changes
