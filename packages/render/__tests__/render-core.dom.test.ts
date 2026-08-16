@@ -215,6 +215,82 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
+  it("holds the expression past the fallback window while speech is still playing", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("tts:audio:start", {});
+
+    // A long reply. The fallback window is not a ceiling on speech: cutting the
+    // face back here would reset it mid-sentence.
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not arm the fallback for an expression raised mid-utterance", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("still falls back to the hold window when no audio events flow", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    // Text-only config: nothing else would ever drop the face back.
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms the fallback for an expression raised after speech ended", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    // No expression was held, so this end releases nothing.
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("avatar:expression", { expressionId: "exp_sad" });
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
   it("releases a held expression when tts:audio:end arrives before the 8s cap", async () => {
     vi.useFakeTimers();
 

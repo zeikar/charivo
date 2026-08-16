@@ -19,12 +19,11 @@ const GAZE_MOUSE_SUSPEND_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
 const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
-// Ceiling on how long an expression is held, not the expected duration: the
-// timer is armed on every accepted expression (when the renderer supports
-// stopExpression) and races tts:audio:end; whichever comes first releases the
-// expression. It covers a spoken reply of ~15-20 words at typical TTS rate, so
-// it fires mid-speech when an utterance outlasts it, and it is the only
-// automatic release path when no audio events flow at all (text-only configs).
+// Fallback release for configs where no audio events flow at all — text-only
+// setups that never emit tts:audio:start/end, so nothing else would ever drop
+// the face back. It is NOT a general ceiling: while speech is playing,
+// tts:audio:end is the authority and this timer stands down, because a reply
+// longer than the window would otherwise reset the expression mid-sentence.
 // Internal constant, no public knob by design.
 const EXPRESSION_HOLD_MS = 8_000;
 
@@ -55,6 +54,8 @@ export class RenderManager implements IRenderManager {
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
   private expressionReleaseTimer?: ReturnType<typeof setTimeout>;
+  /** True between tts:audio:start and tts:audio:end. */
+  private isSpeaking = false;
   private mouseTrackingSuspendedUntil = 0;
   private localGazeSuspendUntil = 0;
   private lastExpression?: { expressionId: string; at: number };
@@ -65,12 +66,17 @@ export class RenderManager implements IRenderManager {
   private readonly handleTtsAudioStart = (
     _data: EventMap["tts:audio:start"],
   ): void => {
+    // Speech is the authority on how long the expression is held from here:
+    // it ends at tts:audio:end, however long the utterance runs.
+    this.isSpeaking = true;
+    this.clearExpressionReleaseTimer();
     this.renderer.setRealtimeLipSync?.(true);
   };
 
   private readonly handleTtsAudioEnd = (
     _data: EventMap["tts:audio:end"],
   ): void => {
+    this.isSpeaking = false;
     this.deactivateRealtimeLipSync();
 
     // The speech this expression accompanied is over, so drop the face back
@@ -259,10 +265,7 @@ export class RenderManager implements IRenderManager {
       this.resumeMouseTrackingTimer = undefined;
     }
 
-    if (this.expressionReleaseTimer) {
-      clearTimeout(this.expressionReleaseTimer);
-      this.expressionReleaseTimer = undefined;
-    }
+    this.clearExpressionReleaseTimer();
 
     await this.renderer.destroy();
   }
@@ -306,12 +309,11 @@ export class RenderManager implements IRenderManager {
     this.renderer.playExpression(expressionId);
     this.lastExpression = { expressionId, at: now };
 
-    if (this.expressionReleaseTimer) {
-      clearTimeout(this.expressionReleaseTimer);
-      this.expressionReleaseTimer = undefined;
-    }
+    this.clearExpressionReleaseTimer();
 
-    if (this.hasExpressionRelease(this.renderer)) {
+    // Arming while speech is playing would race tts:audio:end and cut the
+    // expression off mid-sentence on any reply longer than the window.
+    if (this.hasExpressionRelease(this.renderer) && !this.isSpeaking) {
       this.expressionReleaseTimer = setTimeout(
         () => this.releaseExpressionNow(),
         EXPRESSION_HOLD_MS,
@@ -329,10 +331,7 @@ export class RenderManager implements IRenderManager {
    * and when disconnect() relinquishes the renderer early.
    */
   private releaseExpressionNow(): void {
-    if (this.expressionReleaseTimer) {
-      clearTimeout(this.expressionReleaseTimer);
-      this.expressionReleaseTimer = undefined;
-    }
+    this.clearExpressionReleaseTimer();
 
     if (!this.lastExpression) {
       return;
@@ -340,6 +339,13 @@ export class RenderManager implements IRenderManager {
 
     this.renderer.stopExpression?.();
     this.lastExpression = undefined;
+  }
+
+  private clearExpressionReleaseTimer(): void {
+    if (this.expressionReleaseTimer) {
+      clearTimeout(this.expressionReleaseTimer);
+      this.expressionReleaseTimer = undefined;
+    }
   }
 
   private applyMotion(motion: MotionSelection): boolean {
