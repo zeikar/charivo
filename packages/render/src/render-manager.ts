@@ -148,6 +148,11 @@ export class RenderManager implements IRenderManager {
     // be left with the mouth open after the bus is cleared.
     this.deactivateRealtimeLipSync();
 
+    // Detaching mid-utterance means tts:audio:end will never be seen, so the
+    // speaking state has to end here. Leaving it set would keep the fallback
+    // release disarmed for every expression this manager handles afterwards.
+    this.isSpeaking = false;
+
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
     this.eventBus.off("tts:lipsync:update", this.handleTtsLipsyncUpdate);

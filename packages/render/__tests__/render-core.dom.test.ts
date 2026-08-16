@@ -291,6 +291,30 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
+  it("re-arms the fallback after detaching mid-utterance", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+    bus.emit("tts:audio:start", {});
+
+    // The utterance ends while detached, so tts:audio:end is never seen. The
+    // speaking state must not survive into the next attachment, or the fallback
+    // stays disarmed for good.
+    manager.disconnect();
+
+    const nextBus = new TestEventBus();
+    manager.setEventBus(nextBus);
+    renderer.stopExpression.mockClear();
+    nextBus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
   it("releases a held expression when tts:audio:end arrives before the 8s cap", async () => {
     vi.useFakeTimers();
 

@@ -39,8 +39,10 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   the expression release described below
 - reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
 - automatically releases an applied expression via `stopExpression` when
-  `tts:audio:end` arrives or about 8 seconds after `avatar:expression` set
-  it, whichever happens first, if the renderer supports it — with
+  `tts:audio:end` arrives, however long the utterance runs, if the renderer
+  supports it; a roughly 8-second timer covers only configs where no audio
+  events flow at all (text-only setups) and stands down while speech is
+  playing — with
   `@charivo/render-live2d` the release fades `Add` and `Multiply`
   parameters back to the base face when their release duration (the
   expression's `FadeOutTime`) is positive (`Overwrite` parameters snap — an

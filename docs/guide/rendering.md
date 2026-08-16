@@ -60,10 +60,13 @@ In normal app code, wire the manager to `Charivo` rather than handling these
 events yourself.
 
 **Expression auto-release:** expressions triggered via `avatar:expression`
-are released automatically when `tts:audio:end` arrives or about 8 seconds
-after they were applied, whichever happens first, and the model fades back
+are released automatically when `tts:audio:end` arrives — however long the
+utterance runs — and the model fades back
 to its base face over the expression's `FadeOutTime` (1 second when the
-`.exp3.json` does not set one) instead of snapping. Two qualifications:
+`.exp3.json` does not set one) instead of snapping. A roughly 8-second timer
+is a fallback for configs where no audio events flow at all, such as
+text-only setups that never emit `tts:audio:start`/`tts:audio:end`; it does
+not run while speech is playing. Two qualifications:
 parameters using the `Add` or `Multiply` blend fade smoothly when their
 release duration is positive — an authored `FadeOutTime: 0` is honored as
 an instant release, a knob model authors have — while parameters using
