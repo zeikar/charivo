@@ -2723,3 +2723,52 @@ describe("createCharivo", () => {
     expect(charivo.isRealtimeModeEnabled()).toBe(false);
   });
 });
+
+describe("Charivo manager getters", () => {
+  it("exposes every attached manager", () => {
+    const charivo = new Charivo();
+    const renderer = new StubRenderManager();
+    const llm = new StubLLMManager();
+    const tts = new StubTTSManager();
+    const stt = new StubSTTManager();
+    const realtime = new StubRealtimeManager();
+
+    charivo.attachRenderer(renderer);
+    charivo.attachLLM(llm);
+    charivo.attachTTS(tts);
+    charivo.attachSTT(stt);
+    charivo.attachRealtime(realtime);
+
+    expect(charivo.getRenderManager()).toBe(renderer);
+    expect(charivo.getLLMManager()).toBe(llm);
+    expect(charivo.getTTSManager()).toBe(tts);
+    expect(charivo.getSTTManager()).toBe(stt);
+    expect(charivo.getRealtimeManager()).toBe(realtime);
+  });
+
+  it("returns undefined for every modality before anything is attached", () => {
+    const charivo = new Charivo();
+
+    expect(charivo.getRenderManager()).toBeUndefined();
+    expect(charivo.getLLMManager()).toBeUndefined();
+    expect(charivo.getTTSManager()).toBeUndefined();
+    expect(charivo.getSTTManager()).toBeUndefined();
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+  });
+
+  it("stops exposing a manager once it is detached", () => {
+    const charivo = createCharivo({
+      llm: new StubLLMManager(),
+      tts: new StubTTSManager(),
+    });
+
+    expect(charivo.getLLMManager()).toBeDefined();
+    expect(charivo.getTTSManager()).toBeDefined();
+
+    charivo.detachLLM();
+    charivo.detachTTS();
+
+    expect(charivo.getLLMManager()).toBeUndefined();
+    expect(charivo.getTTSManager()).toBeUndefined();
+  });
+});

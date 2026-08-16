@@ -589,6 +589,20 @@ export class Charivo {
   }
 
   /**
+   * Get the current TTS manager instance.
+   */
+  getTTSManager(): TTSManager | undefined {
+    return this.ttsManager;
+  }
+
+  /**
+   * Get the current LLM manager instance.
+   */
+  getLLMManager(): LLMManager | undefined {
+    return this.llmManager;
+  }
+
+  /**
    * Attach a Realtime manager to handle real-time conversation.
    * Automatically connects the event emitter and enables Realtime mode.
    */

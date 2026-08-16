@@ -96,6 +96,12 @@ The `Charivo` instance wires managers together:
 - `attachRealtime(realtimeManager)`
 - `detachLLM()`
 - `detachRenderer()`
+- `getRenderManager()`
+- `getLLMManager()`
+- `getTTSManager()`
+- `getSTTManager()`
+- `getRealtimeManager()`
+- `getCurrentCharacter()`
 - `setCharacter(character)`
 - `userSay(text)`
 - `dispose()`
