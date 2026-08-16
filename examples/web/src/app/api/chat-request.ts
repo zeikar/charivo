@@ -14,6 +14,7 @@ import type { LLMMessage, LLMToolCall, ToolDefinition } from "@charivo/core";
 import {
   CHAT_MAX_MESSAGE_CHARS,
   CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOL_CALL_ID_CHARS,
   CHAT_MAX_TOOL_CALLS_BYTES,
   CHAT_MAX_TOOL_CALLS_PER_MESSAGE,
   CHAT_MAX_TOOLS,
@@ -156,6 +157,12 @@ function parseChatMessage(
     if (typeof toolCallId !== "string" || toolCallId.length === 0) {
       return fail(
         `messages[${index}] with role "tool" requires a non-empty string toolCallId`,
+      );
+    }
+    // Forwarded to the provider as paid input, and not covered by the content cap.
+    if (toolCallId.length > CHAT_MAX_TOOL_CALL_ID_CHARS) {
+      return fail(
+        `messages[${index}].toolCallId exceeds ${CHAT_MAX_TOOL_CALL_ID_CHARS} characters`,
       );
     }
     return ok({ role: "tool", content, toolCallId });

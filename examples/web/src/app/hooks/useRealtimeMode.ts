@@ -6,6 +6,7 @@ import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import { REALTIME_MODEL, REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
+import { createSessionCap } from "./session-cap";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -31,14 +32,12 @@ export function useRealtimeMode() {
     avatarCatalog,
   } = useChatStore();
 
-  const sessionCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionCapRef = useRef(createSessionCap());
+  const sessionCap = sessionCapRef.current;
 
   const clearSessionCap = useCallback(() => {
-    if (sessionCapRef.current !== null) {
-      clearTimeout(sessionCapRef.current);
-      sessionCapRef.current = null;
-    }
-  }, []);
+    sessionCap.clear();
+  }, [sessionCap]);
 
   const disableRealtimeMode = useCallback(async () => {
     clearSessionCap();
@@ -131,13 +130,7 @@ export function useRealtimeMode() {
       // OpenAI directly — the server is out of the loop and cannot hang up. So
       // this timer is what bounds an ordinary visitor's session cost. It is a
       // courtesy cap, not an abuse control: see `api/demo-limits.ts`.
-      clearSessionCap();
-      sessionCapRef.current = setTimeout(() => {
-        logRealtimeMode("session-cap.reached", {
-          ms: REALTIME_SESSION_MAX_MS,
-        });
-        void disableRealtimeMode();
-      }, REALTIME_SESSION_MAX_MS);
+      sessionCap.arm(REALTIME_SESSION_MAX_MS);
 
       console.log("✅ Realtime mode enabled");
     } catch (error) {
@@ -161,12 +154,21 @@ export function useRealtimeMode() {
     setRealtimeError,
     resetRealtimeUiState,
     avatarCatalog,
-    clearSessionCap,
-    disableRealtimeMode,
+    sessionCap,
   ]);
 
-  // An unmount mid-session must not leave the cap timer armed.
-  useEffect(() => clearSessionCap, [clearSessionCap]);
+  // The cap must call the CURRENT teardown, not the one that existed when it was
+  // armed -- see session-cap.ts. Arming happens inside enableRealtimeMode, where
+  // isRealtimeMode is still false, so the teardown captured there would no-op.
+  useEffect(() => {
+    sessionCap.update(() => {
+      logRealtimeMode("session-cap.reached", { ms: REALTIME_SESSION_MAX_MS });
+      return disableRealtimeMode();
+    });
+  }, [sessionCap, disableRealtimeMode]);
+
+  // An unmount mid-session must not leave the cap armed.
+  useEffect(() => sessionCap.clear, [sessionCap]);
 
   const toggleRealtimeMode = useCallback(async () => {
     if (isRealtimeMode) {

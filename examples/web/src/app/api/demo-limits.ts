@@ -7,10 +7,14 @@
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot
- * repoint the key at an expensive model, supply their own system prompt, or
- * make one request cost meaningful money. Bounding *total* volume is a
- * different problem and is left to a per-project spend limit on the OpenAI
- * side.
+ * repoint the key at an expensive model, raise the output ceiling, or make one
+ * request cost meaningful money. Bounding *total* volume is a different problem
+ * and is left to a per-project spend limit on the OpenAI side.
+ *
+ * `instructions` is the deliberate exception: the demo composes them in the
+ * browser from the avatar catalog of whichever model finished loading, so the
+ * server cannot rebuild them. They are size-capped, not pinned — a caller can
+ * still supply their own system prompt on the pinned model.
  */
 import { CHARACTER_CONFIGS } from "../config/characters";
 
@@ -44,6 +48,9 @@ export const REALTIME_MAX_TOOLS = 24;
 
 /** Bounds tool JSON Schemas, which are attacker-supplied and unbounded. */
 export const REALTIME_MAX_TOOLS_BYTES = 32_768;
+
+/** The only values the Realtime API accepts; anything else is rejected. */
+export const REALTIME_TOOL_CHOICES = ["auto", "none", "required"] as const;
 
 /** TTS is billed per input character. */
 export const TTS_MAX_TEXT_CHARS = 2_000;
@@ -94,3 +101,4 @@ export const CHAT_MAX_TOOLS = 24;
 export const CHAT_MAX_TOOL_CALLS_PER_MESSAGE = 16;
 export const CHAT_MAX_TOOLS_BYTES = 32_768;
 export const CHAT_MAX_TOOL_CALLS_BYTES = 16_384;
+export const CHAT_MAX_TOOL_CALL_ID_CHARS = 256;

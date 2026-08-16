@@ -13,6 +13,7 @@ import {
   REALTIME_MAX_TOOLS,
   REALTIME_MAX_TOOLS_BYTES,
   REALTIME_MODEL,
+  REALTIME_TOOL_CHOICES,
   REALTIME_TRANSCRIPTION_MODEL,
   TTS_ALLOWED_VOICES,
 } from "../demo-limits";
@@ -52,12 +53,30 @@ function buildSessionConfig(
         error: `session.tools exceeds ${REALTIME_MAX_TOOLS} entries`,
       };
     }
-    if (JSON.stringify(tools).length > REALTIME_MAX_TOOLS_BYTES) {
+    // UTF-8 bytes, not `.length` — a non-ASCII schema is bigger on the wire
+    // than its UTF-16 code-unit count suggests.
+    if (
+      new TextEncoder().encode(JSON.stringify(tools)).length >
+      REALTIME_MAX_TOOLS_BYTES
+    ) {
       return {
         ok: false,
         error: `session.tools exceeds ${REALTIME_MAX_TOOLS_BYTES} bytes`,
       };
     }
+  }
+
+  const toolChoice = requested.toolChoice;
+  if (
+    toolChoice !== undefined &&
+    !REALTIME_TOOL_CHOICES.includes(
+      toolChoice as (typeof REALTIME_TOOL_CHOICES)[number],
+    )
+  ) {
+    return {
+      ok: false,
+      error: `session.toolChoice must be one of ${REALTIME_TOOL_CHOICES.join(", ")}`,
+    };
   }
 
   // Unknown voices fall back to the provider default rather than erroring:
@@ -75,9 +94,7 @@ function buildSessionConfig(
       maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
       ...(instructions !== undefined ? { instructions } : {}),
       ...(tools !== undefined ? { tools } : {}),
-      ...(requested.toolChoice !== undefined
-        ? { toolChoice: requested.toolChoice }
-        : {}),
+      ...(toolChoice !== undefined ? { toolChoice } : {}),
       ...(voice !== undefined ? { voice } : {}),
       ...(requested.inputAudioTranscription?.enabled
         ? {

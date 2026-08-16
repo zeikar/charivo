@@ -23,6 +23,7 @@ import {
 } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
 import { REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
+import { createSessionCap } from "./session-cap";
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import type { Live2DRenderer } from "@charivo/render-live2d";
@@ -219,7 +220,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const renderManagerRef = useRef<RenderManager | null>(null);
   const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
-  const recordingCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingCapRef = useRef(createSessionCap());
   const currentCharacterRef = useRef(character);
   const syncedCharacterIdRef = useRef<string | null>(null);
   const isRealtimeRefreshPendingRef = useRef(false);
@@ -1022,12 +1023,11 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     return rendererRef.current?.getAvailableMotionGroups() ?? {};
   }, []);
 
+  const recordingCap = recordingCapRef.current;
+
   const clearRecordingCap = useCallback(() => {
-    if (recordingCapRef.current !== null) {
-      clearTimeout(recordingCapRef.current);
-      recordingCapRef.current = null;
-    }
-  }, []);
+    recordingCap.clear();
+  }, [recordingCap]);
 
   const handleStopRecording = useCallback(async () => {
     clearRecordingCap();
@@ -1070,18 +1070,22 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       // session for as long as it records, so an abandoned tab bills until the
       // browser is closed. Same courtesy cap as a realtime voice session; on
       // the batch and browser-native paths it simply bounds the clip.
-      clearRecordingCap();
-      recordingCapRef.current = setTimeout(() => {
-        void handleStopRecording();
-      }, REALTIME_SESSION_MAX_MS);
+      recordingCap.arm(REALTIME_SESSION_MAX_MS);
     } catch (error) {
       setSttError(error instanceof Error ? error.message : "Recording failed");
       setIsRecording(false);
     }
-  }, [setIsRecording, setSttError, clearRecordingCap, handleStopRecording]);
+  }, [setIsRecording, setSttError, recordingCap]);
 
-  // An unmount mid-recording must not leave the cap timer armed.
-  useEffect(() => clearRecordingCap, [clearRecordingCap]);
+  // The cap must call the CURRENT stop handler, not the one that existed when it
+  // was armed -- see session-cap.ts. Arming happens inside handleStartRecording,
+  // where isRecording is still false, so the handler captured there would no-op.
+  useEffect(() => {
+    recordingCap.update(handleStopRecording);
+  }, [recordingCap, handleStopRecording]);
+
+  // An unmount mid-recording must not leave the cap armed.
+  useEffect(() => recordingCap.clear, [recordingCap]);
 
   return {
     handleSend,

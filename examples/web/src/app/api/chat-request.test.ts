@@ -3,6 +3,7 @@ import { parseChatRequest, requiresToolCallingPath } from "./chat-request";
 import {
   CHAT_MAX_MESSAGE_CHARS,
   CHAT_MAX_MESSAGES,
+  CHAT_MAX_TOOL_CALL_ID_CHARS,
   CHAT_MAX_TOOL_CALLS_BYTES,
   CHAT_MAX_TOOL_CALLS_PER_MESSAGE,
   CHAT_MAX_TOOLS,
@@ -420,6 +421,20 @@ describe("parseChatRequest cost bounds", () => {
               arguments: { blob: "x".repeat(CHAT_MAX_TOOL_CALLS_BYTES + 1) },
             },
           ],
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an oversized toolCallId on a tool result", () => {
+    const result = parseChatRequest({
+      messages: [
+        {
+          role: "tool",
+          content: "{}",
+          toolCallId: "x".repeat(CHAT_MAX_TOOL_CALL_ID_CHARS + 1),
         },
       ],
     });

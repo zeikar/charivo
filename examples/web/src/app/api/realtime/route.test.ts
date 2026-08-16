@@ -14,6 +14,7 @@ import {
   REALTIME_MAX_INSTRUCTIONS_CHARS,
   REALTIME_MAX_OUTPUT_TOKENS,
   REALTIME_MAX_TOOLS,
+  REALTIME_MAX_TOOLS_BYTES,
   REALTIME_MODEL,
 } from "../demo-limits";
 
@@ -144,5 +145,43 @@ describe("examples/web /api/realtime route", () => {
     );
 
     expect(createSession.mock.calls[0][0].session.voice).toBeUndefined();
+  });
+
+  it("rejects a toolChoice outside the accepted set", async () => {
+    const response = await POST(
+      postRequest({
+        transport: "webrtc",
+        session: { provider: "openai", toolChoice: "whatever-i-want" },
+      }) as never,
+    );
+
+    expect(response.status).toBe(400);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("measures the tool budget in UTF-8 bytes, not UTF-16 code units", async () => {
+    // Each of these is 1 UTF-16 code unit but 3 UTF-8 bytes, so a payload that
+    // looks legal by .length is over the real wire budget.
+    const filler = "\u4e00".repeat(REALTIME_MAX_TOOLS_BYTES - 200);
+    const response = await POST(
+      postRequest({
+        transport: "webrtc",
+        session: {
+          provider: "openai",
+          tools: [
+            {
+              type: "function",
+              name: "noop",
+              description: filler,
+              parameters: { type: "object", properties: {} },
+            },
+          ],
+        },
+      }) as never,
+    );
+
+    expect(filler.length).toBeLessThan(REALTIME_MAX_TOOLS_BYTES);
+    expect(response.status).toBe(400);
+    expect(createSession).not.toHaveBeenCalled();
   });
 });
