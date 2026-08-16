@@ -386,23 +386,35 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     let sttManager: STTManager | null = null;
 
     const teardown = async () => {
-      setCharivo(null);
-      sttManagerRef.current = null;
-      rendererRef.current = null;
-      renderManagerRef.current = null;
-      llmManagerRef.current = null;
-      syncedCharacterIdRef.current = null;
-      setIsLoading(false);
-      setIsSpeaking(false);
-      setIsRecording(false);
-      setIsTranscribing(false);
-      setIsConnecting(false);
-      setIsConnected(false);
-      setIsRealtimeMode(false);
-      setRealtimeState(null);
-      setAvatarCatalog({ expressions: [], motions: {} });
-      resetAvatarDebug();
-      resetRealtimeUiState();
+      // A dep change starts the next initialize() while this one may still be
+      // unwinding at an await, so the shared refs and store state can already
+      // belong to a newer effect. Clear them only while this effect is still
+      // the owner — renderManagerRef is set first and by every run, so it
+      // stands in for the whole set. Disposing this effect's own managers
+      // below stays unconditional. Same guarded-assign idiom as
+      // examples/companion's teardownThisRender.
+      if (renderManagerRef.current === renderManager) {
+        setCharivo(null);
+        rendererRef.current = null;
+        renderManagerRef.current = null;
+        llmManagerRef.current = null;
+        syncedCharacterIdRef.current = null;
+        setIsLoading(false);
+        setIsSpeaking(false);
+        setIsRecording(false);
+        setIsTranscribing(false);
+        setIsConnecting(false);
+        setIsConnected(false);
+        setIsRealtimeMode(false);
+        setRealtimeState(null);
+        setAvatarCatalog({ expressions: [], motions: {} });
+        resetAvatarDebug();
+        resetRealtimeUiState();
+      }
+
+      if (sttManagerRef.current === sttManager) {
+        sttManagerRef.current = null;
+      }
 
       if (ttsManager) {
         try {
@@ -524,12 +536,17 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         );
         if (nextSttTranscriber) {
           sttManager = createSTTManager(nextSttTranscriber);
-          sttManagerRef.current = sttManager;
         }
 
         if (disposed) {
           await teardown();
           return;
+        }
+
+        // Published only once this effect is known to still be current, so a
+        // stale run cannot hand its transcriber to a newer session.
+        if (sttManager) {
+          sttManagerRef.current = sttManager;
         }
 
         // TTS and STT are user-selectable and may resolve to nothing, so both
