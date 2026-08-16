@@ -182,7 +182,7 @@ charivo.setCharacter({
 // gesture (e.g. a button click), on localhost or https — the mic needs it.
 const realtime = charivo.getRealtimeManager()!;
 const base = buildRealtimeSessionConfig({
-  character: charivo.getCharacter() ?? undefined,
+  character: charivo.getCurrentCharacter(),
 });
 
 await realtime.startSession({
