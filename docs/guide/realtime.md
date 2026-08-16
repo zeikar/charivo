@@ -234,19 +234,22 @@ Use a result projector when you want those tool results bridged back into
 
 ## Audio Output Lifecycle
 
-`tts:audio:start` / `tts:audio:end` mark when the character's voice is actually
-audible, not when the server finished producing it. That distinction matters
-because consumers act on the end: `RenderManager` releases a held expression
-there and stops lip-sync, so reporting it early resets the avatar's face partway
-through its own reply.
+`tts:audio:end` reports that playback finished, not that the server finished
+producing the audio. That distinction matters because consumers act on it:
+`RenderManager` releases a held expression there and stops lip-sync, so reporting
+it early resets the avatar's face partway through its own reply.
 
-Over WebRTC the two are seconds apart, and only one server event describes real
-playback:
+(`tts:audio:start` is looser by design — the legacy transport also raises it on
+the first audio chunk arriving, so treat it as "output has begun", not as a
+precise audibility timestamp.)
+
+Send completion can precede playback completion by a wide margin, and only the
+output-buffer events describe playback itself:
 
 | Event | Meaning | Ends audio output? |
 | --- | --- | --- |
 | `response.audio.done`, `response.output_audio.done` | the server finished SENDING audio; the browser is still playing what it buffered | no |
-| `output_audio_buffer.stopped` | playback finished | yes |
+| `output_audio_buffer.stopped` | playback ran to natural completion | yes |
 | `output_audio_buffer.cleared` | an interruption discarded the buffer | yes |
 
 Both WebRTC transports report the end from the output-buffer events. Note that

@@ -307,7 +307,8 @@ When connected, the manager relays:
 - `tts:audio:end`
 
 `tts:audio:end` reports that playback finished, not that the server finished
-sending. Over WebRTC those are seconds apart: the transports derive it from
+sending — send completion can precede it by a wide margin. The transports derive
+it from
 `output_audio_buffer.stopped` (and `output_audio_buffer.cleared` on an
 interruption), never from `response.audio.done` / `response.output_audio.done`.
 Consumers act on this event — `RenderManager` releases a held expression and
