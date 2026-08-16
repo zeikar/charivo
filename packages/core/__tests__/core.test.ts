@@ -213,6 +213,38 @@ describe("EventBus", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("still dispatches to a listener whose predecessor unsubscribed mid-emit", () => {
+    // Regression: emit() used to iterate the live array, so a listener
+    // calling off() (as RenderManager.disconnect() does, six at once)
+    // spliced the array and shifted the NEXT listener out of the dispatch.
+    const bus = new EventBus();
+    const payload = {
+      message: {
+        id: "1",
+        content: "hello",
+        timestamp: new Date(),
+        type: "user" as const,
+      },
+    };
+
+    const selfRemoving = vi.fn(() => {
+      bus.off("message:sent", selfRemoving);
+    });
+    const next = vi.fn();
+
+    bus.on("message:sent", selfRemoving);
+    bus.on("message:sent", next);
+    bus.emit("message:sent", payload);
+
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(1);
+
+    // The unsubscribe itself still sticks for future emits.
+    bus.emit("message:sent", payload);
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+
   it("isolates a throwing listener from the listeners behind it", () => {
     const bus = new EventBus();
     const consoleError = vi

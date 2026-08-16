@@ -454,7 +454,20 @@ export interface RealtimeManager {
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
-export type EventMap = {
+/**
+ * An interface (not a type alias) so third-party packages can extend it via
+ * declaration merging — a custom renderer or manager declares its own events
+ * without a core change:
+ *
+ * ```ts
+ * declare module "@charivo/core" {
+ *   interface EventMap {
+ *     "vrm:blendshape": { name: string; weight: number };
+ *   }
+ * }
+ * ```
+ */
+export interface EventMap {
   "message:sent": { message: Message };
   "message:received": { message: Message };
   /**
@@ -538,7 +551,7 @@ export type EventMap = {
   "avatar:gaze": GazeCoordinates;
   "realtime:error": { error: Error };
   "llm:error": { error: Error };
-};
+}
 
 export interface CharivoEventEmitter {
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void;

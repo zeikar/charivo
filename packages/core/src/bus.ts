@@ -19,7 +19,10 @@ export class EventBus implements CharivoEventBus {
     // Each listener is isolated: one that throws must not stop the listeners
     // queued behind it, and emit() must stay non-throwing for its callers,
     // which are frequently mid-teardown or inside a provider callback.
-    this.listeners[event]?.forEach((listener) => {
+    // Iterate a snapshot: a listener that calls off() mid-emit (e.g.
+    // RenderManager.disconnect() removing six at once) splices the live
+    // array, which would shift the next listener out of this dispatch.
+    [...(this.listeners[event] ?? [])].forEach((listener) => {
       try {
         listener(data);
       } catch (error) {
