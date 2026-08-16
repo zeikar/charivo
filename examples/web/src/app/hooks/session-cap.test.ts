@@ -56,7 +56,6 @@ describe("createSessionCap", () => {
 
     vi.advanceTimersByTime(200_000);
     expect(teardown).not.toHaveBeenCalled();
-    expect(cap.isArmed()).toBe(false);
   });
 
   it("keeps only the most recent countdown when re-armed", () => {
@@ -74,18 +73,6 @@ describe("createSessionCap", () => {
 
     vi.advanceTimersByTime(60_000);
     expect(teardown).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports armed state and disarms itself after firing", () => {
-    const cap = createSessionCap();
-    cap.update(vi.fn());
-
-    expect(cap.isArmed()).toBe(false);
-    cap.arm(90_000);
-    expect(cap.isArmed()).toBe(true);
-
-    vi.advanceTimersByTime(90_000);
-    expect(cap.isArmed()).toBe(false);
   });
 
   it("is inert when armed with no teardown registered", () => {

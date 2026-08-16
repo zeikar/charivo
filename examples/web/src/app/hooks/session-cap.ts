@@ -18,8 +18,6 @@ export interface SessionCap {
   arm(ms: number): void;
   /** Cancel a pending countdown. Safe when nothing is armed. */
   clear(): void;
-  /** Whether a countdown is currently pending. */
-  isArmed(): boolean;
 }
 
 export function createSessionCap(): SessionCap {
@@ -45,8 +43,5 @@ export function createSessionCap(): SessionCap {
       }, ms);
     },
     clear,
-    isArmed() {
-      return timer !== null;
-    },
   };
 }

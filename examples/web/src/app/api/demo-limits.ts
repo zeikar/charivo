@@ -1,9 +1,14 @@
 /**
  * Cost boundaries for the public demo deployment.
  *
- * Every route under `src/app/api/` is an unauthenticated proxy to a paid OpenAI
- * key. There is no auth, no per-IP quota, and no rate limiting — read the
- * README's "Deploying this demo" section before copying any of it.
+ * Every route under `src/app/api/` is an unauthenticated proxy. All of them
+ * except `/api/chat-openclaw` — which forwards to `OPENCLAW_BASE_URL` with
+ * `OPENCLAW_TOKEN` — spend a paid OpenAI key. There is no auth, no per-IP quota,
+ * and no rate limiting — read the README's "Deploying this demo" section before
+ * copying any of it.
+ *
+ * The limits below cover the OpenAI-backed routes; `/api/chat-openclaw` shares
+ * only the `chat-request` payload bounds.
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot

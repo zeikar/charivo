@@ -18,10 +18,13 @@ current architecture as it is actually shipped:
 > **These API routes have no authentication and no rate limiting. Do not deploy
 > them as-is.**
 
-Every route under `src/app/api/` puts your paid `OPENAI_API_KEY` behind a public
-URL that anyone can POST to. That is fine for `pnpm dev:web` on your own machine
-and it is what the hosted demo accepts deliberately — it is not a production
-template, however much it looks like one.
+Every route under `src/app/api/` is an unauthenticated proxy that anyone can
+POST to. All of them except `/api/chat-openclaw` spend your paid
+`OPENAI_API_KEY`; `/api/chat-openclaw` forwards to whatever `OPENCLAW_BASE_URL`
+points at using `OPENCLAW_TOKEN`, so it exposes that credential and that backend
+instead. That is fine for `pnpm dev:web` on your own machine, and it is what the
+hosted demo accepts deliberately — it is not a production template, however much
+it looks like one.
 
 What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
 
