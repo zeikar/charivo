@@ -295,7 +295,11 @@ in logs and wrong on screen.
 
 `updateSession(...)` is safe to call at any point. While no session is active it
 just caches the configuration for the next `startSession(...)`. While one is
-active it patches in place. Updates that arrive while a patch is in flight do
+active it patches in place — with one exception: while the connection is
+recovering the status still reads `"active"`, and an update is cached rather
+than sent, to be picked up by the next reconnect attempt's effective config.
+
+Updates that arrive while a patch is in flight do
 not each get their own round trip: they collapse into one follow-up refresh
 carrying the latest configuration, so a burst costs at most the in-flight patch
 plus one more. A patch that fails leaves the previously active configuration in
