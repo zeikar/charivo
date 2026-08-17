@@ -1,5 +1,95 @@
 # @charivo/core
 
+## 0.27.0
+
+### Minor Changes
+
+- f2ddcbe: Real request cancellation for the cascade path, and a public `charivo.interrupt()`.
+
+  **@charivo/core (minor)**
+  - `LLMClient.call` and `callWithTools` take an optional trailing
+    `LLMCallOptions { signal?: AbortSignal }`. Existing implementations keep
+    working unchanged — a `call(messages)` implementation still satisfies the
+    contract, and a client may ignore the signal.
+  - `GenerateResponseOptions.signal` carries that signal through a manager;
+    `isCancelled` still only gates new work between steps.
+  - Latest-wins supersession now aborts the superseded turn's in-flight LLM
+    request through a per-turn `AbortController`. A client that honors the
+    signal stops waiting on the provider; one that ignores it settles late and
+    the stale check swallows the settlement. The superseded `userSay` still
+    resolves.
+  - New `charivo.interrupt()`: the cascade counterpart of
+    `RealtimeManager.interrupt()`. Cuts off the in-progress turn (LLM request
+    aborted, `turn:cancelled` emitted) and stops the exact TTS manager the turn
+    is speaking on — mid-turn `attachTTS()` is accounted for. No precondition:
+    when idle it still stops the attached TTS manager, resolves, and emits
+    nothing. It does not delegate in realtime mode; use
+    `getRealtimeManager()?.interrupt()` there. `turn:cancelled` now has two
+    causes (supersession or `interrupt()`); its payload is unchanged.
+  - New export `fetchWithTimeout` (with `DEFAULT_FETCH_TIMEOUT_MS` and
+    `FetchWithTimeoutOptions`): the shared fetch wrapper with an internal
+    timeout, optional external `AbortSignal` (first-wins abort-source
+    classification — an external abort is rethrown as-is, never misreported as
+    a timeout), and a `mapError` hook.
+
+  **@charivo/llm (minor)**
+  - `LLMManager.generateResponse` forwards `options.signal` to the client, and
+    the tool loop passes the same signal to every `callWithTools` round.
+  - The remote client threads the signal into its fetch, so aborting cancels
+    the underlying HTTP request; the rejection is the abort reason, not a
+    timeout error.
+
+  **@charivo/tts (patch)**
+  - `stop()` now also cancels a `speak()` still starting up (the pre-speech
+    stop, or audio synthesis): that call resolves silently and never begins
+    playback, whether or not it had already opened an audio session. A newer
+    `speak()` cancels a still-starting older one the same way, and in-flight
+    player stops are serialized so a late-settling stop can never tear down
+    newer playback. Previously a stop landing in the startup window found
+    nothing to stop and the pending `speak()` went on to start audio.
+
+  **@charivo/stt, @charivo/realtime, @charivo/server (patch)**
+  - Internal refactor: the per-package fetch-timeout helpers were replaced by
+    core's shared `fetchWithTimeout`. No behavior change — messages, timeout
+    values, and error mapping are preserved.
+
+- 8dbacf9: Make `EventMap` an interface so third parties can extend it.
+
+  `EventMap` was a closed type alias, so a package adding its own renderer or
+  manager had no way to carry custom events through the Charivo event bus without
+  a core change. As an interface it supports declaration merging:
+
+  ```ts
+  import "@charivo/core";
+
+  declare module "@charivo/core" {
+    interface EventMap {
+      "vrm:blendshape": { name: string; weight: number };
+    }
+  }
+  ```
+
+  The `import` line is load-bearing: it makes the declaring file a module so the
+  block augments the package. Without it, in a standalone `.d.ts`, the same block
+  shadows `@charivo/core` and every other export disappears.
+
+  Every existing usage (`keyof EventMap`, indexed access, the
+  `CharivoEventBus`/`CharivoEventEmitter` signatures) compiles unchanged. The one
+  observable difference: an interface has no implicit index signature, so code
+  that assigned `EventMap` to `Record<string, ...>` would now need `keyof`-based
+  typing — nothing in this repo did.
+
+### Patch Changes
+
+- 8dbacf9: `EventBus.emit()` now iterates a snapshot of the listener list.
+
+  It used to iterate the live array, so a listener that called `off()` during
+  dispatch spliced the array and shifted the next listener out of that emit.
+  `RenderManager.disconnect()` removes six listeners at once and runs on the
+  `attachRenderer()` replacement path, which is exactly this shape. Listeners
+  removed mid-emit still fire for that emit; the removal applies from the next
+  one.
+
 ## 0.26.0
 
 ### Minor Changes
