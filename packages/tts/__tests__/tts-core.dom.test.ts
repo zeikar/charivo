@@ -122,6 +122,200 @@ class ControllableWebPlayer {
   }
 }
 
+interface Gate<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
+/** A promise the test settles by hand, to hold an operation pending. */
+function createGate<T>(): Gate<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((settle, fail) => {
+    resolve = settle;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+/**
+ * Yields a full task turn (a setTimeout hop, not a microtask), so chained
+ * microtasks AND already-queued timers settle before the assertion runs. Do
+ * not simplify to `await Promise.resolve()`.
+ */
+const nextTask = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Observes a promise's settlement without making the test wait for it, so
+ * "resolves promptly" can be asserted instead of timing out.
+ */
+function trackSettlement(promise: Promise<unknown>): {
+  state: "pending" | "resolved" | "rejected";
+} {
+  const tracked: { state: "pending" | "resolved" | "rejected" } = {
+    state: "pending",
+  };
+  promise.then(
+    () => {
+      tracked.state = "resolved";
+    },
+    () => {
+      tracked.state = "rejected";
+    },
+  );
+  return tracked;
+}
+
+/** Collects unhandled rejections raised while `run` executes. */
+async function captureUnhandledRejections(
+  run: () => Promise<void>,
+): Promise<unknown[]> {
+  const captured: unknown[] = [];
+  const capture = (reason: unknown): void => {
+    captured.push(reason);
+  };
+
+  process.on("unhandledRejection", capture);
+  try {
+    await run();
+    // Deliberate slack window: two task turns give Node room to report a
+    // late unhandled rejection before we stop listening.
+    await nextTask();
+    await nextTask();
+  } finally {
+    process.off("unhandledRejection", capture);
+  }
+
+  return captured;
+}
+
+/**
+ * Audio-mode player whose stop() and generateAudio() can be held pending, so
+ * a test can land stop() inside one of speak()'s startup windows -- before
+ * any playback exists for stop() to cancel.
+ */
+class ControllableAudioPlayer {
+  playbackMode = "audio" as const;
+  audioMimeType = "audio/wav";
+  /** Synthesis gates by text; generateAudio() registers one per call. */
+  readonly synthesis = new Map<string, Gate<ArrayBuffer>>();
+  private stopGate: Gate<void> | null = null;
+  private holdsStops = false;
+
+  speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+
+  generateAudio = vi.fn((text: string, _options?: unknown) => {
+    const gate = createGate<ArrayBuffer>();
+    this.synthesis.set(text, gate);
+    return gate.promise;
+  });
+
+  stop = vi.fn(() => {
+    if (!this.holdsStops) {
+      return Promise.resolve();
+    }
+    this.stopGate ??= createGate<void>();
+    return this.stopGate.promise;
+  });
+
+  /** Every stop() from now on stays pending until releaseStop()/failStop(). */
+  holdStops(): void {
+    this.holdsStops = true;
+  }
+
+  releaseStop(): void {
+    this.stopGate?.resolve();
+  }
+
+  failStop(error: Error): void {
+    this.stopGate?.reject(error);
+  }
+
+  settleSynthesis(text: string): void {
+    this.synthesis.get(text)?.resolve(new Uint8Array([1, 2, 3]).buffer);
+  }
+
+  failSynthesis(text: string, error: Error): void {
+    this.synthesis.get(text)?.reject(error);
+  }
+}
+
+/**
+ * Web-speech player whose stop() completes asynchronously: the player-side
+ * cancellation lands only when that stop settles, and it then cancels
+ * whichever utterance is active at that moment. The TTSPlayer contract
+ * permits this, so the manager must never dispatch new speech while a stop
+ * it issued is still pending.
+ */
+class DelayedStopWebPlayer {
+  playbackMode = "web-speech" as const;
+  /** Texts the delayed player-side cancellation actually cancelled. */
+  readonly cancelledTexts: string[] = [];
+  private pending = new Map<string, () => void>();
+  private activeText: string | null = null;
+  private deferNext = false;
+  private settleDeferredStop: (() => void) | null = null;
+
+  speak = vi.fn((text: string, _options?: unknown) => {
+    this.activeText = text;
+    return new Promise<void>((resolve) => {
+      this.pending.set(text, resolve);
+    });
+  });
+
+  stop = vi.fn(() => {
+    if (!this.deferNext) {
+      this.cancelActive();
+      return Promise.resolve();
+    }
+
+    this.deferNext = false;
+    return new Promise<void>((resolve) => {
+      this.settleDeferredStop = () => {
+        this.cancelActive();
+        resolve();
+      };
+    });
+  });
+
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+
+  /** Holds the next stop() pending until settleStop(). */
+  deferNextStop(): void {
+    this.deferNext = true;
+  }
+
+  /** The delayed player-side cancellation finally lands. */
+  settleStop(): void {
+    const settle = this.settleDeferredStop;
+    this.settleDeferredStop = null;
+    settle?.();
+  }
+
+  /** Simulates the browser's onend callback arriving for `text`. */
+  settle(text: string): void {
+    this.pending.get(text)?.();
+    this.pending.delete(text);
+    if (this.activeText === text) {
+      this.activeText = null;
+    }
+  }
+
+  private cancelActive(): void {
+    if (this.activeText === null) {
+      return;
+    }
+
+    this.cancelledTexts.push(this.activeText);
+    this.settle(this.activeText);
+  }
+}
+
 class ExplicitAudioPlayerWithWebName {
   playbackMode = "audio" as const;
   speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
@@ -358,6 +552,307 @@ describe("TTSManagerImpl stop() settles interrupted playback", () => {
     await manager.stop();
 
     await expect(speaking).resolves.toBeUndefined();
+  });
+});
+
+describe("TTSManagerImpl stop() cancels a speak() still starting up", () => {
+  beforeEach(installAudioMocks);
+  afterEach(restoreAudioMocks);
+
+  it("resolves a speak() whose synthesis is still pending when stop() lands", async () => {
+    const player = new ControllableAudioPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    const speaking = manager.speak("hello");
+    const speakingState = trackSettlement(speaking);
+    await vi.waitFor(() => expect(player.synthesis.has("hello")).toBe(true));
+
+    await manager.stop();
+    await nextTask();
+
+    // The synthesis gate is deliberately still pending: the cancelled speak()
+    // must settle on the stop, not on the provider's own timing.
+    expect(speakingState.state).toBe("resolved");
+    await expect(speaking).resolves.toBeUndefined();
+    expect(MockAudio.instances).toHaveLength(0);
+    expect(emitter.emit).not.toHaveBeenCalledWith("tts:audio:start", {});
+  });
+
+  it("resolves a speak() still awaiting its own pre-speech stop", async () => {
+    const player = new ControllableAudioPlayer();
+    player.holdStops();
+    const manager = createTTSManager(player);
+
+    const speaking = manager.speak("hello");
+    const speakingState = trackSettlement(speaking);
+
+    const stopping = manager.stop();
+    await nextTask();
+
+    expect(speakingState.state).toBe("resolved");
+    await expect(speaking).resolves.toBeUndefined();
+    expect(player.generateAudio).not.toHaveBeenCalled();
+
+    player.releaseStop();
+    await stopping;
+  });
+
+  it("consumes a pre-speech stop that rejects after the speak() was cancelled", async () => {
+    const player = new ControllableAudioPlayer();
+    player.holdStops();
+    const manager = createTTSManager(player);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const speaking = manager.speak("hello");
+    const speakingState = trackSettlement(speaking);
+
+    const unhandled = await captureUnhandledRejections(async () => {
+      const stopping = manager.stop();
+      await nextTask();
+
+      expect(speakingState.state).toBe("resolved");
+      await expect(speaking).resolves.toBeUndefined();
+
+      player.failStop(new Error("late stop failure"));
+      await expect(stopping).rejects.toMatchObject({
+        code: "CHARIVO_PROVIDER_ERROR",
+      });
+    });
+
+    expect(unhandled).toEqual([]);
+  });
+
+  it("consumes a synthesis that rejects after the speak() was cancelled", async () => {
+    const player = new ControllableAudioPlayer();
+    const manager = createTTSManager(player);
+
+    const speaking = manager.speak("hello");
+    const speakingState = trackSettlement(speaking);
+    await vi.waitFor(() => expect(player.synthesis.has("hello")).toBe(true));
+
+    const unhandled = await captureUnhandledRejections(async () => {
+      await manager.stop();
+      await nextTask();
+
+      expect(speakingState.state).toBe("resolved");
+      await expect(speaking).resolves.toBeUndefined();
+
+      player.failSynthesis("hello", new Error("late synthesis failure"));
+    });
+
+    expect(unhandled).toEqual([]);
+    expect(MockAudio.instances).toHaveLength(0);
+  });
+
+  it("never starts playback when a cancelled synthesis resolves late", async () => {
+    const player = new ControllableAudioPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    const speaking = manager.speak("hello");
+    await vi.waitFor(() => expect(player.synthesis.has("hello")).toBe(true));
+
+    await manager.stop();
+    await expect(speaking).resolves.toBeUndefined();
+
+    player.settleSynthesis("hello");
+    await nextTask();
+
+    expect(MockAudio.instances).toHaveLength(0);
+    expect(emitter.emit).not.toHaveBeenCalledWith("tts:audio:start", {});
+  });
+
+  it("does not dispatch web speech when stop() lands during the pre-speech stop", async () => {
+    const player = new ControllableWebPlayer();
+    const stopGate = createGate<void>();
+    player.stop = vi.fn(() => stopGate.promise);
+    const startSimulation = vi
+      .spyOn(WebSpeechLipSyncSimulator.prototype, "startSimulation")
+      .mockImplementation(() => undefined);
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    const speaking = manager.speak("hello");
+    const speakingState = trackSettlement(speaking);
+
+    const stopping = manager.stop();
+    await nextTask();
+
+    expect(speakingState.state).toBe("resolved");
+    await expect(speaking).resolves.toBeUndefined();
+
+    // Release the player stop: the cancelled utterance must stay cancelled.
+    stopGate.resolve();
+    await stopping;
+    await nextTask();
+
+    expect(player.speak).not.toHaveBeenCalled();
+    expect(startSimulation).not.toHaveBeenCalled();
+    expect(emitter.emit).not.toHaveBeenCalledWith("tts:audio:start", {});
+  });
+
+  it("plays a speak() issued after stop() completed", async () => {
+    const player = new RemotePlayerWithAudio();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    await manager.stop();
+    await manager.speak("hello");
+
+    expect(MockAudio.instances).toHaveLength(1);
+    expect(MockAudio.instances[0]!.play).toHaveBeenCalled();
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:start", {});
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
+  });
+
+  it("never lets an older speak() start playback over a newer one", async () => {
+    const player = new ControllableAudioPlayer();
+    const manager = createTTSManager(player);
+
+    const speakingA = manager.speak("A");
+    await vi.waitFor(() => expect(player.synthesis.has("A")).toBe(true));
+
+    const speakingB = manager.speak("B");
+    await vi.waitFor(() => expect(player.synthesis.has("B")).toBe(true));
+
+    // A's synthesis lands after B took over.
+    player.settleSynthesis("A");
+    await expect(speakingA).resolves.toBeUndefined();
+    expect(MockAudio.instances).toHaveLength(0);
+
+    player.settleSynthesis("B");
+    await expect(speakingB).resolves.toBeUndefined();
+    expect(MockAudio.instances).toHaveLength(1);
+    expect(MockAudio.instances[0]!.play).toHaveBeenCalled();
+  });
+
+  it("still rejects speak() when an uncancelled synthesis fails", async () => {
+    const player = new ControllableAudioPlayer();
+    const manager = createTTSManager(player);
+
+    const speaking = manager.speak("hello");
+    await vi.waitFor(() => expect(player.synthesis.has("hello")).toBe(true));
+
+    player.failSynthesis("hello", new Error("synthesis exploded"));
+
+    await expect(speaking).rejects.toMatchObject({
+      code: "CHARIVO_PROVIDER_ERROR",
+      message: "synthesis exploded",
+    });
+  });
+});
+
+describe("TTSManagerImpl serializes stops against new utterances", () => {
+  beforeEach(installAudioMocks);
+  afterEach(restoreAudioMocks);
+
+  it("does not let a delayed player stop cancel a newer utterance", async () => {
+    const player = new DelayedStopWebPlayer();
+    const emitter = { emit: vi.fn() };
+    const events: string[] = [];
+    emitter.emit.mockImplementation((eventName: string) => {
+      if (eventName === "tts:audio:start" || eventName === "tts:audio:end") {
+        events.push(eventName);
+      }
+    });
+    const manager = createTTSManager(player);
+    manager.setEventEmitter!(emitter);
+
+    const speakingA = manager.speak("A");
+    await vi.waitFor(() => expect(events).toEqual(["tts:audio:start"]));
+    expect(player.speak).toHaveBeenCalledTimes(1);
+
+    // This stop's player-side cancellation lands only when settleStop() runs.
+    player.deferNextStop();
+    const stopping = manager.stop();
+
+    const speakingB = manager.speak("B");
+    await nextTask();
+
+    // B must not dispatch while the stop it would race is still pending.
+    expect(player.speak).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["tts:audio:start"]);
+
+    player.settleStop();
+    await stopping;
+    await expect(speakingA).resolves.toBeUndefined();
+    await vi.waitFor(() =>
+      expect(player.speak).toHaveBeenCalledWith("B", undefined),
+    );
+
+    // The delayed cancellation could only reach pre-stop state.
+    expect(player.cancelledTexts).toEqual(["A"]);
+    expect(events).toEqual([
+      "tts:audio:start", // A
+      "tts:audio:end", // A, by the delayed stop's cleanup
+      "tts:audio:start", // B
+    ]);
+
+    player.settle("B");
+    await expect(speakingB).resolves.toBeUndefined();
+    expect(events).toEqual([
+      "tts:audio:start",
+      "tts:audio:end",
+      "tts:audio:start",
+      "tts:audio:end", // B's own natural end
+    ]);
+  });
+
+  it("resolves silently when a tts:audio:start listener stops re-entrantly (web speech)", async () => {
+    const player = new ControllableWebPlayer();
+    const manager = createTTSManager(player);
+    const events: string[] = [];
+    let stopping: Promise<void> | undefined;
+    const emitter = {
+      emit: vi.fn((eventName: string) => {
+        if (eventName !== "tts:audio:start" && eventName !== "tts:audio:end") {
+          return;
+        }
+        events.push(eventName);
+        if (eventName === "tts:audio:start") {
+          stopping = manager.stop();
+        }
+      }),
+    };
+    manager.setEventEmitter!(emitter);
+
+    await expect(manager.speak("hello")).resolves.toBeUndefined();
+    await stopping;
+
+    expect(player.speak).not.toHaveBeenCalled();
+    expect(events).toEqual(["tts:audio:start", "tts:audio:end"]);
+  });
+
+  it("resolves silently when a tts:audio:start listener stops re-entrantly (stateless audio)", async () => {
+    globalThis.Audio = NonFinalizingAudio as unknown as typeof Audio;
+
+    const player = new RemotePlayerWithAudio();
+    const manager = createTTSManager(player);
+    const events: string[] = [];
+    let stopping: Promise<void> | undefined;
+    const emitter = {
+      emit: vi.fn((eventName: string) => {
+        if (eventName !== "tts:audio:start" && eventName !== "tts:audio:end") {
+          return;
+        }
+        events.push(eventName);
+        if (eventName === "tts:audio:start") {
+          stopping = manager.stop();
+        }
+      }),
+    };
+    manager.setEventEmitter!(emitter);
+
+    await expect(manager.speak("hello")).resolves.toBeUndefined();
+    await stopping;
+
+    expect(MockAudio.instances[0]?.play).not.toHaveBeenCalled();
+    expect(events).toEqual(["tts:audio:start", "tts:audio:end"]);
   });
 });
 
