@@ -54,22 +54,30 @@ export {
 } from "./fetch-with-timeout";
 
 /**
- * One `userSay()` turn. `epoch` identifies it: only the newest turn is live,
- * so a turn is stale as soon as a newer one installs itself. `rollback` holds
- * the single `{ manager, handle }` pair produced by the turn's own history
- * write, the only write a live pre-boundary failure undoes.
+ * One `userSay()` turn. `epoch` identifies it: a turn is live only while it
+ * still owns the current epoch, which both a newer turn installing itself and
+ * an `interrupt()` retiring it move past. `rollback` holds the single
+ * `{ manager, handle }` pair produced by the turn's own history write, the
+ * only write a live pre-boundary failure undoes.
  *
  * Supersession has two halves. Staleness is the logical one: it keeps a turn
  * that resumes from starting or emitting anything further. `abortController`
  * is the transport one: aborting it cancels the LLM request the turn is parked
  * in, so a superseded turn stops waiting on the provider. Neither half needs
  * the other — a client that ignores the signal simply settles late, and the
- * stale check swallows that settlement whichever way it lands.
+ * stale check swallows that settlement whichever way it lands. `interrupt()`
+ * cancels a turn through the same two halves.
+ *
+ * `speakingTTSManager` is the manager the turn handed its reply to, recorded
+ * because a mid-turn `attachTTS()` means the currently attached manager is not
+ * necessarily the one playing this turn's audio, and `interrupt()` has to stop
+ * the one that is.
  */
 interface TurnRecord {
   epoch: number;
   userMessageId: string;
   abortController: AbortController;
+  speakingTTSManager?: TTSManager;
   rollback?: { manager: LLMManager; handle: HistoryRollback };
 }
 
@@ -246,7 +254,7 @@ export class Charivo {
     return `${Date.now()}-${this.messageSeq}`;
   }
 
-  /** A turn is live only while it is the newest one. */
+  /** A turn is live only while it still owns the current epoch. */
   private isStale(turn: TurnRecord): boolean {
     return this.turnEpoch !== turn.epoch;
   }
@@ -324,7 +332,8 @@ export class Charivo {
    * the phase the supersession lands in. Supersession also aborts the turn's
    * LLM request through the turn's own `AbortSignal`, so a client that honors
    * it stops waiting on the provider; one that ignores it settles late and
-   * the turn merely goes quiet once it resumes.
+   * the turn merely goes quiet once it resumes. {@link Charivo.interrupt}
+   * cancels an in-flight turn the same way, without a successor taking over.
    */
   async userSay(content: string): Promise<void> {
     const userMessage: Message = {
@@ -531,6 +540,12 @@ export class Charivo {
         }
 
         if (this.ttsManager) {
+          // Read once and recorded on the turn below: interrupt() must stop the
+          // manager this turn is speaking on, so the recorded manager and the
+          // speak() call have to be the same reference, since a mid-turn
+          // `attachTTS()` can replace `this.ttsManager` before the stop.
+          const speakingManager = this.ttsManager;
+
           try {
             this.eventBus.emit("tts:start", {
               text: response,
@@ -550,7 +565,8 @@ export class Charivo {
                 }
               : undefined;
 
-            await this.ttsManager.speak(response, ttsOptions);
+            turn.speakingTTSManager = speakingManager;
+            await speakingManager.speak(response, ttsOptions);
 
             if (this.isStale(turn)) {
               return;
@@ -573,6 +589,62 @@ export class Charivo {
       if (!this.isStale(turn)) {
         this.removeQueueEntry(entry);
         this.activeTurn = undefined;
+      }
+    }
+  }
+
+  /**
+   * Cut off the in-progress turn and its speech now.
+   *
+   * The cascade counterpart of `RealtimeManager.interrupt()`: the live turn's
+   * LLM request is aborted, the turn performs and emits nothing further, and
+   * the TTS manager it is speaking on is stopped — the exact manager it handed
+   * the reply to, which a mid-turn `attachTTS()` may since have replaced.
+   * Resolving means that stop has completed, so no audio from the interrupted
+   * turn starts afterwards. The interrupted `userSay()` **resolves**, and the
+   * turn is announced as `turn:cancelled`, exactly as a supersession is.
+   *
+   * Unlike the realtime version, which requires an active, connected session,
+   * this has no precondition: with no turn in flight it still stops the
+   * attached TTS manager, resolves, and emits nothing.
+   *
+   * Realtime mode is not covered — this does not delegate to the realtime
+   * manager. Use `getRealtimeManager()?.interrupt()` there.
+   */
+  async interrupt(): Promise<void> {
+    const interrupted = this.activeTurn;
+
+    if (interrupted) {
+      this.turnEpoch += 1;
+      this.activeTurn = undefined;
+
+      // Retention first, abort second, exactly as supersession orders them:
+      // abort listeners run synchronously and may reenter userSay(), so the
+      // interrupted turn's message is already written by then. Clearing
+      // `activeTurn` first is what makes the interrupted turn's entry
+      // flushable at all: the superseded flush stops at any entry the
+      // active turn still owns.
+      this.flushSupersededEntries();
+      interrupted.abortController.abort();
+
+      this.eventBus.emit("turn:cancelled", {
+        userMessageId: interrupted.userMessageId,
+      });
+    }
+
+    // Falls back to the attached manager for a turn that is not speaking yet
+    // and for the idle case, where stopping leftover audio is still the point.
+    const stopTarget = interrupted?.speakingTTSManager ?? this.ttsManager;
+
+    if (stopTarget) {
+      try {
+        await stopTarget.stop();
+      } catch (error) {
+        throw toCharivoError(
+          "provider",
+          error,
+          "Failed to stop TTS during interrupt",
+        );
       }
     }
   }

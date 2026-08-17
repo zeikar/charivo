@@ -504,18 +504,19 @@ export interface EventMap {
   "message:sent": { message: Message };
   "message:received": { message: Message };
   /**
-   * An in-flight turn was superseded by a newer `userSay`. Emitted exactly
-   * once for every superseded turn, on the cascade path only — the realtime
-   * path keeps its own contract and never emits this. Supersession is the
-   * only cause, so the payload needs no cause discriminator, and the
-   * superseded `userSay` call still **resolves**.
+   * An in-flight turn was cancelled: either a newer `userSay` superseded it,
+   * or `interrupt()` cut it off. Emitted exactly once for every cancelled
+   * turn, on the cascade path only — the realtime path keeps its own contract
+   * and never emits this. The payload carries no cause discriminator, and the
+   * superseded or interrupted `userSay` call still **resolves**.
    *
-   * What the event reports is supersession. Retention is the separate
-   * guarantee: with an LLM manager and a character attached, the superseded
-   * turn's valid user message is already in history when this fires, ahead of
-   * the superseding turn's own message; with none attached it holds its queue
-   * position and is written by the next `userSay`. Input the manager refuses
-   * to store is announced here too but never stored, exactly as today.
+   * What the event reports is the cancellation. Retention is the separate
+   * guarantee: with an LLM manager and a character attached, the cancelled
+   * turn's valid user message is already in history when this fires — for a
+   * supersession, ahead of the superseding turn's own message; with none
+   * attached it holds its queue position and is written by the next `userSay`.
+   * Input the manager refuses to store is announced here too but never stored,
+   * exactly as today.
    *
    * The `message:sent` carrying the same id always precedes this event.
    */

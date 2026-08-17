@@ -2843,6 +2843,182 @@ describe("Charivo latest-wins turns", () => {
     // C reentered from the abort listener, so its entry is queued behind B's.
     expect(manager.addedContents()).toEqual(["A", "B", "C", "reply-C"]);
   });
+
+  describe("interrupt", () => {
+    interface InterruptHarness {
+      charivo: Charivo;
+      manager: SignalRecordingLLMManager;
+      tts: GateableTTSManager;
+      recorder: TurnRecorder;
+    }
+
+    /** Renderer-free, so a turn reaches its parked request synchronously. */
+    function createInterruptHarness(
+      options: { tts?: boolean } = {},
+    ): InterruptHarness {
+      const { tts = true } = options;
+      const charivo = new Charivo();
+      const recorder = new TurnRecorder(charivo);
+      const manager = new SignalRecordingLLMManager();
+      const ttsManager = new GateableTTSManager();
+
+      if (tts) charivo.attachTTS(ttsManager);
+      charivo.attachLLM(manager);
+      charivo.setCharacter(character);
+
+      return { charivo, manager, tts: ttsManager, recorder };
+    }
+
+    it("cancels the generating turn and resolves only once its TTS stop has", async () => {
+      const { charivo, manager, tts, recorder } = createInterruptHarness();
+      manager.hold = (content) => content === "A";
+
+      const turnA = charivo.userSay("A");
+      await manager.waitForCalls(1);
+
+      // Index 1: index 0 is A's own pre-turn stop.
+      tts.holdStop = (index) => index === 1;
+
+      let settled = false;
+      const interrupted = charivo.interrupt().then(() => {
+        settled = true;
+      });
+      await tts.waitForStops(2);
+
+      // The cancellation itself is synchronous; only the stop is outstanding.
+      expect(manager.signalFor("A")?.aborted).toBe(true);
+      expect(recorder.cancelled).toEqual(["A"]);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      tts.settleStop(1);
+      await expect(interrupted).resolves.toBeUndefined();
+      expect(settled).toBe(true);
+
+      manager.settleCall("A", "reply-A");
+      await expect(turnA).resolves.toBeUndefined();
+      expect(recorder.cancelled).toEqual(["A"]);
+    });
+
+    it("settles the in-flight speak and emits no tts:end when it lands mid-playback", async () => {
+      const charivo = new Charivo();
+      const tts = new ControllableTTSManager();
+      const manager = new RecordingLLMManager();
+
+      charivo.attachTTS(tts);
+      charivo.attachLLM(manager);
+      charivo.setCharacter(character);
+
+      const events: string[] = [];
+      charivo.on("tts:end", () => events.push("tts:end"));
+      const audioStarted = new Promise<void>((resolve) => {
+        charivo.on("tts:audio:start", () => resolve());
+      });
+
+      const turnA = charivo.userSay("A");
+      await audioStarted;
+
+      await expect(charivo.interrupt()).resolves.toBeUndefined();
+      expect(tts.getActiveSession()).toBeNull();
+
+      // Resolving at all proves the interrupted speak() was settled by the stop.
+      await expect(turnA).resolves.toBeUndefined();
+      expect(events).toEqual([]);
+    });
+
+    it("stops the manager the turn is speaking on, not one attached mid-playback", async () => {
+      const log = new EventLog();
+      const speaking = new LabeledTTSManager("1", log);
+      const replacement = new LabeledTTSManager("2", log);
+      const manager = new RecordingLLMManager();
+      const charivo = new Charivo();
+
+      charivo.attachTTS(speaking);
+      charivo.attachLLM(manager);
+      charivo.setCharacter(character);
+
+      const turnA = charivo.userSay("A");
+      await log.until(1);
+
+      charivo.attachTTS(replacement);
+      await expect(charivo.interrupt()).resolves.toBeUndefined();
+
+      expect(log.entries).toEqual(["audio:start(1)", "audio:end(1)"]);
+      expect(replacement.stop).not.toHaveBeenCalled();
+      await expect(turnA).resolves.toBeUndefined();
+    });
+
+    it("stops the attached manager and announces nothing when nothing is in flight", async () => {
+      const { charivo, tts, recorder } = createInterruptHarness();
+      await charivo.userSay("A");
+      const stopsBefore = tts.stopCalls.length;
+
+      await expect(charivo.interrupt()).resolves.toBeUndefined();
+
+      expect(tts.stopCalls).toHaveLength(stopsBefore + 1);
+      expect(recorder.cancelled).toEqual([]);
+    });
+
+    it("retains the message of a turn interrupted before its own history write", async () => {
+      const { charivo, render } = createHarness();
+      render.hold = (message) =>
+        message.type === "user" && message.content === "A";
+
+      const turnA = charivo.userSay("A");
+      await render.waitForCalls(1);
+
+      await expect(charivo.interrupt()).resolves.toBeUndefined();
+      expect(transcript(charivo.getHistory())).toEqual(["user:A"]);
+
+      render.settle();
+      await expect(turnA).resolves.toBeUndefined();
+
+      await charivo.userSay("B");
+      expect(transcript(charivo.getHistory())).toEqual([
+        "user:A",
+        "user:B",
+        "character:reply-B",
+      ]);
+    });
+
+    it("resolves with no TTS manager attached", async () => {
+      const { charivo, manager, recorder } = createInterruptHarness({
+        tts: false,
+      });
+      manager.hold = (content) => content === "A";
+
+      const turnA = charivo.userSay("A");
+      await manager.waitForCalls(1);
+
+      await expect(charivo.interrupt()).resolves.toBeUndefined();
+
+      expect(manager.signalFor("A")?.aborted).toBe(true);
+      expect(recorder.cancelled).toEqual(["A"]);
+
+      manager.settleCall("A", "reply-A");
+      await expect(turnA).resolves.toBeUndefined();
+    });
+
+    it("rejects with a typed error when the TTS stop fails, after cancelling the turn", async () => {
+      const { charivo, manager, tts, recorder } = createInterruptHarness();
+      manager.hold = (content) => content === "A";
+
+      const turnA = charivo.userSay("A");
+      await manager.waitForCalls(1);
+      tts.stop.mockRejectedValueOnce(new Error("stop failed"));
+
+      await expect(charivo.interrupt()).rejects.toBeInstanceOf(
+        CharivoProviderError,
+      );
+
+      // The turn was already cancelled before the stop was even attempted.
+      expect(manager.signalFor("A")?.aborted).toBe(true);
+      expect(recorder.cancelled).toEqual(["A"]);
+
+      manager.settleCall("A", "reply-A");
+      await expect(turnA).resolves.toBeUndefined();
+    });
+  });
 });
 
 describe("createCharivo", () => {
