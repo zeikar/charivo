@@ -14,6 +14,10 @@ It exports:
 - `createLipSyncAnalyzer`: the shared audio-analysis utility the TTS manager
   and realtime clients use to compute mouth-open RMS and emit
   `tts:lipsync:update`
+- `fetchWithTimeout` (with `DEFAULT_FETCH_TIMEOUT_MS`): the shared `fetch`
+  wrapper that enforces a timeout, layers an optional external `AbortSignal`
+  on top, and classifies the failure into the `CharivoError` taxonomy; the
+  llm/tts/stt/realtime/server remotes share it
 - modality-neutral tool contracts (`ToolDefinition`, `ToolRegistration`, ...)
   plus the validation and execution helpers (`validateToolArguments`,
   `assertToolResultObject`, `createToolRegistry`, `withToolTimeout`,
@@ -104,6 +108,7 @@ The `Charivo` instance wires managers together:
 - `getCurrentCharacter()`
 - `setCharacter(character)`
 - `userSay(text)`
+- `interrupt()`
 - `dispose()`
 - `clearHistory()`
 - `getHistory()`
@@ -129,14 +134,17 @@ the outcome of a tool handler that had already started: that handler's
 `tool:result`/`tool:error` still fires, because it reports work that genuinely
 happened, so `turn:cancelled` is not an event barrier. Projections still stop,
 and no new tool work or request starts.
-`turn:cancelled` (`{ userMessageId }`) fires exactly once for it, and
-supersession by a newer `userSay(text)` is its only cause. What the superseded
-turn leaves behind is its **user message**: it is retained no matter which
-phase the cancellation landed in, always ordered ahead of the superseding
-turn's own message, and from then on it is an ordinary history entry subject
-to normal `maxHistoryTurns` eviction. Input the LLM manager refuses to store —
-empty content, exactly as today — is never stored. The unspoken reply is
-dropped.
+`turn:cancelled` (`{ userMessageId }`) fires exactly once for it. Supersession
+by a newer `userSay(text)` is one cause; `interrupt()` (below) is the only
+other one. What the superseded turn leaves behind is its **user message**: it
+is retained no matter which phase the cancellation landed in — ordered ahead
+of the superseding turn's own message when a newer `userSay(text)` caused the
+cancellation; `interrupt()` has no superseding message to order against, so
+its retained message either enters history immediately (when an LLM manager
+and character are attached) or ahead of whichever `userSay(text)` call flushes
+it next — and from then on it is an ordinary history entry subject to normal
+`maxHistoryTurns` eviction. Input the LLM manager refuses to store — empty
+content, exactly as today — is never stored. The unspoken reply is dropped.
 
 A reply reaches history only at the **presentation boundary**: after its own
 character message has rendered (immediately, when no renderer is attached) and
@@ -204,19 +212,36 @@ checkpoints, since only the manager can enforce them. That is also why
 `tool:call` records an *attempted, dispatched* call, and can be the last event
 for a call whose handler was skipped, while `tool:result`/`tool:error` report
 a handler that actually ran. The superseded turn's in-flight LLM request is
-abandoned but keeps running; request-level `AbortSignal` threading is a
-follow-up. There is
+aborted: `Charivo` passes the turn's `AbortSignal` as
+`GenerateResponseOptions.signal`, and the built-in `@charivo/llm` manager
+forwards it to the client as `LLMCallOptions.signal` on every request the turn
+makes, tool rounds included. A client that ignores the optional `signal`
+simply keeps the old keep-running behavior — its request settles late, and the
+stale-turn check swallows the result either way. There is
 no guard interval either — a stray duplicate send is indistinguishable from a
 deliberate rapid correction, so debouncing belongs in the input layer.
 
-Nothing else cancels a turn: `setCharacter(...)`, `attachLLM(...)`,
-`detachLLM(...)`, `clearHistory()` and `dispose()` neither cancel an in-flight
-turn nor move the point at which a turn reads the manager or the character.
-Message validation is unchanged — `userSay("")` still emits `message:sent`,
-still runs the pre-turn stop and renders the user message, and still rejects
-with `CharivoStateError` from the LLM step (and still resolves when no manager
-and character are attached) — and an empty assistant reply is still stored,
-presented, and spoken exactly as before.
+Besides `interrupt()` (below), nothing else cancels a turn: `setCharacter(...)`,
+`attachLLM(...)`, `detachLLM(...)`, `clearHistory()` and `dispose()` neither
+cancel an in-flight turn nor move the point at which a turn reads the manager
+or the character. Message validation is unchanged — `userSay("")` still emits
+`message:sent`, still runs the pre-turn stop and renders the user message, and
+still rejects with `CharivoStateError` from the LLM step (and still resolves
+when no manager and character are attached) — and an empty assistant reply is
+still stored, presented, and spoken exactly as before.
+
+`interrupt()` cuts off the in-progress turn and its speech now: it aborts the
+live turn's LLM request through the same `AbortSignal` supersession uses, then
+stops the TTS manager that turn is actually speaking on — the manager it
+handed the reply to, which a mid-turn `attachTTS()` may have since replaced,
+or, if the turn hasn't reached that step yet, whichever manager is currently
+attached. It has no precondition: unlike `RealtimeManager.interrupt()`, which
+requires an active, connected session, calling it with no turn in flight is
+still idle-safe — it stops the attached TTS manager, resolves, and emits
+nothing. The interrupted `userSay(text)` call **resolves**, and the turn is
+announced via `turn:cancelled`, exactly as a supersession is. This is
+cascade-only: it does not delegate to the realtime manager, so a realtime app
+uses `getRealtimeManager()?.interrupt()` instead.
 
 The realtime path deliberately keeps the opposite contract:
 `RealtimeManager.sendMessage(...)` rejects while a response is in progress and

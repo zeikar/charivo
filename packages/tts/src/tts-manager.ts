@@ -129,8 +129,9 @@ export class TTSManagerImpl implements TTSManager {
    *
    * Resolves when the utterance finishes -- or silently, without speaking, if
    * stop() or a newer speak() lands while this call is still starting up (the
-   * pre-speech stop, or synthesis). A call cancelled before playback was
-   * established emits no tts:audio:start/tts:audio:end pair at all, so a
+   * pre-speech stop, or synthesis). A cancelled call never begins playback,
+   * whether or not it had already opened an audio session (a reentrant stop
+   * from the tts:audio:start listener still sees the session close), so a
    * resolved speak() is not proof audio played.
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {

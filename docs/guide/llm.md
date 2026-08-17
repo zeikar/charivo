@@ -191,6 +191,13 @@ latest-wins turn contract in the
 [core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md#charivo).
 `maxHistoryTurns` then applies to those messages like any other.
 
+`Charivo` also passes a per-turn `signal` alongside `isCancelled`, so a
+superseded turn's in-flight request is aborted rather than left running when
+the client honors the optional signal — `@charivo/llm/remote` does; a client
+that ignores it (such as the direct OpenAI dev client) keeps the old
+run-to-completion behavior. A custom `LLMManager` should forward `signal` to
+its client for real request cancellation; the built-in manager already does.
+
 Realtime sessions maintain conversation state on the provider side and are not
 affected by `maxHistoryTurns`.
 

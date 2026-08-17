@@ -331,8 +331,17 @@ session active and attempts recovery with the latest effective config.
 app must call `interrupt()` first, because the transport allows one active
 response at a time. This deliberately diverges from the cascade path, where
 `Charivo.userSay(text)` is latest-wins: a newer call supersedes the in-flight
-turn, announces it with `turn:cancelled`, and the superseded call resolves.
-The two contracts are intentionally different — don't normalize them.
+turn, aborts its in-flight HTTP request (when the LLM client honors the
+optional signal — the remote client does), announces it with
+`turn:cancelled`, and the superseded call resolves. The two contracts are intentionally
+different — don't normalize them.
+
+The two paths also have distinct interrupt entry points, and that split is
+intentional too: `charivo.interrupt()` is the cascade counterpart — it aborts
+the in-progress turn's LLM request and stops its TTS, without touching a
+realtime session — while `realtimeManager.interrupt()` cuts off an in-progress
+realtime response instead. A realtime app calls the realtime manager's own
+`interrupt()`, not `charivo.interrupt()`.
 
 ## Observability
 

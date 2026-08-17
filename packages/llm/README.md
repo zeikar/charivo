@@ -210,9 +210,14 @@ write path it takes over.
   resolves with the latest response text. It aborts neither an in-flight
   request nor an already-running handler, and it does not govern history
   writes.
+- `signal` — an `AbortSignal` forwarded to the client as `LLMCallOptions.signal`
+  on every `call`/`callWithTools` request the call makes, tool rounds
+  included. Distinct from `isCancelled`: this is what aborts the in-flight
+  request itself, rather than gating new work between steps.
 
-`Charivo.userSay(text)` always passes both — see the latest-wins turn contract
-in the [core README](../core/README.md#charivo).
+`Charivo.userSay(text)` always passes `callerOwnsHistory`, `isCancelled`, and
+`signal` — see the latest-wins turn contract in the
+[core README](../core/README.md#charivo).
 
 Direct, manager-only use is otherwise unchanged: omit the options and
 `generateResponse(...)` stays self-contained, appending the user message,
@@ -228,4 +233,7 @@ removes its own message and restores its own evictions only when nothing else
 has written since; hold your own bound; and neither emit events nor call back
 into `Charivo`. Honor `callerOwnsHistory` by suppressing every history write
 for that call, and `isCancelled` by starting no new tool work and dropping
-every further projected emission once it returns `true`.
+every further projected emission once it returns `true`. Forward `signal` to
+your client's calls if you want real request cancellation — the built-in
+manager passes it through as `LLMCallOptions.signal`, but the option is
+otherwise a no-op unless a manager forwards it.

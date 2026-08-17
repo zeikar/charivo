@@ -66,7 +66,11 @@ When connected, the manager emits:
 - `stop()` — stops active playback. If it interrupts an in-flight `speak()`
   call, that call's promise settles as part of the stop instead of being left
   pending: a deliberate stop is treated as a cancellation, not a failure, so
-  it resolves rather than rejects.
+  it resolves rather than rejects. `stop()` also cancels a `speak()` call still
+  starting up — the pre-speech stop, or audio synthesis — the same way: that
+  call resolves silently and never begins playback, whether or not it had
+  already opened an audio session, so a resolved `speak()` is not proof audio
+  played. A newer `speak()` cancels a still-starting older one the same way.
 - `prepareAudio?.()` — creates the lip-sync `AudioContext` up front. Call it
   from a user-gesture handler before the first `speak()` so mobile browsers
   that require audio to start from a gesture do not block playback.

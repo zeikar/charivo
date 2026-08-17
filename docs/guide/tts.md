@@ -85,6 +85,15 @@ TTS begin. Under the latest-wins `userSay(text)` contract that same stop is
 how a superseding turn silences the turn it replaces, and the superseded
 `userSay(text)` call resolves rather than rejecting.
 
+`stop()` also cancels a `speak()` call still starting up — the pre-speech
+stop, or audio synthesis — so a stopped `speak()` never begins playback
+afterward, whether or not it had already opened an audio session. An app that
+wants to cut a character off mid-turn should call `charivo.interrupt()`
+rather than `ttsManager.stop()` directly: `interrupt()` stops the TTS *and*
+cancels the turn coherently (aborting its LLM request and announcing
+`turn:cancelled`), where a bare `ttsManager.stop()` silences the audio but
+leaves the turn running to completion behind it.
+
 ## Provider Route
 
 The remote player usually pairs with `@charivo/server/openai` on the
