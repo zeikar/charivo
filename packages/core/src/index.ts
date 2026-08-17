@@ -47,6 +47,11 @@ export {
   type ToolResultSnapshot,
   withToolTimeout,
 } from "./tool-execution";
+export {
+  DEFAULT_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
+  type FetchWithTimeoutOptions,
+} from "./fetch-with-timeout";
 
 /**
  * One `userSay()` turn. `epoch` identifies it: only the newest turn is live,
