@@ -58,10 +58,18 @@ export {
  * so a turn is stale as soon as a newer one installs itself. `rollback` holds
  * the single `{ manager, handle }` pair produced by the turn's own history
  * write, the only write a live pre-boundary failure undoes.
+ *
+ * Supersession has two halves. Staleness is the logical one: it keeps a turn
+ * that resumes from starting or emitting anything further. `abortController`
+ * is the transport one: aborting it cancels the LLM request the turn is parked
+ * in, so a superseded turn stops waiting on the provider. Neither half needs
+ * the other — a client that ignores the signal simply settles late, and the
+ * stale check swallows that settlement whichever way it lands.
  */
 interface TurnRecord {
   epoch: number;
   userMessageId: string;
+  abortController: AbortController;
   rollback?: { manager: LLMManager; handle: HistoryRollback };
 }
 
@@ -313,7 +321,10 @@ export class Charivo {
    * Latest-wins: a newer call supersedes the in-flight turn, which then
    * resolves without performing any further turn-scoped effect or emitting
    * any further turn-scoped event. Its user message is retained regardless of
-   * the phase the supersession lands in.
+   * the phase the supersession lands in. Supersession also aborts the turn's
+   * LLM request through the turn's own `AbortSignal`, so a client that honors
+   * it stops waiting on the provider; one that ignores it settles late and
+   * the turn merely goes quiet once it resumes.
    */
   async userSay(content: string): Promise<void> {
     const userMessage: Message = {
@@ -333,6 +344,7 @@ export class Charivo {
     const turn: TurnRecord = {
       epoch: this.turnEpoch,
       userMessageId: userMessage.id,
+      abortController: new AbortController(),
     };
     const superseded = this.activeTurn;
     this.activeTurn = turn;
@@ -348,6 +360,14 @@ export class Charivo {
       this.flushSupersededEntries();
 
       if (superseded) {
+        // Aborted here and nowhere earlier: abort listeners run synchronously
+        // and may reenter userSay(), so the predecessor's request is cancelled
+        // only once this turn holds its queue position and has been announced
+        // -- a reentrant turn from here is no different from one started by a
+        // turn:cancelled listener. Still ahead of every await, so the request
+        // is not left running behind this turn's own async work.
+        superseded.abortController.abort();
+
         this.eventBus.emit("turn:cancelled", {
           userMessageId: superseded.userMessageId,
         });
@@ -426,6 +446,7 @@ export class Charivo {
           response = await generatingManager.generateResponse(userMessage, {
             callerOwnsHistory: true,
             isCancelled: () => this.isStale(turn),
+            signal: turn.abortController.signal,
           });
         } catch (error) {
           if (this.isStale(turn)) {

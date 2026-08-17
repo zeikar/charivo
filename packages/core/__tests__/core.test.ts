@@ -1200,6 +1200,96 @@ class RecordingLLMManager implements LLMManager {
 }
 
 /**
+ * Records the signal each turn hands to generateResponse, and parks the calls
+ * it is told to hold, so a supersession can be observed against a request that
+ * is still in flight. Also records its writes, since the transport half of a
+ * cancellation has to leave history ordering alone.
+ */
+class SignalRecordingLLMManager implements LLMManager {
+  /** Contents whose generateResponse parks until settled explicitly. */
+  hold: (content: string) => boolean = () => false;
+  readonly added: Message[] = [];
+  readonly calls: Array<{
+    content: string;
+    signal?: AbortSignal;
+    gate?: Deferred<string>;
+  }> = [];
+  private readonly waiters = new Waiters();
+
+  setCharacter = vi.fn((_character: Character) => undefined);
+  getCharacter = vi.fn((): Character | null => null);
+  clearHistory = vi.fn(() => undefined);
+  getHistory = vi.fn((): Message[] => []);
+  addToHistory = vi.fn((message: Message): HistoryRollback => {
+    this.added.push(message);
+    return () => undefined;
+  });
+  generateResponse = vi.fn(
+    async (message: Message, options?: GenerateResponseOptions) => {
+      const call: {
+        content: string;
+        signal?: AbortSignal;
+        gate?: Deferred<string>;
+      } = { content: message.content, signal: options?.signal };
+
+      if (this.hold(message.content)) {
+        call.gate = createDeferred<string>();
+      }
+
+      this.calls.push(call);
+      this.waiters.notify();
+
+      return call.gate ? call.gate.promise : `reply-${message.content}`;
+    },
+  );
+  setEventEmitter = vi.fn((_eventEmitter: CharivoEventEmitter) => undefined);
+
+  addedContents(): string[] {
+    return this.added.map((message) => message.content);
+  }
+
+  waitForCalls(count: number): Promise<void> {
+    return this.waiters.until(() => this.calls.length >= count);
+  }
+
+  signalFor(content: string): AbortSignal | undefined {
+    return this.callFor(content).signal;
+  }
+
+  settleCall(content: string, reply: string): void {
+    this.pendingGate(content).resolve(reply);
+  }
+
+  rejectCall(content: string, reason: unknown): void {
+    this.pendingGate(content).reject(reason);
+  }
+
+  private callFor(content: string): {
+    content: string;
+    signal?: AbortSignal;
+    gate?: Deferred<string>;
+  } {
+    const call = this.calls.find((candidate) => candidate.content === content);
+
+    if (!call) {
+      throw new Error(`No generateResponse call for "${content}"`);
+    }
+
+    return call;
+  }
+
+  private pendingGate(content: string): Deferred<string> {
+    const gate = this.callFor(content).gate;
+
+    if (!gate) {
+      throw new Error(`No pending generateResponse call for "${content}"`);
+    }
+
+    return gate;
+  }
+}
+
+/**
  * ControllableTTSManager's session semantics plus a label, so a test running
  * two managers can tell whose audio events these are. Audio events go into a
  * shared log instead of the bus, which keeps them orderable against bus
@@ -2648,6 +2738,110 @@ describe("Charivo latest-wins turns", () => {
     const history = charivo.getHistory();
     expect(transcript(history)).toEqual(["user:B", "character:reply-B"]);
     expect(history[0].type).toBe("user");
+  });
+
+  interface SignalHarness {
+    charivo: Charivo;
+    manager: SignalRecordingLLMManager;
+    recorder: TurnRecorder;
+  }
+
+  /** Renderer- and TTS-free, so a turn reaches its request synchronously. */
+  function createSignalHarness(): SignalHarness {
+    const charivo = new Charivo();
+    const recorder = new TurnRecorder(charivo);
+    const manager = new SignalRecordingLLMManager();
+
+    charivo.attachLLM(manager);
+    charivo.setCharacter(character);
+
+    return { charivo, manager, recorder };
+  }
+
+  it("aborts the request signal of a turn superseded during generation", async () => {
+    const { charivo, manager } = createSignalHarness();
+    manager.hold = (content) => content === "A";
+
+    const turnA = charivo.userSay("A");
+    await manager.waitForCalls(1);
+
+    await charivo.userSay("B");
+
+    expect(manager.signalFor("A")?.aborted).toBe(true);
+    expect(manager.signalFor("B")?.aborted).toBe(false);
+
+    manager.settleCall("A", "reply-A");
+    await expect(turnA).resolves.toBeUndefined();
+  });
+
+  it("resolves a superseded turn whose request rejects with its abort reason", async () => {
+    const { charivo, manager } = createSignalHarness();
+    manager.hold = (content) => content === "A";
+
+    const errors: string[] = [];
+    charivo.on("llm:error", () => errors.push("llm:error"));
+    charivo.on("tts:error", () => errors.push("tts:error"));
+
+    const turnA = charivo.userSay("A");
+    await manager.waitForCalls(1);
+
+    await charivo.userSay("B");
+
+    // What a cancelling client rejects with: the signal's own abort reason.
+    const reason = manager.signalFor("A")?.reason as Error | undefined;
+    expect(reason?.name).toBe("AbortError");
+
+    manager.rejectCall("A", reason);
+    await expect(turnA).resolves.toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+
+  it("never aborts the signal of a turn that runs to completion", async () => {
+    const { charivo, manager } = createSignalHarness();
+
+    await charivo.userSay("A");
+    await charivo.userSay("B");
+
+    // Sequential turns supersede nothing, so neither signal is ever aborted.
+    expect(manager.signalFor("A")?.aborted).toBe(false);
+    expect(manager.signalFor("B")?.aborted).toBe(false);
+  });
+
+  it("aborts a superseded turn only once the superseding turn is announced and queued", async () => {
+    const { charivo, manager, recorder } = createSignalHarness();
+    manager.hold = (content) => content === "A";
+
+    const turnA = charivo.userSay("A");
+    await manager.waitForCalls(1);
+
+    const signal = manager.signalFor("A");
+    expect(signal).toBeDefined();
+
+    let observed: string[] | undefined;
+    let turnC: Promise<void> | undefined;
+    signal!.addEventListener("abort", () => {
+      observed = [...recorder.log];
+      turnC = charivo.userSay("C");
+    });
+
+    await charivo.userSay("B");
+    await turnC;
+
+    manager.settleCall("A", "reply-A");
+    await turnA;
+
+    // B is announced before the abort fires, and A's cancellation only after:
+    // the abort lands in the same window a turn:cancelled listener runs in.
+    expect(observed).toEqual(["sent:A", "sent:B"]);
+    expect(recorder.log).toEqual([
+      "sent:A",
+      "sent:B",
+      "sent:C",
+      "cancelled:B",
+      "cancelled:A",
+    ]);
+    // C reentered from the abort listener, so its entry is queued behind B's.
+    expect(manager.addedContents()).toEqual(["A", "B", "C", "reply-C"]);
   });
 });
 
