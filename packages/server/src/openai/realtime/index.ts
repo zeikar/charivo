@@ -7,7 +7,9 @@ import type {
 import {
   CharivoProviderError,
   CharivoStateError,
-  CharivoTimeoutError,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
+  type FetchWithTimeoutOptions,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
   toCharivoError,
@@ -22,7 +24,15 @@ const DEFAULT_CLIENT_SECRETS_URL =
 // same pattern the tts/stt OpenAI defaults follow.
 const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = DEFAULT_FETCH_TIMEOUT_MS;
+
+const REQUEST_TIMEOUT_OPTIONS: FetchWithTimeoutOptions = {
+  timeoutMessage: `OpenAI realtime request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+  // DNS/TLS/connection failures land here as raw fetch errors — map them so
+  // every failure escaping this provider is a CharivoError.
+  mapError: (error) =>
+    toCharivoError("provider", error, "OpenAI realtime request failed"),
+};
 
 export interface OpenAIRealtimeProviderConfig {
   apiKey: string;
@@ -95,7 +105,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
         },
         body: toRealtimeFormData(request),
       },
-      `OpenAI realtime request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      REQUEST_TIMEOUT_OPTIONS,
     );
 
     if (!response.ok) {
@@ -125,7 +135,7 @@ export class OpenAIRealtimeProvider implements RealtimeProvider {
           session: toOpenAIRealtimeSession(session),
         }),
       },
-      `OpenAI realtime request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      REQUEST_TIMEOUT_OPTIONS,
     );
 
     if (!response.ok) {
@@ -235,39 +245,6 @@ function extractClientSecret(payload: unknown): string | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
-    }
-    // DNS/TLS/connection failures land here as raw fetch errors — wrap them
-    // so every failure escaping this provider is a CharivoError.
-    throw toCharivoError("provider", error, "OpenAI realtime request failed");
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }
 
 async function readResponseText(response: Response): Promise<string> {

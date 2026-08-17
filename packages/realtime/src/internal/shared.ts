@@ -1,6 +1,8 @@
-import { CharivoTimeoutError, CharivoTransportError } from "@charivo/core";
+import { DEFAULT_FETCH_TIMEOUT_MS } from "@charivo/core";
 
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+// Realtime-specific name kept for the call-site timeout messages; the value
+// is core's shared default.
+export const DEFAULT_REQUEST_TIMEOUT_MS = DEFAULT_FETCH_TIMEOUT_MS;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -47,37 +49,4 @@ export function isRealtimeSessionBootstrap(
   }
 
   return false;
-}
-
-export async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
-    }
-    throw new CharivoTransportError("Realtime request failed", {
-      cause: error instanceof Error ? error : undefined,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }

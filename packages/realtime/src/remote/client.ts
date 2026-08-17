@@ -7,6 +7,7 @@ import {
   CharivoProviderError,
   CharivoStateError,
   toCharivoError,
+  fetchWithTimeout,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
@@ -15,7 +16,6 @@ import { createOpenAIRealtimeClient } from "../openai";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
-  fetchWithTimeout,
   isRealtimeSessionBootstrap,
 } from "../internal/shared";
 
@@ -277,7 +277,10 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
           adapter: options.expectedAdapterId,
         } satisfies RealtimeSessionRequest),
       },
-      `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      {
+        timeoutMessage: `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+        failureMessage: "Realtime request failed",
+      },
     );
 
     if (!response.ok) {

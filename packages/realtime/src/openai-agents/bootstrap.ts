@@ -2,10 +2,13 @@ import type {
   RealtimeSessionBootstrap,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { CharivoProviderError, CharivoStateError } from "@charivo/core";
+import {
+  CharivoProviderError,
+  CharivoStateError,
+  fetchWithTimeout,
+} from "@charivo/core";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
-  fetchWithTimeout,
   isRealtimeSessionBootstrap,
 } from "../internal/shared";
 import { createOpenAIRealtimeDevBootstrap } from "./dev-bootstrap";
@@ -46,7 +49,10 @@ export async function getOpenAIRealtimeAgentsBootstrap(
       },
       body: JSON.stringify(request),
     },
-    `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+    {
+      timeoutMessage: `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      failureMessage: "Realtime request failed",
+    },
   );
 
   if (!response.ok) {

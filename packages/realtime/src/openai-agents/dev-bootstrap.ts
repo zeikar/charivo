@@ -1,6 +1,7 @@
 import {
   OPENAI_REALTIME_AGENTS_ADAPTER,
   CharivoProviderError,
+  fetchWithTimeout,
 } from "@charivo/core";
 import type {
   RealtimeSessionConfig,
@@ -11,11 +12,7 @@ import {
   DEFAULT_OPENAI_REALTIME_MODEL,
   DEFAULT_OPENAI_REALTIME_VOICE,
 } from "../openai/defaults";
-import {
-  DEFAULT_REQUEST_TIMEOUT_MS,
-  fetchWithTimeout,
-  isRecord,
-} from "../internal/shared";
+import { DEFAULT_REQUEST_TIMEOUT_MS, isRecord } from "../internal/shared";
 
 // Fixed minting endpoint — no base URL override.
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
@@ -109,7 +106,10 @@ export function createOpenAIRealtimeDevBootstrap(
           session: toClientSecretsSession(request.session),
         }),
       },
-      `Realtime client secret request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      {
+        timeoutMessage: `Realtime client secret request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+        failureMessage: "Realtime request failed",
+      },
     );
 
     if (!response.ok) {

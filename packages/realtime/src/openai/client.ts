@@ -4,7 +4,11 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import { createLipSyncAnalyzer, OPENAI_REALTIME_ADAPTER } from "@charivo/core";
+import {
+  createLipSyncAnalyzer,
+  fetchWithTimeout,
+  OPENAI_REALTIME_ADAPTER,
+} from "@charivo/core";
 import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   bindTransportLifecycle,
@@ -14,7 +18,6 @@ import {
 } from "../internal/webrtc-lifecycle";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
-  fetchWithTimeout,
   isRealtimeSessionBootstrap,
   isRecord,
 } from "../internal/shared";
@@ -540,7 +543,10 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         },
         body: JSON.stringify(request),
       },
-      `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+      {
+        timeoutMessage: `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
+        failureMessage: "Realtime request failed",
+      },
     );
 
     if (!response.ok) {

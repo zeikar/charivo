@@ -1,7 +1,7 @@
 import {
   CharivoProviderError,
-  CharivoTimeoutError,
-  CharivoTransportError,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
   type LLMClient,
   type LLMMessage,
   type LLMToolCall,
@@ -12,8 +12,6 @@ import {
 export interface RemoteLLMConfig {
   apiEndpoint?: string;
 }
-
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Server reply as received; each field is validated where it is read. */
 interface RemoteLLMResponseBody {
@@ -102,7 +100,10 @@ async function postChatRequest(
       },
       body: JSON.stringify(body),
     },
-    `LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+    {
+      timeoutMessage: `LLM request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
+      failureMessage: "LLM request failed",
+    },
   );
 
   if (!response.ok) {
@@ -165,36 +166,4 @@ function parseToolCall(value: unknown): LLMToolCall {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
-    }
-    throw new CharivoTransportError("LLM request failed", {
-      cause: error instanceof Error ? error : undefined,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }

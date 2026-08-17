@@ -1,7 +1,8 @@
 import {
   CharivoProviderError,
-  CharivoTimeoutError,
   CharivoTransportError,
+  DEFAULT_FETCH_TIMEOUT_MS,
+  fetchWithTimeout,
   type TTSPlayer,
   TTSOptions,
 } from "@charivo/core";
@@ -10,8 +11,6 @@ export interface RemoteTTSConfig {
   apiEndpoint?: string;
   defaultVoice?: string;
 }
-
-const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Remote TTS Player - Stateless TTS Player that uses a remote server's TTS API
@@ -49,7 +48,10 @@ class RemoteTTSPlayer implements TTSPlayer {
           format: "wav",
         }),
       },
-      `TTS request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+      {
+        timeoutMessage: `TTS request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
+        failureMessage: "TTS request failed",
+      },
     );
 
     if (!response.ok) {
@@ -104,36 +106,4 @@ class RemoteTTSPlayer implements TTSPlayer {
 
 export function createRemoteTTSPlayer(config?: RemoteTTSConfig): TTSPlayer {
   return new RemoteTTSPlayer(config);
-}
-
-async function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMessage: string,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new CharivoTimeoutError(timeoutMessage, { cause: error });
-    }
-    throw new CharivoTransportError("TTS request failed", {
-      cause: error instanceof Error ? error : undefined,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function isAbortError(error: unknown): boolean {
-  return (
-    (error instanceof DOMException && error.name === "AbortError") ||
-    (error instanceof Error && error.name === "AbortError")
-  );
 }
