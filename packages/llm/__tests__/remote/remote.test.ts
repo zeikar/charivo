@@ -141,6 +141,79 @@ describe("RemoteLLMClient", () => {
     await expect(request).rejects.toBe(abortError);
     await expect(request).rejects.not.toBeInstanceOf(CharivoTimeoutError);
   });
+
+  it("rejects with the abort reason (not a generic provider error) when the caller's signal aborts while reading a non-2xx error body", async () => {
+    const controller = new AbortController();
+    let signalGivenToFetch: AbortSignal | undefined;
+    let markJsonReady!: () => void;
+    const jsonReady = new Promise<void>((resolve) => {
+      markJsonReady = resolve;
+    });
+
+    const response = {
+      ok: false,
+      statusText: "Server Error",
+      json: vi.fn(
+        () =>
+          new Promise((_, reject) => {
+            signalGivenToFetch?.addEventListener("abort", () => {
+              reject(signalGivenToFetch!.reason);
+            });
+            markJsonReady();
+          }),
+      ),
+    } as unknown as Response;
+
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        signalGivenToFetch = init?.signal ?? undefined;
+        return Promise.resolve(response);
+      },
+    ) as typeof fetch;
+
+    const client = createRemoteLLMClient();
+    const request = client.call([], { signal: controller.signal });
+
+    await jsonReady;
+
+    controller.abort();
+
+    await expect(request).rejects.toBe(controller.signal.reason);
+  });
+
+  it("rejects with CharivoTimeoutError (not a generic provider error) when the internal timeout fires while reading a non-2xx error body", async () => {
+    vi.useFakeTimers();
+    let signalGivenToFetch: AbortSignal | undefined;
+
+    const response = {
+      ok: false,
+      statusText: "Server Error",
+      json: vi.fn(
+        () =>
+          new Promise((_, reject) => {
+            signalGivenToFetch?.addEventListener("abort", () => {
+              reject(createAbortError());
+            });
+          }),
+      ),
+    } as unknown as Response;
+
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        signalGivenToFetch = init?.signal ?? undefined;
+        return Promise.resolve(response);
+      },
+    ) as typeof fetch;
+
+    const client = createRemoteLLMClient();
+    const request = client.call([]);
+    const expectation =
+      expect(request).rejects.toBeInstanceOf(CharivoTimeoutError);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+  });
 });
 
 const weatherTool: ToolDefinition = {

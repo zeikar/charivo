@@ -31,12 +31,22 @@ function isAbortError(error: unknown): boolean {
  * `init.signal` is typed `never` so callers cannot pass a signal directly —
  * `options.signal` is the single cancellation channel, composed internally
  * with the timeout's own controller.
+ *
+ * `consumeBody`, when given, is called with the resolved Response while
+ * cancellation is still wired up, so an external abort (or timeout) that
+ * lands during body consumption (e.g. `response.json()`) still aborts the
+ * underlying request instead of only being able to cancel up to the point
+ * headers arrive. Its rejection is classified the same way a `fetch()`
+ * rejection is for abort/timeout; any other rejection (e.g. an error the
+ * callback throws deliberately) passes through unchanged, matching how a
+ * caller used to handle the body itself outside this helper.
  */
-export function fetchWithTimeout(
+export function fetchWithTimeout<T = Response>(
   input: RequestInfo | URL,
   init: Omit<RequestInit, "signal"> & { signal?: never },
   options: FetchWithTimeoutOptions,
-): Promise<Response> {
+  consumeBody?: (response: Response) => Promise<T>,
+): Promise<T> {
   const {
     timeoutMessage,
     failureMessage = "Request failed",
@@ -75,28 +85,74 @@ export function fetchWithTimeout(
     controller.abort();
   }, timeoutMs);
 
-  return fetch(input, { ...init, signal: controller.signal })
-    .catch((error: unknown) => {
-      if (
-        abortSource === "external" &&
-        (error === signal?.reason || isAbortError(error))
-      ) {
-        throw error;
+  const cleanup = () => {
+    clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", onExternalAbort);
+  };
+
+  // Shared by the fetch() phase and the body-consumption phase so an abort
+  // observed in either phase is classified the same way. Returns a
+  // discriminated result rather than using null/undefined as a sentinel:
+  // `AbortController.abort(null)` is a valid reason, so a matched
+  // classification whose value happens to be null/undefined must still be
+  // distinguishable from "not classified".
+  const classifyAbort = (
+    error: unknown,
+  ): { matched: true; value: unknown } | { matched: false } => {
+    if (
+      abortSource === "external" &&
+      (error === signal?.reason || isAbortError(error))
+    ) {
+      return { matched: true, value: error };
+    }
+
+    if (abortSource === "timeout" && isAbortError(error)) {
+      return {
+        matched: true,
+        value: new CharivoTimeoutError(timeoutMessage, { cause: error }),
+      };
+    }
+
+    return { matched: false };
+  };
+
+  return fetch(input, { ...init, signal: controller.signal }).then(
+    (response) => {
+      if (!consumeBody) {
+        cleanup();
+        return response as unknown as T;
       }
 
-      if (abortSource === "timeout" && isAbortError(error)) {
-        throw new CharivoTimeoutError(timeoutMessage, { cause: error });
-      }
-
-      throw (
-        mapError?.(error) ??
-        new CharivoTransportError(failureMessage, {
-          cause: error instanceof Error ? error : undefined,
-        })
-      );
-    })
-    .finally(() => {
-      clearTimeout(timeoutId);
-      signal?.removeEventListener("abort", onExternalAbort);
-    });
+      // Routed through Promise.resolve().then() so a synchronous throw from
+      // consumeBody() itself (before it returns a promise) still lands in
+      // the rejection handler below and runs cleanup(), instead of skipping
+      // straight to an uncleaned-up rejection.
+      return Promise.resolve()
+        .then(() => consumeBody(response))
+        .then(
+          (result) => {
+            cleanup();
+            return result;
+          },
+          (error: unknown) => {
+            cleanup();
+            // Non-abort rejections from the callback (e.g. a deliberately
+            // thrown provider error) pass through unchanged, same as when a
+            // caller consumed the body itself after this helper resolved.
+            const classified = classifyAbort(error);
+            throw classified.matched ? classified.value : error;
+          },
+        );
+    },
+    (error: unknown) => {
+      cleanup();
+      const classified = classifyAbort(error);
+      throw classified.matched
+        ? classified.value
+        : (mapError?.(error) ??
+            new CharivoTransportError(failureMessage, {
+              cause: error instanceof Error ? error : undefined,
+            }));
+    },
+  );
 }

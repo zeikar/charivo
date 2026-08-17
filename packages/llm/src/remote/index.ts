@@ -103,7 +103,7 @@ async function postChatRequest(
   body: unknown,
   signal?: AbortSignal,
 ): Promise<RemoteLLMResponseBody> {
-  const response = await fetchWithTimeout(
+  return fetchWithTimeout(
     apiEndpoint,
     {
       method: "POST",
@@ -117,18 +117,30 @@ async function postChatRequest(
       failureMessage: "LLM request failed",
       signal,
     },
+    // Consume the body while cancellation is still wired up, so an abort
+    // during a slow/streaming response body still cancels the request.
+    async (response) => {
+      if (!response.ok) {
+        let errorData: { error?: string } = { error: "Unknown error" };
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          // Only a malformed/non-JSON error body falls back to the default
+          // message. Anything else (e.g. an abort or timeout mid-read)
+          // propagates as-is so fetchWithTimeout classifies it, instead of
+          // masking it behind a generic provider error.
+          if (!(parseError instanceof SyntaxError)) {
+            throw parseError;
+          }
+        }
+        throw new CharivoProviderError(
+          `API call failed: ${errorData.error || response.statusText}`,
+        );
+      }
+
+      return response.json() as Promise<RemoteLLMResponseBody>;
+    },
   );
-
-  if (!response.ok) {
-    const errorData = await response
-      .json()
-      .catch(() => ({ error: "Unknown error" }));
-    throw new CharivoProviderError(
-      `API call failed: ${errorData.error || response.statusText}`,
-    );
-  }
-
-  return response.json();
 }
 
 function parseToolCalls(value: unknown): LLMToolCall[] | undefined {

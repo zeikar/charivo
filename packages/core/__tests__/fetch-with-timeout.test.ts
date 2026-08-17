@@ -259,6 +259,49 @@ describe("fetchWithTimeout", () => {
     await vi.advanceTimersByTimeAsync(DEFAULT_FETCH_TIMEOUT_MS);
   });
 
+  it("keeps the external signal wired through body consumption, so a mid-body abort rejects with the abort reason and fetch is never re-invoked", async () => {
+    const controller = new AbortController();
+    const response = new Response("ok");
+    let signalGivenToFetch: AbortSignal | undefined;
+
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      signalGivenToFetch = init?.signal ?? undefined;
+      return Promise.resolve(response);
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    let markConsumeBodyReady!: () => void;
+    const consumeBodyReady = new Promise<void>((resolve) => {
+      markConsumeBodyReady = resolve;
+    });
+
+    const consumeBody = vi.fn((res: Response) => {
+      expect(res).toBe(response);
+      return new Promise<unknown>((_, reject) => {
+        signalGivenToFetch?.addEventListener("abort", () => {
+          reject(signalGivenToFetch!.reason);
+        });
+        markConsumeBodyReady();
+      });
+    });
+
+    const request = fetchWithTimeout(
+      "/api/thing",
+      {},
+      { timeoutMessage: "timed out", signal: controller.signal },
+      consumeBody,
+    );
+
+    // Wait until fetch() has resolved (headers arrived) and consumeBody has
+    // started reading the body before aborting mid-download.
+    await consumeBodyReady;
+
+    controller.abort("mid-body-cancel");
+
+    await expect(request).rejects.toBe("mid-body-cancel");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("removes the abort listener from the external signal after settling", async () => {
     const response = new Response("ok");
     globalThis.fetch = vi.fn(async () => response) as typeof fetch;
@@ -275,6 +318,62 @@ describe("fetchWithTimeout", () => {
       { timeoutMessage: "timed out", signal: controller.signal },
     );
 
+    expect(removeEventListenerSpy).toHaveBeenCalledWith(
+      "abort",
+      expect.any(Function),
+    );
+  });
+
+  it("rethrows an explicit null abort reason as-is instead of falling back to CharivoTransportError", async () => {
+    const controller = new AbortController();
+
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal!.reason);
+          });
+        }),
+    ) as typeof fetch;
+
+    const request = fetchWithTimeout(
+      "/api/thing",
+      {},
+      { timeoutMessage: "timed out", signal: controller.signal },
+    );
+
+    controller.abort(null);
+
+    expect(controller.signal.reason).toBeNull();
+    await expect(request).rejects.toBeNull();
+  });
+
+  it("runs cleanup and classifies the rejection when consumeBody throws synchronously instead of returning a rejected promise", async () => {
+    const controller = new AbortController();
+    const response = new Response("ok");
+    globalThis.fetch = vi.fn(async () => response) as typeof fetch;
+
+    const removeEventListenerSpy = vi.spyOn(
+      controller.signal,
+      "removeEventListener",
+    );
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    const syncError = new Error("boom");
+    const consumeBody = vi.fn((): Promise<unknown> => {
+      throw syncError;
+    });
+
+    await expect(
+      fetchWithTimeout(
+        "/api/thing",
+        {},
+        { timeoutMessage: "timed out", signal: controller.signal },
+        consumeBody,
+      ),
+    ).rejects.toBe(syncError);
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
     expect(removeEventListenerSpy).toHaveBeenCalledWith(
       "abort",
       expect.any(Function),
