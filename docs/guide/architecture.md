@@ -30,7 +30,13 @@ In practice:
   LLM/TTS/STT providers and OpenClaw LLM provider are implemented on the
   matching modality subpath (e.g. `@charivo/llm/openai`) and re-exported from
   `@charivo/server/*`, which keeps credential use and the realtime session
-  bootstrap on the server side
+  bootstrap on the server side. That placement is deliberate, not an inverted
+  layering: each of those modality subpaths also ships a dev/testing browser
+  client that wraps the same provider instead of duplicating an HTTP client,
+  so the provider has to live where that client can reuse it — which is why
+  `@charivo/server/*` is mostly re-exports. Fresh reviews have misread this
+  twice; it has been examined and upheld both times, so treat it as settled
+  unless the dev-client path itself is being removed
 
 Lower layers should not take on orchestration concerns from higher layers.
 
