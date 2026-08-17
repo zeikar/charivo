@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   Character,
   CharivoEventEmitter,
+  LLMCallOptions,
   LLMClient,
   LLMMessage,
   LLMToolCall,
@@ -231,6 +232,23 @@ describe("LLMValidators", () => {
   });
 });
 
+describe("LLMClient contract", () => {
+  it("still accepts an implementation using the pre-signal one-arg call signature", () => {
+    // Compile-time regression guard for the optional `options?: LLMCallOptions`
+    // param added to `LLMClient.call`: a client implemented against the old
+    // one-arg `call(messages)` signature must still assign to `LLMClient`.
+    // vitest transpiles without typechecking, so this guard is enforced by
+    // `tsc -p tsconfig.test.json` (the root `pnpm typecheck` includes
+    // `typecheck:tests`), not by running this test.
+    const oneArgClient: LLMClient = {
+      call: (_messages: Array<{ role: string; content: string }>) =>
+        Promise.resolve(""),
+    };
+
+    expect(oneArgClient).toBeDefined();
+  });
+});
+
 describe("LLMManager", () => {
   it("adds history and returns responses", async () => {
     const client = new MockClient();
@@ -253,6 +271,21 @@ describe("LLMManager", () => {
     expect(history).toHaveLength(2);
     expect(history[0].type).toBe("user");
     expect(history[1].type).toBe("character");
+  });
+
+  it("forwards options.signal to the client call", async () => {
+    const client = new MockClient();
+    const manager = createLLMManager(client);
+    manager.setCharacter(character);
+
+    const controller = new AbortController();
+    await manager.generateResponse(buildUserMessage("hello"), {
+      signal: controller.signal,
+    });
+
+    expect(client.call).toHaveBeenCalledWith(expect.any(Array), {
+      signal: controller.signal,
+    });
   });
 
   it("clears history and current character", () => {
@@ -754,6 +787,7 @@ describe("LLMManager tool loop", () => {
       async (
         messages: LLMMessage[],
         tools: ToolDefinition[],
+        _options?: LLMCallOptions,
       ): Promise<LLMToolResponse> => {
         payloads.push([...messages]);
         toolPayloads.push(tools);
@@ -1131,6 +1165,34 @@ describe("LLMManager tool loop", () => {
     expect(handler).toHaveBeenCalledTimes(3);
     // The terminal call forces text by offering no tools.
     expect(toolPayloads[3]).toEqual([]);
+  });
+
+  it("forwards the same signal to every round of the tool loop", async () => {
+    const toolCall = buildToolCall();
+    const { client, callWithTools } = buildToolClient([
+      { content: "", toolCalls: [toolCall] },
+      { content: "", toolCalls: [toolCall] },
+      { content: "", toolCalls: [toolCall] },
+      { content: FINAL_TEXT, toolCalls: [toolCall] },
+    ]);
+    const handler = vi.fn(expressionHandler);
+    const manager = new LLMManager(client, {
+      tools: [buildExpressionTool(handler)],
+    });
+
+    manager.setCharacter(character);
+
+    const controller = new AbortController();
+    const response = await manager.generateResponse(buildUserMessage("hello"), {
+      signal: controller.signal,
+    });
+
+    expect(response).toBe(FINAL_TEXT);
+    // Initial call plus every follow-up round of the tool loop.
+    expect(callWithTools).toHaveBeenCalledTimes(4);
+    for (const call of callWithTools.mock.calls) {
+      expect(call[2]).toEqual({ signal: controller.signal });
+    }
   });
 
   it("appends tool instructions to the system prompt on the tools path", async () => {

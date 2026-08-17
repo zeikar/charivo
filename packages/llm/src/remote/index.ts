@@ -2,6 +2,7 @@ import {
   CharivoProviderError,
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
+  type LLMCallOptions,
   type LLMClient,
   type LLMMessage,
   type LLMToolCall,
@@ -33,8 +34,13 @@ class RemoteLLMClient implements LLMClient {
 
   async call(
     messages: Array<{ role: string; content: string }>,
+    options?: LLMCallOptions,
   ): Promise<string> {
-    const data = await postChatRequest(this.apiEndpoint, { messages });
+    const data = await postChatRequest(
+      this.apiEndpoint,
+      { messages },
+      options?.signal,
+    );
 
     if (!data.success) {
       throw new CharivoProviderError(
@@ -52,8 +58,13 @@ class RemoteLLMClient implements LLMClient {
   async callWithTools(
     messages: LLMMessage[],
     tools: ToolDefinition[],
+    options?: LLMCallOptions,
   ): Promise<LLMToolResponse> {
-    const data = await postChatRequest(this.apiEndpoint, { messages, tools });
+    const data = await postChatRequest(
+      this.apiEndpoint,
+      { messages, tools },
+      options?.signal,
+    );
 
     // Cast through `unknown` so the guard doesn't narrow `data`'s declared shape
     // away to a bare index signature - the fields below still need their types.
@@ -90,6 +101,7 @@ export function createRemoteLLMClient(config?: RemoteLLMConfig): LLMClient {
 async function postChatRequest(
   apiEndpoint: string,
   body: unknown,
+  signal?: AbortSignal,
 ): Promise<RemoteLLMResponseBody> {
   const response = await fetchWithTimeout(
     apiEndpoint,
@@ -103,6 +115,7 @@ async function postChatRequest(
     {
       timeoutMessage: `LLM request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
       failureMessage: "LLM request failed",
+      signal,
     },
   );
 

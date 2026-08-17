@@ -229,13 +229,25 @@ export interface LLMProvider {
   ): Promise<LLMToolResponse>;
 }
 
+/**
+ * Transport-level cancellation for a single `LLMClient` call. Implementations
+ * that do not support cancellation may ignore the field.
+ */
+export interface LLMCallOptions {
+  signal?: AbortSignal;
+}
+
 // Simple LLM call client (stateless)
 export interface LLMClient {
-  call(messages: Array<{ role: string; content: string }>): Promise<string>;
+  call(
+    messages: Array<{ role: string; content: string }>,
+    options?: LLMCallOptions,
+  ): Promise<string>;
   /** Tool-calling variant; clients that support function calling implement this alongside call. */
   callWithTools?(
     messages: LLMMessage[],
     tools: ToolDefinition[],
+    options?: LLMCallOptions,
   ): Promise<LLMToolResponse>;
 }
 
@@ -264,14 +276,28 @@ export interface GenerateResponseOptions {
    * projector. Once it returns `true` the call starts nothing further and
    * projects nothing further, then resolves with the latest response text.
    *
-   * It does not govern history writes, and it aborts neither an in-flight
-   * request nor an already-running handler, so tool side effects are not
-   * rolled back. Note the resulting event split: `tool:call` records an
-   * attempted, dispatched call and can be the last event for a call whose
-   * handler was skipped, while `tool:result` and `tool:error` report a
-   * handler that actually ran.
+   * It does not govern history writes, and it does not abort an already-
+   * running handler, so tool side effects are not rolled back. Cancelling an
+   * in-flight request is `signal`'s job, not this predicate's - see `signal`
+   * below. Note the resulting event split: `tool:call` records an attempted,
+   * dispatched call and can be the last event for a call whose handler was
+   * skipped, while `tool:result` and `tool:error` report a handler that
+   * actually ran.
    */
   isCancelled?: () => boolean;
+  /**
+   * Cancellation for the in-flight LLM call, forwarded to the client as
+   * `LLMCallOptions.signal` on every `call`/`callWithTools` request this turn
+   * makes, tool rounds included. Distinct from `isCancelled`: `isCancelled`
+   * gates new work between steps and never aborts an in-flight request;
+   * `signal` is what aborts the request itself. Whether an abort actually
+   * cancels the transport depends on the client - clients that ignore
+   * `LLMCallOptions.signal` (allowed by the contract) run to completion
+   * regardless. A mid-request abort surfaces as a rejection, which a
+   * latest-wins caller swallows via its own stale-turn check rather than this
+   * manager doing anything special with it.
+   */
+  signal?: AbortSignal;
 }
 
 // LLM manager (session management, history, character management)

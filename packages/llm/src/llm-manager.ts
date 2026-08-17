@@ -230,8 +230,9 @@ export class LLMManager {
         ? await this.runToolLoop(
             apiMessages,
             options.isCancelled ?? (() => false),
+            options.signal,
           )
-        : await this.llmClient.call(apiMessages);
+        : await this.llmClient.call(apiMessages, { signal: options.signal });
 
       // Build the AI response message and add it to the history.
       // Only the final assistant text is persisted: tool-call and tool-result
@@ -277,13 +278,14 @@ export class LLMManager {
   private async runToolLoop(
     apiMessages: LLMApiMessage[],
     isCancelled: () => boolean,
+    signal?: AbortSignal,
   ): Promise<string> {
     // Guarded by shouldUseToolLoop(): callWithTools exists on this path
     const callWithTools = this.llmClient.callWithTools!.bind(this.llmClient);
     const definitions = this.getRegisteredTools();
     const working = this.buildToolLoopMessages(apiMessages);
 
-    let response = await callWithTools(working, definitions);
+    let response = await callWithTools(working, definitions, { signal });
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const toolCalls = response.toolCalls ?? [];
@@ -323,7 +325,9 @@ export class LLMManager {
 
       // Terminal call offers no tools so the reply is text, not an unexecuted tool request.
       const isFinalRound = round === MAX_TOOL_ROUNDS - 1;
-      response = await callWithTools(working, isFinalRound ? [] : definitions);
+      response = await callWithTools(working, isFinalRound ? [] : definitions, {
+        signal,
+      });
     }
 
     // Round cap reached: return the model's text instead of executing more tools

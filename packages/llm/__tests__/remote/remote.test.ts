@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CharivoTimeoutError,
   CharivoTransportError,
   type LLMMessage,
   type ToolDefinition,
@@ -113,6 +114,32 @@ describe("RemoteLLMClient", () => {
         message: "network down",
       }),
     });
+  });
+
+  it("aborts the underlying fetch and rejects with the abort reason (not a timeout error) when the caller's signal aborts mid-request", async () => {
+    const controller = new AbortController();
+    let signalGivenToFetch: AbortSignal | undefined;
+    const abortError = createAbortError();
+
+    globalThis.fetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        signalGivenToFetch = init?.signal ?? undefined;
+        return new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(abortError);
+          });
+        });
+      },
+    ) as typeof fetch;
+
+    const client = createRemoteLLMClient();
+    const request = client.call([], { signal: controller.signal });
+
+    controller.abort();
+
+    expect(signalGivenToFetch?.aborted).toBe(true);
+    await expect(request).rejects.toBe(abortError);
+    await expect(request).rejects.not.toBeInstanceOf(CharivoTimeoutError);
   });
 });
 
