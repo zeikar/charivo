@@ -215,6 +215,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setAvatarCatalog,
     setAvatarDebug,
     resetAvatarDebug,
+    setCapNotice,
   } = useChatStore();
 
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
@@ -570,10 +571,17 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           setInput(text);
         });
 
+        // Both terminal STT events disarm the recording cap. STTManager emits
+        // them only from start()/stop() -- never mid-stream, where a streaming
+        // transcriber reports through stt:partial -- so this cannot disarm a
+        // recording that is still running. Without it a recording that ended
+        // early leaves the timer armed, and its late fire would announce a cap
+        // that stopped nothing.
         instance.on("stt:stop", ({ text }) => {
           if (disposed) {
             return;
           }
+          recordingCapRef.current.clear();
           setIsRecording(false);
           setIsTranscribing(false);
           setInput(text);
@@ -583,6 +591,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           if (disposed) {
             return;
           }
+          recordingCapRef.current.clear();
           setIsRecording(false);
           setIsTranscribing(false);
           setSttError(error.message);
@@ -1075,6 +1084,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
     try {
       setSttError(null);
+      // Starting another recording answers the previous cap notice.
+      setCapNotice(null);
       await sttManagerRef.current.start();
 
       // The streaming transcriber holds an open, wall-clock-billed realtime
@@ -1086,14 +1097,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setSttError(error instanceof Error ? error.message : "Recording failed");
       setIsRecording(false);
     }
-  }, [setIsRecording, setSttError, recordingCap]);
+  }, [setIsRecording, setSttError, recordingCap, setCapNotice]);
 
   // The cap must call the CURRENT stop handler, not the one that existed when it
   // was armed -- see session-cap.ts. Arming happens inside handleStartRecording,
   // where isRecording is still false, so the handler captured there would no-op.
+  // Only this path flags the notice: a user-initiated stop goes straight to
+  // handleStopRecording and has nothing to explain.
   useEffect(() => {
-    recordingCap.update(handleStopRecording);
-  }, [recordingCap, handleStopRecording]);
+    recordingCap.update(() => {
+      setCapNotice("stt-recording");
+      return handleStopRecording();
+    });
+  }, [recordingCap, handleStopRecording, setCapNotice]);
 
   // An unmount mid-recording must not leave the cap armed.
   useEffect(() => recordingCap.clear, [recordingCap]);

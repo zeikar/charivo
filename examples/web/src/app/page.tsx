@@ -9,6 +9,7 @@ import { MessageBubbles } from "./components/chat/MessageBubbles";
 import { ControlPanel } from "./components/chat/ControlPanel";
 import { AvatarDebugPanel } from "./components/chat/AvatarDebugPanel";
 import { ChatInput } from "./components/chat/ChatInput";
+import { SessionCapNotice } from "./components/chat/SessionCapNotice";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import { useRealtimeMode } from "./hooks/useRealtimeMode";
 import { useChatStore } from "./stores/useChatStore";
@@ -119,6 +120,8 @@ export default function Home() {
 
             <AvatarDebugPanel />
           </div>
+
+          <SessionCapNotice />
 
           {/* Chat Input Area */}
           <ChatInput

@@ -30,6 +30,7 @@ export function useRealtimeMode() {
     setRealtimeError,
     resetRealtimeUiState,
     avatarCatalog,
+    setCapNotice,
   } = useChatStore();
 
   const sessionCapRef = useRef(createSessionCap());
@@ -90,6 +91,8 @@ export function useRealtimeMode() {
 
     setIsConnecting(true);
     setRealtimeError(null);
+    // Starting another session answers the previous cap notice.
+    setCapNotice(null);
 
     try {
       console.log("🌐 Enabling Realtime mode...");
@@ -155,6 +158,7 @@ export function useRealtimeMode() {
     resetRealtimeUiState,
     avatarCatalog,
     sessionCap,
+    setCapNotice,
   ]);
 
   // The cap must call the CURRENT teardown, not the one that existed when it was
@@ -163,9 +167,22 @@ export function useRealtimeMode() {
   useEffect(() => {
     sessionCap.update(() => {
       logRealtimeMode("session-cap.reached", { ms: REALTIME_SESSION_MAX_MS });
+      // Flag it before tearing down, so the notice is already up when the
+      // button falls back to its "off" state -- but only for a session that is
+      // still running. A session that already died on its own leaves
+      // session.status "stopped", and that earlier failure must not be
+      // re-attributed to the cap. A reconnect keeps the status "active", so
+      // this does not swallow the notice mid-recovery. The teardown itself is
+      // unconditional: the cost bound must never depend on reading state
+      // correctly.
+      if (
+        charivo?.getRealtimeManager()?.getState().session.status === "active"
+      ) {
+        setCapNotice("realtime-session");
+      }
       return disableRealtimeMode();
     });
-  }, [sessionCap, disableRealtimeMode]);
+  }, [sessionCap, disableRealtimeMode, setCapNotice, charivo]);
 
   // An unmount mid-session must not leave the cap armed.
   useEffect(() => sessionCap.clear, [sessionCap]);

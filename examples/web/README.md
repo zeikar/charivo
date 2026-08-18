@@ -40,8 +40,9 @@ What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
   build; `pnpm dev:web` loosens that to 15 minutes so a debugging session is not
   cut off, and nothing but the build mode selects between them. Both are
   client-side timers: after bootstrap the browser talks to OpenAI directly, so
-  the server cannot hang up. They bound an ordinary visitor, not a determined
-  caller.
+  the server cannot hang up. When either fires, a notice above the chat input
+  (`SessionCapNotice`) says which cap stopped things, so it does not read as a
+  bug. They bound an ordinary visitor, not a determined caller.
 
 One thing the routes deliberately do **not** pin is `instructions`. The demo
 composes them in the browser from the avatar catalog of whichever Live2D model

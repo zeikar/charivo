@@ -6,6 +6,7 @@ import type {
 } from "@charivo/core";
 import type {
   ChatMessage,
+  DemoCapNotice,
   LLMClientType,
   RealtimeTurnStatus,
   TTSPlayerType,
@@ -61,6 +62,9 @@ type ChatStore = {
   setIsConnected: (connected: boolean) => void;
   realtimeError: string | null;
   setRealtimeError: (error: string | null) => void;
+  /** Set when a demo cap stopped something; cleared on dismiss or on restart. */
+  capNotice: DemoCapNotice | null;
+  setCapNotice: (notice: DemoCapNotice | null) => void;
   realtimeState: RealtimeState | null;
   setRealtimeState: (state: RealtimeState | null) => void;
   realtimeAssistantDraft: string | null;
@@ -155,6 +159,8 @@ export const useChatStore = create<ChatStore>((set) => ({
   setIsConnected: (isConnected) => set({ isConnected }),
   realtimeError: null,
   setRealtimeError: (realtimeError) => set({ realtimeError }),
+  capNotice: null,
+  setCapNotice: (capNotice) => set({ capNotice }),
   realtimeState: null,
   setRealtimeState: (realtimeState) => set({ realtimeState }),
   realtimeAssistantDraft: null,

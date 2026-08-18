@@ -34,6 +34,26 @@ describe("useChatStore realtime UI state", () => {
     );
   });
 
+  /**
+   * The cap notice is raised just before the session is torn down, and teardown
+   * runs resetRealtimeUiState — so if that reset ever swept the notice away too,
+   * a capped session would go quiet with nothing on screen explaining why.
+   */
+  it("keeps the cap notice through the realtime UI reset that teardown runs", () => {
+    const state = useChatStore.getState();
+
+    expect(state.capNotice).toBeNull();
+
+    state.setCapNotice("realtime-session");
+    state.resetRealtimeUiState();
+
+    expect(useChatStore.getState().capNotice).toBe("realtime-session");
+
+    state.setCapNotice(null);
+
+    expect(useChatStore.getState().capNotice).toBeNull();
+  });
+
   it("stores and resets the realtime turn status", () => {
     const state = useChatStore.getState();
 
