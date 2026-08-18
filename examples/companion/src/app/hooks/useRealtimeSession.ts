@@ -30,6 +30,12 @@ import { renderSituationalContext } from "../lib/situational-context";
 import type { Turn } from "@/memory/promotion-types";
 import type { RelationshipState } from "@/memory/types";
 import { renderPersonaInstructions } from "../lib/persona";
+import {
+  REALTIME_MODEL,
+  REALTIME_SESSION_MAX_MS,
+  REALTIME_TRANSCRIPTION_MODEL,
+} from "../api/demo-limits";
+import { createSessionCap } from "./session-cap";
 
 // Builds the optional user-name instruction block. Returns null (so
 // composeInstructions's .filter(Boolean) drops it) when no name is set. The
@@ -122,6 +128,12 @@ export interface UseRealtimeSessionResult {
   isConnecting: boolean;
   transcript: string;
   rendererReady: boolean;
+  /**
+   * True when the demo's wall-clock cap — not the user, and not an error — is
+   * what ended the last session, so the UI can say so instead of leaving the
+   * visitor to guess why she went quiet. Cleared on the next start().
+   */
+  cappedOut: boolean;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   sendMessage: (text: string) => Promise<boolean>;
@@ -156,6 +168,14 @@ export function useRealtimeSession(
   // guards on rendererReadyRef.current synchronously; this is purely the
   // re-render trigger.
   const [rendererReady, setRendererReady] = useState(false);
+  const [cappedOut, setCappedOut] = useState(false);
+
+  // Realtime bills on wall clock, and after bootstrap the browser talks to
+  // OpenAI directly — the server is out of the loop and cannot hang up. So this
+  // timer is what bounds an ordinary visitor's session cost. It is a courtesy
+  // cap, not an abuse control: see `api/demo-limits.ts`.
+  const sessionCapRef = useRef(createSessionCap());
+  const sessionCap = sessionCapRef.current;
 
   const isConnectedRef = useRef(false);
   const isConnectingRef = useRef(false);
@@ -432,6 +452,9 @@ export function useRealtimeSession(
     isConnectingRef.current = true;
     setIsConnecting(true);
     setTranscript("");
+    // A new session answers the previous cap notice, so retire it here rather
+    // than on the notice's own dismissal — reconnecting IS the dismissal.
+    setCappedOut(false);
     firstUtteranceHandledRef.current = false;
     recordUserUtteranceRef.current = null;
 
@@ -623,12 +646,14 @@ export function useRealtimeSession(
 
       await manager.startSession({
         provider: "openai",
-        model: "gpt-realtime-2.1-mini",
+        // The route pins both models server-side regardless; sending the same
+        // values keeps the client honest about what it is asking for.
+        model: REALTIME_MODEL,
         instructions,
         // Enable input transcription so `conversation.item.input_audio_transcription.completed`
         // fires and the manager emits `realtime:user:transcript`. Without this
         // OpenAI defaults transcription OFF, which silences onUserTranscript entirely.
-        inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
+        inputAudioTranscription: { model: REALTIME_TRANSCRIPTION_MODEL },
       });
 
       // If the component unmounted while the connection was in-flight, tear the
@@ -639,6 +664,10 @@ export function useRealtimeSession(
         return;
       }
 
+      // Armed only once the session is really live and this component is still
+      // mounted, so no cap outlives a start that never finished.
+      sessionCap.arm(REALTIME_SESSION_MAX_MS);
+
       logSession("session started");
     } catch (error) {
       await teardownSession();
@@ -648,9 +677,14 @@ export function useRealtimeSession(
       setIsConnecting(false);
       setIsConnected(false);
     }
-  }, [resolvedCharacter]);
+  }, [resolvedCharacter, sessionCap]);
 
   const stop = useCallback(async () => {
+    // Disarm first, so a stop that lands moments before the budget elapses
+    // cannot be followed by the cap firing into an already-dead session. A cap
+    // that fires and calls stop() simply disarms an already-spent timer.
+    sessionCap.clear();
+
     // Unsubscribe FIRST so no further turns are recorded, then flush the final
     // write with the now-frozen transcript. A memory write failure must never
     // block stopping the realtime session.
@@ -696,7 +730,30 @@ export function useRealtimeSession(
     setIsConnected(false);
     setIsConnecting(false);
     logSession("session stopped");
-  }, []);
+  }, [sessionCap]);
+
+  // The cap must call the CURRENT teardown, not the one that existed when it
+  // was armed — see session-cap.ts. `cappedOut` is set before stop() so the
+  // notice is already in place by the time the stage falls back to dormant.
+  //
+  // Only a session that is still running gets the notice: a session that
+  // already died on its own (finalizeFailedSession leaves session.status
+  // "stopped") must not have that earlier failure re-attributed to the cap. A
+  // reconnect keeps the status "active", so this does not swallow the notice
+  // mid-recovery. The teardown itself is unconditional — the cost bound is the
+  // whole point, and must never depend on reading state correctly.
+  useEffect(() => {
+    sessionCap.update(async () => {
+      logSession("session-cap.reached", { ms: REALTIME_SESSION_MAX_MS });
+      if (managerRef.current?.getState().session.status === "active") {
+        setCappedOut(true);
+      }
+      await stop();
+    });
+  }, [sessionCap, stop]);
+
+  // An unmount mid-session must not leave the cap armed.
+  useEffect(() => sessionCap.clear, [sessionCap]);
 
   const sendMessage = useCallback(async (text: string): Promise<boolean> => {
     const manager = managerRef.current;
@@ -743,6 +800,7 @@ export function useRealtimeSession(
     isConnecting,
     transcript,
     rendererReady,
+    cappedOut,
     start,
     stop,
     sendMessage,

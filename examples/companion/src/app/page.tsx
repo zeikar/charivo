@@ -34,6 +34,7 @@ import { TopBar } from "./components/TopBar";
 import { VoiceOrb } from "./components/VoiceOrb";
 import { Captions } from "./components/Captions";
 import { IntroScreen } from "./components/IntroScreen";
+import { SessionCapNotice } from "./components/SessionCapNotice";
 import { SettingsPanel } from "./components/SettingsPanel";
 
 export default function Page() {
@@ -91,6 +92,7 @@ export default function Page() {
     isConnected,
     isConnecting,
     transcript,
+    cappedOut,
     start,
     stop,
     rendererReady,
@@ -365,6 +367,7 @@ export default function Page() {
               </span>
             </div>
           )}
+          <SessionCapNotice show={cappedOut} name={character.name} />
           <Captions show={captionsOn} line={transcript} name={character.name} />
           <SettingsPanel
             open={settingsOpen}

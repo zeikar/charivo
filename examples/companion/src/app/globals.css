@@ -516,6 +516,49 @@ body,
   white-space: nowrap;
 }
 
+/* ---- session cap notice -------------------------------------------------- */
+/* Explains why a session that hit the wall-clock budget went quiet (see
+   api/demo-limits.ts), so it does not read as a crash. Sits under the top bar,
+   where nothing competes for space once the camera indicator is gone — that one
+   only shows while connected. */
+.cap-notice {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  z-index: 6;
+  width: min(84vw, 400px);
+  padding: 13px 20px 15px;
+  border-radius: 16px;
+  text-align: center;
+  background: color-mix(in oklch, var(--bg3) 72%, transparent);
+  border: 1px solid color-mix(in oklch, var(--text) 12%, transparent);
+  backdrop-filter: blur(8px);
+  /* Purely informational — the orb below must stay tappable. */
+  pointer-events: none;
+  animation: capNoticeIn 0.5s ease both;
+}
+.cap-notice-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  color: var(--text);
+}
+.cap-notice-body {
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--sub);
+}
+@keyframes capNoticeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* ---- captions ------------------------------------------------------------ */
 .caption {
   position: absolute;
@@ -1081,6 +1124,10 @@ body,
   .caption {
     bottom: 20%;
     width: 86vw;
+  }
+  .cap-notice {
+    top: 64px;
+    width: 88vw;
   }
   .stage-fig.align-left,
   .stage-fig.align-right {

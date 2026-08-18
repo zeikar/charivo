@@ -177,9 +177,10 @@ OPENAI_API_KEY=your_openai_api_key_here
 
 > ⚠️ **Memory isolation is not deployment safety.** `POST /api/realtime` mints
 > realtime sessions with your server's `OPENAI_API_KEY` and has no
-> authentication or rate limiting — it only validates the request shape. Anyone
-> who can reach the route can spend your OpenAI budget. Add your own auth, rate
-> limiting, or abuse controls before putting this on a public URL.
+> authentication and no rate limiting. Anyone who can reach the route can spend
+> your OpenAI budget. What it *does* bound is described in
+> [Deploying this demo](#deploying-this-demo) — add your own auth, per-IP quota,
+> or abuse controls before putting this on a public URL.
 
 From the repository root:
 
@@ -275,11 +276,13 @@ The only server route is the realtime bootstrap — memory is fully client-side
 - `POST /api/realtime`
   Uses `@charivo/server/openai` to create a Realtime session bootstrap for
   `@charivo/realtime/remote`. Validates that `transport` and `session` are
-  present and that `session.provider` is `"openai"`, then returns the session
+  present and that `session.provider` is `"openai"`, rebuilds the session config
+  against `src/app/api/demo-limits.ts` (see
+  [Deploying this demo](#deploying-this-demo)), then returns the session
   bootstrap payload.
 
 The session runs `gpt-realtime-2.1-mini` with `gpt-4o-mini-transcribe` for input
-transcription. Transcription is deliberately enabled — OpenAI defaults it off,
+transcription — both pinned by the route, whatever the caller asks for. Transcription is deliberately enabled — OpenAI defaults it off,
 and without it no user transcript arrives, so voice-user turn capture and the
 first-voice-utterance memory refresh would not run. (Assistant completions are
 recorded either way, and the internal typed path records user turns separately.)
@@ -303,15 +306,53 @@ recorded either way, and the internal typed path records user turns separately.)
 > the same future real extractor; the marker logic itself is real and
 > unit-tested via the scripted extractor today.
 
+## Deploying this demo
+
+> **This route has no authentication and no rate limiting. Do not deploy it
+> as-is.**
+
+`POST /api/realtime` is an unauthenticated proxy that anyone can POST to, and it
+spends your paid `OPENAI_API_KEY`. That is fine on your own machine, and it is
+what the hosted demo accepts deliberately — it is not a production template,
+however much it looks like one.
+
+What the route *does* defend against, in `src/app/api/demo-limits.ts`:
+
+- **The models are pinned server-side.** The route rebuilds the session config
+  instead of forwarding the caller's, so nobody can repoint the key at an
+  expensive model, raise `maxTokens`, or swap the transcription model.
+- **Single requests are bounded.** Caps on instruction length, tool count, and
+  serialized tool bytes; `toolChoice` is restricted to the accepted set.
+- **Sessions stop after 90 seconds** in a production build; a dev build loosens
+  that to 15 minutes so debugging is not cut off, and nothing but the build mode
+  selects between them. It is a client-side timer — after bootstrap the browser
+  talks to OpenAI directly, so the server cannot hang up. When it fires, the UI
+  says so (`SessionCapNotice`) rather than letting the character go quiet
+  unexplained. It bounds an ordinary visitor, not a determined caller.
+
+One thing the route deliberately does **not** pin is `instructions`. The browser
+composes them from the persona, the avatar catalog of whichever model finished
+loading, and the visitor's browser-local memory, so the server cannot rebuild
+them. They are size-capped, but a caller can still supply their own system
+prompt on the pinned model.
+
+What it does **not** defend against — you have to add these yourself:
+
+- No auth, no per-IP quota, no concurrency limit. One script can open many short
+  sessions, and realtime bills on wall clock.
+- Nothing bounds *total* spend. Set a per-project spend limit on the OpenAI side.
+
 ## Structure
 
 ```text
 examples/companion/src/app
   api/
     realtime/route.ts
+    demo-limits.ts           ← pinned models + per-request bounds + the session cap budget
   hooks/
     useRealtimeSession.ts    ← drives Charivo orchestrator; wires Live2D renderer +
                                realtime manager; captures turns; reads/promotes the local store
+    session-cap.ts           ← one-shot wall-clock timer that ends a billable session
   components/
     Icon.tsx                 ← shared SVG icon wrapper
     AmbientBackground.tsx    ← time-of-day gradient backdrop
@@ -322,6 +363,7 @@ examples/companion/src/app
     IntroScreen.tsx          ← intro copy/form (eyebrow/headline/sub/name field/Meet her); the dim
                                avatar behind it is the shared CharacterPresence layer, not part of this
     SettingsPanel.tsx        ← right slide-in panel; "You & her" + "Memory" tabs
+    SessionCapNotice.tsx     ← explains a session the wall-clock cap ended
   lib/
     compose-instructions.ts
     hearth-theme.ts          ← ambient gradient + theme tokens for the Hearth UX
