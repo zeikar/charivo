@@ -338,7 +338,6 @@ describe("OpenAIRealtimeAgentsClient", () => {
     await client.updateSession({
       provider: "openai",
       voice: "alloy",
-      temperature: 0.2,
       maxTokens: 200,
       tools: [
         {
@@ -363,8 +362,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
             name: "wave",
           }),
         ],
-        temperature: 0.2,
-        maxResponseOutputTokens: 200,
+        providerData: { max_output_tokens: 200 },
         audio: {
           output: {
             voice: "alloy",
@@ -380,8 +378,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
           voice: "alloy",
         },
       },
-      temperature: 0.2,
-      maxResponseOutputTokens: 200,
+      providerData: { max_output_tokens: 200 },
     });
   });
 

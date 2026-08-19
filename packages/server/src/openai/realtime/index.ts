@@ -205,12 +205,8 @@ function toOpenAIRealtimeSession(
     payload.instructions = session.instructions;
   }
 
-  if (session.temperature !== undefined) {
-    payload.temperature = session.temperature;
-  }
-
   if (session.maxTokens !== undefined) {
-    payload.max_response_output_tokens = session.maxTokens;
+    payload.max_output_tokens = session.maxTokens;
   }
 
   if (session.tools?.length) {

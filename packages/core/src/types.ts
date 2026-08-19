@@ -101,7 +101,6 @@ export interface RealtimeSessionConfig {
   voice?: string;
   model?: string;
   instructions?: string;
-  temperature?: number;
   maxTokens?: number;
   tools?: ToolDefinition[];
   toolChoice?: RealtimeToolChoice;

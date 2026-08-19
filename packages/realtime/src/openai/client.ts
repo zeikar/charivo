@@ -985,12 +985,8 @@ function toOpenAIRealtimeSessionUpdate(
     session.instructions = config.instructions;
   }
 
-  if (config?.temperature !== undefined) {
-    session.temperature = config.temperature;
-  }
-
   if (config?.maxTokens !== undefined) {
-    session.max_response_output_tokens = config.maxTokens;
+    session.max_output_tokens = config.maxTokens;
   }
 
   if (config && "tools" in config) {

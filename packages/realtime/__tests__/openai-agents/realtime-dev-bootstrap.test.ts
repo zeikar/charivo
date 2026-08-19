@@ -154,6 +154,31 @@ describe("getOpenAIRealtimeAgentsBootstrap — apiKey (dev-bootstrap) path", () 
     expect(body.session.model).toBe("gpt-realtime-2.1");
     expect(body.session.audio?.output?.voice).toBe("nova");
   });
+
+  // This serializer is duplicated from the server provider on purpose (browser
+  // clients must not import from @charivo/server), so the server's regression
+  // test cannot stop this copy from drifting back to the beta field name the GA
+  // session schema rejects.
+  it("sends maxTokens as max_output_tokens", async () => {
+    const mockFetch = makeFetchOk({ value: "ek_max_tokens" });
+    globalThis.fetch = mockFetch;
+
+    await getOpenAIRealtimeAgentsBootstrap(
+      { apiKey: "sk-test" },
+      { ...request, session: { ...request.session, maxTokens: 4096 } },
+    );
+
+    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    const { session } = JSON.parse(init.body as string) as {
+      session: Record<string, unknown>;
+    };
+
+    expect(session.max_output_tokens).toBe(4096);
+    expect(session).not.toHaveProperty("max_response_output_tokens");
+  });
 });
 
 describe("getOpenAIRealtimeAgentsBootstrap — precedence", () => {

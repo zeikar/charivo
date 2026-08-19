@@ -185,6 +185,52 @@ describe("OpenAIRealtimeProvider", () => {
     });
   });
 
+  // The GA session schema renamed the beta's `max_response_output_tokens`, and
+  // rejects the old name outright -- so a demo that pins an output cap cannot
+  // mint a session at all. Both adapters build the same payload.
+  it("sends maxTokens as max_output_tokens on both adapters", async () => {
+    const sessions: Record<string, unknown>[] = [];
+    globalThis.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/client_secrets")) {
+          const body = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          sessions.push(body.session as Record<string, unknown>);
+          return Response.json({ client_secret: { value: "client-secret" } });
+        }
+
+        const formData = init?.body as FormData;
+        sessions.push(
+          JSON.parse(String(formData.get("session"))) as Record<
+            string,
+            unknown
+          >,
+        );
+        return new Response("answer-sdp");
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      transport: "webrtc",
+      sdpOffer: "offer-sdp",
+      session: { provider: "openai", maxTokens: 4096 },
+    });
+    await provider.createSession({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+      transport: "webrtc",
+      session: { provider: "openai", maxTokens: 4096 },
+    });
+
+    expect(sessions).toHaveLength(2);
+    for (const session of sessions) {
+      expect(session.max_output_tokens).toBe(4096);
+      expect(session).not.toHaveProperty("max_response_output_tokens");
+    }
+  });
+
   it("forwards inputAudioTranscription into session.audio.input.transcription on the agents adapter", async () => {
     globalThis.fetch = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {

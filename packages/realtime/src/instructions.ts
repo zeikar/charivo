@@ -25,7 +25,6 @@ export function buildRealtimeSessionConfig({
     voice: baseConfig?.voice ?? character?.voice?.voiceId,
     instructions:
       baseConfig?.instructions ?? buildCharacterInstructions(character),
-    temperature: baseConfig?.temperature,
     maxTokens: baseConfig?.maxTokens,
     tools: baseConfig?.tools,
     toolChoice: baseConfig?.toolChoice ?? "auto",

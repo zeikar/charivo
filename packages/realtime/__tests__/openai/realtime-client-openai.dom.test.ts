@@ -298,7 +298,6 @@ describe("OpenAIRealtimeClient", () => {
     const updatePromise = client.updateSession({
       provider: "openai",
       voice: "alloy",
-      temperature: 0.2,
       maxTokens: 200,
       tools: [
         {
@@ -324,8 +323,7 @@ describe("OpenAIRealtimeClient", () => {
             },
           },
           tool_choice: "auto",
-          temperature: 0.2,
-          max_response_output_tokens: 200,
+          max_output_tokens: 200,
           tools: [
             {
               type: "function",
