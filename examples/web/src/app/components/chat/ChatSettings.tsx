@@ -39,6 +39,36 @@ type Option<T> = {
   corsWarning?: boolean;
 };
 
+/**
+ * Both OpenClaw options need an OpenClaw gateway the browser or the server route
+ * can actually reach, and `OPENCLAW_BASE_URL` defaults to localhost. A deployed
+ * demo has nothing listening there, and pointing it at a public address would
+ * expose that gateway, so these are local-only by nature and would just be two
+ * entries that always error. Next.js substitutes `NODE_ENV` with a literal at
+ * build time, so a deployed bundle drops them entirely — same approach as the
+ * session caps in `api/demo-limits.ts`.
+ */
+const OPENCLAW_OPTIONS: Option<LLMClientType>[] =
+  process.env.NODE_ENV === "production"
+    ? []
+    : [
+        {
+          label: "OpenClaw Proxy",
+          value: "openclaw-remote",
+          description:
+            "OpenClaw through your server route. Safer than direct mode.",
+          Icon: CpuChipIcon,
+        },
+        {
+          label: "OpenClaw Direct (Dev)",
+          value: "openclaw",
+          description:
+            "Development/testing only. Browser CORS issues are common.",
+          Icon: CpuChipIcon,
+          corsWarning: true,
+        },
+      ];
+
 const LLM_OPTIONS: Option<LLMClientType>[] = [
   {
     label: "Remote API",
@@ -52,19 +82,7 @@ const LLM_OPTIONS: Option<LLMClientType>[] = [
     description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
   },
-  {
-    label: "OpenClaw Proxy",
-    value: "openclaw-remote",
-    description: "OpenClaw through your server route. Safer than direct mode.",
-    Icon: CpuChipIcon,
-  },
-  {
-    label: "OpenClaw Direct (Dev)",
-    value: "openclaw",
-    description: "Development/testing only. Browser CORS issues are common.",
-    Icon: CpuChipIcon,
-    corsWarning: true,
-  },
+  ...OPENCLAW_OPTIONS,
   {
     label: "Test Stub",
     value: "stub",

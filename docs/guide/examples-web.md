@@ -15,7 +15,8 @@ example, not just a demo. The other is
 The app exercises the current package stack:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, OpenClaw proxy, and stub clients
+- LLM chat through remote, direct, OpenClaw proxy (dev builds only), and
+  stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, and direct OpenAI transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
@@ -55,6 +56,8 @@ place:
 
 - remote API paths for production-oriented flows
 - browser-direct OpenAI and OpenClaw paths for development and testing
+  (the OpenClaw options are hidden in production builds — they need a gateway
+  on `OPENCLAW_BASE_URL`, which defaults to localhost)
 - browser-native TTS and STT paths for zero-server speech experiments
 - stub LLM mode for deterministic UI work
 

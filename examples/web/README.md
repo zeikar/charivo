@@ -4,7 +4,8 @@ This is the reference Next.js app for the Charivo workspace. It exercises the
 current architecture as it is actually shipped:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, OpenClaw proxy, and stub clients
+- LLM chat through remote, direct, OpenClaw proxy (dev builds only), and
+  stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, direct OpenAI, and streaming OpenAI
   Realtime transcribers
@@ -76,6 +77,39 @@ OPENCLAW_TOKEN=your_openclaw_token_here
 OPENCLAW_BASE_URL=http://127.0.0.1:18789/v1
 OPENCLAW_AGENT_ID=main
 ```
+
+Both OpenClaw options are **dev-only**: they need a gateway on
+`OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
+to reach and publishing that gateway would expose it. `ChatSettings` drops them
+from the menu when `NODE_ENV` is `production`, leaving them available under
+`pnpm dev:web`. The `/api/chat-openclaw` route still builds either way.
+
+If you use the OpenClaw route and want avatar expression/motion/gaze tool calling
+to work, the agent named by `OPENCLAW_AGENT_ID` must run on OpenClaw's own
+embedded runtime. OpenClaw routes `openai/*` models to its Codex harness by
+default, and that harness builds its tool list from OpenClaw's own tools only —
+the demo's tools are accepted by the gateway and then dropped before the model
+sees them, so the character just replies in text and never changes expression.
+Override the runtime for that model in `~/.openclaw/openclaw.json`:
+
+```json5
+{
+  agents: {
+    list: [
+      {
+        // Must match OPENCLAW_AGENT_ID above.
+        id: "main",
+        models: { "openai/gpt-5.5": { agentRuntime: { id: "openclaw" } } },
+      },
+    ],
+  },
+}
+```
+
+Use whichever model id that agent actually runs as the `models` key. Runtime
+selection is scoped to the provider/model, so this leaves your other agents
+alone. Plain chat works either way; only tool calling is affected. Verified
+against OpenClaw 2026.6.11.
 
 ## Run
 
