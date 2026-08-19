@@ -53,6 +53,23 @@ session; past turns are then left to the gateway instead of being resent. Rotati
 `sessionKey` is the only way to reset a pinned conversation — the gateway keeps the
 old transcript under the old key.
 
+`generateResponseWithTools` depends on which runtime the target agent runs on.
+OpenClaw routes `openai/*` models to its Codex harness by default, and that
+harness builds its tool list from OpenClaw's own tools without reading the ones
+the caller sent. The gateway still parses and validates them, so the request
+succeeds — it just comes back as ordinary prose with no `toolCalls`, which reads
+like the model ignoring the tools rather than never being offered them. Tool
+calling needs an agent whose model resolves to OpenClaw's embedded runtime, set
+per provider/model in the gateway config:
+
+```json5
+{ models: { "openai/gpt-5.5": { agentRuntime: { id: "openclaw" } } } }
+```
+
+That key is valid under `agents.list[]` for one agent or `agents.defaults` for
+all of them, and it keeps the gateway's existing credentials. `generateResponse`
+is unaffected. Verified against OpenClaw 2026.6.11.
+
 ## Exports
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
