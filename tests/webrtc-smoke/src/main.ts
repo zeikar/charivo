@@ -128,6 +128,11 @@ const state: HarnessSnapshot = {
     firstAssistantEventAt: null,
     deltaMs: null,
   },
+  lipSync: {
+    audioStarts: 0,
+    audioEnds: 0,
+    activeSamples: 0,
+  },
   events: [],
 };
 
@@ -191,6 +196,20 @@ for (const eventName of subscriptions) {
     handleHarnessEvent({ event: eventName, payload } as HarnessEvent);
   });
 }
+
+// Subscribed outside the loop above on purpose: lip-sync updates arrive at
+// frame rate and would bury the event log they share with everything else.
+charivo.on("tts:audio:start", () => {
+  state.lipSync.audioStarts += 1;
+});
+charivo.on("tts:audio:end", () => {
+  state.lipSync.audioEnds += 1;
+});
+charivo.on("tts:lipsync:update", ({ rms }) => {
+  if (rms > 0) {
+    state.lipSync.activeSamples += 1;
+  }
+});
 
 function handleHarnessEvent(harnessEvent: HarnessEvent): void {
   const { event: eventName, payload } = harnessEvent;

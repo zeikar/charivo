@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  type KeyboardEvent,
-  type MutableRefObject,
-} from "react";
+import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import {
   type AvatarControlCatalog,
   createCharivo,
@@ -999,24 +993,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     }
   }, [charivo, input, setInput, setIsLoading, setLlmError]);
 
-  const handleKeyPress = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        if (isRealtimeMode && charivo) {
-          const realtimeManager = charivo.getRealtimeManager();
-          if (realtimeManager && input.trim()) {
-            void realtimeManager.sendMessage(input);
-            setInput("");
-          }
-        } else {
-          void handleSend();
-        }
-      }
-    },
-    [charivo, handleSend, input, isRealtimeMode, setInput],
-  );
-
   const playExpression = useCallback(
     (expressionId: string) => {
       // Routed through the event bus (not rendererRef directly) so the
@@ -1116,7 +1092,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
   return {
     handleSend,
-    handleKeyPress,
     handleStartRecording,
     handleStopRecording,
     playExpression,

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OPENAI_REALTIME_AGENTS_ADAPTER } from "@charivo/core";
 import { OpenAIRealtimeAgentsClient } from "../../src/openai-agents/client";
+import { createRealtimeManager } from "../../src/realtime-manager";
 import type { RealtimeTransportEvent } from "@charivo/realtime";
 
 type Listener = (...args: unknown[]) => void;
@@ -607,9 +608,17 @@ describe("OpenAIRealtimeAgentsClient", () => {
       },
     ]);
 
-    // Sub-cycle 1: agent starts, tool gets called, no text deltas, agent_end
-    // fires with empty output. This should not emit completion.
+    // Sub-cycle 1: agent starts, tool gets called, no text deltas. The
+    // response.done that precedes agent_end carries the function call — that is
+    // what marks the turn as unfinished, so no completion is emitted yet.
     sdkState.session?.emit("agent_start", {}, {});
+    sdkState.session?.emit("transport_event", {
+      type: "response.done",
+      response: {
+        id: "resp-tool",
+        output: [{ type: "function_call", name: "setExpression" }],
+      },
+    });
     sdkState.session?.emit("agent_end", {}, {}, "");
 
     // Sub-cycle 2: post-tool reply streams in and then agent_end fires.
@@ -642,6 +651,10 @@ describe("OpenAIRealtimeAgentsClient", () => {
         ],
       },
     ]);
+    sdkState.session?.emit("transport_event", {
+      type: "response.done",
+      response: { id: "resp-reply", output: [{ type: "message" }] },
+    });
     sdkState.session?.emit("agent_end", {}, {}, "Hello");
 
     const starts = events.filter(
@@ -656,6 +669,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
     expect(completions[0]).toEqual({
       type: "assistant.response.completed",
       text: "Hello",
+      responseId: "resp-reply",
     });
   });
 
@@ -878,6 +892,95 @@ describe("OpenAIRealtimeAgentsClient", () => {
     );
   });
 
+  // A turn that ends without text and without a tool follow-up is over. Staying
+  // silent about it strands RealtimeManager's response lock, and every later
+  // sendMessage throws "Response already in progress" for the rest of the
+  // session — there is no path back except interrupt or reconnect.
+  it("completes a turn that ends with no text and no tool follow-up", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const events: RealtimeTransportEvent[] = [];
+    client.onEvent((event) => events.push(event));
+    await client.connect({ provider: "openai" });
+
+    // Seed a previous turn so the history fallback has stale text to offer.
+    sdkState.session?.emit("history_updated", [
+      {
+        itemId: "item-prev",
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_audio", transcript: "Previous turn reply" }],
+      },
+    ]);
+
+    sdkState.session?.emit("agent_start", {}, {});
+    sdkState.session?.emit("transport_event", {
+      type: "response.done",
+      response: { id: "resp-empty", output: [] },
+    });
+    sdkState.session?.emit("agent_end", {}, {}, "");
+
+    const completions = events.filter(
+      (event) => event.type === "assistant.response.completed",
+    );
+    expect(completions).toHaveLength(1);
+    // Empty, not the previous turn's message resurrected from history.
+    expect(completions[0]).toMatchObject({ text: "" });
+
+    await client.disconnect();
+  });
+
+  // End to end through the real manager, because the defect lived in the seam:
+  // the client swallowed the completion and the manager, which releases its
+  // send lock on exactly that event, stayed locked for the rest of the session.
+  // Neither half alone shows it.
+  it("frees the manager send lock after a turn that produced nothing", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+    const manager = createRealtimeManager(client);
+
+    await manager.startSession({ provider: "openai" });
+    await manager.sendMessage("hello");
+
+    // The lock is held until the turn reports completion.
+    await expect(manager.sendMessage("too soon")).rejects.toThrow(
+      "already in progress",
+    );
+
+    // The turn ends with nothing to say and no tool call outstanding.
+    sdkState.session?.emit("agent_start", {}, {});
+    sdkState.session?.emit("transport_event", {
+      type: "response.done",
+      response: { id: "resp-empty", output: [] },
+    });
+    sdkState.session?.emit("agent_end", {}, {}, "");
+
+    await expect(manager.sendMessage("second turn")).resolves.toBeUndefined();
+    expect(sdkState.session?.sendMessage).toHaveBeenLastCalledWith(
+      "second turn",
+    );
+
+    await manager.stopSession();
+  });
+
   // `audio_stopped` means the SERVER finished sending; playback is still
   // draining. Reporting the end there released a held expression mid-reply.
   describe("audio output lifecycle", () => {
@@ -957,6 +1060,94 @@ describe("OpenAIRealtimeAgentsClient", () => {
       expect(
         events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
       ).toBe(true);
+
+      await client.disconnect();
+    });
+
+    // The SDK derives `audio_start` from a transport `audio` event that ONLY its
+    // WebSocket transport emits, so a WebRTC session never sees it. Driving the
+    // buffer events directly is what a real session looks like.
+    it("keeps lip-sync alive across turns without the WebSocket-only audio_start", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.started",
+      });
+      expect(
+        events.some((event) => event.type === "audio.output.started"),
+      ).toBe(true);
+
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.stopped",
+      });
+      expect(endedCount(events)).toBe(1);
+
+      // Turn two. This is what stayed silent: analysis was paused at the end of
+      // turn one and nothing resumed it, so audio kept playing to a still mouth
+      // for the rest of the session.
+      events.length = 0;
+      mockAnalyserLevel = 128;
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.started",
+      });
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(
+        events.some((event) => event.type === "audio.output.started"),
+      ).toBe(true);
+      expect(
+        events.some((event) => event.type === "audio.lipsync" && event.rms > 0),
+      ).toBe(true);
+
+      await client.disconnect();
+    });
+
+    it("reports one start when both playback-start signals arrive", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.started",
+      });
+      sdkState.session?.emit("audio_start", {}, {});
+
+      expect(
+        events.filter((event) => event.type === "audio.output.started"),
+      ).toHaveLength(1);
+
+      await client.disconnect();
+    });
+
+    // The same client instance, reconnected — a fresh one would start with the
+    // segment flag already false and prove nothing.
+    it("opens a fresh segment after the same client tears down mid-playback", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const client = await connectWithAnalyzedStream(events);
+
+      // Torn down with the segment still open: no buffer-stopped event ever
+      // arrives to close it.
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.started",
+      });
+      await client.disconnect();
+
+      await client.connect({ provider: "openai" });
+      if (sdkState.audioElement) {
+        sdkState.audioElement.srcObject = new MediaStream();
+        sdkState.audioElement.dispatchEvent(new Event("loadedmetadata"));
+      }
+      await vi.advanceTimersByTimeAsync(20);
+
+      events.length = 0;
+      sdkState.session?.emit("transport_event", {
+        type: "output_audio_buffer.started",
+      });
+
+      // A segment left marked open across teardown would swallow this.
+      expect(
+        events.filter((event) => event.type === "audio.output.started"),
+      ).toHaveLength(1);
 
       await client.disconnect();
     });

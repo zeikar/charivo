@@ -196,25 +196,27 @@ export function useRealtimeMode() {
   }, [isRealtimeMode, enableRealtimeMode, disableRealtimeMode]);
 
   const sendRealtimeMessage = useCallback(
-    async (text: string) => {
+    async (text: string): Promise<boolean> => {
       if (!charivo || !isRealtimeMode) {
         console.warn("Realtime mode not active");
-        return;
+        return false;
       }
 
       const realtimeManager = charivo.getRealtimeManager();
       if (!realtimeManager) {
         console.error("Realtime manager not found");
-        return;
+        return false;
       }
 
       try {
         await realtimeManager.sendMessage(text);
+        return true;
       } catch (error) {
         console.error("Failed to send Realtime message:", error);
         setRealtimeError(
           error instanceof Error ? error.message : "Unknown error",
         );
+        return false;
       }
     },
     [charivo, isRealtimeMode, setRealtimeError],

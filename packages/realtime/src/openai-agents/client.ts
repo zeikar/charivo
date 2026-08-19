@@ -109,6 +109,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private assistant: AssistantState = { text: "", started: false };
   private assistantCompletionMetadata: AssistantCompletionMetadata = {};
   private latestAssistantText = "";
+  /** Whether the response that just finished left a tool follow-up outstanding. */
+  private expectsToolFollowUp = false;
   private currentSessionConfig?: RealtimeSessionConfig;
   private teardownTransportLifecycle?: () => void;
   private readonly iceDisconnectDebouncer = createIceDisconnectDebouncer(() => {
@@ -317,10 +319,10 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       this.finalizeAssistantResponse(output);
     });
 
+    // Only the SDK's WebSocket transport emits the `audio` event this is
+    // derived from, so on WebRTC it never fires -- see openAudioOutputSegment.
     session.on("audio_start", () => {
-      this.audioOutputActive = true;
-      this.lipSyncAnalyzer.resume();
-      this.emitEvent({ type: "audio.output.started" });
+      this.openAudioOutputSegment();
     });
 
     session.on("history_updated", (history) => {
@@ -337,6 +339,16 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     session.on("transport_event", (event) => {
       if (this.options.debug && DEBUG_EVENT_ALLOWLIST.has(event.type)) {
         this.log("📡 [OpenAI Agents Transport Event]", event.type, event);
+      }
+
+      // The counterpart to the buffer events below, and on WebRTC the ONLY
+      // playback-start signal that arrives: the SDK derives `audio_start` from
+      // its transport `audio` event, which only the WebSocket transport emits.
+      // Without this the analyzer stays paused from the first playback end
+      // onward -- audio keeps playing while the mouth never moves again.
+      if (event.type === "output_audio_buffer.started") {
+        this.openAudioOutputSegment();
+        return;
       }
 
       // Authoritative playback completion. Unlike `audio_stopped` — which the
@@ -356,8 +368,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         // Pause before reporting the end. The analyzer smooths its readings, so
         // it keeps emitting a decaying level afterwards, and `RealtimeManager`
         // re-opens audio output from any sample above its floor — with no
-        // further buffer event left to close it. The next `audio_start`
-        // resumes analysis.
+        // further buffer event left to close it. The next
+        // `output_audio_buffer.started` resumes analysis.
         this.audioOutputActive = false;
         this.lipSyncAnalyzer.pause();
         this.emitEvent({ type: "audio.output.ended" });
@@ -376,6 +388,14 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       }
 
       if (event.type === "response.done" && isRecord(event.response)) {
+        // A response carrying a function call is only half the turn: the model
+        // replies again once the tool result is submitted. Anything else ends
+        // the turn, whether or not it produced text.
+        this.expectsToolFollowUp = Array.isArray(event.response.output)
+          ? event.response.output.some(
+              (item) => isRecord(item) && item.type === "function_call",
+            )
+          : false;
         this.assistantCompletionMetadata = {
           usage: isRecord(event.response.usage)
             ? event.response.usage
@@ -422,6 +442,21 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
   }
 
+  /**
+   * Open a playback segment: resume analysis and report the start. Idempotent,
+   * so the WebSocket transport's `audio_start` and WebRTC's
+   * `output_audio_buffer.started` can both feed it without double-reporting.
+   */
+  private openAudioOutputSegment(): void {
+    if (this.audioOutputActive) {
+      return;
+    }
+
+    this.audioOutputActive = true;
+    this.lipSyncAnalyzer.resume();
+    this.emitEvent({ type: "audio.output.started" });
+  }
+
   private ensureAssistantStarted(): void {
     if (this.assistant.started) {
       return;
@@ -437,14 +472,24 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     // post-tool reply (the real content). Skip the first one so consumers
     // see one completion per user turn instead of two, and keep tracking
     // live so the follow-up sub-cycle does not re-emit
-    // assistant.response.started. Without this guard the first agent_end
-    // would fall back to latestAssistantText, which can return the
-    // previous turn's message.
-    if (!this.assistant.text && !output.trim()) {
+    // assistant.response.started.
+    //
+    // Gate that on the follow-up being real (`response.done` reported a
+    // function call) rather than on emptiness alone. A turn that simply ends
+    // without text -- a tool that failed, a reply the model never spoke -- has
+    // no second agent_end coming, and swallowing its completion strands
+    // RealtimeManager's response lock: every later sendMessage then throws
+    // "Response already in progress" for the rest of the session.
+    const isEmptyTurn = !this.assistant.text && !output.trim();
+    if (isEmptyTurn && this.expectsToolFollowUp) {
       return;
     }
 
-    const finalText = this.latestAssistantText || output || this.assistant.text;
+    // Report an empty turn as empty. The fallback chain reaches into history,
+    // which would resurrect the PREVIOUS turn's message as this turn's result.
+    const finalText = isEmptyTurn
+      ? ""
+      : this.latestAssistantText || output || this.assistant.text;
 
     this.ensureAssistantStarted();
 
@@ -764,6 +809,9 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private cleanup(error?: unknown): void {
     this.connectionWasActive = false;
     this.isCleaningUp = true;
+    // A teardown during playback would otherwise leave the segment marked open,
+    // and openAudioOutputSegment would swallow the next session's first start.
+    this.audioOutputActive = false;
     this.iceDisconnectDebouncer.cancel();
     this.unbindTransportLifecycleEvents();
     this.cleanupPendingToolCalls(error);
@@ -808,6 +856,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       started: false,
     };
     this.assistantCompletionMetadata = {};
+    this.expectsToolFollowUp = false;
   }
 
   private cleanupPendingToolCalls(error?: unknown): void {

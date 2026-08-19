@@ -38,6 +38,16 @@ export type HarnessSnapshot = {
     firstAssistantEventAt: number | null;
     deltaMs: number | null;
   };
+  /**
+   * Cumulative counters, so a spec can diff them across turns. Lip-sync runs
+   * off an analyzer that is paused at every playback end and has to be resumed
+   * for the next one; only a second turn shows whether the resume happened.
+   */
+  lipSync: {
+    audioStarts: number;
+    audioEnds: number;
+    activeSamples: number;
+  };
   events: HarnessEvent[];
 };
 

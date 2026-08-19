@@ -209,6 +209,63 @@ export async function waitForAssistantSettled(
   );
 }
 
+/**
+ * Wait for playback to actually finish, which is later than the response
+ * completing — buffered audio keeps playing past `response.done`, and only
+ * `output_audio_buffer.stopped` closes the segment (and pauses lip-sync
+ * analysis). Counting ended segments is the only way to know the analyzer has
+ * been paused, which is the precondition for testing that it resumes.
+ */
+export async function waitForPlaybackEnded(
+  page: Page,
+  endedSegments: number,
+): Promise<void> {
+  await page.waitForFunction(
+    (expectedEnded: number) => {
+      const smoke = (window as SmokeWindow).__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      return smoke.getSnapshot().lipSync.audioEnds >= expectedEnded;
+    },
+    endedSegments,
+    {
+      timeout: 60_000,
+    },
+  );
+}
+
+/**
+ * Wait until lip-sync analysis has produced audible samples beyond a baseline.
+ *
+ * Sampling the counter at a fixed point instead is racy: the fake microphone can
+ * trip server VAD, and the resulting barge-in clears the output buffer, which
+ * pauses analysis again. Waiting for the evidence asserts the thing that
+ * matters — analysis resumed — without depending on when it stops.
+ */
+export async function waitForLipSyncSamples(
+  page: Page,
+  moreThan: number,
+): Promise<void> {
+  await page.waitForFunction(
+    (baseline: number) => {
+      const smoke = (window as SmokeWindow).__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      return smoke.getSnapshot().lipSync.activeSamples > baseline;
+    },
+    moreThan,
+    {
+      timeout: 60_000,
+    },
+  );
+}
+
 export async function waitForToolAndAvatarActivity(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const smoke = (window as SmokeWindow).__charivoSmoke;

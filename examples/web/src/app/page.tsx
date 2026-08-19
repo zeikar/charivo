@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, type KeyboardEvent } from "react";
 
 import { Live2DPanel } from "./components/Live2DPanel";
 import { PageHeader } from "./components/PageHeader";
@@ -42,7 +42,6 @@ export default function Home() {
   // Initialize hooks
   const {
     handleSend,
-    handleKeyPress,
     handleStartRecording,
     handleStopRecording,
     playExpression,
@@ -56,12 +55,32 @@ export default function Home() {
     useRealtimeMode();
 
   const handleSendClick = () => {
+    if (!input.trim()) {
+      return;
+    }
+
     if (isRealtimeMode) {
-      void sendRealtimeMessage(input);
-      setInput("");
+      // Clear only once it is actually sent. A rejected send (a response still
+      // in progress, a dropped session) used to swallow the text silently.
+      void sendRealtimeMessage(input).then((sent) => {
+        if (sent) {
+          setInput("");
+        }
+      });
     } else {
       void handleSend();
     }
+  };
+
+  // Enter and the Send button must stay one behavior. They were separate
+  // implementations, and the Enter one called the manager directly with no
+  // catch -- a rejected send surfaced only as an unhandled promise rejection.
+  const handleKeyPress = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return;
+    }
+    event.preventDefault();
+    handleSendClick();
   };
 
   // Log errors
