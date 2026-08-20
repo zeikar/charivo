@@ -75,6 +75,13 @@ type ChatStore = {
   moveRealtimeDraftToInterrupted: () => void;
   realtimeTurnStatus: RealtimeTurnStatus;
   setRealtimeTurnStatus: (status: RealtimeTurnStatus) => void;
+  /**
+   * Whether realtime audio is still playing. Distinct from the response status,
+   * which completes when the server finishes SENDING — playback runs on past
+   * that, and until it stops the character is still audible.
+   */
+  isRealtimeAudioPlaying: boolean;
+  setIsRealtimeAudioPlaying: (playing: boolean) => void;
   avatarCatalog: AvatarControlCatalog;
   setAvatarCatalog: (catalog: AvatarControlCatalog) => void;
   avatarDebug: {
@@ -190,6 +197,9 @@ export const useChatStore = create<ChatStore>((set) => ({
     }),
   realtimeTurnStatus: "idle",
   setRealtimeTurnStatus: (realtimeTurnStatus) => set({ realtimeTurnStatus }),
+  isRealtimeAudioPlaying: false,
+  setIsRealtimeAudioPlaying: (isRealtimeAudioPlaying) =>
+    set({ isRealtimeAudioPlaying }),
   avatarCatalog: { expressions: [], motions: {} },
   setAvatarCatalog: (avatarCatalog) => set({ avatarCatalog }),
   avatarDebug: initialAvatarDebugState,
@@ -206,5 +216,6 @@ export const useChatStore = create<ChatStore>((set) => ({
       realtimeAssistantDraft: null,
       realtimeInterruptedDraft: null,
       realtimeTurnStatus: "idle",
+      isRealtimeAudioPlaying: false,
     }),
 }));

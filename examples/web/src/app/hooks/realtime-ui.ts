@@ -54,14 +54,26 @@ export function shouldResetRealtimeUiState(
  * the turn the same way instead of being rejected with "Response already in
  * progress".
  *
- * This does not cover the window between sending and the reply starting, which
- * `RealtimeManager` also locks but does not expose in its state. A send landing
- * there is a genuine double-send and is still refused.
+ * `isAudioPlaying` is not redundant with the response status, it is the more
+ * important half. The response completes when the server finishes SENDING
+ * audio, and playback runs well past that — a message typed in that window
+ * found the turn already "completed", skipped the interrupt, and queued behind
+ * the still-playing line, so the character finished the old sentence and only
+ * then answered.
+ *
+ * Neither signal covers the window between sending and the reply starting,
+ * which `RealtimeManager` also locks but does not expose. A send landing there
+ * is a genuine double-send and is still refused.
  */
 export function shouldInterruptBeforeSend(
   state: RealtimeState | null,
+  isAudioPlaying: boolean,
 ): boolean {
-  return state?.response.status === "responding";
+  if (!state) {
+    return false;
+  }
+
+  return isAudioPlaying || state.response.status === "responding";
 }
 
 export function createRealtimeAssistantMessage(

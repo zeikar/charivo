@@ -107,25 +107,39 @@ describe("realtime-ui", () => {
 });
 
 describe("shouldInterruptBeforeSend", () => {
-  it("interrupts while the character is speaking", () => {
+  it("interrupts while the reply is still being generated", () => {
     expect(
       shouldInterruptBeforeSend(
         createState({ response: { status: "responding", text: "hi" } }),
+        false,
       ),
     ).toBe(true);
   });
 
-  it("sends straight through when no reply is in progress", () => {
+  // The response completes when the server stops SENDING; the speakers are
+  // still going. Skipping the interrupt here let the old line play out and the
+  // new answer queue behind it instead of cutting in.
+  it("interrupts while audio is still playing after the response completed", () => {
+    expect(
+      shouldInterruptBeforeSend(
+        createState({ response: { status: "completed", text: "done" } }),
+        true,
+      ),
+    ).toBe(true);
+  });
+
+  it("sends straight through once nothing is generating or playing", () => {
     for (const status of ["idle", "completed", "interrupted"] as const) {
       expect(
         shouldInterruptBeforeSend(
           createState({ response: { status, text: "" } }),
+          false,
         ),
       ).toBe(false);
     }
   });
 
   it("does not interrupt without a session", () => {
-    expect(shouldInterruptBeforeSend(null)).toBe(false);
+    expect(shouldInterruptBeforeSend(null, true)).toBe(false);
   });
 });
