@@ -25,6 +25,9 @@ function createState(overrides: Partial<RealtimeState> = {}): RealtimeState {
     session: mergedSession,
     response: mergedResponse,
     audioPlaying: false,
+    // The manager derives this from the response status, so a fixture that sets
+    // "responding" without it would be a state the manager cannot produce.
+    awaitingResponse: mergedResponse.status === "responding",
     lastError: null,
     ...rest,
   };
@@ -137,6 +140,19 @@ describe("shouldInterruptBeforeSend", () => {
         createState({
           response: { status: "completed", text: "done" },
           audioPlaying: true,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  // The gap between a message going out and its reply starting: the response
+  // status still reads "idle", but a send would be refused.
+  it("interrupts while a sent message is still unanswered", () => {
+    expect(
+      shouldInterruptBeforeSend(
+        createState({
+          response: { status: "idle", text: "" },
+          awaitingResponse: true,
         }),
       ),
     ).toBe(true);

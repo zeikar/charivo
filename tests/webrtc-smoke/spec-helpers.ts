@@ -209,13 +209,7 @@ export async function waitForAssistantSettled(
   );
 }
 
-/**
- * Wait for playback to actually finish, which is later than the response
- * completing — buffered audio keeps playing past `response.done`, and only
- * `output_audio_buffer.stopped` closes the segment (and pauses lip-sync
- * analysis). Counting ended segments is the only way to know the analyzer has
- * been paused, which is the precondition for testing that it resumes.
- */
+/** Playback ends later than the response; the close is what pauses analysis. */
 export async function waitForPlaybackEnded(
   page: Page,
   endedSegments: number,
@@ -238,12 +232,8 @@ export async function waitForPlaybackEnded(
 }
 
 /**
- * Wait until lip-sync analysis has produced audible samples beyond a baseline.
- *
- * Sampling the counter at a fixed point instead is racy: the fake microphone can
- * trip server VAD, and the resulting barge-in clears the output buffer, which
- * pauses analysis again. Waiting for the evidence asserts the thing that
- * matters — analysis resumed — without depending on when it stops.
+ * Wait for the evidence rather than sampling at a fixed point: the fake mic can
+ * trip VAD, and the barge-in pauses analysis again.
  */
 export async function waitForLipSyncSamples(
   page: Page,

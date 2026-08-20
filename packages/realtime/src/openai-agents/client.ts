@@ -341,11 +341,8 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         this.log("📡 [OpenAI Agents Transport Event]", event.type, event);
       }
 
-      // The counterpart to the buffer events below, and on WebRTC the ONLY
-      // playback-start signal that arrives: the SDK derives `audio_start` from
-      // its transport `audio` event, which only the WebSocket transport emits.
-      // Without this the analyzer stays paused from the first playback end
-      // onward -- audio keeps playing while the mouth never moves again.
+      // On WebRTC the only playback-start signal there is: the SDK derives
+      // `audio_start` from an event only its WebSocket transport emits.
       if (event.type === "output_audio_buffer.started") {
         this.openAudioOutputSegment();
         return;
@@ -388,9 +385,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
       }
 
       if (event.type === "response.done" && isRecord(event.response)) {
-        // A response carrying a function call is only half the turn: the model
-        // replies again once the tool result is submitted. Anything else ends
-        // the turn, whether or not it produced text.
+        // A function call means the model replies again once the result is in.
         this.expectsToolFollowUp = Array.isArray(event.response.output)
           ? event.response.output.some(
               (item) => isRecord(item) && item.type === "function_call",
@@ -442,11 +437,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
   }
 
-  /**
-   * Open a playback segment: resume analysis and report the start. Idempotent,
-   * so the WebSocket transport's `audio_start` and WebRTC's
-   * `output_audio_buffer.started` can both feed it without double-reporting.
-   */
+  /** Idempotent, so both transports' start signals can feed it. */
   private openAudioOutputSegment(): void {
     if (this.audioOutputActive) {
       return;
@@ -467,26 +458,17 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   }
 
   private finalizeAssistantResponse(output: string): void {
-    // Tool-using user turns arrive as two agent_end events: the first after
-    // the tool call (no new text this sub-cycle) and the second after the
-    // post-tool reply (the real content). Skip the first one so consumers
-    // see one completion per user turn instead of two, and keep tracking
-    // live so the follow-up sub-cycle does not re-emit
-    // assistant.response.started.
-    //
-    // Gate that on the follow-up being real (`response.done` reported a
-    // function call) rather than on emptiness alone. A turn that simply ends
-    // without text -- a tool that failed, a reply the model never spoke -- has
-    // no second agent_end coming, and swallowing its completion strands
-    // RealtimeManager's response lock: every later sendMessage then throws
-    // "Response already in progress" for the rest of the session.
+    // A tool turn fires agent_end twice; skip the first so consumers see one
+    // completion per user turn. Gate that on a follow-up actually being due --
+    // a turn that just ends empty has none, and swallowing its completion
+    // strands RealtimeManager's send lock for the rest of the session.
     const isEmptyTurn = !this.assistant.text && !output.trim();
     if (isEmptyTurn && this.expectsToolFollowUp) {
       return;
     }
 
-    // Report an empty turn as empty. The fallback chain reaches into history,
-    // which would resurrect the PREVIOUS turn's message as this turn's result.
+    // Empty means empty: the fallback reaches into history and would resurrect
+    // the previous turn's message.
     const finalText = isEmptyTurn
       ? ""
       : this.latestAssistantText || output || this.assistant.text;

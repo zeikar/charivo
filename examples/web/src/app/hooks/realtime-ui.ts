@@ -50,23 +50,10 @@ export function shouldResetRealtimeUiState(
 }
 
 /**
- * Whether a typed message has to interrupt before it can be sent.
- *
- * Speaking over the character already works — server VAD treats it as a
- * barge-in and cuts the reply short. Typing means the same thing, so it takes
- * the turn the same way instead of being rejected with "Response already in
- * progress".
- *
- * `audioPlaying` is not redundant with the response status, it is the more
- * important half. The response completes when the provider finishes SENDING
- * audio, and playback runs well past that — a message typed in that window
- * found the turn already "completed", skipped the interrupt, and queued behind
- * the still-playing line, so the character finished the old sentence and only
- * then answered.
- *
- * Neither signal covers the window between sending and the reply starting,
- * which `RealtimeManager` also locks but does not expose. A send landing there
- * is a genuine double-send and is still refused.
+ * Typing over the character means what speaking over it means, and server VAD
+ * already treats that as a barge-in. Between the two flags every case
+ * `sendMessage` would refuse is anticipated, so a typed message is never
+ * rejected.
  */
 export function shouldInterruptBeforeSend(
   state: RealtimeState | null,
@@ -75,7 +62,7 @@ export function shouldInterruptBeforeSend(
     return false;
   }
 
-  return state.audioPlaying || state.response.status === "responding";
+  return state.audioPlaying || state.awaitingResponse;
 }
 
 export function createRealtimeAssistantMessage(

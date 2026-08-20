@@ -24,6 +24,7 @@ import {
   createRealtimeSessionId,
   mergeRealtimeState,
   mergeSessionConfig,
+  type RealtimeManagerState,
 } from "./internal/manager-state";
 import { delay } from "./internal/timing";
 import { executeRealtimeToolCall } from "./internal/tool-runner";
@@ -75,10 +76,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     },
     (playing) => this.applyAudioPlaying(playing),
   );
-  private readonly browserLifecycle = new RealtimeBrowserLifecycle(
-    () => this.state,
+  private readonly browserLifecycle = new RealtimeBrowserLifecycle(() =>
+    this.getState(),
   );
-  private state: RealtimeState = {
+  private state: RealtimeManagerState = {
     connection: "idle",
     session: {
       status: "idle",
@@ -149,6 +150,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   getState(): RealtimeState {
     return {
       ...this.state,
+      awaitingResponse: this.isAwaitingResponse(),
       session: {
         ...this.state.session,
         config: this.state.session.config
@@ -285,10 +287,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       throw new CharivoStateError("Realtime session is reconnecting");
     }
 
-    if (
-      this.state.response.status === "responding" ||
-      this.responseOutstanding
-    ) {
+    if (this.isAwaitingResponse()) {
       throw new CharivoStateError(
         "Response already in progress. Call interrupt() before sending a new message.",
       );
@@ -695,6 +694,13 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     );
   }
 
+  /** The one definition: `sendMessage` refuses on it, `getState` reports it. */
+  private isAwaitingResponse(): boolean {
+    return (
+      this.responseOutstanding || this.state.response.status === "responding"
+    );
+  }
+
   private applyAudioPlaying(audioPlaying: boolean): void {
     if (this.state.audioPlaying === audioPlaying) {
       return;
@@ -804,10 +810,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 
   private requestToolRefresh(): void {
     if (this.state.session.status !== "active") return;
-    if (
-      this.state.response.status === "responding" ||
-      this.responseOutstanding
-    ) {
+    if (this.isAwaitingResponse()) {
       this.hasPendingToolRefresh = true;
       return;
     }

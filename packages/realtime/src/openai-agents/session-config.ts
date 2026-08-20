@@ -39,10 +39,8 @@ export function toOpenAIRealtimeAgentsSessionConfig(
     audio,
   };
 
-  // The agents SDK rebuilds `session.update` from an allowlist of fields it
-  // knows, so a key it has no mapping for is dropped before it reaches the
-  // wire -- and it has no mapping for the GA `max_output_tokens`. `providerData`
-  // is spread raw into the session payload, so it is the only way through.
+  // The SDK rebuilds session.update from an allowlist and has no mapping for
+  // `max_output_tokens`, so `providerData` is the only way through.
   if (config?.maxTokens !== undefined) {
     sessionConfig.providerData = { max_output_tokens: config.maxTokens };
   }

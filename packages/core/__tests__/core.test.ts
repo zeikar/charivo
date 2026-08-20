@@ -80,6 +80,7 @@ class StubRealtimeManager implements RealtimeManager {
         text: "",
       },
       audioPlaying: false,
+      awaitingResponse: false,
       lastError: null,
     }),
   );

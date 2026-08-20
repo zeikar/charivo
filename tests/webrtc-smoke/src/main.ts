@@ -197,8 +197,7 @@ for (const eventName of subscriptions) {
   });
 }
 
-// Subscribed outside the loop above on purpose: lip-sync updates arrive at
-// frame rate and would bury the event log they share with everything else.
+// Outside the loop: lip-sync fires at frame rate and would bury the event log.
 charivo.on("tts:audio:start", () => {
   state.lipSync.audioStarts += 1;
 });

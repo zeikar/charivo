@@ -19,10 +19,13 @@ export function mergeSessionConfig(
   };
 }
 
+/** Stored state. `awaitingResponse` is derived in `getState()` so it cannot drift. */
+export type RealtimeManagerState = Omit<RealtimeState, "awaitingResponse">;
+
 export function mergeRealtimeState(
-  current: RealtimeState,
+  current: RealtimeManagerState,
   partial: Partial<RealtimeState>,
-): RealtimeState {
+): RealtimeManagerState {
   return {
     connection: partial.connection ?? current.connection,
     session: {

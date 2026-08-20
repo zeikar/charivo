@@ -84,6 +84,7 @@ const TOOL_CONTEXT: ToolContext = {
       text: "",
     },
     audioPlaying: false,
+    awaitingResponse: false,
     lastError: null,
   },
 };

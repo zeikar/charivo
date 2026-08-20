@@ -32,6 +32,7 @@ const TOOL_CONTEXT = {
       text: "",
     },
     audioPlaying: false,
+    awaitingResponse: false,
     lastError: null,
   },
 };

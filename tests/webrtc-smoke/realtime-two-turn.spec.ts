@@ -14,19 +14,12 @@ const LIVE_ENABLED = process.env.RUN_LIVE_REALTIME_TESTS === "1";
 const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
 
 /**
- * Everything else in this harness drives a single turn, which is exactly why a
- * whole class of realtime defect stayed invisible: state that a turn leaves
- * behind only hurts the turn after it.
+ * Every other spec here drives a single turn, so state a turn leaves behind
+ * stayed invisible — lip-sync analysis paused at the first playback end and
+ * never resumed.
  *
- * What this covers: lip-sync analysis is paused at every playback end, and
- * resuming it used to hang off the SDK's `audio_start` — derived from a
- * transport `audio` event that only the WebSocket transport emits, so on WebRTC
- * the mouth stopped moving after turn one while audio kept playing.
- *
- * What this does NOT cover: the stranded response lock. Reproducing that needs
- * a turn that ends without text, which no prompt can be relied on to produce.
- * It is covered deterministically instead by "frees the manager send lock after
- * a turn that produced nothing" in the agents client suite.
+ * Not covered: the stranded send lock, which needs a turn that ends without
+ * text. That one is deterministic in the agents client suite instead.
  */
 test.describe("realtime WebRTC two-turn harness", () => {
   test.skip(

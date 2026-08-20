@@ -10,11 +10,7 @@ export class RealtimeAudioOutput {
 
   constructor(
     private readonly emit: EmitEvent,
-    /**
-     * Fired only on an actual transition. Required: an instance that reported
-     * audio lifecycle events without mirroring them into
-     * `RealtimeState.audioPlaying` would break the contract that field states.
-     */
+    /** Fired on transitions only; required so `audioPlaying` cannot go stale. */
     private readonly onChange: (playing: boolean) => void,
   ) {}
 

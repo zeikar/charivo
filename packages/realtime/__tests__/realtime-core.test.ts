@@ -216,6 +216,7 @@ describe("realtime-core", () => {
             session: { status: "idle", config: null },
             response: { status: "idle", text: "" },
             audioPlaying: false,
+            awaitingResponse: false,
             lastError: null,
           },
         },
@@ -232,6 +233,7 @@ describe("realtime-core", () => {
             session: { status: "idle", config: null },
             response: { status: "idle", text: "" },
             audioPlaying: false,
+            awaitingResponse: false,
             lastError: null,
           },
         },
@@ -2185,6 +2187,56 @@ describe("realtime-core", () => {
 
     await expect(manager.sendMessage("hi")).resolves.toBeUndefined();
     expect(stub.client.sendText).toHaveBeenCalledWith("hi");
+  });
+
+  // The window this field exists for. `response.status` is still "idle" here —
+  // the message is out and nothing has come back — yet a send would be refused,
+  // and a caller reading the response status alone could not tell.
+  it("reports awaitingResponse before the reply starts streaming", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+    expect(manager.getState().awaitingResponse).toBe(false);
+
+    await manager.sendMessage("hello");
+    expect(manager.getState().response.status).toBe("idle");
+    expect(manager.getState().awaitingResponse).toBe(true);
+
+    await stub.emit({ type: "assistant.response.started" });
+    expect(manager.getState().awaitingResponse).toBe(true);
+
+    await stub.emit({ type: "assistant.response.completed", text: "hi" });
+    expect(manager.getState().awaitingResponse).toBe(false);
+
+    await manager.stopSession();
+  });
+
+  // Whatever the state reports has to be what sendMessage actually does, or the
+  // field is just a second opinion to get wrong.
+  it("refuses a send exactly when awaitingResponse is true", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+
+    // Model-initiated reply: no sendMessage of ours, so only the response
+    // status carries it.
+    await stub.emit({ type: "assistant.response.started" });
+    expect(manager.getState().awaitingResponse).toBe(true);
+    await expect(manager.sendMessage("hi")).rejects.toThrow(
+      "already in progress",
+    );
+
+    await manager.interrupt();
+    expect(manager.getState().awaitingResponse).toBe(false);
+    await expect(manager.sendMessage("hi")).resolves.toBeUndefined();
+
+    await manager.stopSession();
   });
 
   it("rejects second sendMessage before the first assistant.response.started event arrives", async () => {
