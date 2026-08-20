@@ -105,6 +105,18 @@ describe("realtime-ui", () => {
     expect(message.timestamp).toBeInstanceOf(Date);
     expect(message.id).toBeTruthy();
   });
+  // Playback outlives the response, so the status must not fall back to
+  // "listening" while the character is still audibly talking.
+  it("stays responding while audio plays on after the response completed", () => {
+    expect(
+      getRealtimeTurnStatus(
+        createState({
+          response: { status: "completed", text: "done" },
+          audioPlaying: true,
+        }),
+      ),
+    ).toBe("responding");
+  });
 });
 
 describe("shouldInterruptBeforeSend", () => {

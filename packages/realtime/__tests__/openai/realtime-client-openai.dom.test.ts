@@ -1085,6 +1085,57 @@ describe("OpenAIRealtimeClient", () => {
     expect(resumeSpy).not.toHaveBeenCalled();
   });
 
+  // The window that used to swallow interrupts entirely: generation is done,
+  // the browser is still playing, and `interrupt()` returned without sending
+  // anything -- so the character talked over whatever came next.
+  it("clears the output buffer when interrupted during tail playback", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({ apiEndpoint: "/api/realtime" });
+    await client.connect();
+    const peer = MockPeerConnection.instances[0]!;
+
+    peer.dataChannel.onmessage?.({
+      data: JSON.stringify({ type: "output_audio_buffer.started" }),
+    } as MessageEvent);
+    peer.dataChannel.onmessage?.({
+      data: JSON.stringify({ type: "response.done", response: {} }),
+    } as MessageEvent);
+
+    (peer.dataChannel.send as ReturnType<typeof vi.fn>).mockClear();
+    await client.interrupt();
+
+    const sent = (
+      peer.dataChannel.send as ReturnType<typeof vi.fn>
+    ).mock.calls.map(([payload]) => JSON.parse(String(payload)).type);
+
+    // Nothing left to cancel, but the sound has to stop.
+    expect(sent).toContain("output_audio_buffer.clear");
+    expect(sent).not.toContain("response.cancel");
+
+    await client.disconnect();
+  });
+
   it("ends audio output when an interruption clears the buffer", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],

@@ -10,8 +10,12 @@ export class RealtimeAudioOutput {
 
   constructor(
     private readonly emit: EmitEvent,
-    /** Fired only on an actual transition, so callers can mirror the flag. */
-    private readonly onChange?: (playing: boolean) => void,
+    /**
+     * Fired only on an actual transition. Required: an instance that reported
+     * audio lifecycle events without mirroring them into
+     * `RealtimeState.audioPlaying` would break the contract that field states.
+     */
+    private readonly onChange: (playing: boolean) => void,
   ) {}
 
   isActive(): boolean {
@@ -25,7 +29,7 @@ export class RealtimeAudioOutput {
 
     this.active = true;
     this.emit("tts:audio:start", {});
-    this.onChange?.(true);
+    this.onChange(true);
   }
 
   end(): void {
@@ -36,6 +40,6 @@ export class RealtimeAudioOutput {
     this.active = false;
     this.emit("tts:lipsync:update", { rms: 0 });
     this.emit("tts:audio:end", {});
-    this.onChange?.(false);
+    this.onChange(false);
   }
 }

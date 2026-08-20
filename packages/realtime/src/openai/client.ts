@@ -333,13 +333,21 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     const dc = this.requireOpenDataChannel();
 
-    if (!this.isResponseInProgress) {
-      return;
+    if (this.isResponseInProgress) {
+      dc.send(JSON.stringify({ type: "response.cancel" }));
+      this.isResponseInProgress = false;
+      this.cancelInFlight = true;
     }
 
-    dc.send(JSON.stringify({ type: "response.cancel" }));
-    this.isResponseInProgress = false;
-    this.cancelInFlight = true;
+    // Cancelling stops generation; it does not stop the sound. Playback outlives
+    // generation -- `response.done` clears the in-progress flag while the
+    // browser is still draining buffered audio -- so clearing the output buffer
+    // cannot be conditional on there being a response left to cancel. Without
+    // this an interrupt in that window did nothing at all and the character
+    // talked over whatever came next.
+    if (this.hasStartedAudioOutput) {
+      dc.send(JSON.stringify({ type: "output_audio_buffer.clear" }));
+    }
   }
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {

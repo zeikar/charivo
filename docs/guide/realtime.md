@@ -289,6 +289,33 @@ If you implement a custom transport, emit `audio.output.ended` when playback
 truly stops. Emitting it when your provider finishes streaming will look correct
 in logs and wrong on screen.
 
+### Asking whether the character is still talking
+
+`RealtimeState.audioPlaying` answers that; `state.response.status` does not.
+
+The response completes when the provider finishes sending, so it reads
+`"completed"` for the whole tail of every turn while the character is still
+audible. Anything gated on it — a barge-in, a "stop" control, a speaking
+indicator — is wrong for that window and looks right until someone cuts in near
+the end of a reply.
+
+```ts
+const state = realtimeManager.getState();
+
+// Still talking, even when the response is already "completed".
+if (state.audioPlaying || state.response.status === "responding") {
+  await realtimeManager.interrupt();
+}
+
+await realtimeManager.sendMessage(text);
+```
+
+The field tracks the same playback segment as the events above: true from
+`audio.output.started` until `audio.output.ended`, and cleared when a session
+stops, fails, or reconnects. Changes publish through `realtime:state`, so there
+is no need to track `tts:audio:start` / `tts:audio:end` yourself to reconstruct
+it.
+
 ## Session Updates
 
 `updateSession(...)` is safe to call at any point. While no session is active it

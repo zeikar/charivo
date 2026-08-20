@@ -32,7 +32,10 @@ export function getRealtimeTurnStatus(
     return "interrupted";
   }
 
-  if (state.response.status === "responding") {
+  // Playback outlives the response, and the character is still talking for all
+  // of it: the status has to say so, or the placeholder claims to be listening
+  // and the stop control vanishes mid-sentence.
+  if (state.response.status === "responding" || state.audioPlaying) {
     return "responding";
   }
 

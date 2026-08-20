@@ -317,3 +317,9 @@ Consumers act on this event — `RenderManager` releases a held expression and
 stops lip-sync there — so a custom transport that reports it at send completion
 will reset the avatar's face mid-reply. See
 [docs/guide/realtime.md](../../docs/guide/realtime.md#audio-output-lifecycle).
+
+`RealtimeState.audioPlaying` exposes the same playback segment as state, which is
+what to read when you need to know whether the character is still talking.
+`response.status` answers a different question — it completes when the provider
+stops sending, while playback runs on — so anything gated on it is wrong for the
+tail of every turn.
