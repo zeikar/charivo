@@ -323,4 +323,5 @@ what to read when you need to know whether the character is still talking.
 `response.status` answers a different question — it completes when the provider
 stops sending, while playback runs on — so anything gated on it is wrong for the
 tail of every turn. `RealtimeState.awaitingResponse` reports whether a reply is
-still expected, which is exactly what `sendMessage` refuses on.
+still expected, which is the response-in-progress condition `sendMessage`
+refuses on.

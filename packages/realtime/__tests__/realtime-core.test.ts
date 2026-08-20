@@ -2214,6 +2214,67 @@ describe("realtime-core", () => {
     await manager.stopSession();
   });
 
+  // The transition, not just the snapshot: a subscriber that only reacts to
+  // realtime:state has to see the window open and close.
+  it("publishes awaitingResponse when a send opens and closes the window", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const eventEmitter = createEventEmitter();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter!(eventEmitter);
+    await manager.startSession({ provider: "openai" });
+
+    const awaiting = () =>
+      (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
+        .filter(([event]) => event === "realtime:state")
+        .map(
+          ([, payload]) =>
+            (payload as { state: { awaitingResponse: boolean } }).state
+              .awaitingResponse,
+        );
+
+    await manager.sendMessage("hello");
+    expect(awaiting().at(-1)).toBe(true);
+
+    await stub.emit({ type: "assistant.response.completed", text: "hi" });
+    expect(awaiting().at(-1)).toBe(false);
+
+    await manager.stopSession();
+  });
+
+  it("publishes the window closing when the send itself fails", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const eventEmitter = createEventEmitter();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter!(eventEmitter);
+    await manager.startSession({ provider: "openai" });
+
+    (stub.client.sendText as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("channel closed"),
+    );
+    await expect(manager.sendMessage("hello")).rejects.toThrow(
+      "channel closed",
+    );
+
+    expect(manager.getState().awaitingResponse).toBe(false);
+    const states = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([event]) => event === "realtime:state")
+      .map(
+        ([, payload]) =>
+          (payload as { state: { awaitingResponse: boolean } }).state
+            .awaitingResponse,
+      );
+    expect(states).toContain(true);
+    expect(states.at(-1)).toBe(false);
+
+    await manager.stopSession();
+  });
+
   // Whatever the state reports has to be what sendMessage actually does, or the
   // field is just a second opinion to get wrong.
   it("refuses a send exactly when awaitingResponse is true", async () => {

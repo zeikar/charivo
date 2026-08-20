@@ -310,16 +310,19 @@ if (state.audioPlaying || state.awaitingResponse) {
 await realtimeManager.sendMessage(text);
 ```
 
-`awaitingResponse` is the other half: it is exactly the condition
-`sendMessage` refuses on, so it answers "will this be accepted right now"
-instead of leaving you to discover the refusal as a thrown error. It is wider
-than `response.status === "responding"` — it also covers the stretch between a
+`awaitingResponse` is the other half: it reports the response-in-progress
+condition `sendMessage` refuses on, so you can anticipate that refusal instead
+of discovering it as a thrown error. It is wider than
+`response.status === "responding"` — it also covers the stretch between a
 message going out and the reply starting to stream, where a turn is in flight
 but nothing has come back to show for it. Interrupting clears it, as does the
 reply completing, an error, a reconnect, or the session ending.
 
-Reading both is what lets a text box barge in the way speaking already does,
-with no rejected sends left over.
+It does not predict every refusal: `sendMessage` also rejects while the session
+is inactive or reconnecting, which `session.status` and `connection` report.
+
+Reading both flags is what lets a text box barge in the way speaking already
+does, with no rejected sends left over.
 
 The field tracks the same playback segment as the events above: true from
 `audio.output.started` until `audio.output.ended`, and cleared when a session

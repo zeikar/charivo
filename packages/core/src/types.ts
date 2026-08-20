@@ -184,9 +184,10 @@ export interface RealtimeState {
    */
   audioPlaying: boolean;
   /**
-   * Whether a reply is still expected — exactly what `sendMessage` refuses on.
-   * Wider than `response.status === "responding"`: it also covers the gap
-   * before the reply starts streaming.
+   * Whether a reply is still expected. Wider than
+   * `response.status === "responding"` — it also covers the gap before the
+   * reply starts streaming. Only the response-in-progress refusal; an inactive
+   * or reconnecting session is rejected separately.
    */
   awaitingResponse: boolean;
   lastError: Error | null;

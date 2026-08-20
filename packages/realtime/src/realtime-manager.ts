@@ -293,9 +293,9 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       );
     }
 
-    this.responseOutstanding = true;
+    this.setResponseOutstanding(true);
     await this.client.sendText(text).catch((error) => {
-      this.responseOutstanding = false;
+      this.setResponseOutstanding(false);
       return Promise.reject(toCharivoError("transport", error));
     });
   }
@@ -326,7 +326,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     await this.client
       .interrupt()
       .catch((error) => Promise.reject(toCharivoError("transport", error)));
-    this.responseOutstanding = false;
+    this.setResponseOutstanding(false);
     this.state = {
       ...this.state,
       response: {
@@ -419,7 +419,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "assistant.response.completed": {
-        this.responseOutstanding = false;
+        this.setResponseOutstanding(false);
         if (this.state.response.status === "interrupted") {
           this.flushPendingToolRefresh();
           return;
@@ -504,7 +504,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
           this.emitState();
           return;
         }
-        this.responseOutstanding = false;
+        this.setResponseOutstanding(false);
         if (this.state.response.status === "responding") {
           this.state = {
             ...this.state,
@@ -546,7 +546,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       return;
     }
 
-    this.responseOutstanding = false;
+    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.isRecoveringConnection = true;
     this.reconnectToken += 1;
@@ -692,6 +692,23 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.state.session.status === "active" &&
       !this.isStoppingSession
     );
+  }
+
+  /**
+   * The only writer, so every transition reaches `realtime:state`. Assigning the
+   * flag directly is how the pre-streaming window went unpublished.
+   */
+  private setResponseOutstanding(outstanding: boolean): void {
+    if (this.responseOutstanding === outstanding) {
+      return;
+    }
+
+    const wasAwaiting = this.isAwaitingResponse();
+    this.responseOutstanding = outstanding;
+
+    if (this.isAwaitingResponse() !== wasAwaiting) {
+      this.emitState();
+    }
   }
 
   /** The one definition: `sendMessage` refuses on it, `getState` reports it. */
@@ -912,7 +929,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   private finalizeFailedSession(error: Error): void {
-    this.responseOutstanding = false;
+    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
@@ -943,7 +960,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     emitSessionEnd: boolean,
     reason: RealtimeSessionTransitionReason,
   ): void {
-    this.responseOutstanding = false;
+    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
