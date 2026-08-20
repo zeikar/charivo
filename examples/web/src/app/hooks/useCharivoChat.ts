@@ -206,7 +206,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setRealtimeInterruptedDraft,
     moveRealtimeDraftToInterrupted,
     setRealtimeTurnStatus,
-    setIsRealtimeAudioPlaying,
     setAvatarCatalog,
     setAvatarDebug,
     resetAvatarDebug,
@@ -531,20 +530,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
 
         instance.setCharacter(initialCharacter);
         syncedCharacterIdRef.current = initialCharacter.id;
-
-        // Realtime playback, not cascade synthesis: these bracket the audio
-        // actually coming out of the speakers, which outlasts the response.
-        instance.on("tts:audio:start", () => {
-          if (!disposed) {
-            setIsRealtimeAudioPlaying(true);
-          }
-        });
-
-        instance.on("tts:audio:end", () => {
-          if (!disposed) {
-            setIsRealtimeAudioPlaying(false);
-          }
-        });
 
         instance.on("tts:start", () => {
           if (!disposed) {
@@ -876,7 +861,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setRealtimeInterruptedDraft,
     moveRealtimeDraftToInterrupted,
     setRealtimeTurnStatus,
-    setIsRealtimeAudioPlaying,
     setAvatarCatalog,
     setAvatarDebug,
     resetAvatarDebug,

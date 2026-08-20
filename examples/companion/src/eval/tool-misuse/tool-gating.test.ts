@@ -83,6 +83,7 @@ const TOOL_CONTEXT: ToolContext = {
       status: "idle" as const,
       text: "",
     },
+    audioPlaying: false,
     lastError: null,
   },
 };

@@ -54,8 +54,8 @@ export function shouldResetRealtimeUiState(
  * the turn the same way instead of being rejected with "Response already in
  * progress".
  *
- * `isAudioPlaying` is not redundant with the response status, it is the more
- * important half. The response completes when the server finishes SENDING
+ * `audioPlaying` is not redundant with the response status, it is the more
+ * important half. The response completes when the provider finishes SENDING
  * audio, and playback runs well past that — a message typed in that window
  * found the turn already "completed", skipped the interrupt, and queued behind
  * the still-playing line, so the character finished the old sentence and only
@@ -67,13 +67,12 @@ export function shouldResetRealtimeUiState(
  */
 export function shouldInterruptBeforeSend(
   state: RealtimeState | null,
-  isAudioPlaying: boolean,
 ): boolean {
   if (!state) {
     return false;
   }
 
-  return isAudioPlaying || state.response.status === "responding";
+  return state.audioPlaying || state.response.status === "responding";
 }
 
 export function createRealtimeAssistantMessage(

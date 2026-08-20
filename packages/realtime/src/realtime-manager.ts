@@ -69,9 +69,12 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   private hasPendingToolRefresh = false;
   private sessionId?: string;
   private readonly toolRegistry = createToolRegistry();
-  private readonly audioOutput = new RealtimeAudioOutput((event, payload) => {
-    this.eventEmitter?.emit(event, payload);
-  });
+  private readonly audioOutput = new RealtimeAudioOutput(
+    (event, payload) => {
+      this.eventEmitter?.emit(event, payload);
+    },
+    (playing) => this.applyAudioPlaying(playing),
+  );
   private readonly browserLifecycle = new RealtimeBrowserLifecycle(
     () => this.state,
   );
@@ -85,6 +88,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       status: "idle",
       text: "",
     },
+    audioPlaying: false,
     lastError: null,
   };
 
@@ -689,6 +693,15 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       this.state.session.status === "active" &&
       !this.isStoppingSession
     );
+  }
+
+  private applyAudioPlaying(audioPlaying: boolean): void {
+    if (this.state.audioPlaying === audioPlaying) {
+      return;
+    }
+
+    this.state = { ...this.state, audioPlaying };
+    this.emitState();
   }
 
   private emitState(): void {

@@ -178,6 +178,19 @@ export interface RealtimeState {
     status: RealtimeResponseStatus;
     text: string;
   };
+  /**
+   * Whether the character's audio is still coming out of the speakers.
+   *
+   * Not the same question as `response.status`, and the difference is the one
+   * that bites: a response completes when the provider finishes SENDING audio,
+   * and playback runs on past that. Anything that asks "is the character still
+   * talking" — a barge-in, a mouth animation, a UI affordance — has to read
+   * this, not the response status.
+   *
+   * Derived from the normalized `audio.output.started` / `audio.output.ended`
+   * transport events, so it means the same thing for every provider.
+   */
+  audioPlaying: boolean;
   lastError: Error | null;
 }
 

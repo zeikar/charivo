@@ -79,6 +79,7 @@ class StubRealtimeManager implements RealtimeManager {
         status: "idle",
         text: "",
       },
+      audioPlaying: false,
       lastError: null,
     }),
   );

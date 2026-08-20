@@ -31,6 +31,7 @@ const TOOL_CONTEXT = {
       status: "idle" as const,
       text: "",
     },
+    audioPlaying: false,
     lastError: null,
   },
 };

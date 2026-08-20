@@ -215,6 +215,7 @@ describe("realtime-core", () => {
             connection: "idle",
             session: { status: "idle", config: null },
             response: { status: "idle", text: "" },
+            audioPlaying: false,
             lastError: null,
           },
         },
@@ -230,6 +231,7 @@ describe("realtime-core", () => {
             connection: "idle",
             session: { status: "idle", config: null },
             response: { status: "idle", text: "" },
+            audioPlaying: false,
             lastError: null,
           },
         },
@@ -531,6 +533,67 @@ describe("realtime-core", () => {
         error: 'Realtime tool "listMoods" must return an object',
       },
     );
+  });
+
+  // The whole reason `audioPlaying` is separate from `response.status`. Reading
+  // the response status to answer "is the character still talking" is wrong for
+  // the entire tail of every turn, and code that got it wrong looked correct
+  // until someone spoke over the character near the end of a reply.
+  it("reports audio still playing after the response has completed", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+    expect(manager.getState().audioPlaying).toBe(false);
+
+    await stub.emit({ type: "audio.output.started" });
+    expect(manager.getState().audioPlaying).toBe(true);
+
+    await stub.emit({
+      type: "assistant.response.completed",
+      text: "all done",
+    });
+    expect(manager.getState().response.status).toBe("completed");
+    expect(manager.getState().audioPlaying).toBe(true);
+
+    await stub.emit({ type: "audio.output.ended" });
+    expect(manager.getState().audioPlaying).toBe(false);
+
+    await manager.stopSession();
+  });
+
+  it("clears audioPlaying when the session ends mid-playback", async () => {
+    const stub = createRealtimeClientStub();
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+    await stub.emit({ type: "audio.output.started" });
+    expect(manager.getState().audioPlaying).toBe(true);
+
+    await manager.stopSession();
+    expect(manager.getState().audioPlaying).toBe(false);
+  });
+
+  it("publishes the change to realtime:state subscribers", async () => {
+    const stub = createRealtimeClientStub();
+    const eventEmitter = createEventEmitter();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter!(eventEmitter);
+    await manager.startSession({ provider: "openai" });
+
+    await stub.emit({ type: "audio.output.started" });
+
+    const states = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([event]) => event === "realtime:state")
+      .map(
+        ([, payload]) =>
+          (payload as { state: { audioPlaying: boolean } }).state,
+      );
+
+    expect(states.at(-1)?.audioPlaying).toBe(true);
+
+    await manager.stopSession();
   });
 
   // Playback now outlives the response: the end is reported from the output

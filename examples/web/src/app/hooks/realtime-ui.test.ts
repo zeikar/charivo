@@ -24,6 +24,7 @@ function createState(overrides: Partial<RealtimeState> = {}): RealtimeState {
     connection: "connected",
     session: mergedSession,
     response: mergedResponse,
+    audioPlaying: false,
     lastError: null,
     ...rest,
   };
@@ -111,19 +112,20 @@ describe("shouldInterruptBeforeSend", () => {
     expect(
       shouldInterruptBeforeSend(
         createState({ response: { status: "responding", text: "hi" } }),
-        false,
       ),
     ).toBe(true);
   });
 
-  // The response completes when the server stops SENDING; the speakers are
+  // The response completes when the provider stops SENDING; the speakers are
   // still going. Skipping the interrupt here let the old line play out and the
   // new answer queue behind it instead of cutting in.
   it("interrupts while audio is still playing after the response completed", () => {
     expect(
       shouldInterruptBeforeSend(
-        createState({ response: { status: "completed", text: "done" } }),
-        true,
+        createState({
+          response: { status: "completed", text: "done" },
+          audioPlaying: true,
+        }),
       ),
     ).toBe(true);
   });
@@ -133,13 +135,12 @@ describe("shouldInterruptBeforeSend", () => {
       expect(
         shouldInterruptBeforeSend(
           createState({ response: { status, text: "" } }),
-          false,
         ),
       ).toBe(false);
     }
   });
 
   it("does not interrupt without a session", () => {
-    expect(shouldInterruptBeforeSend(null, true)).toBe(false);
+    expect(shouldInterruptBeforeSend(null)).toBe(false);
   });
 });

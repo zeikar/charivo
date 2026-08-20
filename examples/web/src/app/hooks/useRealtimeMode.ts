@@ -213,14 +213,7 @@ export function useRealtimeMode() {
         // Typing over the character means what speaking over it means, and
         // server VAD already handles that as a barge-in — so take the turn
         // rather than refusing the message.
-        // Read the flag fresh: it flips on playback events, so a value captured
-        // when this callback was created would be stale by now.
-        if (
-          shouldInterruptBeforeSend(
-            realtimeManager.getState(),
-            useChatStore.getState().isRealtimeAudioPlaying,
-          )
-        ) {
+        if (shouldInterruptBeforeSend(realtimeManager.getState())) {
           await realtimeManager.interrupt();
         }
 

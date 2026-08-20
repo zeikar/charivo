@@ -8,7 +8,11 @@ type EmitEvent = <K extends keyof EventMap>(
 export class RealtimeAudioOutput {
   private active = false;
 
-  constructor(private readonly emit: EmitEvent) {}
+  constructor(
+    private readonly emit: EmitEvent,
+    /** Fired only on an actual transition, so callers can mirror the flag. */
+    private readonly onChange?: (playing: boolean) => void,
+  ) {}
 
   isActive(): boolean {
     return this.active;
@@ -21,6 +25,7 @@ export class RealtimeAudioOutput {
 
     this.active = true;
     this.emit("tts:audio:start", {});
+    this.onChange?.(true);
   }
 
   end(): void {
@@ -31,5 +36,6 @@ export class RealtimeAudioOutput {
     this.active = false;
     this.emit("tts:lipsync:update", { rms: 0 });
     this.emit("tts:audio:end", {});
+    this.onChange?.(false);
   }
 }

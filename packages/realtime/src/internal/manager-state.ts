@@ -34,6 +34,7 @@ export function mergeRealtimeState(
       status: partial.response?.status ?? current.response.status,
       text: partial.response?.text ?? current.response.text,
     },
+    audioPlaying: partial.audioPlaying ?? current.audioPlaying,
     lastError: partial.lastError ?? current.lastError,
   };
 }
