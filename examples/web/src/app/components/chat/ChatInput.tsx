@@ -2,7 +2,8 @@ import type { KeyboardEvent } from "react";
 import {
   PaperAirplaneIcon,
   MicrophoneIcon,
-  SignalIcon,
+  PhoneIcon,
+  PhoneXMarkIcon,
 } from "@heroicons/react/24/outline";
 import { ArrowPathIcon, StopIcon } from "@heroicons/react/24/solid";
 import { useChatStore } from "../../stores/useChatStore";
@@ -24,52 +25,18 @@ type RealtimeUIState =
   | "reconnecting"
   | "error";
 
-const REALTIME_STATE_CONFIG: Record<
-  RealtimeUIState,
-  { label: string; className: string; dotClass: string; pulse: boolean }
-> = {
-  off: {
-    label: "Voice",
-    className:
-      "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600",
-    dotClass: "",
-    pulse: false,
-  },
-  connecting: {
-    label: "Connecting",
-    className:
-      "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:ring-amber-800/70",
-    dotClass: "bg-amber-500",
-    pulse: true,
-  },
-  listening: {
-    label: "Listening",
-    className:
-      "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-200 dark:ring-emerald-800/70",
-    dotClass: "bg-emerald-500",
-    pulse: true,
-  },
-  responding: {
-    label: "Responding",
-    className:
-      "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-950/60 dark:text-blue-200 dark:ring-blue-800/70",
-    dotClass: "bg-blue-500",
-    pulse: true,
-  },
-  reconnecting: {
-    label: "Reconnecting",
-    className:
-      "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:ring-amber-800/70",
-    dotClass: "bg-amber-500",
-    pulse: true,
-  },
-  error: {
-    label: "Error",
-    className:
-      "bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-950/60 dark:text-red-200 dark:ring-red-800/70",
-    dotClass: "bg-red-500",
-    pulse: false,
-  },
+/**
+ * What the session is doing. Shown as text, never as the button's label — the
+ * button has to keep saying what pressing it does, and while a call is up that
+ * is always "hang up".
+ */
+const REALTIME_STATUS_TEXT: Record<RealtimeUIState, string> = {
+  off: "",
+  connecting: "Connecting\u2026",
+  listening: "Listening \u2014 speak or type",
+  responding: "Responding\u2026",
+  reconnecting: "Reconnecting\u2026",
+  error: "Voice chat error",
 };
 
 export function ChatInput({
@@ -104,6 +71,7 @@ export function ChatInput({
   const getPlaceholder = () => {
     if (isRecording) return "🎤 Recording...";
     if (isTranscribing) return "⏳ Transcribing...";
+    if (realtimeStatusText) return realtimeStatusText;
     return "Type your message...";
   };
 
@@ -130,9 +98,12 @@ export function ChatInput({
   };
 
   const realtimeState = getRealtimeUIState();
-  const realtimeConfig = REALTIME_STATE_CONFIG[realtimeState];
+  const realtimeStatusText = REALTIME_STATUS_TEXT[realtimeState];
   const canInterrupt =
     Boolean(onInterruptRealtime) && realtimeState === "responding";
+  // A call is up (or coming up) for every state but "off", and the one thing
+  // the button can offer then is ending it.
+  const callIsUp = realtimeState !== "off" && realtimeState !== "connecting";
 
   return (
     <div className="flex-shrink-0 relative z-20">
@@ -142,36 +113,41 @@ export function ChatInput({
             onClick={() => void onToggleRealtimeMode()}
             disabled={isConnecting}
             aria-label={
-              isRealtimeMode
-                ? "End voice conversation"
-                : "Start voice conversation"
+              callIsUp ? "End voice conversation" : "Start voice conversation"
             }
             title={
               isConnecting
-                ? "Connecting to voice mode..."
-                : isRealtimeMode
+                ? "Connecting to voice chat..."
+                : callIsUp
                   ? "End voice conversation"
-                  : "Start voice conversation"
+                  : "Start voice conversation — talk out loud, or keep typing"
             }
-            className={`flex-shrink-0 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium transition-all md:text-sm ${realtimeConfig.className} ${isConnecting ? "cursor-wait" : ""} disabled:cursor-not-allowed`}
+            className={`flex-shrink-0 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-[13px] font-medium transition-all md:text-sm ${
+              isConnecting
+                ? "cursor-wait bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:ring-amber-800/70"
+                : callIsUp
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+            } disabled:cursor-not-allowed`}
           >
-            {realtimeState === "off" ? (
-              <SignalIcon className="h-4 w-4" aria-hidden />
-            ) : (
+            {isConnecting ? (
               <span className="relative inline-flex h-2 w-2" aria-hidden>
-                {realtimeConfig.pulse && (
-                  <span
-                    className={`absolute inline-flex h-full w-full rounded-full ${realtimeConfig.dotClass} opacity-60 animate-ping`}
-                  />
-                )}
-                <span
-                  className={`relative inline-flex h-2 w-2 rounded-full ${realtimeConfig.dotClass}`}
-                />
+                <span className="absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-60 animate-ping" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
               </span>
+            ) : callIsUp ? (
+              <PhoneXMarkIcon className="h-4 w-4" aria-hidden />
+            ) : (
+              <PhoneIcon className="h-4 w-4" aria-hidden />
             )}
-            <span aria-live="polite">{realtimeConfig.label}</span>
+            <span>
+              {isConnecting ? "Connecting" : callIsUp ? "End" : "Talk"}
+            </span>
           </button>
         )}
+        <span className="sr-only" role="status" aria-live="polite">
+          {realtimeStatusText}
+        </span>
         <input
           type="text"
           value={input}
