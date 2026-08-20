@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createRealtimeAssistantMessage,
   getRealtimeTurnStatus,
+  shouldInterruptBeforeSend,
   shouldResetRealtimeUiState,
 } from "./realtime-ui";
 
@@ -102,5 +103,29 @@ describe("realtime-ui", () => {
     expect(message.character).toEqual(character);
     expect(message.timestamp).toBeInstanceOf(Date);
     expect(message.id).toBeTruthy();
+  });
+});
+
+describe("shouldInterruptBeforeSend", () => {
+  it("interrupts while the character is speaking", () => {
+    expect(
+      shouldInterruptBeforeSend(
+        createState({ response: { status: "responding", text: "hi" } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("sends straight through when no reply is in progress", () => {
+    for (const status of ["idle", "completed", "interrupted"] as const) {
+      expect(
+        shouldInterruptBeforeSend(
+          createState({ response: { status, text: "" } }),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("does not interrupt without a session", () => {
+    expect(shouldInterruptBeforeSend(null)).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import { REALTIME_MODEL, REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
 import { createSessionCap } from "./session-cap";
+import { shouldInterruptBeforeSend } from "./realtime-ui";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -209,6 +210,13 @@ export function useRealtimeMode() {
       }
 
       try {
+        // Typing over the character means what speaking over it means, and
+        // server VAD already handles that as a barge-in — so take the turn
+        // rather than refusing the message.
+        if (shouldInterruptBeforeSend(realtimeManager.getState())) {
+          await realtimeManager.interrupt();
+        }
+
         await realtimeManager.sendMessage(text);
         return true;
       } catch (error) {

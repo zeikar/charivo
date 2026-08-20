@@ -46,6 +46,24 @@ export function shouldResetRealtimeUiState(
   return getRealtimeTurnStatus(state, options) === "idle";
 }
 
+/**
+ * Whether a typed message has to interrupt before it can be sent.
+ *
+ * Speaking over the character already works — server VAD treats it as a
+ * barge-in and cuts the reply short. Typing means the same thing, so it takes
+ * the turn the same way instead of being rejected with "Response already in
+ * progress".
+ *
+ * This does not cover the window between sending and the reply starting, which
+ * `RealtimeManager` also locks but does not expose in its state. A send landing
+ * there is a genuine double-send and is still refused.
+ */
+export function shouldInterruptBeforeSend(
+  state: RealtimeState | null,
+): boolean {
+  return state?.response.status === "responding";
+}
+
 export function createRealtimeAssistantMessage(
   text: string,
   character?: Character,
