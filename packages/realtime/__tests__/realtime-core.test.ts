@@ -2337,6 +2337,60 @@ describe("realtime-core", () => {
     await manager.stopSession();
   });
 
+  // The audio tail is the dangerous shape: the response has completed, so the
+  // lock is already open, and every publish before the connection state lands
+  // is an invitation to send into a transport that is going away.
+  it.each([
+    [
+      "connection loss",
+      async (stub: ReturnType<typeof createRealtimeClientStub>) =>
+        stub.emit({
+          type: "connection.lost",
+          cause: "offline" as const,
+          error: new Error("network"),
+        }),
+    ],
+    [
+      "an unsolicited session end",
+      async (stub: ReturnType<typeof createRealtimeClientStub>) =>
+        stub.emit({ type: "session.ended" }),
+    ],
+  ])(
+    "publishes no open lock during %s in the audio tail",
+    async (_name, drop) => {
+      const stub = createRealtimeClientStub({
+        emitSessionStartedOnConnect: true,
+      });
+      const eventEmitter = createEventEmitter();
+      const manager = createRealtimeManager(stub.client);
+
+      manager.setEventEmitter!(eventEmitter);
+      await manager.startSession({ provider: "openai" });
+
+      await manager.sendMessage("hello");
+      await stub.emit({ type: "audio.output.started" });
+      await stub.emit({ type: "assistant.response.completed", text: "hi" });
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(manager.getState().audioPlaying).toBe(true);
+
+      (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+      await drop(stub);
+
+      const inviting = (
+        eventEmitter.emit as ReturnType<typeof vi.fn>
+      ).mock.calls
+        .filter(([event]) => event === "realtime:state")
+        .map(([, payload]) => (payload as { state: RealtimeState }).state)
+        .filter(
+          (state) =>
+            state.connection === "connected" &&
+            state.session.status === "active",
+        );
+
+      expect(inviting).toHaveLength(0);
+    },
+  );
+
   // Whatever the state reports has to be what sendMessage actually does, or the
   // field is just a second opinion to get wrong.
   it("refuses a send exactly when awaitingResponse is true", async () => {

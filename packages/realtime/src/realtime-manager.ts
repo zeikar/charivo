@@ -555,9 +555,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.reconnectToken += 1;
     const reconnectToken = this.reconnectToken;
 
-    // Same reasoning as the error path: the buffer may still be playing after
-    // the response completed, and dropping the connection must not strand it.
-    this.audioOutput.end();
     if (this.state.response.status === "responding") {
       this.state = {
         ...this.state,
@@ -576,8 +573,12 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       };
     }
 
-    // Only now: releasing it while the snapshot still said connected and active
-    // would invite a reentrant send into a transport that is already gone.
+    // Only now do these publish. Anything emitted while the snapshot still said
+    // connected and active invites a reentrant send into a transport that is
+    // already gone -- delivery is synchronous, so a listener can act on it.
+    // The buffer may still be playing after the response completed, and
+    // dropping the connection must not strand it.
+    this.audioOutput.end();
     this.setResponseOutstanding(false);
 
     this.emitState();
@@ -939,7 +940,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
-    this.audioOutput.end();
     this.state = {
       ...this.state,
       connection: "error",
@@ -954,6 +954,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: error,
     };
+    this.audioOutput.end();
     this.setResponseOutstanding(false);
     this.eventEmitter?.emit("realtime:error", { error });
     this.emitState();
@@ -970,7 +971,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
-    this.audioOutput.end();
     this.state = {
       ...this.state,
       connection: "idle",
@@ -985,6 +985,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: null,
     };
+    this.audioOutput.end();
     this.setResponseOutstanding(false);
     this.emitState();
 
