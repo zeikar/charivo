@@ -321,8 +321,8 @@ reply completing, an error, a reconnect, or the session ending.
 It does not predict every refusal: `sendMessage` also rejects while the session
 is inactive or reconnecting, which `session.status` and `connection` report.
 
-Reading both flags is what lets a text box barge in the way speaking already
-does, with no rejected sends left over.
+On an active, connected session, reading both flags is what lets a text box
+barge in the way speaking already does. The session checks still apply.
 
 The field tracks the same playback segment as the events above: true from
 `audio.output.started` until `audio.output.ended`, and cleared when a session

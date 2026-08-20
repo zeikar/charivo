@@ -2275,6 +2275,68 @@ describe("realtime-core", () => {
     await manager.stopSession();
   });
 
+  // Interrupt, send a replacement, then let the cancelled turn report in late.
+  // The completion settles the turn that was interrupted, not the one now
+  // waiting, so it must not unlock a send that is still outstanding.
+  it("keeps the lock when an interrupted turn completes late", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const manager = createRealtimeManager(stub.client);
+
+    await manager.startSession({ provider: "openai" });
+    await stub.emit({ type: "assistant.response.started" });
+    await manager.interrupt();
+
+    await manager.sendMessage("instead, do this");
+    expect(manager.getState().awaitingResponse).toBe(true);
+
+    await stub.emit({ type: "assistant.response.completed", text: "stale" });
+
+    expect(manager.getState().awaitingResponse).toBe(true);
+    await expect(manager.sendMessage("duplicate")).rejects.toThrow(
+      "already in progress",
+    );
+
+    await manager.stopSession();
+  });
+
+  // Delivery is synchronous, so any snapshot that says "connected, active, not
+  // awaiting" is an invitation to send. None may be published while the
+  // connection is actually going away.
+  it("never publishes an open lock on a session that is already dropping", async () => {
+    const stub = createRealtimeClientStub({
+      emitSessionStartedOnConnect: true,
+    });
+    const eventEmitter = createEventEmitter();
+    const manager = createRealtimeManager(stub.client);
+
+    manager.setEventEmitter!(eventEmitter);
+    await manager.startSession({ provider: "openai" });
+    await manager.sendMessage("hello");
+
+    (eventEmitter.emit as ReturnType<typeof vi.fn>).mockClear();
+    await stub.emit({
+      type: "connection.lost",
+      cause: "offline",
+      error: new Error("network"),
+    });
+
+    const inviting = (eventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([event]) => event === "realtime:state")
+      .map(([, payload]) => (payload as { state: RealtimeState }).state)
+      .filter(
+        (state) =>
+          state.connection === "connected" &&
+          state.session.status === "active" &&
+          !state.awaitingResponse,
+      );
+
+    expect(inviting).toHaveLength(0);
+
+    await manager.stopSession();
+  });
+
   // Whatever the state reports has to be what sendMessage actually does, or the
   // field is just a second opinion to get wrong.
   it("refuses a send exactly when awaitingResponse is true", async () => {

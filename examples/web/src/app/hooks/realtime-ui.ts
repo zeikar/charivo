@@ -51,9 +51,8 @@ export function shouldResetRealtimeUiState(
 
 /**
  * Typing over the character means what speaking over it means, and server VAD
- * already treats that as a barge-in. Between the two flags every case
- * `sendMessage` would refuse is anticipated, so a typed message is never
- * rejected.
+ * already treats that as a barge-in. Covers the response-in-progress refusals;
+ * an inactive or reconnecting session is refused on its own terms.
  */
 export function shouldInterruptBeforeSend(
   state: RealtimeState | null,

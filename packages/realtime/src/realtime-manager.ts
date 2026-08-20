@@ -419,11 +419,15 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "assistant.response.completed": {
-        this.setResponseOutstanding(false);
+        // A completion for a turn that was already interrupted settles that
+        // turn, not a replacement sent in its place -- clearing the lock here
+        // would unlock a send that is still outstanding.
         if (this.state.response.status === "interrupted") {
           this.flushPendingToolRefresh();
           return;
         }
+
+        this.setResponseOutstanding(false);
 
         const text = event.text || this.state.response.text;
         this.emitUsageEvent(event);
@@ -546,7 +550,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       return;
     }
 
-    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.isRecoveringConnection = true;
     this.reconnectToken += 1;
@@ -572,6 +575,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         lastError: error ?? this.state.lastError,
       };
     }
+
+    // Only now: releasing it while the snapshot still said connected and active
+    // would invite a reentrant send into a transport that is already gone.
+    this.setResponseOutstanding(false);
 
     this.emitState();
     this.log("warn", "Realtime reconnect started", {
@@ -929,7 +936,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
   }
 
   private finalizeFailedSession(error: Error): void {
-    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
@@ -948,6 +954,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: error,
     };
+    this.setResponseOutstanding(false);
     this.eventEmitter?.emit("realtime:error", { error });
     this.emitState();
     this.log("error", "Realtime session failed", {
@@ -960,7 +967,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
     emitSessionEnd: boolean,
     reason: RealtimeSessionTransitionReason,
   ): void {
-    this.setResponseOutstanding(false);
     this.hasPendingToolRefresh = false;
     this.cancelReconnectLoop();
     this.browserLifecycle.dispose();
@@ -979,6 +985,7 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
       },
       lastError: null,
     };
+    this.setResponseOutstanding(false);
     this.emitState();
 
     if (emitSessionEnd) {
