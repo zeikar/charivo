@@ -1,5 +1,43 @@
 # @charivo/realtime
 
+## 0.17.0
+
+### Minor Changes
+
+- 7884f77: Expose whether the character's audio is still playing on `RealtimeState`.
+
+  `response.status` answers "is the provider still generating", and consumers kept
+  reaching for it to answer "is the character still talking" — the only question
+  the state object appeared to offer. Those are different questions for the entire
+  tail of every turn: a response completes when the provider finishes SENDING
+  audio, and playback runs on past that. Anything built on the response status is
+  wrong for that whole window, and looks correct until someone barges in near the
+  end of a reply.
+
+  `RealtimeState.audioPlaying` reports the playback segment the manager already
+  tracks: true from `audio.output.started` until `audio.output.ended`, and cleared
+  when a session stops, fails, or reconnects. Those are the normalized transport
+  events every adapter emits, so it carries no provider-specific meaning. Changes
+  publish through `realtime:state` like the rest of the state.
+
+  Consumers that reconstructed this by subscribing to `tts:audio:start` /
+  `tts:audio:end` can drop that bookkeeping and read the field.
+
+### Patch Changes
+
+- 6a476b8: Stop the sound when the direct OpenAI transport is interrupted during tail
+  playback.
+
+  `interrupt()` returned early unless a response was still generating, so it did
+  nothing at all once `response.done` had arrived — the exact window where playback
+  is still draining and an interrupt is what a caller wants. Cancelling stops
+  generation; clearing the output buffer is what stops the sound, and that is now
+  sent whenever audio output is open, independently of whether there is a response
+  left to cancel. The agents transport already did this.
+
+- Updated dependencies [7884f77]
+  - @charivo/core@0.29.0
+
 ## 0.16.1
 
 ### Patch Changes
