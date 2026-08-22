@@ -289,6 +289,20 @@ If you implement a custom transport, emit `audio.output.ended` when playback
 truly stops. Emitting it when your provider finishes streaming will look correct
 in logs and wrong on screen.
 
+One more obligation, for interruptions: do not report
+`assistant.response.started` or `assistant.response.completed` for a turn the
+caller interrupted once a replacement turn has been sent. `RealtimeManager`
+credits late lifecycle events to whatever turn is current, so they move the
+session back to `"responding"` and then release the replacement's send lock,
+admitting a duplicate send.
+
+> **Known gap.** Neither built-in transport fully honours this yet in the window
+> between `interrupt()` and the replacement's first event. The agents transport
+> re-announces the cancelled turn when its `agent_end` arrives; the low-level
+> transport stops suppressing cancelled events as soon as the replacement is
+> sent. Interrupting and immediately sending a replacement can therefore leave
+> `awaitingResponse` reporting `false` while that replacement is still pending.
+
 ### Asking whether the character is still talking
 
 `RealtimeState.audioPlaying` answers that; `state.response.status` does not.

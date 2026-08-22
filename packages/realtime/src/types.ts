@@ -30,6 +30,11 @@ export type RealtimeTransportEvent =
   | { type: "user.transcript"; text: string }
   | { type: "assistant.response.started" }
   | { type: "assistant.text.delta"; text: string }
+  /**
+   * Must not report an interrupted turn once a replacement turn has started:
+   * `RealtimeManager` would credit it to the replacement and release that
+   * turn's send lock.
+   */
   | {
       type: "assistant.response.completed";
       text: string;

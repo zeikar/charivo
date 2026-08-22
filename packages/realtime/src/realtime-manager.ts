@@ -419,9 +419,10 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
         return;
 
       case "assistant.response.completed": {
-        // A completion for a turn that was already interrupted settles that
-        // turn, not a replacement sent in its place -- clearing the lock here
-        // would unlock a send that is still outstanding.
+        // Settles the interrupted turn, not a replacement sent in its place.
+        // Reading the status is enough because a transport must not report an
+        // interrupted turn after a replacement has started (see
+        // RealtimeTransportEvent).
         if (this.state.response.status === "interrupted") {
           this.flushPendingToolRefresh();
           return;
