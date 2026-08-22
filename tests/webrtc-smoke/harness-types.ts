@@ -44,13 +44,8 @@ export type HarnessSnapshot = {
     audioEnds: number;
     activeSamples: number;
   };
-  /**
-   * The manager's send lock, plus how often it has been released. A cancelled
-   * turn releasing it is the defect this counts: releases should equal
-   * interrupts plus completed turns, never more.
-   */
+  /** The manager's send lock: whether a reply is still owed. */
   awaitingResponse: boolean;
-  lockReleases: number;
   events: HarnessEvent[];
 };
 

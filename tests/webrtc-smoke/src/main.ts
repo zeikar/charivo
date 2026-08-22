@@ -134,7 +134,6 @@ const state: HarnessSnapshot = {
     activeSamples: 0,
   },
   awaitingResponse: false,
-  lockReleases: 0,
   events: [],
 };
 
@@ -223,9 +222,6 @@ function handleHarnessEvent(harnessEvent: HarnessEvent): void {
       state.sessionStatus = realtimeState.session.status;
       state.connection = realtimeState.connection;
       state.assistantStatus = realtimeState.response.status;
-      if (state.awaitingResponse && !realtimeState.awaitingResponse) {
-        state.lockReleases += 1;
-      }
       state.awaitingResponse = realtimeState.awaitingResponse;
       state.sessionInstructions =
         realtimeState.session.config?.instructions ?? null;
