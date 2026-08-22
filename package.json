@@ -34,6 +34,7 @@
     "build:web": "pnpm build && pnpm --filter ./examples/web build",
     "dev:web": "pnpm build && pnpm --filter ./examples/web dev",
     "demo:gif": "node ./scripts/capture-demo-gif.mjs",
+    "demo:mp4": "node ./scripts/capture-demo-mp4.mjs",
     "verify": "pnpm build && pnpm test && pnpm typecheck && pnpm lint && pnpm format:check",
     "verify:ci": "pnpm build && pnpm typecheck && pnpm lint && pnpm format:check",
     "pack:check": "node ./scripts/check-packages.mjs",
