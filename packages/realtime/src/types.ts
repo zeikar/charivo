@@ -34,8 +34,8 @@ export type RealtimeTransportEvent =
    * Must not report an interrupted turn once a replacement turn has started:
    * `RealtimeManager` would credit it to the replacement and release that
    * turn's send lock. Built-in clients honour that for a response proven in
-   * flight at interrupt, dropping its assistant lifecycle events until it
-   * reports; the windows they miss are in docs/guide/realtime.md.
+   * flight at interrupt, dropping its assistant lifecycle events while the
+   * suppression holds; the windows they miss are in docs/guide/realtime.md.
    */
   | {
       type: "assistant.response.completed";

@@ -302,14 +302,15 @@ created by server VAD, plus — on the low-level transport — a client-requeste
 response interrupted before its acknowledgement, across repeated
 interrupt-and-replace cycles. That turn's assistant lifecycle events
 (`assistant.response.started`, `assistant.text.delta`,
-`assistant.response.completed`) are dropped until it reports. Tool events stay
-live across an interrupt by design, and audio events keep reporting real
-playback.
+`assistant.response.completed`) are dropped while the suppression holds. Tool
+events stay live across an interrupt by design, and audio events keep reporting
+real playback.
 
 > **Known gap.** Because the built-in transports condemn only a response the
-> wire proves they are interrupting, three windows stay uncovered. That is a
-> deliberate scope limit, not a fixed constraint: closing them needs either an
-> adapter-owned send path or turn identity on the lifecycle events.
+> wire proves they are interrupting, and de-arm on an unrelated failure, some
+> windows stay uncovered. That is a deliberate scope limit, not a fixed
+> constraint: closing them needs either an adapter-owned send path or turn
+> identity on the lifecycle events.
 >
 > - Agents transport: an interrupt issued before the turn's first server event.
 >   The SDK sends no `response.cancel` there, so nothing marks the turn — which
@@ -319,6 +320,10 @@ playback.
 >   response can be credited to the replacement, and on the agents transport the
 >   SDK can merge the two into a single response.
 > - Both transports: a server-VAD turn interrupted before its acknowledgement.
+> - Both transports: a transport error arriving while a condemned response is
+>   still outstanding. Suppression is dropped there on purpose — staying armed
+>   after an unknown failure risks stranding the send lock — so that response's
+>   late completion reports as genuine and can release a later turn's lock.
 >
 > In those windows, interrupting and immediately sending a replacement can leave
 > `awaitingResponse` reporting `false` while that replacement is still pending.
