@@ -296,11 +296,31 @@ credits late lifecycle events to whatever turn is current, so they move the
 session back to `"responding"` and then release the replacement's send lock,
 admitting a duplicate send.
 
-> **Known gap.** Neither built-in transport fully honours this yet in the window
-> between `interrupt()` and the replacement's first event. The agents transport
-> re-announces the cancelled turn when its `agent_end` arrives; the low-level
-> transport stops suppressing cancelled events as soon as the replacement is
-> sent. Interrupting and immediately sending a replacement can therefore leave
+Both built-in transports honour it for a response the wire proves is in flight
+when `interrupt()` runs: any acknowledged response, whether client-requested or
+created by server VAD, plus — on the low-level transport — a client-requested
+response interrupted before its acknowledgement, across repeated
+interrupt-and-replace cycles. That turn's assistant lifecycle events
+(`assistant.response.started`, `assistant.text.delta`,
+`assistant.response.completed`) are dropped until it reports. Tool events stay
+live across an interrupt by design, and audio events keep reporting real
+playback.
+
+> **Known gap.** Because the built-in transports condemn only a response the
+> wire proves they are interrupting, three windows stay uncovered. That is a
+> deliberate scope limit, not a fixed constraint: closing them needs either an
+> adapter-owned send path or turn identity on the lifecycle events.
+>
+> - Agents transport: an interrupt issued before the turn's first server event.
+>   The SDK sends no `response.cancel` there, so nothing marks the turn — which
+>   also covers a replacement queued behind a condemned turn and interrupted
+>   before it starts.
+> - Both transports: a tool call resolving across an interrupt. Its follow-up
+>   response can be credited to the replacement, and on the agents transport the
+>   SDK can merge the two into a single response.
+> - Both transports: a server-VAD turn interrupted before its acknowledgement.
+>
+> In those windows, interrupting and immediately sending a replacement can leave
 > `awaitingResponse` reporting `false` while that replacement is still pending.
 
 ### Asking whether the character is still talking
