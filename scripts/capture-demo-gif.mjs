@@ -61,10 +61,12 @@ const OUT_GIF = resolve(
 const FPS = Number(process.env.FPS || 8); // ~8 is the ceiling; a screenshot costs ~120ms
 const WIDTH = Number(process.env.WIDTH || 900); // GIF width; frames come in at 2x for retina
 // A hard ceiling on the speaking beat. A GIF does not owe anyone the whole
-// answer, so a long reply is cut off mid-word on purpose. Filming also stops
-// early when the reply finishes first, which only ever shortens the result --
-// a short answer should not leave a still character on screen.
-const SPEAK_MS = Number(process.env.SPEAK_MS || 10_000);
+// answer, so a long reply is cut off mid-word on purpose -- five seconds is
+// plenty to read the lip sync and the expression, and the README image is
+// cheaper for it. Filming also stops early when the reply finishes first, which
+// only ever shortens the result: a short answer should not leave a still
+// character on screen.
+const SPEAK_MS = Number(process.env.SPEAK_MS || 5_000);
 // How long the gap after send is filmed before the capture cuts away. A
 // realtime session normally starts answering well inside this, so the cut
 // usually never happens; it only exists so a slow session cannot pad the GIF.
