@@ -133,6 +133,8 @@ const state: HarnessSnapshot = {
     audioEnds: 0,
     activeSamples: 0,
   },
+  awaitingResponse: false,
+  lockReleases: 0,
   events: [],
 };
 
@@ -221,6 +223,10 @@ function handleHarnessEvent(harnessEvent: HarnessEvent): void {
       state.sessionStatus = realtimeState.session.status;
       state.connection = realtimeState.connection;
       state.assistantStatus = realtimeState.response.status;
+      if (state.awaitingResponse && !realtimeState.awaitingResponse) {
+        state.lockReleases += 1;
+      }
+      state.awaitingResponse = realtimeState.awaitingResponse;
       state.sessionInstructions =
         realtimeState.session.config?.instructions ?? null;
       if (realtimeState.response.text) {
@@ -425,6 +431,20 @@ async function forceReconnectOutage(): Promise<void> {
   throw new Error("Unsupported realtime transport for forced reconnect smoke");
 }
 
+async function interrupt(): Promise<void> {
+  state.lastError = null;
+  render();
+
+  try {
+    await realtimeManager.interrupt();
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+    throw error;
+  }
+}
+
 async function sendPrompt(text = messageInput.value): Promise<void> {
   state.lastError = null;
   render();
@@ -515,6 +535,7 @@ smokeWindow.__charivoSmoke = {
   startSession,
   updateSession,
   sendPrompt,
+  interrupt,
   stopSession,
   getSnapshot: () => structuredClone(state),
 };

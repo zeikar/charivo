@@ -256,6 +256,58 @@ export async function waitForLipSyncSamples(
   );
 }
 
+export async function interruptSession(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const smoke = (window as SmokeWindow).__charivoSmoke;
+
+    if (!smoke) {
+      throw new Error("Smoke harness API is not available");
+    }
+
+    return smoke.interrupt();
+  });
+}
+
+/** Wait until the reply has said enough to be recognisable if it resurfaces. */
+export async function waitForAssistantText(
+  page: Page,
+  minLength: number,
+): Promise<void> {
+  await page.waitForFunction(
+    (min: number) => {
+      const smoke = (window as SmokeWindow).__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      return smoke.getSnapshot().assistantText.trim().length >= min;
+    },
+    minLength,
+    { timeout: 60_000 },
+  );
+}
+
+/** Wait for the character to actually be mid-reply, so an interrupt has a target. */
+export async function waitForResponding(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const smoke = (window as SmokeWindow).__charivoSmoke;
+
+      if (!smoke) {
+        return false;
+      }
+
+      const snapshot = smoke.getSnapshot();
+      return (
+        snapshot.assistantStatus === "responding" && snapshot.awaitingResponse
+      );
+    },
+    undefined,
+    { timeout: 60_000 },
+  );
+}
+
 export async function waitForToolAndAvatarActivity(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const smoke = (window as SmokeWindow).__charivoSmoke;

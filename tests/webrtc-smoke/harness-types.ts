@@ -44,6 +44,13 @@ export type HarnessSnapshot = {
     audioEnds: number;
     activeSamples: number;
   };
+  /**
+   * The manager's send lock, plus how often it has been released. A cancelled
+   * turn releasing it is the defect this counts: releases should equal
+   * interrupts plus completed turns, never more.
+   */
+  awaitingResponse: boolean;
+  lockReleases: number;
   events: HarnessEvent[];
 };
 
@@ -52,6 +59,7 @@ export type SmokeHarnessApi = {
   forceReconnectOutage: () => Promise<void>;
   updateSession: (config?: RealtimeSessionConfig) => Promise<void>;
   sendPrompt: (text?: string) => Promise<void>;
+  interrupt: () => Promise<void>;
   stopSession: () => Promise<void>;
   getSnapshot: () => HarnessSnapshot;
 };
