@@ -111,6 +111,13 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   private latestAssistantText = "";
   /** Whether the response that just finished left a tool follow-up outstanding. */
   private expectsToolFollowUp = false;
+  /** Whether a `response.created` has arrived without its `response.done`. */
+  private responseActive = false;
+  /** Marked at interrupt: the SDK only cancels an acknowledged response. */
+  private condemnedActiveResponse = false;
+  // `agent_end` carries no identity, so its message's `response.done` marks the
+  // one to swallow. Never cleared in resetAssistantTracking(): every send calls it.
+  private suppressStaleAgentEnd = false;
   private currentSessionConfig?: RealtimeSessionConfig;
   private teardownTransportLifecycle?: () => void;
   private readonly iceDisconnectDebouncer = createIceDisconnectDebouncer(() => {
@@ -290,6 +297,11 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     }
 
     this.session.interrupt();
+    // Arm only behind a response the SDK actually cancels; an empty mark would
+    // swallow the next real completion and strand the manager's send lock.
+    if (this.responseActive) {
+      this.condemnedActiveResponse = true;
+    }
     this.assistant.started = false;
   }
 
@@ -330,6 +342,16 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     });
 
     session.on("error", ({ error }) => {
+      // The cancel lost the race to server-side completion. Surfacing it would
+      // hit the manager's error branch, which frees the replacement's send lock.
+      if (isCancelWithoutActiveResponse(error)) {
+        return;
+      }
+
+      // De-arm on an unknown failure: fail live rather than stay suppressed; the
+      // owed agent_end swallow stays armed and drains at the next response.created.
+      this.responseActive = false;
+      this.condemnedActiveResponse = false;
       this.emitEvent({
         type: "error",
         error: error instanceof Error ? error : new Error(String(error)),
@@ -384,26 +406,46 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
         });
       }
 
-      if (event.type === "response.done" && isRecord(event.response)) {
-        // A function call means the model replies again once the result is in.
-        this.expectsToolFollowUp = Array.isArray(event.response.output)
-          ? event.response.output.some(
-              (item) => isRecord(item) && item.type === "function_call",
-            )
-          : false;
-        this.assistantCompletionMetadata = {
-          usage: isRecord(event.response.usage)
-            ? event.response.usage
-            : undefined,
-          model:
-            typeof event.response.model === "string"
-              ? event.response.model
+      if (event.type === "response.created") {
+        // A condemned response's `response.done` always precedes this: the
+        // sequencer holds new creates while one is ongoing.
+        this.responseActive = true;
+        this.suppressStaleAgentEnd = false;
+        return;
+      }
+
+      if (event.type === "response.done") {
+        this.responseActive = false;
+
+        if (this.condemnedActiveResponse) {
+          // This message's `agent_end` follows; a cancelled tool turn must not
+          // arm the follow-up gate either.
+          this.condemnedActiveResponse = false;
+          this.suppressStaleAgentEnd = true;
+          return;
+        }
+
+        if (isRecord(event.response)) {
+          // A function call means the model replies again once the result is in.
+          this.expectsToolFollowUp = Array.isArray(event.response.output)
+            ? event.response.output.some(
+                (item) => isRecord(item) && item.type === "function_call",
+              )
+            : false;
+          this.assistantCompletionMetadata = {
+            usage: isRecord(event.response.usage)
+              ? event.response.usage
               : undefined,
-          responseId:
-            typeof event.response.id === "string"
-              ? event.response.id
-              : undefined,
-        };
+            model:
+              typeof event.response.model === "string"
+                ? event.response.model
+                : undefined,
+            responseId:
+              typeof event.response.id === "string"
+                ? event.response.id
+                : undefined,
+          };
+        }
       }
     });
   }
@@ -426,6 +468,11 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     event: TransportLayerTranscriptDelta,
   ): void {
     if (!event.delta) {
+      return;
+    }
+
+    // Responses are serial, so every delta in the window is the condemned one's.
+    if (this.condemnedActiveResponse) {
       return;
     }
 
@@ -458,6 +505,14 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
   }
 
   private finalizeAssistantResponse(output: string): void {
+    // The cancelled turn reporting late. Announcing it would re-open the
+    // response and let its completion free the replacement turn's send lock.
+    if (this.suppressStaleAgentEnd) {
+      this.suppressStaleAgentEnd = false;
+      this.resetAssistantTracking();
+      return;
+    }
+
     // A tool turn fires agent_end twice; skip the first so consumers see one
     // completion per user turn. Gate that on a follow-up actually being due --
     // a turn that just ends empty has none, and swallowing its completion
@@ -757,6 +812,7 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.cleanupPendingToolCalls(
       new Error("Realtime session interrupted during reconnect"),
     );
+    this.resetResponseSuppression();
     this.resetAssistantTracking();
     this.lipSyncAnalyzer.stop();
     this.emitEvent({
@@ -829,7 +885,14 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
     this.latestAssistantText = "";
     this.connectionLossNotified = false;
     this.isCleaningUp = false;
+    this.resetResponseSuppression();
     this.resetAssistantTracking();
+  }
+
+  private resetResponseSuppression(): void {
+    this.responseActive = false;
+    this.condemnedActiveResponse = false;
+    this.suppressStaleAgentEnd = false;
   }
 
   private resetAssistantTracking(): void {
@@ -877,6 +940,20 @@ export class OpenAIRealtimeAgentsClient implements RealtimeTransportClient {
 
     console.debug("[charivo/realtime/openai-agents]", ...args);
   }
+}
+
+/** The benign cancel that lost to server-side completion. */
+function isCancelWithoutActiveResponse(error: unknown): boolean {
+  if (!isRecord(error) || !isRecord(error.error)) {
+    return false;
+  }
+
+  const serverError = error.error;
+  return (
+    serverError.code === "response_cancel_not_active" ||
+    (typeof serverError.message === "string" &&
+      serverError.message.toLowerCase().includes("no active response"))
+  );
 }
 
 export function createOpenAIRealtimeAgentsClient(

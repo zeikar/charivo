@@ -981,6 +981,195 @@ describe("OpenAIRealtimeAgentsClient", () => {
     await manager.stopSession();
   });
 
+  // Another seam defect: the cancelled turn's late `agent_end` re-announced the
+  // response, freeing the replacement turn's lock and admitting a duplicate send.
+  describe("interrupting an acknowledged response", () => {
+    async function startManagerSession(events: RealtimeTransportEvent[]) {
+      globalThis.fetch = vi.fn(async () =>
+        Response.json({
+          adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+          transport: "webrtc",
+          clientSecret: "client-secret",
+        }),
+      ) as typeof fetch;
+
+      const client = new OpenAIRealtimeAgentsClient({
+        apiEndpoint: "/api/realtime",
+      });
+      client.onEvent((event) => events.push(event));
+      const manager = createRealtimeManager(client);
+      await manager.startSession({ provider: "openai" });
+
+      return manager;
+    }
+
+    // The SDK emits a message's `transport_event` before its session event, so
+    // `response.created` precedes `agent_start` and `response.done` `agent_end`.
+    const emitResponseCreated = () =>
+      sdkState.session?.emit("transport_event", { type: "response.created" });
+
+    const emitResponseDone = (id: string) =>
+      sdkState.session?.emit("transport_event", {
+        type: "response.done",
+        response: { id, output: [] },
+      });
+
+    const emitDelta = (delta: string) =>
+      sdkState.transport?.emit("audio_transcript_delta", { delta });
+
+    const completionsIn = (events: RealtimeTransportEvent[]) =>
+      events.filter((event) => event.type === "assistant.response.completed");
+
+    it("holds the replacement turn's send lock when the cancelled turn reports late", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const manager = await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("condemned");
+
+      await manager.interrupt();
+      const afterInterrupt = events.length;
+      await manager.sendMessage("replacement");
+
+      // The cancelled turn's tail arrives after the replacement was sent.
+      emitDelta(" tail");
+      emitResponseDone("resp-condemned");
+      sdkState.session?.emit("agent_end", {}, {}, "condemned tail");
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+      await expect(manager.sendMessage("duplicate")).rejects.toThrow(
+        "already in progress",
+      );
+      expect(
+        events
+          .slice(afterInterrupt)
+          .filter(
+            (event) =>
+              event.type === "assistant.response.started" ||
+              event.type === "assistant.response.completed",
+          ),
+      ).toEqual([]);
+
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("Replacement reply");
+      emitResponseDone("resp-replacement");
+      sdkState.session?.emit("agent_end", {}, {}, "Replacement reply");
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({
+          text: "Replacement reply",
+          responseId: "resp-replacement",
+        }),
+      ]);
+      expect(
+        events.flatMap((event) =>
+          event.type === "assistant.text.delta" ? [event.text] : [],
+        ),
+      ).toEqual(["condemned", "Replacement reply"]);
+
+      await manager.stopSession();
+    });
+
+    it("frees the lock when the cancelled turn never reports its agent_end", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const manager = await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("condemned");
+
+      await manager.interrupt();
+      await manager.sendMessage("replacement");
+
+      // The SDK skips `agent_end` when the `response.done` payload fails to
+      // parse, so the mark must not survive into the replacement turn.
+      emitResponseDone("resp-condemned");
+      expect(manager.getState().awaitingResponse).toBe(true);
+
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("Replacement reply");
+      emitResponseDone("resp-replacement");
+      sdkState.session?.emit("agent_end", {}, {}, "Replacement reply");
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({ text: "Replacement reply" }),
+      ]);
+
+      await manager.stopSession();
+    });
+
+    it("swallows a cancel that lost the race to server-side completion", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const manager = await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("condemned");
+
+      await manager.interrupt();
+      await manager.sendMessage("replacement");
+
+      sdkState.session?.emit("error", {
+        type: "error",
+        error: {
+          type: "error",
+          event_id: "event-1",
+          error: {
+            type: "invalid_request_error",
+            code: "response_cancel_not_active",
+            message: "Cancellation failed: no active response found",
+          },
+        },
+      });
+
+      // Surfacing it would reach the manager's error branch, which frees the
+      // replacement turn's send lock.
+      expect(events.filter((event) => event.type === "error")).toEqual([]);
+      expect(manager.getState().awaitingResponse).toBe(true);
+
+      // The cancelled turn is still condemned: the error did not de-arm it.
+      emitResponseDone("resp-condemned");
+      sdkState.session?.emit("agent_end", {}, {}, "condemned tail");
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+      expect(completionsIn(events)).toEqual([]);
+
+      await manager.stopSession();
+    });
+
+    it("leaves the next turn live when the interrupt had nothing to cancel", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const manager = await startManagerSession(events);
+
+      // No response is acknowledged yet, so the SDK cancels nothing. A mark
+      // armed here would swallow this real completion and strand the lock.
+      await manager.sendMessage("hello");
+      await manager.interrupt();
+      await manager.sendMessage("replacement");
+
+      emitResponseCreated();
+      sdkState.session?.emit("agent_start", {}, {});
+      emitDelta("Replacement reply");
+      emitResponseDone("resp-replacement");
+      sdkState.session?.emit("agent_end", {}, {}, "Replacement reply");
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({ text: "Replacement reply" }),
+      ]);
+
+      await manager.stopSession();
+    });
+  });
+
   // `audio_stopped` means the SERVER finished sending; playback is still
   // draining. Reporting the end there released a held expression mid-reply.
   describe("audio output lifecycle", () => {
