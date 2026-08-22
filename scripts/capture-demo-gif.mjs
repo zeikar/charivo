@@ -2,26 +2,42 @@
 //
 //   pnpm demo:gif ["question"] [out.gif]
 //
+// It films the realtime route, not the chat route: it opens the voice call and
+// then types, because a realtime session starts speaking almost the moment the
+// text lands. Chaining an LLM to a TTS pass answers the same question several
+// seconds later, and those seconds are the whole difference between a demo that
+// looks alive and one that looks like it is buffering.
+//
 // The demo has to be serving already: `pnpm dev:web` in another terminal, or
 // BASE_URL pointed somewhere else (the deployed demo works too). Playwright
 // drives the page, frames are grabbed as PNGs, and ImageMagick assembles them.
-// Three things are worth knowing before editing:
+// Four things are worth knowing before editing:
 //
 //   - The browser is headed on purpose. The character is WebGL, and a real GPU
 //     draws her the way a visitor sees her; headless falls back to SwiftShader.
-//   - The reply wait is only partly filmed. The hold after send (THINK_MS)
-//     shows the typing indicator, and the remote chat route usually answers
-//     inside it. Anything slower -- the OpenClaw route, a cold model -- stops
-//     the capture and resumes when the reply renders, because no GIF should sit
-//     through a 20s wait.
+//   - The call needs a microphone even though nobody speaks into it -- the
+//     realtime client always opens one. Chromium's stand-in plays a test tone,
+//     and with server-side turn detection the model would answer that tone, so
+//     it is fed a silent WAV instead. The only input is the typed question.
+//   - "Listening -- speak or type" in the composer is the session's own ready
+//     signal, and nothing before it proves the session is up. Wait for it, then
+//     press Enter once: the realtime path clears the composer only after the
+//     send is accepted, so a second Enter would ask the same question twice.
 //   - "Has the reply arrived" counts the <p> inside the message bubbles, not
 //     the bubbles themselves: the typing indicator is a bubble too, one holding
-//     three bouncing dots and no <p> at all.
+//     three bouncing dots and no <p> at all. The realtime draft bubble carries
+//     a <p>, so the streaming reply is what ends the wait.
 //
-// Needs: the demo serving against a working OPENAI_API_KEY -- it pays for both
-// the reply and the speech -- and `magick` on PATH.
+// Needs: the demo serving against a working OPENAI_API_KEY -- the realtime
+// session is billed for audio -- and `magick` on PATH.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,20 +45,30 @@ import { chromium } from "@playwright/test";
 
 const PROJECT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+// Given a moment, not an instruction. Naming the expression makes the model
+// shop the setExpression menu -- "with a big smile" lands F02, a broad laugh
+// that reads as ambiguous once the mesh deforms -- and a merely pleasant
+// question lands F01, a gentle smile that barely reads at this size. The demo's
+// own session instructions ask it to "favor subtle reactions ... unless the
+// moment clearly calls for emphasis", so the line has to supply that moment.
 const QUESTION =
-  process.argv[2] || "Hi! Introduce yourself in one line, with a big smile!";
+  process.argv[2] ||
+  "You're live on the internet right now -- say hi to everyone!";
 const OUT_GIF = resolve(
   process.argv[3] || join(PROJECT, "docs", "images", "demo.gif"),
 );
 
 const FPS = Number(process.env.FPS || 8); // ~8 is the ceiling; a screenshot costs ~120ms
 const WIDTH = Number(process.env.WIDTH || 900); // GIF width; frames come in at 2x for retina
+// A hard ceiling on the speaking beat. A GIF does not owe anyone the whole
+// answer, so a long reply is cut off mid-word on purpose. Filming also stops
+// early when the reply finishes first, which only ever shortens the result --
+// a short answer should not leave a still character on screen.
 const SPEAK_MS = Number(process.env.SPEAK_MS || 10_000);
-// How long the typing indicator is filmed before the capture cuts away. The
-// remote chat route answers inside this often enough that the cut usually costs
-// nothing, and when it does not, it is the difference between an 11s GIF and a
-// 30s one.
-const THINK_MS = Number(process.env.THINK_MS || 2500);
+// How long the gap after send is filmed before the capture cuts away. A
+// realtime session normally starts answering well inside this, so the cut
+// usually never happens; it only exists so a slow session cannot pad the GIF.
+const THINK_MS = Number(process.env.THINK_MS || 1200);
 // The page is a smooth gradient behind a character, which 256 colours band into
 // visible rings. Dithering trades those rings for noise -- and that noise lands
 // on the chat bubbles too, where it eats letters. Riemersma reads nearly as
@@ -60,14 +86,52 @@ const KEEP_FRAMES = process.env.KEEP_FRAMES === "1";
 // Live2D loading overlay is pointer-events-none but sits below z-10), and only
 // its real replies carry a <p>.
 const REPLY_TEXT = ".z-10.pointer-events-none p.text-sm";
+// The composer is the page's only text input. Addressing it by placeholder
+// would not survive the call: the placeholder becomes the session status.
+const COMPOSER = 'input[type="text"]';
+// Exactly the "listening" state. The button's label cannot stand in for it --
+// it flips to "End voice conversation" on the error state too.
+const LISTENING = "Listening \u2014 speak or type";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Counts rendered replies. Caps at 3: MessageBubbles keeps the last three. */
 const repliesIn = (selector) => document.querySelectorAll(selector).length;
 
+/**
+ * Writes silence for Chromium's fake microphone to loop. Without a file it
+ * plays a test tone, which server-side turn detection hears as a person
+ * talking -- the model would answer the tone instead of the typed question.
+ */
+function writeSilentWav(path, seconds = 30) {
+  const rate = 48_000;
+  const bytes = seconds * rate * 2; // mono, 16-bit
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + bytes, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 22); // channels
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(bytes, 40);
+  writeFileSync(path, Buffer.concat([header, Buffer.alloc(bytes)]));
+}
+
 async function main() {
   const frameDir = mkdtempSync(join(tmpdir(), "charivo-frames-"));
+
+  const silence = join(frameDir, "silence.wav");
+  writeSilentWav(silence);
+  // That WAV shares the directory with the frames, so frames are counted by
+  // extension rather than by how many entries the directory holds.
+  const frameCount = () =>
+    readdirSync(frameDir).filter((name) => name.endsWith(".png")).length;
 
   const browser = await chromium.launch({
     headless: false,
@@ -77,6 +141,8 @@ async function main() {
       "--autoplay-policy=no-user-gesture-required",
       "--mute-audio",
       "--hide-scrollbars",
+      "--use-fake-device-for-media-stream",
+      `--use-file-for-fake-audio-capture=${silence}`,
     ],
   });
 
@@ -87,6 +153,9 @@ async function main() {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
       deviceScaleFactor: 2,
+      // Granted up front: a permission prompt would both stall the call and
+      // land in frame.
+      permissions: ["microphone"],
     });
     const page = await context.newPage();
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
@@ -94,9 +163,26 @@ async function main() {
     await page
       .locator("canvas")
       .waitFor({ state: "attached", timeout: 30_000 });
-    const composer = page.getByPlaceholder("Type your message...");
+    const composer = page.locator(COMPOSER);
     await composer.waitFor({ timeout: 30_000 });
     await sleep(2500); // let the model load and settle into its idle loop
+
+    // Beat 0 - the call is placed before any filming. Connecting takes a few
+    // seconds and shows nothing worth watching, and every step below is only
+    // meaningful once the session is actually up.
+    /** Resolves once the composer's placeholder reads `want`. */
+    const placeholderReads = (want, timeout) =>
+      page.waitForFunction(
+        ({ selector, text }) =>
+          document.querySelector(selector)?.placeholder === text,
+        { selector: COMPOSER, text: want },
+        { timeout },
+      );
+
+    await page
+      .getByRole("button", { name: "Start voice conversation" })
+      .click();
+    await placeholderReads(LISTENING, 60_000);
 
     let frame = 0;
     let capturing = false;
@@ -149,43 +235,17 @@ async function main() {
     }
     await sleep(400);
 
-    // Beat 3 - send, then hold on the typing indicator. The canvas and the
-    // composer both render before the Charivo instance finishes initializing, and
-    // until it does the demo's send handler returns without doing anything -- no
-    // request, no typing indicator, and the composer still holding the question.
-    // A single Enter can therefore be swallowed whole, and the capture would then
-    // spend the full reply timeout waiting on an answer nobody asked for. The
-    // cleared composer is the demo's own signal that a send actually landed, so
-    // press until it clears. Re-pressing is safe: a swallowed send changes no
-    // state, and once one lands the composer never refills.
+    // Beat 3 - send, then hold. Exactly one Enter: the realtime path clears the
+    // composer only once the send has been accepted, so pressing again while
+    // that is in flight asks the same question twice. The wait for "listening"
+    // above is what makes one press enough.
     const before = await page.evaluate(repliesIn, REPLY_TEXT);
-    const landedWithin = async (ms) => {
-      for (let waited = 0; waited < ms; waited += 50) {
-        if ((await composer.inputValue()) === "") {
-          return true;
-        }
-        await sleep(50);
-      }
-      return false;
-    };
     await page.keyboard.press("Enter");
-    if (!(await landedWithin(500))) {
-      // Still initializing. The retries are not filmed, for the same reason the
-      // reply wait below is not: a cold start can take tens of seconds, and a
-      // GIF that loops cannot afford to sit on a composer nobody is answering.
-      await stop();
-      let sent = false;
-      for (let attempt = 0; attempt < 40 && !sent; attempt++) {
-        await page.keyboard.press("Enter");
-        sent = await landedWithin(500);
-      }
-      if (!sent) {
-        throw new Error(
-          "the composer never cleared -- the demo never accepted the question",
-        );
-      }
-      start();
-    }
+    await page.waitForFunction(
+      ({ selector }) => document.querySelector(selector)?.value === "",
+      { selector: COMPOSER },
+      { timeout: 15_000 },
+    );
     await sleep(THINK_MS);
 
     // Beat 4 - whatever is left of the wait is not filmed.
@@ -200,8 +260,21 @@ async function main() {
     const cutMs = Date.now() - waitStarted;
 
     // Beat 5 - the reply is on screen and being spoken, so the mouth moves.
+    // Filmed until the composer offers to listen again, which is the session
+    // reporting that playback finished. Reading the placeholder once settles
+    // whether there is anything left to film at all: beat 4 only returns after
+    // the reply has begun rendering, so "listening" here means a reply short
+    // enough to have finished already, not one that has yet to start.
     start();
-    await sleep(SPEAK_MS);
+    const stillSpeaking =
+      (await composer.getAttribute("placeholder")) !== LISTENING;
+    const spoken = stillSpeaking
+      ? await placeholderReads(LISTENING, SPEAK_MS).then(
+          () => true,
+          () => false,
+        )
+      : true;
+    await sleep(400); // land on stillness rather than cut on the last phoneme
     await stop();
     captured = true;
 
@@ -217,7 +290,8 @@ async function main() {
 
     console.log(`\nreply (${reply.length} chars): ${reply}`);
     console.log(
-      `frames: ${readdirSync(frameDir).length}, ${cutMs}ms of waiting cut at frame ${cut}`,
+      `frames: ${frameCount()}, ${cutMs}ms of waiting cut at frame ${cut}` +
+        (spoken ? "" : `, SPEAK_MS hit while still speaking`),
     );
 
     mkdirSync(dirname(OUT_GIF), { recursive: true });
@@ -251,10 +325,7 @@ async function main() {
     // either KEEP_FRAMES asked for them, or the capture finished and only the
     // assembly failed -- a missing `magick` -- which can be retried off these
     // frames. A run that died before the reply leaves nothing to reassemble.
-    if (
-      (KEEP_FRAMES || (captured && !assembled)) &&
-      readdirSync(frameDir).length > 0
-    ) {
+    if ((KEEP_FRAMES || (captured && !assembled)) && frameCount() > 0) {
       console.log(`frames kept at ${frameDir}`);
     } else {
       rmSync(frameDir, { recursive: true, force: true });
