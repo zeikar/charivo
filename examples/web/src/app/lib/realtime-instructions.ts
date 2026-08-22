@@ -4,7 +4,8 @@ import { buildAvatarControlInstructions } from "@charivo/avatar";
 
 const DEMO_REALTIME_INSTRUCTIONS = `
 Keep replies short and natural for a live voice demo.
-Favor subtle reactions over big repeated motions unless the moment clearly calls for emphasis.
+Let the face carry the feeling, and pick the expression that reads at a glance rather than the faintest one that fits — a viewer is watching from across the room, and a barely-there smile does not survive the trip.
+Motion is the opposite: reach for it only when a moment earns it, and do not repeat the same one turn after turn.
 `.trim();
 
 export function buildDemoRealtimeInstructions(
