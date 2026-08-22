@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAIRealtimeClient } from "../../src/openai/client";
+import { createRealtimeManager } from "../../src/realtime-manager";
 import { OPENAI_REALTIME_ADAPTER } from "@charivo/core";
 import type { RealtimeTransportEvent } from "@charivo/realtime";
 
@@ -1427,10 +1428,15 @@ describe("OpenAIRealtimeClient", () => {
     });
 
     await client.connect();
+    const peer = MockPeerConnection.instances[0]!;
     await client.sendText("hello");
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({ type: "response.created" }),
+      }),
+    );
     await client.interrupt();
 
-    const peer = MockPeerConnection.instances[0]!;
     peer.dataChannel.onmessage?.(
       new MessageEvent("message", {
         data: JSON.stringify({
@@ -1454,6 +1460,328 @@ describe("OpenAIRealtimeClient", () => {
     expect(events).not.toContainEqual({
       type: "assistant.response.completed",
       text: "",
+    });
+  });
+
+  // A seam defect: the cancelled response's late `response.done` was credited to
+  // the replacement sent in its place, freeing its send lock mid-turn.
+  describe("interrupting a response in flight", () => {
+    async function startManagerSession(events: RealtimeTransportEvent[]) {
+      const localStream = {
+        getTracks: () => [new MockMediaTrack()],
+      } as unknown as MediaStream;
+
+      Object.defineProperty(navigator, "mediaDevices", {
+        value: {
+          getUserMedia: vi.fn(async () => localStream),
+        },
+        configurable: true,
+      });
+      globalThis.fetch = vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              adapter: OPENAI_REALTIME_ADAPTER,
+              transport: "webrtc",
+              answerSdp: "answer-sdp",
+            }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+      ) as typeof fetch;
+
+      const client = new OpenAIRealtimeClient({
+        apiEndpoint: "/api/realtime",
+      });
+      client.onEvent((event) => events.push(event));
+      const manager = createRealtimeManager(client);
+      await manager.startSession({ provider: "openai" });
+
+      const channel = MockPeerConnection.instances[0]!.dataChannel;
+      const serverEvent = (payload: Record<string, unknown>) =>
+        channel.onmessage?.(
+          new MessageEvent("message", { data: JSON.stringify(payload) }),
+        );
+
+      return { manager, channel, serverEvent };
+    }
+
+    const delta = (text: string) => ({
+      type: "response.audio_transcript.delta",
+      delta: text,
+    });
+
+    const completionsIn = (events: RealtimeTransportEvent[]) =>
+      events.filter((event) => event.type === "assistant.response.completed");
+
+    const deltaTextsIn = (events: RealtimeTransportEvent[]) =>
+      events.flatMap((event) =>
+        event.type === "assistant.text.delta" ? [event.text] : [],
+      );
+
+    const cancelCount = (channel: MockDataChannel) =>
+      channel.send.mock.calls.filter(
+        ([payload]) => payload === JSON.stringify({ type: "response.cancel" }),
+      ).length;
+
+    it("holds the replacement's send lock when the cancelled response reports late", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("condemned"));
+
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(1);
+      const afterInterrupt = events.length;
+      await manager.sendMessage("replacement");
+
+      // The cancelled response's tail arrives after the replacement was sent.
+      serverEvent(delta(" tail"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-condemned" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+      await expect(manager.sendMessage("duplicate")).rejects.toThrow(
+        "already in progress",
+      );
+      expect(
+        events
+          .slice(afterInterrupt)
+          .filter(
+            (event) =>
+              event.type === "assistant.response.started" ||
+              event.type === "assistant.response.completed",
+          ),
+      ).toEqual([]);
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Replacement reply"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-replacement" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({
+          text: "Replacement reply",
+          responseId: "resp-replacement",
+        }),
+      ]);
+      expect(deltaTextsIn(events)).toEqual(["condemned", "Replacement reply"]);
+
+      await manager.stopSession();
+    });
+
+    it("suppresses a response acknowledged only after its cancel was sent", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(1);
+      await manager.sendMessage("replacement");
+
+      // The server acknowledges the condemned request before processing the
+      // cancel that followed it, so the whole turn still arrives.
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("condemned"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-condemned" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+      await expect(manager.sendMessage("duplicate")).rejects.toThrow(
+        "already in progress",
+      );
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Replacement reply"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-replacement" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(deltaTextsIn(events)).toEqual(["Replacement reply"]);
+
+      // The condemned acknowledgement drained, so the replacement was tracked
+      // as live: a response arriving now is still cancellable.
+      serverEvent({ type: "response.created" });
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(2);
+
+      await manager.stopSession();
+    });
+
+    it("keeps suppressing across repeated interrupt and replace cycles", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      await manager.sendMessage("first");
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("first reply"));
+
+      await manager.interrupt();
+      await manager.sendMessage("second");
+      // The second interrupt lands before the first response has reported.
+      await manager.interrupt();
+      await manager.sendMessage("third");
+      expect(cancelCount(channel)).toBe(2);
+
+      serverEvent({ type: "response.done", response: { id: "resp-first" } });
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("second reply"));
+      serverEvent({ type: "response.done", response: { id: "resp-second" } });
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+      await expect(manager.sendMessage("duplicate")).rejects.toThrow(
+        "already in progress",
+      );
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Third reply"));
+      serverEvent({ type: "response.done", response: { id: "resp-third" } });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({ text: "Third reply" }),
+      ]);
+      expect(deltaTextsIn(events)).toEqual(["first reply", "Third reply"]);
+
+      await manager.stopSession();
+    });
+
+    it("keeps the replacement in progress when the cancelled response reports", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      await manager.interrupt();
+      await manager.sendMessage("replacement");
+
+      serverEvent({ type: "response.created" });
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-condemned" },
+      });
+
+      // The replacement is unacknowledged, so only its begun request makes it
+      // cancellable -- the cancelled response reporting must not clear that.
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(2);
+
+      await manager.stopSession();
+    });
+
+    it("cancels and suppresses a response created by server VAD", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      // Nothing was requested here: the server created this response itself, so
+      // it never passed through a client send.
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("vad reply"));
+
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(1);
+      await manager.sendMessage("replacement");
+
+      serverEvent(delta(" tail"));
+      serverEvent({ type: "response.done", response: { id: "resp-vad" } });
+
+      expect(manager.getState().awaitingResponse).toBe(true);
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Replacement reply"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-replacement" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(deltaTextsIn(events)).toEqual(["vad reply", "Replacement reply"]);
+
+      await manager.stopSession();
+    });
+
+    it("leaves the next response live when the interrupt had nothing to cancel", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, channel, serverEvent } =
+        await startManagerSession(events);
+
+      // No request begun and nothing acknowledged. Counting a stale response
+      // here would swallow the next real one and strand the send lock.
+      await manager.interrupt();
+      expect(cancelCount(channel)).toBe(0);
+      await manager.sendMessage("hello");
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Reply"));
+      serverEvent({ type: "response.done", response: { id: "resp-1" } });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({ text: "Reply" }),
+      ]);
+
+      await manager.stopSession();
+    });
+
+    it("swallows a cancel that lost the race to server-side completion", async () => {
+      const events: RealtimeTransportEvent[] = [];
+      const { manager, serverEvent } = await startManagerSession(events);
+
+      await manager.sendMessage("hello");
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("condemned"));
+
+      await manager.interrupt();
+      await manager.sendMessage("replacement");
+
+      // The condemned response had already completed server-side.
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-condemned", status: "completed" },
+      });
+      serverEvent({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          code: "response_cancel_not_active",
+          message: "Cancellation failed: no active response found",
+        },
+      });
+
+      // Surfacing it would reach the manager's error branch, which frees the
+      // replacement's send lock.
+      expect(events.filter((event) => event.type === "error")).toEqual([]);
+      expect(manager.getState().awaitingResponse).toBe(true);
+
+      serverEvent({ type: "response.created" });
+      serverEvent(delta("Replacement reply"));
+      serverEvent({
+        type: "response.done",
+        response: { id: "resp-replacement" },
+      });
+
+      expect(manager.getState().awaitingResponse).toBe(false);
+      expect(completionsIn(events)).toEqual([
+        expect.objectContaining({ text: "Replacement reply" }),
+      ]);
+
+      await manager.stopSession();
     });
   });
 

@@ -100,7 +100,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     onError: (error) => console.error("Failed to setup audio analysis:", error),
   });
   private isResponseInProgress = false;
-  private cancelInFlight = false;
+  // A count, not a flag: a flag was overwritten by the next interrupt cycle.
+  // Every condemned response reports, so they drain in order; zero means live.
+  private staleDonesExpected = 0;
+  private staleCreatedsExpected = 0;
+  /** Whether a `response.created` has arrived without its `response.done`. */
+  private activeResponseAcked = false;
   private hasStartedAssistantResponse = false;
   private hasStartedAudioOutput = false;
   private assistantText = "";
@@ -333,10 +338,17 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     const dc = this.requireOpenDataChannel();
 
-    if (this.isResponseInProgress) {
+    // Condemn only a response the wire proves is running, VAD-created included:
+    // counting one that never reports strands the manager's send lock.
+    if (this.isResponseInProgress || this.activeResponseAcked) {
       dc.send(JSON.stringify({ type: "response.cancel" }));
+      this.staleDonesExpected += 1;
+      if (!this.activeResponseAcked) {
+        // Still owes the acknowledgement of the request being cancelled.
+        this.staleCreatedsExpected += 1;
+      }
+      this.activeResponseAcked = false;
       this.isResponseInProgress = false;
-      this.cancelInFlight = true;
     }
 
     // Cancelling stops generation, not the sound, and playback outlives
@@ -367,9 +379,18 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         this.resolvePendingSessionUpdate();
         return;
 
+      case "response.created":
+        if (this.staleCreatedsExpected > 0) {
+          this.staleCreatedsExpected -= 1;
+          return;
+        }
+
+        this.activeResponseAcked = true;
+        return;
+
       case "response.audio.delta":
       case "output_audio_buffer.started":
-        if (this.cancelInFlight) {
+        if (this.staleDonesExpected > 0) {
           return;
         }
 
@@ -394,7 +415,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         // back into a start — with no further buffer event left to close it.
         this.lipSyncAnalyzer.pause();
 
-        if (this.cancelInFlight) {
+        if (this.staleDonesExpected > 0) {
           this.hasStartedAudioOutput = false;
           return;
         }
@@ -404,13 +425,17 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.done":
-        this.isResponseInProgress = false;
-        if (this.cancelInFlight) {
-          this.cancelInFlight = false;
+        if (this.staleDonesExpected > 0) {
+          // A condemned response reporting. The replacement sent in its place is
+          // still in progress, so its request state must survive this.
+          this.staleDonesExpected -= 1;
           this.hasStartedAudioOutput = false;
           this.resetResponseTracking();
           return;
         }
+
+        this.activeResponseAcked = false;
+        this.isResponseInProgress = false;
 
         // Tool-using turns fire response.done twice per user message: once
         // after the tool call (no text this cycle) and once after the
@@ -434,7 +459,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
       case "response.audio_transcript.delta":
       case "response.output_audio_transcript.delta":
       case "response.output_text.delta":
-        if (this.cancelInFlight || !event.delta) {
+        if (this.staleDonesExpected > 0 || !event.delta) {
           return;
         }
 
@@ -448,14 +473,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "response.output_text.done":
-        if (this.cancelInFlight || !event.text) {
+        if (this.staleDonesExpected > 0 || !event.text) {
           return;
         }
         this.emitFinalAssistantText(event.text);
         return;
 
       case "response.output_audio_transcript.done":
-        if (this.cancelInFlight || !event.transcript) {
+        if (this.staleDonesExpected > 0 || !event.transcript) {
           return;
         }
         this.emitFinalAssistantText(event.transcript);
@@ -475,8 +500,16 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
         return;
 
       case "error":
+        // The cancel lost the race to server-side completion. Surfacing it would
+        // hit the manager's error branch, which frees the replacement's lock.
+        if (isCancelWithoutActiveResponse(event.error)) {
+          return;
+        }
+
+        // De-arm on an unknown failure: fail live rather than stay suppressed
+        // forever, even though an owed `response.done` then reports as genuine.
         this.isResponseInProgress = false;
-        this.cancelInFlight = false;
+        this.resetResponseSuppression();
         {
           const error = new Error(event.error?.message || "Unknown error");
           if (this.isPendingSessionUpdateError(event)) {
@@ -685,7 +718,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     this.connectionLossNotified = true;
     this.isResponseInProgress = false;
-    this.cancelInFlight = false;
+    this.resetResponseSuppression();
     this.hasStartedAudioOutput = false;
     this.resetResponseTracking();
     this.lipSyncAnalyzer.stop();
@@ -754,7 +787,7 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     this.audioSender = null;
     this.isResponseInProgress = false;
-    this.cancelInFlight = false;
+    this.resetResponseSuppression();
     this.connectionLossNotified = false;
     this.isCleaningUp = false;
     this.hasStartedAudioOutput = false;
@@ -765,10 +798,11 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     // Deliberately does NOT clear `hasStartedAudioOutput`: a new request can be
     // sent while the previous response is still playing out, and clearing here
     // would again treat request boundaries as playback boundaries. The buffer
-    // events own that flag.
+    // events own that flag. Nor the stale counters: a condemned response's
+    // events arrive after the replacement is sent, which is the bug they fix.
     this.resetResponseTracking();
     this.isResponseInProgress = true;
-    this.cancelInFlight = false;
+    this.activeResponseAcked = false;
   }
 
   private requireOpenDataChannel(): RTCDataChannel {
@@ -910,6 +944,12 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
     this.hasStartedAssistantResponse = false;
   }
 
+  private resetResponseSuppression(): void {
+    this.staleDonesExpected = 0;
+    this.staleCreatedsExpected = 0;
+    this.activeResponseAcked = false;
+  }
+
   private ensureAssistantResponseStarted(): void {
     if (!this.hasStartedAssistantResponse) {
       this.hasStartedAssistantResponse = true;
@@ -954,6 +994,14 @@ export class OpenAIRealtimeClient implements RealtimeTransportClient {
 
     return eventType.startsWith("response.output_text.");
   }
+}
+
+/** The benign cancel that lost to server-side completion. */
+function isCancelWithoutActiveResponse(error?: ServerError): boolean {
+  return (
+    error?.code === "response_cancel_not_active" ||
+    (error?.message?.toLowerCase().includes("no active response") ?? false)
+  );
 }
 
 export function createOpenAIRealtimeClient(
