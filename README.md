@@ -13,6 +13,7 @@ and real-time conversation. It separates orchestration, stateful managers,
 browser-side clients, and server-side providers so you can swap pieces without
 rewriting the whole stack.
 
+<!-- Recorded by `pnpm demo:gif`. Re-record rather than hand-edit. -->
 ![A message typed into the demo, the model calling setExpression, and the character replying with lip sync](./docs/images/demo.gif)
 
 ## Live demos
