@@ -108,7 +108,7 @@ import {
 
 const catalog = {
   expressions: ["Smile", "Sad"],
-  motions: { Idle: 2 },
+  motions: { Idle: 2, TapBody: 2 },
   expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
   motionDescriptions: { Idle: ["resting", "shifting weight"], TapBody: ["waves hello", "folds her arms"] },
 };

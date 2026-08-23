@@ -35,6 +35,10 @@ function buildModel(soundFile: string | null) {
   // The pieces startMotion reads. Everything else is irrelevant here, and
   // stubbing narrowly keeps the test honest about what it actually covers.
   (model as unknown as { ready: boolean }).ready = true;
+  // Object.create skips field initializers, so anything startMotion reads has
+  // to be supplied here — including the audio-ownership counters.
+  (model as unknown as { motionAudioTurn: number }).motionAudioTurn = 0;
+  (model as unknown as { motionAudioOwner: number }).motionAudioOwner = 0;
   (model as unknown as { modelHomeDir: string }).modelHomeDir = "/models/haru/";
   (model as unknown as { wavHandler: unknown }).wavHandler = wavHandler;
   (model as unknown as { modelSetting: unknown }).modelSetting = {
@@ -150,6 +154,33 @@ describe("LAppModel motion sound", () => {
     motion.began?.(motion);
 
     expect(wavHandler.start).not.toHaveBeenCalled();
+    expect(wavHandler.stop).toHaveBeenCalled();
+  });
+
+  it("lets a stale finish callback pass without cutting the motion that took over", () => {
+    const { model, motion, wavHandler } = buildModel("sounds/haru_talk_13.wav");
+
+    // A starts and owns the audio.
+    model.startMotion("TapBody", 0, LAppDefine.PriorityNormal);
+    const beganA = motion.began;
+    const finishedA = motion.finished;
+    beganA?.(motion);
+    expect(wavHandler.start).toHaveBeenCalledTimes(1);
+
+    // B starts before A has finished — Cubism keeps A fading meanwhile — and
+    // takes ownership by starting its own clip.
+    model.startMotion("TapBody", 1, LAppDefine.PriorityNormal);
+    motion.began?.(motion);
+    expect(wavHandler.start).toHaveBeenCalledTimes(2);
+    wavHandler.stop.mockClear();
+
+    // Now A finally finishes. Stopping here would cut B's clip, and since stop
+    // also invalidates a load still in flight, could silence it outright.
+    finishedA?.(motion);
+    expect(wavHandler.stop).not.toHaveBeenCalled();
+
+    // B ending its own playback still works.
+    motion.finished?.(motion);
     expect(wavHandler.stop).toHaveBeenCalled();
   });
 

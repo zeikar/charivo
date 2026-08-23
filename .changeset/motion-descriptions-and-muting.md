@@ -2,7 +2,7 @@
 "@charivo/core": minor
 "@charivo/avatar": minor
 "@charivo/render-live2d": minor
-"@charivo/render": patch
+"@charivo/render": minor
 ---
 
 Give motions descriptions, and stop tool-triggered motions from playing their baked-in audio
