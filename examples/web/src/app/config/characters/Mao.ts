@@ -26,5 +26,27 @@ export const MAO_CHARACTER_CONFIG = defineCharacterConfig({
       exp_07: "alarmed, wide-eyed dismay",
       exp_08: "annoyed, grumpy",
     },
+    // Established the same way as the expressions above: every motion was played
+    // in this demo and watched. There is no authoritative published source for
+    // the Cubism sample motion files -- do not "correct" these from the web.
+    // Positional: index 0 describes motion index 0.
+    //
+    // None of Mao's motions carry a prerecorded voice clip, so nothing here is
+    // silenced on the tool-call path. Several drive particle effects, which is
+    // most of what distinguishes them.
+    motionDescriptions: {
+      Idle: [
+        "quiet stand holding the broom, an occasional blink",
+        "quiet stand with a small smile, broom held at her side",
+      ],
+      TapBody: [
+        "eyes close in a soft wink while a few green sparks drift up — a small pleased beat",
+        "head dips and eyes close with a blue spark at her side — shy, or settling down",
+        "one hand lifts beside her hat in a small greeting wave, smiling",
+        "raises the wand and a cyan heart blooms above it before shading green — an affectionate charm",
+        "a full-body sparkle burst washes her in green-white starlight, then fades — a big spell flourish",
+        "raises the wand with eyes closed as a warm gold glow swells around her — a bright finishing spell",
+      ],
+    },
   },
 });

@@ -35,5 +35,25 @@ export const HARU_CHARACTER_CONFIG = defineCharacterConfig({
       F07: "shy, blushing",
       F08: "unimpressed, deadpan",
     },
+    // Established the same way as the expressions above: every motion was played
+    // in this demo and watched. There is no authoritative published source for
+    // the Cubism sample motion files -- do not "correct" these from the web.
+    // Positional: index 0 describes motion index 0.
+    //
+    // All four TapBody entries carry a prerecorded Japanese voice clip. Those
+    // are silenced when an AI tool call triggers the motion and audible on a
+    // manual trigger, so the wording below describes what is SEEN.
+    motionDescriptions: {
+      Idle: [
+        "quiet standing rest, hands clasped in front, eyes forward",
+        "quiet standing rest with the head dipping and the gaze lowering, a little more withdrawn",
+      ],
+      TapBody: [
+        "arms unfold and hang open at her sides, ending on a closed-eye smile — an easy, welcoming settle",
+        "both hands rise beside her face, palms open, with a bright smile — delighted, excited",
+        "one hand lifts to her cheek while the other arm stays across her, face flat and attentive — a small 'oh?' or considering beat",
+        "arms fold across her chest and stay folded with a calm closed-mouth smile — composed and reserved, a reaction to being touched rather than a greeting",
+      ],
+    },
   },
 });
