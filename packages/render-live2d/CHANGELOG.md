@@ -1,5 +1,47 @@
 # @charivo/render-live2d
 
+## 0.6.0
+
+### Minor Changes
+
+- 21d19b3: Give motions descriptions, and stop tool-triggered motions from playing their baked-in audio
+
+  Motions reached the model as a bare list of group names, so it chose between
+  `Idle` and `TapBody` knowing nothing about either. `AvatarControlCatalog` now
+  takes an optional `motionDescriptions`, keyed by group with a positional array
+  per motion — `playMotion` takes a group and an index, and the index is where a
+  wrong pick actually happens. The meanings ride along in the `playMotion` tool
+  schema and the avatar instructions, exactly as expression descriptions do.
+
+  Separately, Cubism sample motions can carry a prerecorded voice clip, and the
+  renderer played it into the speakers — a stranger's voice over the character's
+  own, and while it played its RMS drove the mouth whenever realtime lip sync was
+  off. `avatar:motion` and `playMotionByGroup` now take an optional `muteSound`,
+  which `@charivo/avatar`'s result projector sets on tool-call motions. A muted
+  start refuses the clip, silences one already playing, and invalidates a load
+  still in flight.
+
+  Nothing changes for existing code: absent descriptions leave the tool schema
+  and instructions byte-identical, and an unflagged motion stays audible, so a
+  human-triggered motion keeps its sound.
+
+### Patch Changes
+
+- 9d9ba15: Give the remaining packages npm keywords
+
+  Only `@charivo/tts` and `@charivo/stt` carried `keywords`, so the other seven
+  published packages were reachable on npm by name alone — including `core` and
+  `render-live2d`, the two anyone looking for this project would search for
+  first. Each now lists five, in the shape the existing two set: `charivo`, then
+  what that package actually does.
+
+  Manifest metadata only. No code, exports, or types change.
+
+- Updated dependencies [21d19b3]
+- Updated dependencies [9d9ba15]
+  - @charivo/core@0.31.0
+  - @charivo/render@0.11.0
+
 ## 0.5.4
 
 ### Patch Changes
