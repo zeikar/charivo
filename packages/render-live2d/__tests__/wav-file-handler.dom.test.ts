@@ -95,6 +95,57 @@ afterEach(() => {
 });
 
 describe("LAppWavFileHandler", () => {
+  it("does not play a load that resolves after stop() was called", async () => {
+    let releaseFetch: (() => void) | undefined;
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          releaseFetch = () =>
+            resolve({
+              arrayBuffer: async () => new ArrayBuffer(8),
+            } as unknown as Response);
+        }) as unknown as Promise<Response>,
+    ) as unknown as typeof fetch;
+
+    const handler = new LAppWavFileHandler();
+    handler.start("clip.wav");
+    handler.stop();
+
+    // The fetch only completes now — after the caller asked for silence.
+    releaseFetch?.();
+    await flushPromises();
+
+    expect(audioMocks.sourceNode.start).not.toHaveBeenCalled();
+    handler.update(0.1);
+    expect(handler.getRms()).toBe(0);
+  });
+
+  it("does not play a load superseded by a newer start", async () => {
+    const releases: Array<() => void> = [];
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          releases.push(() =>
+            resolve({
+              arrayBuffer: async () => new ArrayBuffer(8),
+            } as unknown as Response),
+          );
+        }) as unknown as Promise<Response>,
+    ) as unknown as typeof fetch;
+
+    const handler = new LAppWavFileHandler();
+    handler.start("first.wav");
+    handler.start("second.wav");
+
+    // Resolve the stale load last; only the newest request may reach playback.
+    releases[1]?.();
+    await flushPromises();
+    releases[0]?.();
+    await flushPromises();
+
+    expect(audioMocks.sourceNode.start).toHaveBeenCalledTimes(1);
+  });
+
   it("no-ops when no browser audio context is available", () => {
     Object.defineProperty(window, "AudioContext", {
       value: undefined,

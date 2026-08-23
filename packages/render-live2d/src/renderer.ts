@@ -10,7 +10,11 @@ export interface Live2DRendererOptions {
 export interface Live2DRenderer extends Renderer, MouseTrackable {
   playExpression(expressionId: string): void;
   stopExpression(): void;
-  playMotionByGroup(group: string, index: number): void;
+  playMotionByGroup(
+    group: string,
+    index: number,
+    options?: { muteSound?: boolean },
+  ): void;
   lookAt(coords: GazeCoordinates): void;
   getAvailableExpressions(): string[];
   getAvailableMotionGroups(): Record<string, number>;

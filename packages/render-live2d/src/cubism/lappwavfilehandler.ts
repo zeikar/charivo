@@ -14,6 +14,10 @@ export class LAppWavFileHandler {
   private gainNode?: GainNode;
   private rms = 0;
   private isActive = false;
+  // Bumped by every start and stop. A fetch/decode begun before one of those
+  // can still resolve after it, and without this check it would start playing
+  // into the silence that was just asked for.
+  private requestToken = 0;
 
   public start(filePath: string): void {
     if (typeof window === "undefined") return;
@@ -23,11 +27,15 @@ export class LAppWavFileHandler {
     if (!this.audioContext) return;
 
     const context = this.audioContext;
+    const token = ++this.requestToken;
 
     fetch(filePath)
       .then((response) => response.arrayBuffer())
       .then((arrayBuffer) => context.decodeAudioData(arrayBuffer))
       .then((buffer) => {
+        if (token !== this.requestToken) {
+          return;
+        }
         this.audioBufferSourceNode = context.createBufferSource();
         this.gainNode = context.createGain();
         this.audioBufferSourceNode.buffer = buffer;
@@ -80,6 +88,8 @@ export class LAppWavFileHandler {
   }
 
   public stop(): void {
+    this.requestToken += 1;
+
     if (this.audioBufferSourceNode) {
       try {
         this.audioBufferSourceNode.stop();

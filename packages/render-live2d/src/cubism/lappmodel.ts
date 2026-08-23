@@ -282,6 +282,7 @@ export class LAppModel extends CubismUserModel {
     priority: number,
     onFinished?: FinishedMotionCallback,
     onBegan?: BeganMotionCallback,
+    options?: { muteSound?: boolean },
   ): CubismMotionQueueEntryHandle {
     if (!this.ready || !this.modelSetting) {
       return InvalidMotionQueueEntryHandleValue;
@@ -300,8 +301,41 @@ export class LAppModel extends CubismUserModel {
       return InvalidMotionQueueEntryHandleValue;
     }
 
-    if (onFinished) motion.setFinishedMotionHandler(onFinished);
-    if (onBegan) motion.setBeganMotionHandler(onBegan);
+    // Reinstalled on every accepted start: the motion object is cached, so
+    // whatever the previous start decided is still attached to it. Composing
+    // the caller's callbacks here also fixes an older bug where passing
+    // onBegan/onFinished silently clobbered the sound handlers.
+    const soundFile = this.modelSetting.getMotionSoundFileName(group, index);
+    const soundPath = soundFile ? `${this.modelHomeDir}${soundFile}` : null;
+    const muted = options?.muteSound === true;
+
+    if (muted) {
+      // Synchronously, the moment the start is accepted -- not only from the
+      // began handler below. That handler runs off the render loop, which
+      // pauses on a hidden tab or a lost GL context, so relying on it alone
+      // lets a prior clip play on indefinitely. Even while running, a pending
+      // fetch can resolve in the frames before the motion begins; the began
+      // handler keeps its own stop to catch exactly that.
+      this.wavHandler.stop();
+    }
+
+    motion.setBeganMotionHandler((self) => {
+      if (muted) {
+        // Not merely "skip our own clip": one from an earlier manual or
+        // ambient motion may still be playing, and while it does its RMS
+        // drives the mouth whenever realtime lip sync is off.
+        this.wavHandler.stop();
+      } else if (soundPath) {
+        this.wavHandler.start(soundPath);
+      }
+      onBegan?.(self);
+    });
+    motion.setFinishedMotionHandler((self) => {
+      if (!muted && soundPath) {
+        this.wavHandler.stop();
+      }
+      onFinished?.(self);
+    });
 
     return this._motionManager.startMotionPriority(motion, false, priority);
   }
@@ -630,14 +664,9 @@ export class LAppModel extends CubismUserModel {
 
     motion.setEffectIds(this.eyeBlinkIds, this.lipSyncIds);
 
-    if (setting.getMotionSoundFileName(group, index)) {
-      motion.setFinishedMotionHandler(() => this.wavHandler.stop());
-      motion.setBeganMotionHandler(() =>
-        this.wavHandler.start(
-          `${this.modelHomeDir}${setting.getMotionSoundFileName(group, index)}`,
-        ),
-      );
-    }
+    // Sound handlers are NOT installed here. This CubismMotion is cached and
+    // reused by every later start, so a decision made once at load time cannot
+    // express a per-call one -- startMotion installs them instead.
 
     this.motions.setValue(key, motion);
   }

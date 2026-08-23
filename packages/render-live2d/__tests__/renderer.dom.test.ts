@@ -79,7 +79,14 @@ const rendererMocks = vi.hoisted(() => {
         index < this.motionGroups[group]!,
     );
     startMotion = vi.fn(
-      (_group: string, _index: number, _priority: number) => undefined,
+      (
+        _group: string,
+        _index: number,
+        _priority: number,
+        _onFinished?: unknown,
+        _onBegan?: unknown,
+        _options?: { muteSound?: boolean },
+      ) => undefined,
     );
     hitTest = vi.fn((_area: string, _x: number, _y: number) => false);
     setDragging = vi.fn((_x: number, _y: number) => undefined);
@@ -410,6 +417,37 @@ describe("Live2DRenderer", () => {
       LAppDefine.PriorityNormal,
     );
     expect(model.setDragging).toHaveBeenCalledWith(1, -1);
+  });
+
+  it("carries muteSound through to the model, and omits it otherwise", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+
+    const model = rendererMocks.MockModel.instances[0]!;
+    model.ready = true;
+
+    renderer.playMotionByGroup("Tap", 0, { muteSound: true });
+
+    // The seam this guards: a flag dropped between the public renderer and the
+    // model would leave every model-level mute test passing while a tool-call
+    // motion still played its clip.
+    expect(model.startMotion).toHaveBeenLastCalledWith(
+      "Tap",
+      0,
+      LAppDefine.PriorityNormal,
+      undefined,
+      undefined,
+      { muteSound: true },
+    );
+
+    renderer.playMotionByGroup("Tap", 0);
+
+    expect(model.startMotion).toHaveBeenLastCalledWith(
+      "Tap",
+      0,
+      LAppDefine.PriorityNormal,
+    );
   });
 
   it("delegates expression release to the model once it is ready", async () => {

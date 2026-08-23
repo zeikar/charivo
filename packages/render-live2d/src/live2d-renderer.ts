@@ -133,10 +133,27 @@ export class Live2DRendererImpl
   /**
    * Play a specific motion by group and index
    */
-  playMotionByGroup(group: string, index: number): void {
+  playMotionByGroup(
+    group: string,
+    index: number,
+    options?: { muteSound?: boolean },
+  ): void {
     if (!this.model?.isReady()) return;
     if (this.model.hasMotion(group, index)) {
-      this.model.startMotion(group, index, LAppDefine.PriorityNormal);
+      // An unmuted call keeps the exact three-argument shape it has always
+      // had, so nothing changes for callers that never pass options.
+      if (options?.muteSound) {
+        this.model.startMotion(
+          group,
+          index,
+          LAppDefine.PriorityNormal,
+          undefined,
+          undefined,
+          { muteSound: true },
+        );
+      } else {
+        this.model.startMotion(group, index, LAppDefine.PriorityNormal);
+      }
     }
   }
 
