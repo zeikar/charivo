@@ -3,6 +3,8 @@ import type { Character } from "@charivo/core";
 export interface Live2DConfig {
   modelPath: string;
   expressionDescriptions?: Record<string, string>;
+  /** Keyed by motion group; array position is the zero-based motion index. */
+  motionDescriptions?: Record<string, string[]>;
 }
 
 export interface CharacterConfig<TId extends string = string> {

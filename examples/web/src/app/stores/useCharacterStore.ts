@@ -16,6 +16,9 @@ type CharacterStore = {
   getExpressionDescriptions: (
     id: CharacterId,
   ) => Record<string, string> | undefined;
+  getMotionDescriptions: (
+    id: CharacterId,
+  ) => Record<string, string[]> | undefined;
 };
 
 export const useCharacterStore = create<CharacterStore>((set) => ({
@@ -41,5 +44,12 @@ export const useCharacterStore = create<CharacterStore>((set) => ({
       throw new Error(`Character config not found: ${id}`);
     }
     return config.live2d.expressionDescriptions;
+  },
+  getMotionDescriptions: (id) => {
+    const config = CHARACTER_CONFIGS[id];
+    if (!config) {
+      throw new Error(`Character config not found: ${id}`);
+    }
+    return config.live2d.motionDescriptions;
   },
 }));
