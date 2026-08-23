@@ -30,7 +30,7 @@ export type HarnessSnapshot = {
   usageEvents: RealtimeUsageEvent[];
   avatarEvents: Array<
     | { type: "expression"; expressionId: string }
-    | { type: "motion"; group: string; index: number }
+    | { type: "motion"; group: string; index: number; muteSound?: boolean }
     | { type: "gaze"; x: number; y: number }
   >;
   voiceLatency: {

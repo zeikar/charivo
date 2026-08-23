@@ -144,7 +144,18 @@ test.describe("realtime avatar prompt evaluation", () => {
     expect(
       motionCalls.some((call) => call.name === PLAY_MOTION_TOOL_NAME),
     ).toBe(true);
-    expect(motionEvents.some((event) => event.type === "motion")).toBe(true);
+    // Not just that a motion arrived: a motion the MODEL asked for must carry
+    // muteSound through the whole live chain, or its baked-in sample clip would
+    // play over the character's own voice in a real session.
+    const liveMotionEvents = motionEvents.filter(
+      (event) => event.type === "motion",
+    );
+    expect(liveMotionEvents.length).toBeGreaterThan(0);
+    expect(
+      liveMotionEvents.every(
+        (event) => event.type === "motion" && event.muteSound === true,
+      ),
+    ).toBe(true);
 
     await sendPrompt(
       page,

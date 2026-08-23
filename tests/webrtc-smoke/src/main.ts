@@ -283,6 +283,7 @@ function handleHarnessEvent(harnessEvent: HarnessEvent): void {
         type: "motion",
         group: payload.group,
         index: payload.index,
+        muteSound: payload.muteSound,
       });
       break;
 
