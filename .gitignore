@@ -32,6 +32,7 @@ coverage/
 *.lcov
 playwright-report/
 test-results/
+.playwright-mcp/
 
 # nyc test coverage
 .nyc_output

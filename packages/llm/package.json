@@ -38,6 +38,13 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "llm",
+    "openai",
+    "chat",
+    "ai-character"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^",
     "openai": "^4.47.1"

@@ -21,6 +21,13 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "ai-character",
+    "live2d",
+    "llm",
+    "conversational-ai"
+  ],
   "dependencies": {},
   "devDependencies": {
     "tsup": "^8.5.0",
