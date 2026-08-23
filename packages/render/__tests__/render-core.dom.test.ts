@@ -52,7 +52,10 @@ class StubRenderer implements Renderer {
   );
   playExpression = vi.fn((_expressionId: string) => undefined);
   stopExpression = vi.fn(() => undefined);
-  playMotionByGroup = vi.fn((_group: string, _index: number) => undefined);
+  playMotionByGroup = vi.fn(
+    (_group: string, _index: number, _options?: { muteSound?: boolean }) =>
+      undefined,
+  );
   lookAt = vi.fn((_coords: GazeCoordinates) => undefined);
   getAvailableExpressions = vi.fn(() => ["exp_happy", "exp_sad"]);
   getAvailableMotionGroups = vi.fn(() => ({
@@ -129,6 +132,35 @@ describe("RenderManager", () => {
     expect(renderer.playExpression).toHaveBeenCalledWith("exp_happy");
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     expect(renderer.lookAt).toHaveBeenCalledWith({ x: 0.25, y: -0.5 });
+  });
+
+  it("forwards muteSound to the renderer only when the event carries it", async () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:motion", { group: "TapBody", index: 1, muteSound: true });
+
+    expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1, {
+      muteSound: true,
+    });
+  });
+
+  it("leaves an explicitly audible motion in today's two-argument shape", async () => {
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    // muteSound: false is not the same as asking for muting, and must not be
+    // forwarded as an option object either — a renderer that never learned
+    // about the flag has to keep seeing exactly what it sees today.
+    bus.emit("avatar:motion", { group: "TapBody", index: 1, muteSound: false });
+
+    expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
   });
 
   it("debounces repeated explicit expression and motion actions", async () => {

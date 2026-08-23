@@ -103,7 +103,9 @@ export class RenderManager implements IRenderManager {
   private readonly handleAvatarMotion = (
     data: EventMap["avatar:motion"],
   ): void => {
-    this.applyMotion({ group: data.group, index: data.index });
+    // muteSound is carried, not inferred: this event is public, so an
+    // application may emit it too and an unflagged emit must stay audible.
+    this.applyMotion({ group: data.group, index: data.index }, data.muteSound);
   };
 
   private readonly handleAvatarGaze = (data: EventMap["avatar:gaze"]): void => {
@@ -377,7 +379,7 @@ export class RenderManager implements IRenderManager {
     }
   }
 
-  private applyMotion(motion: MotionSelection): boolean {
+  private applyMotion(motion: MotionSelection, muteSound?: boolean): boolean {
     if (!this.hasMotionControl(this.renderer)) {
       return false;
     }
@@ -402,7 +404,13 @@ export class RenderManager implements IRenderManager {
       return false;
     }
 
-    this.renderer.playMotionByGroup(motion.group, index);
+    // Unflagged calls keep today's exact two-argument shape, so a renderer that
+    // never learned about the option sees no change at all.
+    if (muteSound) {
+      this.renderer.playMotionByGroup(motion.group, index, { muteSound: true });
+    } else {
+      this.renderer.playMotionByGroup(motion.group, index);
+    }
     this.lastMotion = { group: motion.group, index, at: now };
     return true;
   }
@@ -478,7 +486,11 @@ export class RenderManager implements IRenderManager {
   }
 
   private hasMotionControl(renderer: Renderer): renderer is Renderer & {
-    playMotionByGroup(group: string, index: number): void;
+    playMotionByGroup(
+      group: string,
+      index: number,
+      options?: { muteSound?: boolean },
+    ): void;
   } {
     return (
       "playMotionByGroup" in renderer &&
