@@ -52,7 +52,11 @@ charivo.attachRenderer(renderManager);
 - `tts:audio:start` and `tts:audio:end`
 - `tts:lipsync:update`
 - `avatar:expression`
-- `avatar:motion`
+- `avatar:motion` — optionally carrying `muteSound`, which asks the renderer to
+  play the motion without any sample clip baked into it. `@charivo/avatar` sets
+  it on tool-call motions so a Cubism sample's prerecorded voice does not talk
+  over the character's own; anything emitting the event without it stays
+  audible.
 - `avatar:gaze`
 - optional mouse tracking
 

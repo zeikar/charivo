@@ -58,6 +58,11 @@ const avatarCatalog = {
     Smile: "happy or amused",
     Sad: "downcast or disappointed",
   },
+  // Positional: index 0 describes motion index 0.
+  motionDescriptions: {
+    Idle: ["resting", "shifting weight"],
+    TapBody: ["waves hello", "folds her arms", "startled step back"],
+  },
 };
 
 const avatarTools = createAvatarControlTools(avatarCatalog);

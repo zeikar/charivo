@@ -110,6 +110,7 @@ const catalog = {
   expressions: ["Smile", "Sad"],
   motions: { Idle: 2 },
   expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
+  motionDescriptions: { Idle: ["resting", "shifting weight"], TapBody: ["waves hello", "folds her arms"] },
 };
 
 const manager = createLLMManager(

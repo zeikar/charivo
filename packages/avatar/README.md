@@ -49,6 +49,7 @@ const catalog = {
   expressions: ["Smile", "Sad"],
   motions: { Idle: 2, TapBody: 3 },
   expressionDescriptions: { Smile: "happy or amused", Sad: "downcast or disappointed" },
+  motionDescriptions: { Idle: ["resting", "shifting weight"], TapBody: ["waves", "folds her arms"] },
 };
 
 const manager = createRealtimeManager(client, {
@@ -93,7 +94,9 @@ shape and the round cap.
 `createAvatarResultProjector()` emits, on successful tool execution:
 
 - `avatar:expression` — `{ expressionId }`
-- `avatar:motion` — `{ group, index }`
+- `avatar:motion` — `{ group, index, muteSound: true }` — the result projector
+  asks for muting because the motion came from a tool call, so a sample clip
+  baked into the motion does not talk over the character's own voice
 - `avatar:gaze` — `{ x, y }`
 
 `@charivo/render`'s `RenderManager` already listens for these three events, so
@@ -113,15 +116,26 @@ const instructions = [
 ].join("\n");
 ```
 
-## Expression Descriptions
+## Expression And Motion Descriptions
 
 `catalog.expressionDescriptions` is an optional `Record<string, string>` of
 expression IDs to short meanings. Keys are expression IDs from
 `catalog.expressions`; keys that don't match are ignored. When present,
 matching meanings are appended to the `setExpression` tool's `expressionId`
 parameter description and to `buildAvatarControlInstructions(...)` output.
-When absent, or when none of its keys match, both outputs are unchanged. The
-formatting is internal to this package — the Exports list above is unchanged.
+
+`catalog.motionDescriptions` does the same for motions, as an optional
+`Record<string, string[]>`. Keys are group names from `catalog.motions`, and
+each array is positional — index 0 describes motion index 0 — because
+`playMotion` takes a group AND an index, and a group-level sentence cannot tell
+four different reactions apart. Groups absent from `catalog.motions`, and
+entries past a group's motion count, are ignored. Matching meanings are
+appended to the `playMotion` tool's `index` parameter description and to the
+instructions.
+
+When either is absent, or when none of its keys match, the outputs are
+unchanged. The formatting is internal to this package — the Exports list above
+is unchanged.
 
 ## Migrating From `@charivo/realtime-avatar`
 

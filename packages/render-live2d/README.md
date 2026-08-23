@@ -39,7 +39,10 @@ The renderer exposes:
 - `getAvailableMotionGroups()`
 - `playExpression(expressionId)`
 - `stopExpression()`
-- `playMotionByGroup(group, index)`
+- `playMotionByGroup(group, index, options?)` — `options.muteSound` plays the
+  motion without the sample clip baked into it, and interrupts one already
+  playing; an unflagged call keeps the sound, which is what leaves a
+  human-triggered motion audible
 - `lookAt({ x, y })`
 
 When used through `@charivo/render`, realtime lip sync, mouse tracking,

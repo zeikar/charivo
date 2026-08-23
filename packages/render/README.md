@@ -37,7 +37,9 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
   carried by `tts:lipsync:update` — it does not analyze audio itself; the TTS
   and realtime managers produce those numbers; `tts:audio:end` also triggers
   the expression release described below
-- reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`
+- reacts to `avatar:expression`, `avatar:motion`, and `avatar:gaze`; an
+  `avatar:motion` carrying `muteSound` has that flag forwarded to the renderer,
+  and one without it stays audible
 - automatically releases an applied expression via `stopExpression` when
   `tts:audio:end` arrives, however long the utterance runs, if the renderer
   supports it; a roughly 8-second timer covers only configs where no audio
