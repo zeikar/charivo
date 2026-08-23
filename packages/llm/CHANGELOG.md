@@ -1,5 +1,12 @@
 # @charivo/llm
 
+## 0.10.5
+
+### Patch Changes
+
+- Updated dependencies [e5ea6b7]
+  - @charivo/core@0.32.0
+
 ## 0.10.4
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @charivo/render-iki
 
+## 0.0.19
+
+### Patch Changes
+
+- Updated dependencies [e5ea6b7]
+  - @charivo/core@0.32.0
+  - @charivo/render@0.11.1
+
 ## 0.0.18
 
 ### Patch Changes
