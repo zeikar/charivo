@@ -51,6 +51,33 @@ function formatExpressionMeanings(
   return entries.join("; ");
 }
 
+// Same key-intersection contract as formatExpressionMeanings, extended one
+// dimension: a group's descriptions are positional, so an entry past the
+// group's real motion count describes a motion that does not exist and is
+// dropped rather than surfaced.
+function formatMotionMeanings(catalog: AvatarControlCatalog): string | null {
+  const descriptions = catalog.motionDescriptions;
+  if (!descriptions) {
+    return null;
+  }
+
+  const entries = Object.entries(catalog.motions)
+    .filter(([group]) => Object.hasOwn(descriptions, group))
+    .flatMap(([group, count]) =>
+      (descriptions[group] ?? [])
+        .slice(0, count)
+        .flatMap((text, index) =>
+          text ? [`${group} #${index} = ${text}`] : [],
+        ),
+    );
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return entries.join("; ");
+}
+
 export function buildAvatarControlInstructions(
   catalog: AvatarControlCatalog,
 ): string {
@@ -76,6 +103,11 @@ export function buildAvatarControlInstructions(
     instructions.push(
       "Use playMotion for bigger beats such as greetings, emphasis, or strong reactions. Don't stack body motions in one reply.",
     );
+
+    const motionMeanings = formatMotionMeanings(catalog);
+    if (motionMeanings !== null) {
+      instructions.push(`Motion meanings: ${motionMeanings}`);
+    }
   }
 
   if (hasExpressions && hasMotions) {
@@ -148,6 +180,12 @@ export function createAvatarControlTools(
 
   const motionGroups = Object.keys(catalog.motions);
   if (motionGroups.length > 0) {
+    const motionMeanings = formatMotionMeanings(catalog);
+    const motionIndexDescription =
+      motionMeanings === null
+        ? "Zero-based motion index within the selected motion group."
+        : `Zero-based motion index within the selected motion group. Meanings: ${motionMeanings}`;
+
     tools.push({
       definition: {
         type: "function",
@@ -163,8 +201,7 @@ export function createAvatarControlTools(
             },
             index: {
               type: "number",
-              description:
-                "Zero-based motion index within the selected motion group.",
+              description: motionIndexDescription,
             },
           },
           required: ["group", "index"],
@@ -262,7 +299,16 @@ export function createAvatarResultProjector(): ToolResultProjector {
         const group = output.group;
         const index = output.index;
         if (typeof group === "string" && Number.isInteger(index)) {
-          emit("avatar:motion", { group, index: index as number });
+          // This projector runs only on a successful playMotion tool call, so
+          // it is the one place that knows the AI asked. The baked-in sample
+          // clip is a different voice in a different language and would talk
+          // over the character's own; a human trigger reaches the renderer
+          // directly and keeps it.
+          emit("avatar:motion", {
+            group,
+            index: index as number,
+            muteSound: true,
+          });
         }
         return;
       }

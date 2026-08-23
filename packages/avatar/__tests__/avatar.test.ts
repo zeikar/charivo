@@ -235,6 +235,112 @@ describe("avatar", () => {
     expect(instructions).not.toContain("F01");
   });
 
+  it("includes motion meanings in the playMotion index description and instructions when descriptions are provided", () => {
+    const catalog = {
+      expressions: [],
+      motions: { Idle: 2, TapBody: 1 },
+      motionDescriptions: {
+        Idle: ["stands and breathes", "shifts weight, glances aside"],
+        TapBody: ["crosses arms, reacting to being poked"],
+      },
+    };
+
+    const tools = createAvatarControlTools(catalog);
+    const indexDescription = propertySchema(
+      tools[0]!.definition,
+      "index",
+    ).description;
+
+    expect(indexDescription).toContain("Idle #0 = stands and breathes");
+    expect(indexDescription).toContain(
+      "Idle #1 = shifts weight, glances aside",
+    );
+    expect(indexDescription).toContain(
+      "TapBody #0 = crosses arms, reacting to being poked",
+    );
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).toContain("Idle #0 = stands and breathes");
+    expect(instructions).toContain(
+      "TapBody #0 = crosses arms, reacting to being poked",
+    );
+  });
+
+  it("orders motion meanings by catalog.motions key order, not by motionDescriptions key order", () => {
+    const catalog = {
+      expressions: [],
+      motions: { Idle: 1, TapBody: 1 },
+      motionDescriptions: {
+        TapBody: ["poked reaction"],
+        Idle: ["resting"],
+      },
+    };
+
+    const indexDescription = propertySchema(
+      createAvatarControlTools(catalog)[0]!.definition,
+      "index",
+    ).description as string;
+
+    expect(indexDescription.indexOf("Idle #0")).toBeLessThan(
+      indexDescription.indexOf("TapBody #0"),
+    );
+  });
+
+  it("matches today's exact index description and instructions when no motion descriptions are provided", () => {
+    const catalog = { expressions: [], motions: { Idle: 1 } };
+
+    const indexDescription = propertySchema(
+      createAvatarControlTools(catalog)[0]!.definition,
+      "index",
+    ).description;
+
+    expect(indexDescription).toBe(
+      "Zero-based motion index within the selected motion group.",
+    );
+
+    const instructions = buildAvatarControlInstructions(catalog);
+    expect(instructions).not.toContain("Motion meanings:");
+  });
+
+  it("ignores unknown motion groups and indices past the group's count", () => {
+    const withNoise = {
+      expressions: [],
+      motions: { Idle: 1 },
+      motionDescriptions: {
+        Idle: ["resting", "describes a motion that does not exist"],
+        Nope: ["group absent from the catalog"],
+      },
+    };
+
+    const indexDescription = propertySchema(
+      createAvatarControlTools(withNoise)[0]!.definition,
+      "index",
+    ).description as string;
+
+    expect(indexDescription).toContain("Idle #0 = resting");
+    expect(indexDescription).not.toContain("Idle #1");
+    expect(indexDescription).not.toContain("Nope");
+  });
+
+  it("matches the no-descriptions output when nothing survives the motion intersection", () => {
+    const bare = { expressions: [], motions: { Idle: 1 } };
+    const allDropped = {
+      ...bare,
+      motionDescriptions: { Nope: ["not a real group"] },
+    };
+
+    const descriptionOf = (
+      catalog: Parameters<typeof createAvatarControlTools>[0],
+    ) =>
+      propertySchema(createAvatarControlTools(catalog)[0]!.definition, "index")
+        .description;
+
+    expect(descriptionOf(allDropped)).toBe(descriptionOf(bare));
+    expect(buildAvatarControlInstructions(allDropped)).toBe(
+      buildAvatarControlInstructions(bare),
+    );
+  });
+
   it("creates avatar control tools with the expected names and validation", async () => {
     const tools = createAvatarControlTools({
       expressions: ["Smile"],
@@ -303,7 +409,10 @@ describe("avatar", () => {
 
     expect(emit.mock.calls).toEqual([
       ["avatar:expression", { expressionId: "Smile" }],
-      ["avatar:motion", { group: "Idle", index: 0 }],
+      // muteSound marks the tool-call origin: the projector only runs for a
+      // successful playMotion call, and a tool-triggered motion must not play
+      // its baked-in sample clip over the character's own voice.
+      ["avatar:motion", { group: "Idle", index: 0, muteSound: true }],
       ["avatar:gaze", { x: 0.2, y: -0.3 }],
     ]);
   });
