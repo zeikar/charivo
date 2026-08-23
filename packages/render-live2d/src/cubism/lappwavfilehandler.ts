@@ -87,9 +87,16 @@ export class LAppWavFileHandler {
     return this.rms;
   }
 
-  public stop(): void {
+  /**
+   * Stops playback and supersedes any load still in flight. Silence that was
+   * explicitly asked for has to survive a fetch that resolves afterwards.
+   */
+  public cancel(): void {
     this.requestToken += 1;
+    this.stop();
+  }
 
+  public stop(): void {
     if (this.audioBufferSourceNode) {
       try {
         this.audioBufferSourceNode.stop();

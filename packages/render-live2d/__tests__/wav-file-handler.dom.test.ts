@@ -95,7 +95,7 @@ afterEach(() => {
 });
 
 describe("LAppWavFileHandler", () => {
-  it("does not play a load that resolves after stop() was called", async () => {
+  it("does not play a load that resolves after cancel() was called", async () => {
     let releaseFetch: (() => void) | undefined;
     globalThis.fetch = vi.fn(
       () =>
@@ -109,7 +109,7 @@ describe("LAppWavFileHandler", () => {
 
     const handler = new LAppWavFileHandler();
     handler.start("clip.wav");
-    handler.stop();
+    handler.cancel();
 
     // The fetch only completes now — after the caller asked for silence.
     releaseFetch?.();
@@ -144,6 +144,30 @@ describe("LAppWavFileHandler", () => {
     await flushPromises();
 
     expect(audioMocks.sourceNode.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a pending load alone on a plain stop", async () => {
+    let releaseFetch: (() => void) | undefined;
+    globalThis.fetch = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          releaseFetch = () =>
+            resolve({
+              arrayBuffer: async () => new ArrayBuffer(8),
+            } as unknown as Response);
+        }) as unknown as Promise<Response>,
+    ) as unknown as typeof fetch;
+
+    const handler = new LAppWavFileHandler();
+    handler.start("clip.wav");
+    // stop() ends what is audible now; it must NOT cancel a load in flight, or
+    // a motion ending would silence the clip of one that took over from it.
+    handler.stop();
+
+    releaseFetch?.();
+    await flushPromises();
+
+    expect(audioMocks.sourceNode.start).toHaveBeenCalled();
   });
 
   it("no-ops when no browser audio context is available", () => {

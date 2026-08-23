@@ -30,14 +30,13 @@ function buildModel(soundFile: string | null) {
   const model = Object.create(LAppModel.prototype) as LAppModel;
   const motion = new FakeMotion();
 
-  const wavHandler = { start: vi.fn(), stop: vi.fn() };
+  const wavHandler = { start: vi.fn(), stop: vi.fn(), cancel: vi.fn() };
 
   // The pieces startMotion reads. Everything else is irrelevant here, and
   // stubbing narrowly keeps the test honest about what it actually covers.
   (model as unknown as { ready: boolean }).ready = true;
   // Object.create skips field initializers, so anything startMotion reads has
   // to be supplied here — including the audio-ownership counters.
-  (model as unknown as { audibleMotions: number }).audibleMotions = 0;
   (model as unknown as { modelHomeDir: string }).modelHomeDir = "/models/haru/";
   (model as unknown as { wavHandler: unknown }).wavHandler = wavHandler;
   (model as unknown as { modelSetting: unknown }).modelSetting = {
@@ -88,7 +87,7 @@ describe("LAppModel motion sound", () => {
     expect(wavHandler.start).not.toHaveBeenCalled();
     // Stopping matters as much as not starting: a clip from an earlier manual
     // motion would otherwise keep playing through the muted one.
-    expect(wavHandler.stop).toHaveBeenCalled();
+    expect(wavHandler.cancel).toHaveBeenCalled();
   });
 
   it("silences a prior clip the moment a muted start is accepted, without waiting for began", () => {
@@ -107,7 +106,7 @@ describe("LAppModel motion sound", () => {
     // pauses on a hidden tab or a lost context — so a stop deferred until then
     // can be a stop that never happens, and audio already playing would run on.
     expect(motion.began).toBeDefined();
-    expect(wavHandler.stop).toHaveBeenCalled();
+    expect(wavHandler.cancel).toHaveBeenCalled();
     expect(wavHandler.start).not.toHaveBeenCalled();
   });
 
@@ -153,33 +152,7 @@ describe("LAppModel motion sound", () => {
     motion.began?.(motion);
 
     expect(wavHandler.start).not.toHaveBeenCalled();
-    expect(wavHandler.stop).toHaveBeenCalled();
-  });
-
-  it("lets a stale finish pass without cutting the motion that took over", () => {
-    const { model, motion, wavHandler } = buildModel("sounds/haru_talk_13.wav");
-
-    // The SAME cached motion, started twice — Cubism keeps the first queue
-    // entry alive while the second begins. Crucially, both completions invoke
-    // the motion's CURRENT handler (cubismmotion.ts calls
-    // `this._onFinishedMotion(this)`), which is the second start's, so the fix
-    // cannot rely on telling the two starts apart by their closures.
-    model.startMotion("Idle", 0, LAppDefine.PriorityNormal);
-    motion.began?.(motion);
-    model.startMotion("Idle", 0, LAppDefine.PriorityNormal);
-    motion.began?.(motion);
-
-    expect(wavHandler.start).toHaveBeenCalledTimes(2);
-    wavHandler.stop.mockClear();
-
-    // First entry completes. Stopping here would cut the clip still playing,
-    // and would invalidate it outright if its load were still in flight.
-    motion.finished?.(motion);
-    expect(wavHandler.stop).not.toHaveBeenCalled();
-
-    // The last one out turns off the sound.
-    motion.finished?.(motion);
-    expect(wavHandler.stop).toHaveBeenCalled();
+    expect(wavHandler.cancel).toHaveBeenCalled();
   });
 
   it("composes the caller's callbacks rather than replacing the sound handling", () => {
