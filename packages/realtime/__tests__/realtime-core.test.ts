@@ -12,7 +12,6 @@ import {
   createRealtimeManager,
   type RealtimeLogger,
   type RealtimeTransportClient,
-  type RealtimeSessionConfig,
   type RealtimeTransportEvent,
 } from "@charivo/realtime";
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
@@ -163,11 +162,7 @@ describe("realtime-core", () => {
   it("exposes prepareAudio without narrowing, and forwards it to the client", async () => {
     const stub = createRealtimeClientStub();
     const prepareAudio = vi.fn(async () => undefined);
-    (
-      stub.client as RealtimeTransportClient & {
-        prepareAudio?: (config?: RealtimeSessionConfig) => Promise<void>;
-      }
-    ).prepareAudio = prepareAudio;
+    stub.client.prepareAudio = prepareAudio;
 
     const manager = createRealtimeManager(stub.client);
 
