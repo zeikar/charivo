@@ -1,5 +1,26 @@
 # @charivo/server
 
+## 0.6.14
+
+### Patch Changes
+
+- 9d9ba15: Give the remaining packages npm keywords
+
+  Only `@charivo/tts` and `@charivo/stt` carried `keywords`, so the other seven
+  published packages were reachable on npm by name alone — including `core` and
+  `render-live2d`, the two anyone looking for this project would search for
+  first. Each now lists five, in the shape the existing two set: `charivo`, then
+  what that package actually does.
+
+  Manifest metadata only. No code, exports, or types change.
+
+- Updated dependencies [21d19b3]
+- Updated dependencies [9d9ba15]
+  - @charivo/core@0.31.0
+  - @charivo/llm@0.10.4
+  - @charivo/stt@0.7.11
+  - @charivo/tts@0.6.15
+
 ## 0.6.13
 
 ### Patch Changes
