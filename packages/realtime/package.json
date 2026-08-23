@@ -33,6 +33,13 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "realtime",
+    "webrtc",
+    "speech-to-speech",
+    "openai-realtime"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^",
     "@openai/agents-realtime": "0.8.5"

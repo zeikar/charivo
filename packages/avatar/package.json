@@ -18,6 +18,13 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "avatar",
+    "expression",
+    "motion",
+    "tool-calling"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^"
   },

@@ -28,6 +28,13 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "live2d",
+    "cubism",
+    "webgl",
+    "lipsync"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^",
     "@charivo/render": "workspace:^"

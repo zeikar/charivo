@@ -23,6 +23,13 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "server",
+    "provider",
+    "openai",
+    "api-route"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^",
     "@charivo/llm": "workspace:^",
