@@ -18,6 +18,15 @@ export interface AvatarControlCatalog {
    * When omitted or empty, no semantic hints are provided (preserving today's behavior).
    */
   expressionDescriptions?: Record<string, string>;
+  /**
+   * Optional semantic descriptions for each motion.
+   * Keys should correspond to group names in `motions`; a group's array is
+   * positional, so index 0 describes motion index 0.
+   * Groups not present in `motions`, and indices at or beyond a group's count,
+   * are ignored by consumers.
+   * When omitted or empty, no semantic hints are provided (preserving today's behavior).
+   */
+  motionDescriptions?: Record<string, string[]>;
 }
 
 export interface Character {
@@ -373,7 +382,12 @@ export interface Renderer {
   playExpression?(expressionId: string): void;
   /** Releases the active expression so the model returns to its base face — implementations may fade it out rather than snapping; renderers without expression state omit it. */
   stopExpression?(): void;
-  playMotionByGroup?(group: string, index: number): void;
+  /** `options.muteSound` asks for the motion without its baked-in sample clip; renderers with no motion audio may ignore it, and omitting it keeps the clip audible. */
+  playMotionByGroup?(
+    group: string,
+    index: number,
+    options?: { muteSound?: boolean },
+  ): void;
   lookAt?(coords: GazeCoordinates): void;
   getAvailableExpressions?(): string[];
   getAvailableMotionGroups?(): Record<string, number>;
@@ -591,7 +605,12 @@ export interface EventMap {
   // Intentionally flat payload (no wrapper object).
   "realtime:usage": RealtimeUsageEvent;
   "avatar:expression": { expressionId: string };
-  "avatar:motion": { group: string; index: number };
+  /**
+   * `muteSound` is a rendering request — play the motion without its baked-in
+   * sample clip — not a provenance tag. Absent means audible, so every existing
+   * emitter keeps today's behavior.
+   */
+  "avatar:motion": { group: string; index: number; muteSound?: boolean };
   // Intentionally flat payload (no wrapper object).
   "avatar:gaze": GazeCoordinates;
   "realtime:error": { error: Error };
