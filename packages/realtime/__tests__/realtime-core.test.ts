@@ -854,9 +854,13 @@ describe("realtime-core", () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "Smile",
     });
+    // muteSound rides along because this went through a tool call: the avatar
+    // result projector marks those so a motion's baked-in sample clip does not
+    // play over the character's own voice.
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:motion", {
       group: "Idle",
       index: 0,
+      muteSound: true,
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:gaze", {
       x: 0.4,
