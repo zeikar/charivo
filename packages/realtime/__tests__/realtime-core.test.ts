@@ -273,7 +273,7 @@ describe("realtime-core", () => {
       emit: vi.fn(),
     };
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
@@ -401,7 +401,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -516,7 +516,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -581,7 +581,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({ provider: "openai" });
 
     await stub.emit({ type: "audio.output.started" });
@@ -607,7 +607,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({ provider: "openai" });
 
     await stub.emit({ type: "audio.output.started" });
@@ -655,7 +655,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -708,7 +708,7 @@ describe("realtime-core", () => {
       tools: [tool],
     });
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -751,7 +751,7 @@ describe("realtime-core", () => {
     }));
     const manager = createRealtimeManager(stub.client, { tools });
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -795,7 +795,7 @@ describe("realtime-core", () => {
     };
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     manager.registerTool(tool);
     await manager.startSession({
       provider: "openai",
@@ -827,7 +827,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -894,7 +894,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -940,7 +940,7 @@ describe("realtime-core", () => {
     });
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -988,7 +988,7 @@ describe("realtime-core", () => {
       emit: vi.fn(),
     };
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     manager.setCharacter({
       id: "char-1",
       name: "Hiyori",
@@ -1086,7 +1086,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
     });
@@ -1439,7 +1439,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -1632,7 +1632,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
 
     const manager = createRealtimeManager(stub.client);
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
 
     await manager.startSession({
       provider: "openai",
@@ -1758,7 +1758,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -1853,7 +1853,7 @@ describe("realtime-core", () => {
 
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
 
     await manager.startSession({
       provider: "openai",
@@ -1907,7 +1907,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const recoverGate = createDeferred<void>();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -2061,7 +2061,7 @@ describe("realtime-core", () => {
     const manager = createRealtimeManager(stub.client);
     const eventEmitter = createEventEmitter();
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({
       provider: "openai",
       voice: "marin",
@@ -2227,7 +2227,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({ provider: "openai" });
 
     const awaiting = () =>
@@ -2255,7 +2255,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({ provider: "openai" });
 
     (stub.client.sendText as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
@@ -2315,7 +2315,7 @@ describe("realtime-core", () => {
     const eventEmitter = createEventEmitter();
     const manager = createRealtimeManager(stub.client);
 
-    manager.setEventEmitter!(eventEmitter);
+    manager.setEventEmitter(eventEmitter);
     await manager.startSession({ provider: "openai" });
     await manager.sendMessage("hello");
 
@@ -2368,7 +2368,7 @@ describe("realtime-core", () => {
       const eventEmitter = createEventEmitter();
       const manager = createRealtimeManager(stub.client);
 
-      manager.setEventEmitter!(eventEmitter);
+      manager.setEventEmitter(eventEmitter);
       await manager.startSession({ provider: "openai" });
 
       await manager.sendMessage("hello");

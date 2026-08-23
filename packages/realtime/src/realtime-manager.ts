@@ -15,6 +15,7 @@ import {
   CharivoStateError,
   createToolRegistry,
   toCharivoError,
+  type BuiltInRealtimeManager,
 } from "@charivo/core";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "./types";
 import { buildRealtimeSessionConfig } from "./instructions";
@@ -1041,6 +1042,6 @@ export class RealtimeManagerImpl implements CoreRealtimeManager {
 export function createRealtimeManager(
   client: RealtimeTransportClient,
   options?: RealtimeManagerOptions,
-): CoreRealtimeManager {
+): BuiltInRealtimeManager {
   return new RealtimeManagerImpl(client, options);
 }

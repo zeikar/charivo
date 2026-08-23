@@ -4,6 +4,7 @@ import {
   STTOptions,
   STTManager,
   toCharivoError,
+  type BuiltInSTTManager,
 } from "@charivo/core";
 
 /**
@@ -73,6 +74,8 @@ export class STTManagerImpl implements STTManager {
 /**
  * Helper function to create STT Manager
  */
-export function createSTTManager(sttTranscriber: STTTranscriber): STTManager {
+export function createSTTManager(
+  sttTranscriber: STTTranscriber,
+): BuiltInSTTManager {
   return new STTManagerImpl(sttTranscriber);
 }

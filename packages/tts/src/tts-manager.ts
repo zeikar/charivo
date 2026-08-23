@@ -8,6 +8,7 @@ import {
   TTSOptions,
   TTSManager,
   toCharivoError,
+  type BuiltInTTSManager,
 } from "@charivo/core";
 import { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 import {
@@ -590,6 +591,6 @@ export class TTSManagerImpl implements TTSManager {
 /**
  * Helper function to create a TTS Manager
  */
-export function createTTSManager(ttsPlayer: TTSPlayer): TTSManager {
+export function createTTSManager(ttsPlayer: TTSPlayer): BuiltInTTSManager {
   return new TTSManagerImpl(ttsPlayer);
 }

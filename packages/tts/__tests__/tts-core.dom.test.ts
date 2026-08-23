@@ -369,7 +369,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("hello", { volume: 0.4 });
 
@@ -385,7 +385,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("mute", { volume: 0 });
 
@@ -403,7 +403,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("browser speech", { rate: 1.25 });
 
@@ -429,7 +429,7 @@ describe("TTSManagerImpl", () => {
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
 
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("audio path");
 
@@ -462,7 +462,7 @@ describe("TTSManagerImpl stop() failure cleanup", () => {
 
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     // Spy on URL.revokeObjectURL before speak() creates the blob URL.
     const revokeSpy = vi.spyOn(URL, "revokeObjectURL");
@@ -510,7 +510,7 @@ describe("TTSManagerImpl stop() settles interrupted playback", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     // NonFinalizingAudio's play() resolves without ever firing onended, so
     // without the fix this speak() call has no other way to settle.
@@ -536,7 +536,7 @@ describe("TTSManagerImpl stop() settles interrupted playback", () => {
     const player = new ControllableWebPlayer();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     // The underlying player promise for "hello" never settles on its own in
     // this test -- only stop() can unblock it.
@@ -563,7 +563,7 @@ describe("TTSManagerImpl stop() cancels a speak() still starting up", () => {
     const player = new ControllableAudioPlayer();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const speaking = manager.speak("hello");
     const speakingState = trackSettlement(speaking);
@@ -650,7 +650,7 @@ describe("TTSManagerImpl stop() cancels a speak() still starting up", () => {
     const player = new ControllableAudioPlayer();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const speaking = manager.speak("hello");
     await vi.waitFor(() => expect(player.synthesis.has("hello")).toBe(true));
@@ -674,7 +674,7 @@ describe("TTSManagerImpl stop() cancels a speak() still starting up", () => {
       .mockImplementation(() => undefined);
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const speaking = manager.speak("hello");
     const speakingState = trackSettlement(speaking);
@@ -699,7 +699,7 @@ describe("TTSManagerImpl stop() cancels a speak() still starting up", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.stop();
     await manager.speak("hello");
@@ -761,7 +761,7 @@ describe("TTSManagerImpl serializes stops against new utterances", () => {
       }
     });
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const speakingA = manager.speak("A");
     await vi.waitFor(() => expect(events).toEqual(["tts:audio:start"]));
@@ -819,7 +819,7 @@ describe("TTSManagerImpl serializes stops against new utterances", () => {
         }
       }),
     };
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await expect(manager.speak("hello")).resolves.toBeUndefined();
     await stopping;
@@ -846,7 +846,7 @@ describe("TTSManagerImpl serializes stops against new utterances", () => {
         }
       }),
     };
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await expect(manager.speak("hello")).resolves.toBeUndefined();
     await stopping;
@@ -861,7 +861,7 @@ describe("TTSManagerImpl web-speech session scoping", () => {
     const player = new ControllableWebPlayer();
     const emitter = { emit: vi.fn() };
     const manager = createTTSManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const events: string[] = [];
     emitter.emit.mockImplementation((eventName: string) => {
@@ -955,7 +955,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
 
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("hello");
 
@@ -984,7 +984,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     const speaking = manager.speak("hello");
     speaking.catch(() => undefined);
@@ -1012,7 +1012,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     const player = new RemotePlayerWithAudio();
     const emitter = { emit: vi.fn() };
     const manager = trackManager(player);
-    manager.setEventEmitter!(emitter);
+    manager.setEventEmitter(emitter);
 
     await manager.speak("hello");
     const context = MockAudioContext.lastInstance!;

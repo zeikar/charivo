@@ -461,6 +461,18 @@ export interface TTSManager {
   dispose?(): Promise<void>;
 }
 
+/**
+ * `TTSManager` with the members the built-in manager always provides required
+ * instead of optional. A third-party `TTSManager` may omit audio preparation,
+ * event wiring, or disposal; the manager returned by `createTTSManager` never
+ * does, so callers of the factory should not have to narrow them.
+ */
+export interface BuiltInTTSManager extends TTSManager {
+  prepareAudio(): Promise<void>;
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void;
+  dispose(): Promise<void>;
+}
+
 export interface STTOptions {
   language?: string;
 }
@@ -488,6 +500,14 @@ export interface STTManager {
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
 }
 
+/**
+ * `STTManager` with event wiring required instead of optional — the manager
+ * returned by `createSTTManager` always provides it.
+ */
+export interface BuiltInSTTManager extends STTManager {
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void;
+}
+
 // Realtime Manager - Manages Realtime API session state
 export interface RealtimeManager {
   setCharacter(character: Character): void;
@@ -503,6 +523,15 @@ export interface RealtimeManager {
   unregisterTool(name: string): void;
   getRegisteredTools(): ToolDefinition[];
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
+}
+
+/**
+ * `RealtimeManager` with the members the built-in manager always provides
+ * required instead of optional — `createRealtimeManager` implements both.
+ */
+export interface BuiltInRealtimeManager extends RealtimeManager {
+  prepareAudio(config?: RealtimeSessionConfig): Promise<void>;
+  setEventEmitter(eventEmitter: CharivoEventEmitter): void;
 }
 
 /**
