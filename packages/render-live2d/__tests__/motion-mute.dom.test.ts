@@ -37,8 +37,7 @@ function buildModel(soundFile: string | null) {
   (model as unknown as { ready: boolean }).ready = true;
   // Object.create skips field initializers, so anything startMotion reads has
   // to be supplied here — including the audio-ownership counters.
-  (model as unknown as { motionAudioTurn: number }).motionAudioTurn = 0;
-  (model as unknown as { motionAudioOwner: number }).motionAudioOwner = 0;
+  (model as unknown as { audibleMotions: number }).audibleMotions = 0;
   (model as unknown as { modelHomeDir: string }).modelHomeDir = "/models/haru/";
   (model as unknown as { wavHandler: unknown }).wavHandler = wavHandler;
   (model as unknown as { modelSetting: unknown }).modelSetting = {
@@ -157,29 +156,28 @@ describe("LAppModel motion sound", () => {
     expect(wavHandler.stop).toHaveBeenCalled();
   });
 
-  it("lets a stale finish callback pass without cutting the motion that took over", () => {
+  it("lets a stale finish pass without cutting the motion that took over", () => {
     const { model, motion, wavHandler } = buildModel("sounds/haru_talk_13.wav");
 
-    // A starts and owns the audio.
-    model.startMotion("TapBody", 0, LAppDefine.PriorityNormal);
-    const beganA = motion.began;
-    const finishedA = motion.finished;
-    beganA?.(motion);
-    expect(wavHandler.start).toHaveBeenCalledTimes(1);
-
-    // B starts before A has finished — Cubism keeps A fading meanwhile — and
-    // takes ownership by starting its own clip.
-    model.startMotion("TapBody", 1, LAppDefine.PriorityNormal);
+    // The SAME cached motion, started twice — Cubism keeps the first queue
+    // entry alive while the second begins. Crucially, both completions invoke
+    // the motion's CURRENT handler (cubismmotion.ts calls
+    // `this._onFinishedMotion(this)`), which is the second start's, so the fix
+    // cannot rely on telling the two starts apart by their closures.
+    model.startMotion("Idle", 0, LAppDefine.PriorityNormal);
     motion.began?.(motion);
+    model.startMotion("Idle", 0, LAppDefine.PriorityNormal);
+    motion.began?.(motion);
+
     expect(wavHandler.start).toHaveBeenCalledTimes(2);
     wavHandler.stop.mockClear();
 
-    // Now A finally finishes. Stopping here would cut B's clip, and since stop
-    // also invalidates a load still in flight, could silence it outright.
-    finishedA?.(motion);
+    // First entry completes. Stopping here would cut the clip still playing,
+    // and would invalidate it outright if its load were still in flight.
+    motion.finished?.(motion);
     expect(wavHandler.stop).not.toHaveBeenCalled();
 
-    // B ending its own playback still works.
+    // The last one out turns off the sound.
     motion.finished?.(motion);
     expect(wavHandler.stop).toHaveBeenCalled();
   });

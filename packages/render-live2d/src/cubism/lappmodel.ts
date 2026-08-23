@@ -67,12 +67,13 @@ export class LAppModel extends CubismUserModel {
   private lipSyncIds = new csmVector<CubismIdHandle>();
   private ready = false;
   private wavHandler = new LAppWavFileHandler();
-  // Which start currently owns motion audio. Cubism keeps a finishing motion
-  // alive while the next one starts, so a finish callback that stopped audio
-  // unconditionally would cut a newer motion's clip -- and now that stop also
-  // invalidates a load still in flight, it would silence it outright.
-  private motionAudioTurn = 0;
-  private motionAudioOwner = 0;
+  // Audible motions that have begun and not yet finished. Ownership cannot be
+  // pinned to a particular start: the finished handler lives on the CACHED
+  // motion object and Cubism reads it at completion time, so replaying a motion
+  // makes an older queue entry invoke the NEWEST closure. Counting works
+  // regardless of which closure runs -- the last completion is the one that
+  // stops the audio, whoever installed it.
+  private audibleMotions = 0;
   private _userTimeSeconds = 0;
 
   // Eases parameters back to their defaults when a finished motion has no "Idle"
@@ -315,8 +316,6 @@ export class LAppModel extends CubismUserModel {
     const soundPath = soundFile ? `${this.modelHomeDir}${soundFile}` : null;
     const muted = options?.muteSound === true;
 
-    const turn = ++this.motionAudioTurn;
-
     if (muted) {
       // Synchronously, the moment the start is accepted -- not only from the
       // began handler below. That handler runs off the render loop, which
@@ -324,7 +323,7 @@ export class LAppModel extends CubismUserModel {
       // lets a prior clip play on indefinitely. Even while running, a pending
       // fetch can resolve in the frames before the motion begins; the began
       // handler keeps its own stop to catch exactly that.
-      this.motionAudioOwner = turn;
+      this.audibleMotions = 0;
       this.wavHandler.stop();
     }
 
@@ -333,20 +332,24 @@ export class LAppModel extends CubismUserModel {
         // Not merely "skip our own clip": one from an earlier manual or
         // ambient motion may still be playing, and while it does its RMS
         // drives the mouth whenever realtime lip sync is off.
-        this.motionAudioOwner = turn;
+        this.audibleMotions = 0;
         this.wavHandler.stop();
       } else if (soundPath) {
-        this.motionAudioOwner = turn;
+        this.audibleMotions += 1;
         this.wavHandler.start(soundPath);
       }
       onBegan?.(self);
     });
     motion.setFinishedMotionHandler((self) => {
-      // Only whoever still owns the audio may end it. A motion that finishes
-      // after a newer one has taken over is stale, and stopping here would cut
-      // the newer clip -- or cancel it before it ever loaded.
-      if (!muted && soundPath && this.motionAudioOwner === turn) {
-        this.wavHandler.stop();
+      // Only the LAST outstanding audible motion stops the audio. An earlier
+      // one finishing while a newer clip plays would otherwise cut it -- and
+      // since stop also invalidates a load still in flight, could silence it
+      // before it was ever heard.
+      if (!muted && soundPath) {
+        this.audibleMotions = Math.max(0, this.audibleMotions - 1);
+        if (this.audibleMotions === 0) {
+          this.wavHandler.stop();
+        }
       }
       onFinished?.(self);
     });
@@ -505,6 +508,7 @@ export class LAppModel extends CubismUserModel {
   public release(): void {
     this.releaseMotions();
     this.releaseExpressions();
+    this.audibleMotions = 0;
     this.wavHandler.stop();
     this.setRealtimeLipSync(false);
     this.ready = false;
