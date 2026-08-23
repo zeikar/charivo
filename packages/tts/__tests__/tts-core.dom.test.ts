@@ -945,7 +945,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
   });
 
   afterEach(async () => {
-    await Promise.all(createdManagers.map((manager) => manager.dispose?.()));
+    await Promise.all(createdManagers.map((manager) => manager.dispose()));
     setVisibilityState("visible");
     restoreAudioMocks();
   });
@@ -972,8 +972,8 @@ describe("TTSManagerImpl lip-sync analysis", () => {
   it("prepares the audio context once", async () => {
     const manager = trackManager(new RemotePlayerWithAudio());
 
-    await manager.prepareAudio?.();
-    await manager.prepareAudio?.();
+    await manager.prepareAudio();
+    await manager.prepareAudio();
 
     expect(MockAudioContext.instanceCount).toBe(1);
   });
@@ -1017,7 +1017,7 @@ describe("TTSManagerImpl lip-sync analysis", () => {
     await manager.speak("hello");
     const context = MockAudioContext.lastInstance!;
 
-    const disposal = manager.dispose?.();
+    const disposal = manager.dispose();
     expect(context.close).toHaveBeenCalledTimes(1);
     await disposal;
 

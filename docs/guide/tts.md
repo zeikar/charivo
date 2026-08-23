@@ -71,9 +71,13 @@ only implement `speak()` (e.g. the Web Speech API) must use `"web-speech"`
 mode, whose lip-sync comes from a text-driven simulation instead of real audio
 analysis.
 
-Call `ttsManager.prepareAudio?.()` from a user-gesture handler before the
+`createTTSManager` guarantees `prepareAudio`, `setEventEmitter`, and
+`dispose`, so calls on its result need no `?.`. A variable typed as the core
+`TTSManager` still does — a third-party manager may omit them.
+
+Call `ttsManager.prepareAudio()` from a user-gesture handler before the
 first `speak()` so the lip-sync `AudioContext` starts cleanly on mobile
-browsers. Call `ttsManager.dispose?.()` to release lip-sync audio resources if
+browsers. Call `ttsManager.dispose()` to release lip-sync audio resources if
 your app tears a `TTSManager` down outside `Charivo.dispose()`, which already
 calls it automatically.
 

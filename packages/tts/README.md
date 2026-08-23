@@ -71,10 +71,10 @@ When connected, the manager emits:
   call resolves silently and never begins playback, whether or not it had
   already opened an audio session, so a resolved `speak()` is not proof audio
   played. A newer `speak()` cancels a still-starting older one the same way.
-- `prepareAudio?.()` — creates the lip-sync `AudioContext` up front. Call it
+- `prepareAudio()` — creates the lip-sync `AudioContext` up front. Call it
   from a user-gesture handler before the first `speak()` so mobile browsers
   that require audio to start from a gesture do not block playback.
-- `dispose?.()` — releases lip-sync audio resources and unsubscribes browser
+- `dispose()` — releases lip-sync audio resources and unsubscribes browser
   lifecycle listeners. Call `stop()` first if speech is in-flight; `dispose()`
   does not stop playback. `Charivo.dispose()` calls this automatically for an
   attached TTS manager — call it directly only if your app tears a

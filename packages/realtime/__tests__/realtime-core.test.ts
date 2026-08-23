@@ -12,6 +12,7 @@ import {
   createRealtimeManager,
   type RealtimeLogger,
   type RealtimeTransportClient,
+  type RealtimeSessionConfig,
   type RealtimeTransportEvent,
 } from "@charivo/realtime";
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
@@ -157,6 +158,25 @@ describe("realtime-core", () => {
 
     const defaultConfig = buildRealtimeSessionConfig();
     expect(defaultConfig.voice).toBeUndefined();
+  });
+
+  it("exposes prepareAudio without narrowing, and forwards it to the client", async () => {
+    const stub = createRealtimeClientStub();
+    const prepareAudio = vi.fn(async () => undefined);
+    (
+      stub.client as RealtimeTransportClient & {
+        prepareAudio?: (config?: RealtimeSessionConfig) => Promise<void>;
+      }
+    ).prepareAudio = prepareAudio;
+
+    const manager = createRealtimeManager(stub.client);
+
+    // Called directly, no `?.`: the factory's return type is what guarantees
+    // the member exists, and this is the call that would stop compiling if it
+    // went back to being optional.
+    await manager.prepareAudio({ provider: "openai" });
+
+    expect(prepareAudio).toHaveBeenCalledWith({ provider: "openai" });
   });
 
   it("builds catalog-based avatar control tools", async () => {

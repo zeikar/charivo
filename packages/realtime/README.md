@@ -54,7 +54,11 @@ await manager.startSession({
 
 `gpt-realtime-2.1-mini` is the default realtime model; the full `gpt-realtime-2.1` is available but meaningfully more expensive — consult [OpenAI's pricing page](https://openai.com/api/pricing/) before switching.
 
-For iOS-safe lip-sync, call `prepareAudio?.()` from the same user gesture that
+`createRealtimeManager` guarantees `prepareAudio` and `setEventEmitter`, so
+calls on its result need no `?.`. A variable typed as the core
+`RealtimeManager` still does — a third-party manager may omit them.
+
+For iOS-safe lip-sync, call `prepareAudio()` from the same user gesture that
 starts the session, before `startSession(...)`. Pass the same session config to
 both calls — `prepareAudio` needs it to resolve which remote adapter to warm up:
 
@@ -64,7 +68,7 @@ const sessionConfig = {
   model: "gpt-realtime-2.1-mini",
 };
 
-await manager.prepareAudio?.(sessionConfig);
+await manager.prepareAudio(sessionConfig);
 await manager.startSession(sessionConfig);
 ```
 

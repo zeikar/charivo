@@ -111,7 +111,7 @@ const sessionConfig = {
   model: "gpt-realtime-2.1-mini",
 };
 
-await manager.prepareAudio?.(sessionConfig);
+await manager.prepareAudio(sessionConfig);
 await manager.startSession(sessionConfig);
 ```
 
