@@ -39,9 +39,11 @@ The only server route is the realtime bootstrap:
 
 - `POST /api/realtime`
   Uses `createOpenAIRealtimeProvider` from `@charivo/server/openai` to mint a
-  session bootstrap for `@charivo/realtime/remote`. It validates that
-  `transport` and `session` are present and that `session.provider` is
-  `"openai"` before returning the payload.
+  session bootstrap for `@charivo/realtime/remote`. It does not forward the
+  client's session config: after checking that `transport` and `session` are
+  present and that `session.provider` is `"openai"`, it rebuilds the config with
+  the model, output-token cap, and transcription model pinned server side, and
+  rejects instructions or tools past its size caps.
 
 Everything else runs in the browser.
 

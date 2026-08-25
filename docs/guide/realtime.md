@@ -457,9 +457,9 @@ server side would discard it.
 
 The session config is different — it is untrusted input that decides what you
 are billed for. Pin the cost-bearing fields (model, max output tokens,
-transcription model) server side, allowlist the voice, and bound or validate
-instructions and tools rather than passing them through. The route below is the
-minimal shape; both shipped demo routes are the hardened version, and
+transcription model) server side, allowlist the voice, and bound instructions
+and tools rather than passing them through, as `buildSessionConfig` does below.
+Both shipped demo routes carry the fuller version of that check, and
 [`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts)
 is worth reading before you deploy one.
 
@@ -471,7 +471,38 @@ import {
   createOpenAIRealtimeProvider,
   type OpenAIRealtimeProviderConfig,
 } from "@charivo/server/openai";
-import type { RealtimeSessionRequest } from "@charivo/core";
+import type {
+  RealtimeSessionConfig,
+  RealtimeSessionRequest,
+} from "@charivo/core";
+
+const REALTIME_MODEL = "gpt-realtime-2.1-mini";
+const REALTIME_MAX_OUTPUT_TOKENS = 1024;
+const ALLOWED_VOICES = new Set(["marin", "cedar"]);
+const MAX_INSTRUCTION_CHARS = 4000;
+const MAX_TOOLS = 16;
+
+// Keep what the client resolved that costs nothing; pin what you are billed
+// for. Anything not matched here is simply dropped.
+function buildSessionConfig(
+  requested: RealtimeSessionConfig,
+): RealtimeSessionConfig {
+  return {
+    provider: "openai",
+    model: REALTIME_MODEL,
+    maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
+    ...(requested.voice && ALLOWED_VOICES.has(requested.voice)
+      ? { voice: requested.voice }
+      : {}),
+    ...(requested.instructions &&
+    requested.instructions.length <= MAX_INSTRUCTION_CHARS
+      ? { instructions: requested.instructions }
+      : {}),
+    ...(requested.tools && requested.tools.length <= MAX_TOOLS
+      ? { tools: requested.tools }
+      : {}),
+  };
+}
 
 export async function POST(request: Request) {
   // Your auth goes here. Without it, anyone who can reach this route can spend
@@ -504,7 +535,7 @@ export async function POST(request: Request) {
   const bootstrap = await provider.createSession({
     adapter: body.adapter,
     transport: body.transport,
-    session: body.session,
+    session: buildSessionConfig(body.session),
     sdpOffer: body.sdpOffer,
   });
 
@@ -512,9 +543,9 @@ export async function POST(request: Request) {
 }
 ```
 
-That demo route is the same flow with full error handling and the pinning
-described above. It still has no authentication or rate limiting — those remain
-yours to add.
+That demo route is the same flow with full error handling and a stricter
+version of the same pinning. It still has no authentication or rate limiting —
+those remain yours to add.
 
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can

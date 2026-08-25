@@ -45,9 +45,9 @@ The current reference app ships:
   Uses `@charivo/server/openclaw`
 - `POST /api/tts`
   Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The route resolves
-  the voice itself — the requested voice when it is on the allowlist, otherwise
-  the `sage` fallback — and passes it explicitly, so the provider default is
-  never consulted
+  the voice itself and passes it explicitly, so the provider default is never
+  consulted: a supplied voice must be on the allowlist or the request is
+  rejected with 400, and the `sage` fallback applies only when none is sent
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
 - `POST /api/realtime-transcription`
@@ -55,6 +55,17 @@ The current reference app ships:
   never holds a key
 - `POST /api/realtime`
   Uses `@charivo/server/openai` to create a realtime session bootstrap
+
+## Demo Safeguards
+
+The routes are unauthenticated by design — they are a demo, not a deployable
+backend. What they do carry is cost bounding, worth copying even though the auth
+is missing: cost-bearing session fields are pinned server side
+(`examples/web/src/app/api/demo-limits.ts`), TTS text and realtime
+instructions/tools are size-capped, voices come from an allowlist, and a
+client-side timer caps a production realtime session at 90 seconds (15 minutes
+in development) because the browser talks to OpenAI directly once bootstrapped
+and the server can no longer hang up.
 
 ## Runtime Modes
 
