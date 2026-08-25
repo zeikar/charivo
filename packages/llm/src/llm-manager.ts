@@ -73,7 +73,6 @@ export class LLMManager {
     this.maxHistoryMessages = resolveMaxHistoryMessages(options);
     this.historyManager = new MessageHistoryManager({
       maxMessages: this.maxHistoryMessages,
-      pruneBatchSize: 2,
     });
     this.resultProjectors = options.resultProjectors ?? [];
     this.defaultToolTimeoutMs =
@@ -143,6 +142,28 @@ export class LLMManager {
   }
 
   /**
+   * Trim to the bound and report everything removed, in its original order.
+   *
+   * Pruning is exact rather than turn-sized: overlapping turns leave the
+   * excess odd, and rounding up to a whole turn evicts the pending turn's
+   * user message as well, stranding the reply it is about to commit. Turns
+   * still leave together on the sequential path, where a committed pair
+   * always makes the excess even.
+   */
+  private pruneWithoutStrandingReplies(): Message[] {
+    const evicted = this.historyManager.pruneToBound();
+
+    if (evicted.length > 0) {
+      // Pruning a user message can strand its reply at the head. Only an
+      // eviction-bearing prune drops it, so a deliberately character-first
+      // history - a reply committed after clearHistory() - survives.
+      evicted.push(...this.historyManager.removeLeadingCharacterMessages());
+    }
+
+    return evicted;
+  }
+
+  /**
    * Ensure the message is present in the history and return an undo handle.
    * Callers that own the turn (see GenerateResponseOptions.callerOwnsHistory)
    * write both the user message and the reply through here, so the transcript
@@ -165,13 +186,7 @@ export class LLMManager {
     }
 
     this.historyManager.add(message, { prune: false });
-    const evicted = this.historyManager.pruneToBound();
-    if (evicted.length > 0) {
-      // Pruning a user message can strand its reply at the head. Only an
-      // eviction-bearing prune drops it, so a deliberately character-first
-      // history - a reply committed after clearHistory() - survives.
-      evicted.push(...this.historyManager.removeLeadingCharacterMessages());
-    }
+    const evicted = this.pruneWithoutStrandingReplies();
     const writeCount = this.historyManager.getWriteCount();
 
     let spent = false;
@@ -244,7 +259,7 @@ export class LLMManager {
           this.character!.id, // character is guaranteed non-null after validateCharacterSet
         );
         this.historyManager.add(responseMessage, { prune: false });
-        this.historyManager.pruneToMax();
+        this.pruneWithoutStrandingReplies();
       }
 
       return assistantMessage;

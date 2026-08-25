@@ -2,7 +2,6 @@ import { Message } from "@charivo/core";
 
 export interface MessageHistoryManagerOptions {
   maxMessages?: number | null;
-  pruneBatchSize?: number;
 }
 
 export interface AddMessageOptions {
@@ -20,7 +19,6 @@ export class MessageHistoryManager {
   private history: Message[] = [];
   private writeCount = 0;
   private readonly maxMessages?: number;
-  private readonly pruneBatchSize: number;
 
   constructor(options: MessageHistoryManagerOptions = {}) {
     if (
@@ -31,16 +29,8 @@ export class MessageHistoryManager {
       throw new TypeError("maxMessages must be a positive integer or null");
     }
 
-    if (
-      options.pruneBatchSize !== undefined &&
-      (!Number.isInteger(options.pruneBatchSize) || options.pruneBatchSize <= 0)
-    ) {
-      throw new TypeError("pruneBatchSize must be a positive integer");
-    }
-
     this.maxMessages =
       options.maxMessages === null ? undefined : options.maxMessages;
-    this.pruneBatchSize = options.pruneBatchSize ?? 1;
   }
 
   add(message: Message, options: AddMessageOptions = {}): void {
@@ -48,7 +38,7 @@ export class MessageHistoryManager {
     this.writeCount += 1;
 
     if (options.prune !== false) {
-      this.pruneToMax();
+      this.pruneToBound();
     }
   }
 
@@ -127,27 +117,9 @@ export class MessageHistoryManager {
     return this.writeCount;
   }
 
-  pruneToMax(): void {
-    if (this.maxMessages === undefined) {
-      return;
-    }
-
-    while (this.history.length > this.maxMessages) {
-      const excess = this.history.length - this.maxMessages;
-      const removeCount = Math.min(
-        Math.ceil(excess / this.pruneBatchSize) * this.pruneBatchSize,
-        this.history.length,
-      );
-      this.history.splice(0, removeCount);
-      this.writeCount += 1;
-    }
-  }
-
   /**
    * Prune in one step, down to the exact bound, and report what was
-   * evicted in its original order. pruneBatchSize is deliberately ignored:
-   * the batch encodes a user/assistant pairing that a single caller-owned
-   * append does not have, so batching would evict a message too many.
+   * evicted in its original order.
    */
   pruneToBound(): Message[] {
     if (

@@ -135,23 +135,6 @@ describe("MessageHistoryManager", () => {
     ]);
   });
 
-  it("respects pruneBatchSize when removing oldest messages", () => {
-    const manager = new MessageHistoryManager({
-      maxMessages: 4,
-      pruneBatchSize: 2,
-    });
-
-    for (let index = 1; index <= 5; index += 1) {
-      manager.add(buildMessage(String(index)));
-    }
-
-    expect(manager.getAll().map((message) => message.id)).toEqual([
-      "3",
-      "4",
-      "5",
-    ]);
-  });
-
   it("rejects invalid getRecent limits", () => {
     const manager = new MessageHistoryManager();
 
@@ -387,6 +370,35 @@ describe("LLMManager", () => {
         role: "user",
         content: "second",
       },
+    ]);
+  });
+
+  it("keeps a coherent transcript when direct calls overlap", async () => {
+    const client = new MockClient();
+    const pending: Array<(reply: string) => void> = [];
+    const defer = () =>
+      new Promise<string>((resolve) => {
+        pending.push(resolve);
+      });
+    // Both turns are in flight before either reply lands, so the second turn's
+    // user message is still pending when the first turn prunes.
+    client.call.mockImplementationOnce(defer).mockImplementationOnce(defer);
+    const manager = createLLMManager(client, { maxHistoryTurns: 1 });
+
+    manager.setCharacter(character);
+
+    const first = manager.generateResponse(buildUserMessage("first"));
+    const second = manager.generateResponse(buildUserMessage("second"));
+
+    pending[0]!("FIRST");
+    await first;
+    pending[1]!("SECOND");
+    await second;
+
+    // Pruning may drop the answered user messages, but it must not leave a
+    // pile of replies that answer nothing.
+    expect(manager.getHistory().map((message) => message.content)).toEqual([
+      "SECOND",
     ]);
   });
 
