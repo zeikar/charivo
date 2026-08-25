@@ -1,6 +1,6 @@
 ---
 title: Examples Companion
-sidebar_position: 11
+sidebar_position: 12
 ---
 
 # Examples Companion
@@ -44,6 +44,10 @@ The only server route is the realtime bootstrap:
   present and that `session.provider` is `"openai"`, it rebuilds the config with
   the model, output-token cap, and transcription model pinned server side, and
   rejects instructions or tools past its size caps.
+
+Session length is capped in the browser at 90 seconds in production (15 minutes
+in development) for the same reason: once the bootstrap returns, audio flows
+between the browser and OpenAI directly and the server can no longer end it.
 
 Everything else runs in the browser.
 

@@ -55,8 +55,9 @@ Each manager wraps a runtime implementation behind a stable manager-facing API.
   expression/motion/gaze tools, instructions, and a result projector, built on
   `@charivo/core`'s neutral `ToolRegistration`/`ToolResultProjector`
   contracts. It bridges tool results into both `@charivo/realtime` and
-  `@charivo/llm`, adjacent to but separate from either manager package.
-  (Formerly published as `@charivo/realtime-avatar`.)
+  `@charivo/llm`, adjacent to but separate from either manager package — see
+  [Avatar Control](./avatar.md). (Formerly published as
+  `@charivo/realtime-avatar`.)
 
 ## Public API Contract
 

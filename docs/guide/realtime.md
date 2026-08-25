@@ -23,8 +23,9 @@ remote adapter registry.
 
 Add `@charivo/avatar` (a separate install) if you want its avatar
 expression/motion/gaze tools and result projector, as used in the Basic Setup
-example below. The same tools also work with `@charivo/llm`'s `LLMManager` —
-see [LLM — Avatar Tool Calling](./llm.md#avatar-tool-calling).
+example below — [Avatar Control](./avatar.md) covers the catalog those tools are
+built from. The same tools also work with `@charivo/llm`'s `LLMManager`; see
+[LLM — Avatar Tool Calling](./llm.md#avatar-tool-calling).
 
 ## Basic Setup
 
@@ -479,8 +480,10 @@ import type {
 const REALTIME_MODEL = "gpt-realtime-2.1-mini";
 const REALTIME_MAX_OUTPUT_TOKENS = 1024;
 const ALLOWED_VOICES = new Set(["marin", "cedar"]);
+const REALTIME_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
 const MAX_INSTRUCTION_CHARS = 4000;
 const MAX_TOOLS = 16;
+const MAX_TOOL_BYTES = 16_000;
 
 // Keep what the client resolved that costs nothing; pin what you are billed
 // for. Anything not matched here is simply dropped.
@@ -494,12 +497,24 @@ function buildSessionConfig(
     ...(requested.voice && ALLOWED_VOICES.has(requested.voice)
       ? { voice: requested.voice }
       : {}),
-    ...(requested.instructions &&
+    ...(typeof requested.instructions === "string" &&
     requested.instructions.length <= MAX_INSTRUCTION_CHARS
       ? { instructions: requested.instructions }
       : {}),
-    ...(requested.tools && requested.tools.length <= MAX_TOOLS
+    // Count and size: a short array can still carry huge schemas.
+    ...(Array.isArray(requested.tools) &&
+    requested.tools.length <= MAX_TOOLS &&
+    JSON.stringify(requested.tools).length <= MAX_TOOL_BYTES
       ? { tools: requested.tools }
+      : {}),
+    // Honor the request to transcribe, but on your model, not theirs.
+    ...(requested.inputAudioTranscription?.enabled
+      ? {
+          inputAudioTranscription: {
+            enabled: true,
+            model: REALTIME_TRANSCRIPTION_MODEL,
+          },
+        }
       : {}),
   };
 }

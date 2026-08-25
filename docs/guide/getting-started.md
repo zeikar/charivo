@@ -5,9 +5,10 @@ sidebar_position: 2
 
 # Getting Started
 
-This is the shortest production-oriented path to a working Charivo app. If you just
-want to see a character talk first, [Quick Try](#quick-try-dev-only) gets you there
-with an API key and no server — but it is not what you ship.
+This is the shortest path to a working Charivo app with your vendor credentials
+on the server, where a production app keeps them. If you just want to see a
+character talk first, [Quick Try](#quick-try-dev-only) gets you there with an API
+key and no server — but it is not what you ship.
 
 ## Recommended Stack
 
@@ -140,6 +141,13 @@ await charivo.dispose();
 Browser clients should call your own routes, not vendor APIs directly. The
 routes below are Next.js route handlers matching what `/api/chat` and
 `/api/tts` above expect.
+
+They show the protocol shape and nothing more: they trust `messages`, `text`,
+`voice`, and `speed` exactly as sent. Before one faces the internet, add
+authentication, rate limiting, and bounds on the inputs you pay for — the demo's
+[`chat-request.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/chat-request.ts)
+and [`demo-limits.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/demo-limits.ts)
+show what that adds up to.
 
 LLM route (`/api/chat`):
 

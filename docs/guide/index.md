@@ -62,6 +62,7 @@ To read the shipped reference apps:
 - [TTS](./tts.md): speech playback and lip-sync wiring
 - [STT](./stt.md): microphone recording and transcription paths
 - [Realtime](./realtime.md): session-based voice interaction and tool wiring
+- [Avatar Control](./avatar.md): optional model-driven expression, motion, and gaze
 - [Examples Web](./examples-web.md): Next.js reference app and API routes
 - [Examples Companion](./examples-companion.md): realtime-only app with browser-local character memory
 

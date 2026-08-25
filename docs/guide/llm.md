@@ -101,7 +101,9 @@ conversation state.
 ## Avatar Tool Calling
 
 `LLMManager` can drive `@charivo/avatar`'s tools the same way
-`RealtimeManager` does, on top of the recommended remote stack. The tool loop
+`RealtimeManager` does, on top of the recommended remote stack. For what belongs
+in the catalog below — and how to establish what an expression id actually
+means — see [Avatar Control](./avatar.md). The tool loop
 turns on only when both a tool is registered and the client implements
 `callWithTools` — `@charivo/llm/remote` does, provided your route forwards
 `tools` to a provider's `generateResponseWithTools`.

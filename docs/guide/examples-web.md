@@ -1,6 +1,6 @@
 ---
 title: Examples Web
-sidebar_position: 10
+sidebar_position: 11
 ---
 
 # Examples Web
@@ -65,7 +65,9 @@ is missing: cost-bearing session fields are pinned server side
 instructions/tools are size-capped, voices come from an allowlist, and a
 client-side timer caps a production realtime session at 90 seconds (15 minutes
 in development) because the browser talks to OpenAI directly once bootstrapped
-and the server can no longer hang up.
+and the server can no longer hang up. The same timer arms on STT recording,
+where the streaming transcriber holds an equally wall-clock-billed session for
+as long as it records.
 
 ## Runtime Modes
 
