@@ -28,6 +28,7 @@ their tradeoffs.
 | Local development against vendor APIs | Browser-direct vendor package | Faster setup, but credentials bundle into shipped JavaScript |
 | Zero-server browser speech | Browser-native web package | No backend needed, but browser support varies |
 | Deterministic demo or UI work | Stub client where available | No model dependency |
+| Realtime voice today | `@charivo/realtime/remote` | Resolves the OpenAI Agents WebRTC adapter by default |
 
 ## Runtime Modes
 
@@ -40,6 +41,9 @@ Examples:
 - `@charivo/llm/remote`
 - `@charivo/tts/remote`
 - `@charivo/stt/remote`
+- `@charivo/stt/openai-realtime` — streaming transcription over WebRTC; it holds
+  no credential itself and calls an app-supplied bootstrap that runs on your
+  server (see [STT](./stt.md) for its press-to-start/stop constraints)
 - `@charivo/realtime/remote`
 
 Choose this path when:
@@ -142,13 +146,6 @@ Choose this path when:
 @charivo/render
 @charivo/render-live2d
 ```
-
-## Rules Of Thumb
-
-- For user-facing browser apps, start with remote packages.
-- For demos and local harnesses, browser-direct packages are acceptable.
-- For the fewest moving parts in speech features, browser-native TTS/STT may be enough.
-- For realtime today, prefer `@charivo/realtime/remote`, which can resolve the OpenAI Agents WebRTC adapter by default.
 
 ## Related Guides
 

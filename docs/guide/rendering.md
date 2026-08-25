@@ -52,42 +52,46 @@ charivo.attachRenderer(renderManager);
 - `tts:audio:start` and `tts:audio:end`
 - `tts:lipsync:update`
 - `avatar:expression`
-- `avatar:motion` — optionally carrying `muteSound`, which asks the renderer to
-  play the motion without any sample clip baked into it. `@charivo/avatar` sets
-  it on tool-call motions so a Cubism sample's prerecorded voice does not talk
-  over the character's own; anything emitting the event without it stays
-  audible.
+- `avatar:motion` — may carry `muteSound`, which plays the motion without its
+  baked-in sample clip. `@charivo/avatar` sets it on tool-call motions so a
+  Cubism sample's prerecorded voice never talks over the character's own;
+  without the flag the clip stays audible.
 - `avatar:gaze`
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
 events yourself.
 
-**Expression auto-release:** expressions triggered via `avatar:expression`
-are released automatically when `tts:audio:end` arrives — however long the
-utterance runs — and the model fades back
-to its base face over the expression's `FadeOutTime` (1 second when the
-`.exp3.json` does not set one) instead of snapping. A roughly 8-second timer
-is a fallback for configs where no audio events flow at all, such as
-text-only setups that never emit `tts:audio:start`/`tts:audio:end`; it does
-not run while speech is playing. Two qualifications:
-parameters using the `Add` or `Multiply` blend fade smoothly when their
-release duration is positive — an authored `FadeOutTime: 0` is honored as
-an instant release, a knob model authors have — while parameters using
-`Overwrite` snap to their base value, because the Cubism SDK rebases
-overwrite values from the model every frame (uncommon in practice: none of
-the bundled demo models use `Overwrite`). If the release is requested
-before the expression has finished fading in — a long authored
-`FadeInTime`, or rendering paused in a hidden tab — it waits for the
-fade-in to complete and then fades, so an expression can remain visible
-beyond the nominal 8-second hold. Idle motion, eye blink, and breath keep
-running throughout. This applies when the renderer implements
-`stopExpression` — `@charivo/render-live2d` does; a renderer that omits it
-keeps the expression until something else replaces it. The ~8-second timer
-never competes with speech: it is disarmed while an utterance is playing,
-so it only ever fires before speech starts, or in setups where no audio
-events are emitted at all (e.g. text-only LLM configurations), where it is
-the sole release trigger.
+## Expression Auto-Release
+
+An expression triggered via `avatar:expression` is released when
+`tts:audio:end` arrives — however long the utterance runs — and the model fades
+back to its base face over the expression's `FadeOutTime` (1 second when the
+`.exp3.json` does not set one) instead of snapping.
+
+A roughly 8-second timer is the fallback for setups where no audio events flow
+at all, such as text-only configurations that never emit `tts:audio:start` /
+`tts:audio:end`. It is disarmed while an utterance is playing, so it never
+competes with speech: it fires only before speech starts, or where it is the
+sole release trigger.
+
+Three qualifications:
+
+- Parameters using the `Add` or `Multiply` blend fade smoothly when their
+  release duration is positive — an authored `FadeOutTime: 0` is honored as an
+  instant release, a knob model authors have. Parameters using `Overwrite` snap
+  to their base value instead, because the Cubism SDK rebases overwrite values
+  from the model every frame (uncommon in practice: none of the bundled demo
+  models use `Overwrite`).
+- A release requested before the expression has finished fading in — a long
+  authored `FadeInTime`, or rendering paused in a hidden tab — waits for the
+  fade-in to complete and then fades, so an expression can remain visible
+  beyond the nominal 8-second hold.
+- This applies when the renderer implements `stopExpression`.
+  `@charivo/render-live2d` does; a renderer that omits it keeps the expression
+  until something else replaces it.
+
+Idle motion, eye blink, and breath keep running throughout.
 
 ## Event Wiring
 

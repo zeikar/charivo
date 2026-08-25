@@ -26,17 +26,10 @@ In practice:
 - `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
 - modality packages own stateful feature logic
 - browser runtime packages live on subpaths such as `@charivo/tts/remote` or `@charivo/realtime/openai`
-- server providers live on `@charivo/server/*` subpaths; the OpenAI
-  LLM/TTS/STT providers and OpenClaw LLM provider are implemented on the
-  matching modality subpath (e.g. `@charivo/llm/openai`) and re-exported from
-  `@charivo/server/*`, which keeps credential use and the realtime session
-  bootstrap on the server side. That placement is deliberate, not an inverted
-  layering: each of those modality subpaths also ships a dev/testing browser
-  client that wraps the same provider instead of duplicating an HTTP client,
-  so the provider has to live where that client can reuse it — which is why
-  `@charivo/server/*` is mostly re-exports. Fresh reviews have misread this
-  twice; it has been examined and upheld both times, so treat it as settled
-  unless the dev-client path itself is being removed
+- server providers live on `@charivo/server/*` subpaths, which keeps credential
+  use and the realtime session bootstrap on the server side — see
+  [Server Providers](#server-providers) for why most of them are implemented in
+  the modality packages
 
 Lower layers should not take on orchestration concerns from higher layers.
 
@@ -130,6 +123,8 @@ when you explicitly want local development shortcuts or zero-server behavior.
 - `@charivo/stt/remote`
 - `@charivo/stt/openai` — also exports the `createOpenAISTTProvider` server-side provider
 - `@charivo/stt/web`
+- `@charivo/stt/openai-realtime` — streaming transcriber; the app supplies the
+  bootstrap function that owns credentials
 
 ### Realtime
 
@@ -155,16 +150,13 @@ matching modality package (`@charivo/llm/openai`, `@charivo/llm/openclaw`,
 OpenAI realtime provider (ephemeral client-secret minting) is implemented
 directly in `@charivo/server`.
 
-The default production shape is:
-
-```text
-browser app
-  -> @charivo/core
-  -> modality root package
-  -> remote browser runtime package
-  -> your API route
-  -> server provider package
-```
+That placement is deliberate, not an inverted layering: each of those modality
+subpaths also ships a dev/testing browser client that wraps the same provider
+instead of duplicating an HTTP client, so the provider has to live where that
+client can reuse it — which is why `@charivo/server/*` is mostly re-exports.
+Fresh reviews have misread this twice; it has been examined and upheld both
+times, so treat it as settled unless the dev-client path itself is being
+removed.
 
 ## Event Wiring
 
@@ -216,30 +208,31 @@ packages/
   realtime/
   render/
   render-live2d/
+  render-iki/
   server/
 examples/
   web/
   companion/
+  iki-test/
 docs/
   guide/
   history/
   images/
+docs-site/
 scripts/
 ```
 
-- `packages/`: publishable library packages
-- `examples/`: two reference apps — [web](./examples-web.md) puts the LLM/TTS/STT
-  client styles side by side, [companion](./examples-companion.md) is
-  realtime-only with browser-local character memory
-- `docs/guide/`: user-facing integration guides
-- `docs/history/`: upgrade notes and implementation history
-- `scripts/`: repo tooling
-
-## Documentation Split
-
 - root `README.md`: project overview and top-level entry points
+- `packages/`: library packages, publishable except private development
+  adapters such as `@charivo/render-iki`
+- `examples/`: the two documented reference apps — [web](./examples-web.md) puts
+  the LLM/TTS/STT client styles side by side, [companion](./examples-companion.md)
+  is realtime-only with browser-local character memory — plus `iki-test`, a
+  private harness for the iki renderer adapter
+- `docs-site/`: the site that publishes `docs/guide/`
 - `docs/guide/`: integration guides and package selection help
-- `docs/history/`: migrations and historical notes
+- `docs/history/`: migrations, upgrade notes, and implementation history
+- `scripts/`: repo tooling
 
 ## TypeScript Module Resolution
 

@@ -35,38 +35,22 @@ That means:
 - remote browser packages talk to your server
 - server provider packages such as `@charivo/server/openai` keep credentials on the server
 
-## Reading Order
+## Where To Start
 
-If you are new to the repo, read in this order:
+New to the repo: read [Getting Started](./getting-started.md), then
+[Choosing Packages](./choosing-packages.md) and
+[Architecture](./architecture.md), then the subsystem guides you need.
 
-1. [Getting Started](./getting-started.md)
-2. [Choosing Packages](./choosing-packages.md)
-3. [Architecture](./architecture.md)
-4. the subsystem guides you need
+For the quickest route to a working browser app, follow
+[Getting Started](./getting-started.md), [Rendering](./rendering.md), and
+[Examples Web](./examples-web.md).
 
-## Common Paths
-
-### Quickest route to a working browser app
-
-- [Getting Started](./getting-started.md)
-- [Rendering](./rendering.md)
-- [Examples Web](./examples-web.md)
-
-### Choosing packages before wiring the app
-
-- [Choosing Packages](./choosing-packages.md)
-- [Architecture](./architecture.md)
-- [LLM](./llm.md)
-- [TTS](./tts.md)
-- [STT](./stt.md)
-- [Realtime](./realtime.md)
-
-### Reading the shipped reference apps
+To read the shipped reference apps:
 
 - [Examples Web](./examples-web.md) — LLM/TTS/STT client styles side by side
-- [examples/web README](https://github.com/zeikar/charivo/blob/main/examples/web/README.md)
-- [Examples Companion](./examples-companion.md) — realtime-only, browser-local memory
-- [examples/companion README](https://github.com/zeikar/charivo/blob/main/examples/companion/README.md)
+  ([app README](https://github.com/zeikar/charivo/blob/main/examples/web/README.md))
+- [Examples Companion](./examples-companion.md) — realtime-only, browser-local
+  memory ([app README](https://github.com/zeikar/charivo/blob/main/examples/companion/README.md))
 
 ## Guide Map
 

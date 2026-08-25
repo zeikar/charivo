@@ -18,7 +18,8 @@ The app exercises the current package stack:
 - LLM chat through remote, direct, OpenClaw proxy (dev builds only), and
   stub clients
 - TTS through remote, browser-native, and direct OpenAI players
-- STT through remote, browser-native, and direct OpenAI transcribers
+- STT through remote, browser-native, direct OpenAI, and streaming
+  (`@charivo/stt/openai-realtime`) transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
 - avatar expression/motion/gaze tool calling through `@charivo/avatar`, wired
   into both LLM chat and realtime voice sessions
@@ -43,9 +44,15 @@ The current reference app ships:
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
 - `POST /api/tts`
-  Uses `@charivo/server/openai` with default voice `marin` and model `gpt-4o-mini-tts`
+  Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The route resolves
+  the voice itself — the requested voice when it is on the allowlist, otherwise
+  the `sage` fallback — and passes it explicitly, so the provider default is
+  never consulted
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
+- `POST /api/realtime-transcription`
+  Exchanges the streaming transcriber's SDP offer with OpenAI so the browser
+  never holds a key
 - `POST /api/realtime`
   Uses `@charivo/server/openai` to create a realtime session bootstrap
 
@@ -59,6 +66,7 @@ place:
   (the OpenClaw options are hidden in production builds — they need a gateway
   on `OPENCLAW_BASE_URL`, which defaults to localhost)
 - browser-native TTS and STT paths for zero-server speech experiments
+- a streaming STT path backed by `/api/realtime-transcription`
 - stub LLM mode for deterministic UI work
 
 ## Files To Read

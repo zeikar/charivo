@@ -115,7 +115,10 @@ await manager.prepareAudio(sessionConfig);
 await manager.startSession(sessionConfig);
 ```
 
-`gpt-realtime-2.1-mini` is the default realtime model; the full `gpt-realtime-2.1` is available but meaningfully more expensive—consult [OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before switching.
+`gpt-realtime-2.1-mini` is the default realtime model. The full
+`gpt-realtime-2.1` is available but meaningfully more expensive — consult
+[OpenAI's pricing page](https://developers.openai.com/api/docs/pricing) before
+switching.
 
 ### Input Audio Transcription
 
@@ -149,11 +152,12 @@ values surface as upstream errors. Known options today include `whisper-1`,
 `gpt-4o-mini-transcribe`, and `gpt-4o-transcribe`; none is applied unless you
 set `model` explicitly.
 
-If you need stronger product-specific acting guidance, append it in the app
-layer on top of the library-generated base instead of making
-`@charivo/realtime` own product persona rules:
+### Instruction Layering
 
-Continuing from Basic Setup, with the same `character` and `avatarCatalog`:
+Append product-specific acting guidance in the app layer, on top of the
+library-generated base, instead of making `@charivo/realtime` own product
+persona rules. Continuing from Basic Setup, with the same `character` and
+`avatarCatalog`:
 
 ```ts
 import { buildRealtimeSessionConfig } from "@charivo/realtime";
@@ -194,7 +198,8 @@ transport/provider packages, not in the provider-agnostic manager helper.
 - `@charivo/realtime/openai-agents`
 - current OpenAI Agents SDK transport client and adapter
 - useful when you need to own the underlying browser client directly
-- dev/testing only: pass `apiKey` to mint an ephemeral client secret in the browser (no server), mirroring `@charivo/llm/openai` / `@charivo/tts/openai`
+- dev/testing only: pass `apiKey` to mint an ephemeral client secret in the
+  browser (no server), mirroring `@charivo/llm/openai` / `@charivo/tts/openai`
 
 ```ts
 import { createRealtimeManager } from "@charivo/realtime";
@@ -227,6 +232,11 @@ short-lived and re-minted per session. Use the server-mediated
 - reconnect orchestration and reconnect observability events
 - relaying realtime output into the Charivo event stream
 
+`RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
+bus. It emits realtime, tool, text, and lip-sync related events back into core.
+
+## Tools
+
 `registerTool(...)` / `unregisterTool(...)` work on a live session: each one
 patches the active session so the model sees the new tool surface without a
 reconnect. Nothing is sent while the session is idle — the next
@@ -238,9 +248,6 @@ registering a batch of tools costs one session patch, not one per tool.
 Both methods return `void` and the refresh is fire-and-forget: if the provider
 rejects the patch, the failure surfaces as `realtime:error` rather than as a
 rejected call, so watch that event instead of awaiting these.
-
-`RealtimeManager` intentionally uses `setEventEmitter(...)`, not the full event
-bus. It emits realtime, tool, text, and lip-sync related events back into core.
 
 Tool handlers time out after 10 seconds by default; set `timeoutMs` on a
 registration to override it per tool, or `defaultToolTimeoutMs` on the manager
@@ -412,6 +419,8 @@ session active and attempts recovery with the latest effective config.
 - `realtime:reconnect:attempt`, `realtime:reconnect:success`, and
   `realtime:reconnect:exhausted` are emitted for observability
 
+## Send and Interrupt Contract
+
 `sendMessage(...)` also rejects while a response is already in progress; the
 app must call `interrupt()` first, because the transport allows one active
 response at a time. This deliberately diverges from the cascade path, where
@@ -442,12 +451,20 @@ realtime response instead. A realtime app calls the realtime manager's own
 
 The browser posts a complete `RealtimeSessionRequest` — the selected adapter,
 the transport, the effective session config (instructions, tools, voice), and an
-SDP offer when the transport needs one. Your route forwards that request with
-your API key attached; rebuilding the session server side would discard whatever
-the client resolved.
+SDP offer when the transport needs one. Forward the adapter, transport, and SDP
+offer as they arrive: those are what the client resolved, and rebuilding them
+server side would discard it.
 
-The route mints billable sessions, so gate it. Nothing in Charivo does that for
-you — add your own auth and rate limiting where the placeholder sits below.
+The session config is different — it is untrusted input that decides what you
+are billed for. Pin the cost-bearing fields (model, max output tokens,
+transcription model) server side, allowlist the voice, and bound or validate
+instructions and tools rather than passing them through. The route below is the
+minimal shape; both shipped demo routes are the hardened version, and
+[`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts)
+is worth reading before you deploy one.
+
+The route also mints billable sessions, so gate it. Nothing in Charivo does that
+for you — add your own auth and rate limiting where the placeholder sits below.
 
 ```ts
 import {
@@ -495,9 +512,9 @@ export async function POST(request: Request) {
 }
 ```
 
-[`examples/web/src/app/api/realtime/route.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/realtime/route.ts)
-is the same flow with full error handling. It is a demo route: it covers request
-forwarding, not authentication or abuse prevention.
+That demo route is the same flow with full error handling and the pinning
+described above. It still has no authentication or rate limiting — those remain
+yours to add.
 
 If `model` or `voice` are omitted from an OpenAI realtime session, the OpenAI
 provider applies its OpenAI-specific defaults before calling OpenAI. Apps can

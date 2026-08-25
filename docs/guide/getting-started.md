@@ -221,8 +221,13 @@ module resolution mode that supports package exports:
 
 ## Error Handling
 
-Public Charivo APIs now throw typed errors from `@charivo/core`. Prefer
-`isCharivoError(error)` or `error.code` checks instead of parsing messages.
+Charivo normalizes orchestration and runtime failures into typed errors from
+`@charivo/core`. Prefer `isCharivoError(error)` or `error.code` checks over
+parsing messages.
+
+Not every throw is one: factory validation raises plain `TypeError`s (an
+invalid `maxHistoryTurns`, for example), and renderers or third-party
+implementations may throw ordinary `Error`s.
 
 ## Related Guides
 

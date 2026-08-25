@@ -54,13 +54,16 @@ situational date/time) and passes them to `startSession({ instructions })`.
 During the session it captures turns and promotes them back into the store at
 checkpoints and on session end, so the relationship carries into the next visit.
 
-Because the store is per-browser, no visitor can read another's memory — which
-is what makes the demo deployable without a database. That is a statement about
-memory isolation, not about deployment safety: `/api/realtime` mints sessions
-with your server's OpenAI key and has no authentication or rate limiting, so any
-public deployment still needs its own abuse controls. It also means memory does
-not sync across devices, and clearing site data resets it. A real product would
-add auth and a server datastore.
+Because the store is per-browser, memory never leaves the visitor's own machine
+— which is what makes the demo deployable without a database. The scope is the
+browser profile and origin, not a person: the app uses a fixed local user id, so
+anyone sharing that profile shares the memory. It also means memory does not
+sync across devices, and clearing site data resets it.
+
+None of that is a statement about deployment safety: `/api/realtime` mints
+sessions with your server's OpenAI key and has no authentication or rate
+limiting, so any public deployment still needs its own abuse controls. A real
+product would add auth and a user-scoped server datastore.
 
 One limitation worth knowing before you read the code: the MVP's fact extractor
 is a no-op and session summaries are always null. Promotion still advances the

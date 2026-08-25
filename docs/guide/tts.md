@@ -81,6 +81,8 @@ browsers. Call `ttsManager.dispose()` to release lip-sync audio resources if
 your app tears a `TTSManager` down outside `Charivo.dispose()`, which already
 calls it automatically.
 
+## Stopping and Interrupting
+
 `ttsManager.stop()` settles an in-flight `speak()` call it interrupts instead
 of leaving it pending — a deliberate stop resolves rather than rejects.
 `Charivo.userSay(text)` calls this at the start of every turn, so a reply

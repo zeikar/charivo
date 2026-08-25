@@ -89,6 +89,15 @@ const provider = createOpenAILLMProvider({
 const text = await provider.generateResponse(messages);
 ```
 
+## What `@charivo/llm` Owns
+
+- message history
+- character-aware prompt building
+- response generation through an injected client
+
+The client is replaceable. The manager remains the stable place for
+conversation state.
+
 ## Avatar Tool Calling
 
 `LLMManager` can drive `@charivo/avatar`'s tools the same way
@@ -125,13 +134,12 @@ const manager = createLLMManager(
 charivo.attachLLM(manager);
 ```
 
-`attachLLM(...)` wires the event emitter that `resultProjectors` need to turn
+`attachLLM(...)` wires the event emitter `resultProjectors` need to turn
 successful tool calls into `avatar:expression` / `avatar:motion` /
-`avatar:gaze` events; a `RenderManager` attached to the same `Charivo`
-instance already listens for them. The same emitter also makes the tool loop
-publish `tool:call` / `tool:result` / `tool:error` around every tool execution,
-the same events `RealtimeManager` emits, so you can log or inspect tool activity
-from one place.
+`avatar:gaze` events; a `RenderManager` on the same `Charivo` instance already
+listens for them. The same emitter publishes `tool:call` / `tool:result` /
+`tool:error` around every tool execution — the events `RealtimeManager` emits
+too, so tool activity stays observable from one place.
 
 On the server side, your route needs to accept an optional `tools` array and
 call the tool-calling variant of your provider whenever the request needs it —
@@ -163,15 +171,6 @@ text-only reply, and only the final assistant text is added to
 `LLMManager`'s history — see [Tool Calling](https://github.com/zeikar/charivo/blob/main/packages/llm/README.md#tool-calling)
 in the package README for the full round-cap and remote protocol details.
 
-## What `@charivo/llm` Owns
-
-- message history
-- character-aware prompt building
-- response generation through an injected client
-
-The client is replaceable. The manager remains the stable place for
-conversation state.
-
 ## History Retention
 
 `LLMManager` keeps the latest 40 turns by default. A turn is one user message
@@ -180,27 +179,31 @@ to the latest 80 stored messages. This keeps long-running chat sessions from
 growing memory and context cost without additional app code.
 
 Override the limit with `createLLMManager(client, { maxHistoryTurns })`, or use
-`maxHistoryTurns: null` if your app needs the previous unbounded behavior.
+`maxHistoryTurns: null` for unbounded history.
 
-Under `Charivo` orchestration the turn's history writes belong to `Charivo`,
-not to the manager: `userSay(text)` places the user message through
-`addToHistory(...)`, calls `generateResponse(..., { callerOwnsHistory: true })`
-so the manager writes nothing for that call, and commits the reply itself once
-the turn has reached presentation. That is what keeps a superseded turn's user
-message in history while its unspoken reply never enters it — see the
-latest-wins turn contract in the
-[core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md#charivo).
-`maxHistoryTurns` then applies to those messages like any other.
-
-`Charivo` also passes a per-turn `signal` alongside `isCancelled`, so a
-superseded turn's in-flight request is aborted rather than left running when
-the client honors the optional signal — `@charivo/llm/remote` does; a client
-that ignores it (such as the direct OpenAI dev client) keeps the old
-run-to-completion behavior. A custom `LLMManager` should forward `signal` to
-its client for real request cancellation; the built-in manager already does.
+Eviction trims to the exact bound and takes any reply it strands at the head
+with it, so overlapping `generateResponse(...)` calls at a tight limit cannot
+leave a transcript of replies that answer nothing.
 
 Realtime sessions maintain conversation state on the provider side and are not
 affected by `maxHistoryTurns`.
+
+## Under `Charivo` Orchestration
+
+The turn's history writes belong to `Charivo`, not to the manager:
+`userSay(text)` places the user message through `addToHistory(...)`, calls
+`generateResponse(..., { callerOwnsHistory: true })` so the manager writes
+nothing for that call, and commits the reply once the turn reaches
+presentation. That is what keeps a superseded turn's user message in history
+while its unspoken reply never enters it — see the latest-wins turn contract in
+the [core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md#charivo).
+`maxHistoryTurns` applies to those messages like any other.
+
+`Charivo` also passes a per-turn `signal` alongside `isCancelled`, so a
+superseded turn's in-flight request is aborted when the client honors it.
+`@charivo/llm/remote` does; the direct OpenAI dev client ignores it and runs to
+completion. A custom `LLMManager` should forward `signal` to its client — the
+built-in one already does.
 
 ## Alternatives
 
