@@ -16,6 +16,11 @@
       "import": "./dist/remote/index.mjs",
       "require": "./dist/remote/index.js"
     },
+    "./gemini": {
+      "types": "./dist/gemini/index.d.ts",
+      "import": "./dist/gemini/index.mjs",
+      "require": "./dist/gemini/index.js"
+    },
     "./openai": {
       "types": "./dist/openai/index.d.ts",
       "import": "./dist/openai/index.mjs",

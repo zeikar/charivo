@@ -15,6 +15,7 @@
       "@charivo/server/gemini": ["packages/server/src/gemini/index.ts"],
       "@charivo/server/openai": ["packages/server/src/openai/index.ts"],
       "@charivo/server/openclaw": ["packages/server/src/openclaw/index.ts"],
+      "@charivo/realtime/gemini": ["packages/realtime/src/gemini/index.ts"],
       "@charivo/realtime/openai": ["packages/realtime/src/openai/index.ts"],
       "@charivo/realtime/openai-agents": [
         "packages/realtime/src/openai-agents/index.ts"
