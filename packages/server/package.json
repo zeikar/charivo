@@ -12,6 +12,11 @@
       "types": "./dist/openclaw/index.d.ts",
       "import": "./dist/openclaw/index.mjs",
       "require": "./dist/openclaw/index.js"
+    },
+    "./gemini": {
+      "types": "./dist/gemini/index.d.ts",
+      "import": "./dist/gemini/index.mjs",
+      "require": "./dist/gemini/index.js"
     }
   },
   "files": [
