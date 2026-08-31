@@ -13,6 +13,10 @@ import {
   createOpenClawLLMProvider,
   OpenClawLLMProvider,
 } from "@charivo/server/openclaw";
+import {
+  createGeminiRealtimeProvider,
+  GeminiRealtimeProvider,
+} from "@charivo/server/gemini";
 
 // @charivo/server re-exports these providers/factories from the modality
 // packages instead of implementing them. No other test constructs providers
@@ -49,5 +53,12 @@ describe("@charivo/server/openclaw", () => {
   it("re-exports the LLM provider and factory", () => {
     const provider = createOpenClawLLMProvider({ token: "token" });
     expect(provider).toBeInstanceOf(OpenClawLLMProvider);
+  });
+});
+
+describe("@charivo/server/gemini", () => {
+  it("re-exports the realtime provider and factory", () => {
+    const provider = createGeminiRealtimeProvider({ apiKey: "key" });
+    expect(provider).toBeInstanceOf(GeminiRealtimeProvider);
   });
 });

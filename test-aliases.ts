@@ -29,6 +29,10 @@ export const workspaceAliases = [
     replacement: resolvePackage("packages/server/src/openclaw/index.ts"),
   },
   {
+    find: "@charivo/server/gemini",
+    replacement: resolvePackage("packages/server/src/gemini/index.ts"),
+  },
+  {
     find: "@charivo/realtime/openai",
     replacement: resolvePackage("packages/realtime/src/openai/index.ts"),
   },

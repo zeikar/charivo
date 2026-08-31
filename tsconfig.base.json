@@ -12,6 +12,7 @@
       "@charivo/llm/remote": ["packages/llm/src/remote/index.ts"],
       "@charivo/llm/stub": ["packages/llm/src/stub/index.ts"],
       "@charivo/llm": ["packages/llm/src/index.ts"],
+      "@charivo/server/gemini": ["packages/server/src/gemini/index.ts"],
       "@charivo/server/openai": ["packages/server/src/openai/index.ts"],
       "@charivo/server/openclaw": ["packages/server/src/openclaw/index.ts"],
       "@charivo/realtime/openai": ["packages/realtime/src/openai/index.ts"],
