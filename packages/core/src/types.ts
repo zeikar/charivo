@@ -56,6 +56,7 @@ export type RealtimeTransportKind = "webrtc" | "websocket";
 export type RealtimeToolChoice = "auto" | "none" | "required";
 export const OPENAI_REALTIME_ADAPTER = "openai-webrtc";
 export const OPENAI_REALTIME_AGENTS_ADAPTER = "openai-agents-webrtc";
+export const GEMINI_LIVE_ADAPTER = "gemini-live-websocket";
 
 // Modality-neutral tool contracts (used by realtime and LLM sessions)
 export interface ToolDefinition {
