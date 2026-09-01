@@ -3,11 +3,15 @@ import {
   createOpenAIRealtimeProvider,
   type OpenAIRealtimeProviderConfig,
 } from "@charivo/server/openai";
-import type {
-  RealtimeSessionConfig,
-  RealtimeSessionRequest,
+import { createGeminiRealtimeProvider } from "@charivo/server/gemini";
+import {
+  GEMINI_LIVE_ADAPTER,
+  type RealtimeProvider,
+  type RealtimeSessionConfig,
+  type RealtimeSessionRequest,
 } from "@charivo/core";
 import {
+  REALTIME_GEMINI_MODEL,
   REALTIME_MAX_INSTRUCTIONS_CHARS,
   REALTIME_MAX_OUTPUT_TOKENS,
   REALTIME_MAX_TOOLS,
@@ -18,17 +22,24 @@ import {
   TTS_ALLOWED_VOICES,
 } from "../demo-limits";
 
+type SessionResult =
+  | { ok: true; value: RealtimeSessionConfig }
+  | { ok: false; error: string };
+
 /**
- * Rebuild the session from scratch instead of forwarding the client's copy.
- * `RealtimeSessionConfig` carries `model` and `instructions`, so passing the
- * request body through would let any caller point this key at any model with
- * their own system prompt — a general-purpose LLM proxy on someone else's bill.
- * Only the fields the demo genuinely needs from the browser survive, and each
- * one is bounded.
+ * Every provider branch rebuilds the session from scratch instead of forwarding
+ * the client's copy. `RealtimeSessionConfig` carries `model` and `instructions`,
+ * so passing the request body through would let any caller point a paid key at
+ * any model with their own system prompt — a general-purpose LLM proxy on
+ * someone else's bill. Only the fields the demo genuinely needs from the browser
+ * survive, and each one is bounded; everything else an assembler emits is pinned
+ * server-side.
  */
-function buildSessionConfig(
+function checkSharedInput(
   requested: RealtimeSessionConfig,
-): { ok: true; value: RealtimeSessionConfig } | { ok: false; error: string } {
+):
+  | { ok: true; value: Pick<RealtimeSessionConfig, "instructions" | "tools"> }
+  | { ok: false; error: string } {
   const instructions = requested.instructions;
   if (instructions !== undefined) {
     if (typeof instructions !== "string") {
@@ -65,6 +76,18 @@ function buildSessionConfig(
       };
     }
   }
+
+  return { ok: true, value: { instructions, tools } };
+}
+
+function buildOpenAISessionConfig(
+  requested: RealtimeSessionConfig,
+): SessionResult {
+  const bounded = checkSharedInput(requested);
+  if (!bounded.ok) {
+    return bounded;
+  }
+  const { instructions, tools } = bounded.value;
 
   const toolChoice = requested.toolChoice;
   if (
@@ -108,6 +131,44 @@ function buildSessionConfig(
   };
 }
 
+function buildGeminiSessionConfig(
+  requested: RealtimeSessionConfig,
+): SessionResult {
+  const bounded = checkSharedInput(requested);
+  if (!bounded.ok) {
+    return bounded;
+  }
+  const { instructions, tools } = bounded.value;
+
+  // `@charivo/server/gemini` refuses "none"/"required" outright — the Live API
+  // has no tool-choice equivalent — so catching them here answers a caller
+  // mistake with a 400. Letting it reach the provider would answer 500 instead,
+  // telling the caller the server broke when their request was wrong. "auto" is
+  // the only behavior that provider has, so nothing needs forwarding.
+  if (requested.toolChoice !== undefined && requested.toolChoice !== "auto") {
+    return {
+      ok: false,
+      error: 'session.toolChoice must be "auto" for the gemini provider',
+    };
+  }
+
+  // No `voice`: the shipped characters carry OpenAI voice ids, and
+  // `@charivo/server/gemini` picks its own default from Google's list.
+  // No `inputAudioTranscription` either — that provider rejects the block when
+  // it names a model — so its default stands: input transcription is always on,
+  // and always billed, on this path.
+  return {
+    ok: true,
+    value: {
+      provider: "gemini",
+      model: REALTIME_GEMINI_MODEL,
+      maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
+      ...(instructions !== undefined ? { instructions } : {}),
+      ...(tools !== undefined ? { tools } : {}),
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as Partial<RealtimeSessionRequest>;
@@ -118,37 +179,86 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (body.session.provider !== "openai") {
-      return NextResponse.json(
-        {
-          error: `Unsupported realtime provider: ${body.session.provider ?? "(unspecified)"}`,
-        },
-        { status: 501 },
-      );
-    }
+    let provider: RealtimeProvider;
+    let session: RealtimeSessionConfig;
 
-    const session = buildSessionConfig(body.session);
-    if (!session.ok) {
-      return NextResponse.json({ error: session.error }, { status: 400 });
-    }
+    switch (body.session.provider) {
+      case "openai": {
+        const built = buildOpenAISessionConfig(body.session);
+        if (!built.ok) {
+          return NextResponse.json({ error: built.error }, { status: 400 });
+        }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY not configured" },
-        { status: 500 },
-      );
-    }
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          return NextResponse.json(
+            { error: "OPENAI_API_KEY not configured" },
+            { status: 500 },
+          );
+        }
 
-    const providerConfig: OpenAIRealtimeProviderConfig = {
-      apiKey,
-    };
-    const provider = createOpenAIRealtimeProvider(providerConfig);
+        const providerConfig: OpenAIRealtimeProviderConfig = {
+          apiKey,
+        };
+        provider = createOpenAIRealtimeProvider(providerConfig);
+        session = built.value;
+        break;
+      }
+      case "gemini": {
+        // Gemini Live is websocket-only and speaks one adapter. The provider
+        // rejects anything else, but from inside the try that comes back as a
+        // 500, telling the caller the server broke when their request was
+        // wrong — so a caller mistake is answered here as a 400 instead.
+        if (body.transport !== "websocket") {
+          return NextResponse.json(
+            {
+              error: `transport must be "websocket" when session.provider is "gemini", received "${body.transport}"`,
+            },
+            { status: 400 },
+          );
+        }
+        if (
+          body.adapter !== undefined &&
+          body.adapter !== GEMINI_LIVE_ADAPTER
+        ) {
+          return NextResponse.json(
+            {
+              error: `adapter must be "${GEMINI_LIVE_ADAPTER}" when session.provider is "gemini", received "${body.adapter}"`,
+            },
+            { status: 400 },
+          );
+        }
+
+        const built = buildGeminiSessionConfig(body.session);
+        if (!built.ok) {
+          return NextResponse.json({ error: built.error }, { status: 400 });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          return NextResponse.json(
+            { error: "GEMINI_API_KEY not configured" },
+            { status: 500 },
+          );
+        }
+
+        provider = createGeminiRealtimeProvider({ apiKey });
+        session = built.value;
+        break;
+      }
+      default:
+        return NextResponse.json(
+          {
+            error: `Unsupported realtime provider: ${body.session.provider ?? "(unspecified)"}`,
+          },
+          { status: 501 },
+        );
+    }
 
     const bootstrap = await provider.createSession({
       adapter: body.adapter,
       transport: body.transport,
-      session: session.value,
+      session,
       sdpOffer: body.sdpOffer,
     });
 
