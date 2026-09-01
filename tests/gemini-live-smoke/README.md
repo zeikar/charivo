@@ -162,19 +162,52 @@ be angry over the opaque `F01`..`F08` catalog, it called `setExpression` with
 `F03` — which the catalog alone defines as "angry". Nothing else on the wire
 carries that meaning, so the channel survives `bidiGenerateContentSetup` intact.
 
+### Live-run results, 2026-09-01 (Chrome and Safari, real speakers)
+
+**Chrome, silent through a full reply: zero interruptions.** The AEC finding
+from the spike holds through the real transport, not just the standalone
+measurement page.
+
+**The ending contract behaves as designed, and both orderings occurred.** One
+run had `realtime:assistant:done` at +12.753 s with `tts:audio:end` at
++12.763 s — the drain landing 10 ms *after* `turnComplete`. Another had
+`tts:audio:end` at +27.888 s and `assistant:done` at +27.895 s — the drain
+first, with the ending fired from the `turnComplete` idle branch. Both produced
+exactly one audio start/end pair. Those are the two main rows of the ending
+matrix, observed live on real hardware. Also visible: the last text delta at
++5.799 s against a `turnComplete` at +12.753 s, i.e. the server holding
+`turnComplete` for the audio's duration exactly as the timing table records.
+
+**Input transcription is finalized per utterance, and it arrives in order.** A
+long multi-clause Korean sentence produced **one** `realtime:user:transcript`
+carrying the whole sentence, at +11.372 s, with the assistant turn it prompted
+starting at +11.953 s. Both stop-and-redesign conditions passed, so the
+no-accumulation-buffer mapping stands.
+
+**Safari: no self-interruption across a multi-turn session.** The spike had
+Safari killing its own turns ~0.5 s after each voice onset; with the
+convergence gate in the transport, a ~44 s session with three replies produced
+no `interrupted` event at all. The `Convergence gate disarmed after <n>ms`
+console line was not captured on that run, so whether the gate disarmed or
+simply stayed armed through short turns is unknown — either is correct
+behaviour, and nothing observed argues for moving `CONVERGENCE_GATE_MS` off its
+spike-measured value. Re-measure before trusting it on other hardware.
+
+One thing that is *not* a defect, in case it is seen again: a lone
+`realtime:user:transcript` can appear shortly after a turn ends (one run
+transcribed a stray `s` 1.1 s after `tts:audio:end`). That is the microphone
+picking up the room and server VAD opening a new turn — no `interrupted` fires
+and nothing is cut off, because the previous turn had already completed.
+
 ### OPEN — still needs a human at the machine
 
-One question left, and it is the one no fake device can answer.
-
-**Echo, the convergence gate, and transcript fragmentation.** The AEC control
-and the Safari gate tuning both need real speakers and a real room — see the
-protocol above. Transcript fragmentation and ordering need actual speech:
-speak a long multi-clause Korean sentence and check whether it arrives as
-**one** `user.transcript` or several (`userTranscripts.length`), and whether
-each user transcript lands in the event log **before** the assistant turn it
-prompted. Both are stop-and-redesign findings if they fail, not nits — the
-manager relays user transcripts straight through with no accumulation buffer,
-on the measured basis that input transcription is finalized per utterance.
+**The AEC control run.** Every Chrome result above is a zero, and a zero only
+means something against a run where the counter climbs. The control —
+`echoCancellation: false` in `DEFAULT_MICROPHONE_CONSTRAINTS`
+(`packages/realtime/src/internal/microphone.ts`), take the reading, put it back
+— has been done for the spike's standalone page but not yet through the real
+transport. Until it is, the Chrome zeros are consistent with a live acoustic
+path *and* with a microphone that is not being heard at all.
 
 ## The measured record
 
