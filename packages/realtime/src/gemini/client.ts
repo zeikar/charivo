@@ -34,9 +34,38 @@ export interface GeminiLiveClientOptions {
   ) => Promise<RealtimeSessionBootstrap>;
 }
 
-/** Top-level server frame. Task 7 adds `serverContent`, `toolCall`, and the rest. */
+/** One `inlineData` part carries one `audio/pcm;rate=24000` chunk. */
+interface GeminiPart {
+  inlineData?: { data?: string; mimeType?: string };
+}
+
+/**
+ * Top-level server frame. `setupComplete`, `serverContent`,
+ * `sessionResumptionUpdate`, and `usageMetadata` were seen on a live session;
+ * the tool and `goAway` shapes come from the API reference and are unverified
+ * (`tests/gemini-live-smoke/README.md`).
+ */
 interface GeminiServerMessage {
   setupComplete?: Record<string, unknown>;
+  serverContent?: {
+    modelTurn?: { parts?: GeminiPart[] };
+    inputTranscription?: { text?: string };
+    outputTranscription?: { text?: string };
+    interrupted?: boolean;
+    turnComplete?: boolean;
+  };
+  /** Task 8 maps both of these into `tool.call` and the call-id map. */
+  toolCall?: {
+    functionCalls?: Array<{
+      id?: string;
+      name?: string;
+      args?: Record<string, unknown>;
+    }>;
+  };
+  toolCallCancellation?: { ids?: string[] };
+  goAway?: { timeLeft?: string };
+  sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
+  usageMetadata?: Record<string, unknown>;
 }
 
 /**
@@ -108,17 +137,58 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    * model, at a bounded cost — a barge-in inside the gate window at the start
    * of a reply is lost, against the character killing its own turn twice.
    *
-   * Task 7 owns the disarm rule, by accumulated audible exposure.
+   * Disarmed by accumulated audible exposure, in `endAudioOutput`.
    */
   private gateArmed = true;
   /**
    * `performance.now()` at the moment the current turn's playback became
    * audible, and the only thing the gate window is measured from: a fact this
-   * client owns, never a guess about what the microphone contains. Recorded per
-   * turn by Task 7; read by `sendCaptureFrame` and cleared by the transient
-   * reset.
+   * client owns, never a guess about what the microphone contains. Re-anchored
+   * at every turn's first audible playback by `beginAudiblePlayback`; read by
+   * `sendCaptureFrame` and cleared by the transient reset.
    */
   private playbackAudibleSince: number | null = null;
+  /**
+   * How much audible playback the echo canceller has had to adapt to, summed
+   * over the scheduler's playing → not-playing intervals for the whole session
+   * and the only quantity the gate disarms on. `audibleSpanStartedAt` is the
+   * open interval, or null while nothing is sounding.
+   */
+  private audibleExposureMs = 0;
+  private audibleSpanStartedAt: number | null = null;
+  /**
+   * Assistant-side turn state. Output transcription is native audio's only
+   * source of assistant text, and both fields are cleared at `turnComplete`.
+   */
+  private hasStartedAssistantResponse = false;
+  private assistantText = "";
+  /**
+   * Audio bookkeeping, which deliberately outlives `turnComplete`: in the
+   * measured normal sequence the final drain lands ~3 ms *after* it, so both
+   * are cleared where `audio.output.ended` actually fires.
+   *
+   * `hasStartedAudioOutput` is what keeps the pair balanced — every ending path
+   * requires it and clears it, so a raw transport listener sees exactly one
+   * start/end per turn. `turnCompleteSeen` means an ending is still owed, and
+   * is the second half of `ended` = currently idle AND `turnComplete` seen. The
+   * transient reset drops both, along with the turn they described.
+   */
+  private hasStartedAudioOutput = false;
+  private turnCompleteSeen = false;
+  /**
+   * Whether server VAD killed this turn. Set by `handleInterrupted`, then read
+   * and cleared by the `endAudioOutput` it goes on to call: an interrupted turn
+   * banks its audible exposure like any other but never disarms the gate.
+   */
+  private turnInterrupted = false;
+  /**
+   * Newest `usageMetadata` of the turn in progress, reported as `usage` when it
+   * completes and dropped there. Nothing measured guarantees one frame per
+   * turn, so carrying it forward would report the previous turn's numbers as
+   * this one's — and since audio prompt tokens grow turn over turn, it would
+   * under-report rather than fail visibly.
+   */
+  private latestUsage: Record<string, unknown> | undefined;
   private currentSessionConfig?: RealtimeSessionConfig;
   private connectionLossNotified = false;
   private isExplicitDisconnect = false;
@@ -252,7 +322,7 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     }
   }
 
-  // Tasks 7-8 replace the bodies of sendText(), interrupt(), and
+  // Task 8 replaces the bodies of sendText(), interrupt(), and
   // sendToolResult() with the real client frames. Until then they refuse rather
   // than accept input the socket will never carry. sendAudio() below is not one
   // of them: its no-op is the final behavior.
@@ -338,19 +408,22 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // null check above and build a rival context.
     this.playbackContext = context;
     this.playbackScheduler = new PlaybackScheduler(context, graph.output, {
-      // Task 7 combines this with `turnComplete` to decide that audio ended —
-      // a drain on its own fires 3 ms into a twelve-second reply.
-      onDrain: () => {},
-      // Task 7 records `playbackAudibleSince` at the turn's *first* audible
-      // playback, and sums these intervals into the exposure total that
-      // disarms the gate. Not once per audible span: this fires again on every
-      // mid-turn underrun, so re-anchoring on it would let a stalling
-      // connection hold the gate open for a whole reply — silently, which is
-      // the failure class the measured record already warns about. Once
-      // anchored, leave it standing when playback stops; the window has to
-      // expire on its own clock rather than on silence the acoustic path has
-      // not caught up with. Task 7 also resumes/pauses the analyzer here.
-      onPlayingChange: (_playing: boolean) => {},
+      onDrain: () => {
+        // A drain on its own is not the end of the model's audio — see
+        // `PlaybackSchedulerCallbacks.onDrain` for the measurement. Only a
+        // drain that follows `turnComplete` ends the turn; every other one is
+        // an underrun audio resumes from.
+        if (this.turnCompleteSeen) {
+          this.endAudioOutput();
+        }
+      },
+      onPlayingChange: (playing: boolean) => {
+        if (playing) {
+          this.beginAudiblePlayback();
+        } else {
+          this.bankAudibleExposure();
+        }
+      },
     });
 
     await this.lipSyncAnalyzer.prepare();
@@ -478,7 +551,226 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       return;
     }
 
-    // Task 7 maps serverContent / toolCall / usageMetadata from here.
+    if (message.usageMetadata) {
+      // Newest wins: it is what the turn reports as `usage` when it completes.
+      this.latestUsage = message.usageMetadata;
+    }
+
+    // `sessionResumptionUpdate` and `goAway` are read by nothing on purpose.
+    // Handles arrive roughly every 1.2 s, each superseding the last (~50 per
+    // 100 s session), and none of them can be spent here for the reason
+    // `updateSession()` refuses: the session is fixed at mint time, so resuming
+    // one would have to be minted server-side. They are session credentials
+    // either way, so they are never logged. `goAway` announces a handover this
+    // client cannot perform, and the close that follows it already drives
+    // recovery.
+
+    const content = message.serverContent;
+    if (!content) {
+      return;
+    }
+
+    // Emitted straight through, one event per message, with no accumulation
+    // buffer and no turn-boundary flush: input transcription arrives finalized
+    // per utterance, unlike output — two spoken utterances produced exactly two
+    // complete-sentence events against 44 fragmentary output events in the same
+    // session (measured). Accumulating would merge separate user turns.
+    // `interimInputTranscription` is ignored entirely.
+    if (content.inputTranscription?.text) {
+      this.emitEvent({
+        type: "user.transcript",
+        text: content.inputTranscription.text,
+      });
+    }
+
+    if (content.outputTranscription?.text) {
+      this.appendAssistantText(content.outputTranscription.text);
+    }
+
+    for (const part of content.modelTurn?.parts ?? []) {
+      if (part.inlineData?.data) {
+        // Queued, not played: chunks arrive far faster than real time, so
+        // `audio.output.started` and the gate anchor wait for the scheduler to
+        // actually start sounding.
+        this.playbackScheduler?.enqueue(base64ToBytes(part.inlineData.data));
+      }
+    }
+
+    // Last, and `interrupted` before `turnComplete`: both settle a turn whose
+    // audio and text the block above has already handed on.
+    if (content.interrupted) {
+      this.handleInterrupted();
+    }
+
+    if (content.turnComplete) {
+      this.handleTurnComplete();
+    }
+  }
+
+  /**
+   * Server VAD cut the turn off. The accumulated text deliberately survives:
+   * the turn still reports `assistant.response.completed` at its own
+   * `turnComplete` with whatever it managed to say, which is the shape the
+   * OpenAI client already has for a VAD-cancelled response reporting its
+   * `response.done`.
+   */
+  private handleInterrupted(): void {
+    // The offset from the voice becoming audible is what keeps
+    // `CONVERGENCE_GATE_MS` tunable from data rather than from its own comment:
+    // every measured Safari interruption landed ~0.5 s after playback began.
+    const offset =
+      this.hasStartedAudioOutput && this.playbackAudibleSince !== null
+        ? `${Math.round(performance.now() - this.playbackAudibleSince)}ms after playback started`
+        : "with nothing playing";
+    this.log(`Gemini Live turn interrupted ${offset}`);
+
+    this.turnInterrupted = true;
+    // Banks the open audible span through `onPlayingChange(false)`, so the
+    // ending below settles the gate against a total that includes it.
+    this.playbackScheduler?.flush();
+    this.endAudioOutput();
+  }
+
+  private handleTurnComplete(): void {
+    // Task 8 suppresses this completion for a client-condemned turn.
+    this.emitEvent({
+      type: "assistant.response.completed",
+      text: this.assistantText,
+      usage: this.latestUsage,
+    });
+    this.assistantText = "";
+    this.hasStartedAssistantResponse = false;
+    this.latestUsage = undefined;
+
+    // "An ending is still owed", which is why it is set from the active-output
+    // flag instead of to a bare `true`. With no output active — a turn that
+    // carried no audio, or one whose audio already ended at an interruption
+    // flush — nothing would ever clear it, and the *next* turn's opening drain,
+    // measured 3 ms in, would read as this turn's ending.
+    this.turnCompleteSeen = this.hasStartedAudioOutput;
+    if (!this.turnCompleteSeen) {
+      return;
+    }
+
+    // Idle right now means the final drain has already come and gone, and it
+    // will not come again, so the ending belongs here. Asked of the scheduler
+    // live rather than remembered: the drain that ends a turn and the spurious
+    // one that opens it are the same event, so a sticky has-drained flag would
+    // end the turn while the character is still talking.
+    if (this.playbackScheduler?.isIdle()) {
+      this.endAudioOutput();
+    }
+  }
+
+  /**
+   * Output transcription is the only assistant text a native-audio session
+   * produces, and the server keeps it on, so the response's whole lifecycle
+   * hangs off these fragments.
+   */
+  private appendAssistantText(text: string): void {
+    if (!this.hasStartedAssistantResponse) {
+      this.hasStartedAssistantResponse = true;
+      this.emitEvent({ type: "assistant.response.started" });
+    }
+
+    this.assistantText += text;
+    this.emitEvent({ type: "assistant.text.delta", text });
+  }
+
+  /**
+   * The scheduler started sounding.
+   *
+   * Only the first such transition of a turn opens the turn's audio. This fires
+   * again after every mid-turn underrun, and re-anchoring the gate on those
+   * would let a stalling connection hold it open for a whole reply — silently,
+   * which is the failure class the measured record warns about. Anchoring once
+   * per session is equally wrong: the measured Safari run was interrupted 0.5 s
+   * into its *second* turn. So the anchor is per turn, and it is left standing
+   * when playback stops, because the window has to expire on its own clock
+   * rather than on a silence the acoustic path has not caught up with yet.
+   *
+   * The unconditional first line is the other half of the pairing: it opens the
+   * audible span that `bankAudibleExposure` closes, once per sounding stretch
+   * rather than once per turn.
+   */
+  private beginAudiblePlayback(): void {
+    const now = performance.now();
+    this.audibleSpanStartedAt = now;
+
+    if (this.hasStartedAudioOutput) {
+      return;
+    }
+
+    this.hasStartedAudioOutput = true;
+    this.playbackAudibleSince = now;
+    this.lipSyncAnalyzer.resume();
+    this.emitEvent({ type: "audio.output.started" });
+  }
+
+  /**
+   * Close the open audible span into the exposure total.
+   *
+   * Only these playing → not-playing intervals count towards the gate. A
+   * first-audible → `audio.output.ended` span would count silence the canceller
+   * never got to adapt to: `turnComplete` is paced to the audio's duration from
+   * the *first* chunk, so a burst-delivered turn sits quiet for seconds waiting
+   * on it — a measured 12 s span for 10.5 s of audio, and 6.5 s for 5.1 s.
+   */
+  private bankAudibleExposure(): void {
+    if (this.audibleSpanStartedAt === null) {
+      return;
+    }
+
+    this.audibleExposureMs += performance.now() - this.audibleSpanStartedAt;
+    this.audibleSpanStartedAt = null;
+  }
+
+  /**
+   * The single place `audio.output.ended` is emitted. Callers decide *that* the
+   * audio ended — always from the scheduler being idle and `turnComplete` seen,
+   * never from a timer or an RMS reading — and this keeps the start/end pair
+   * balanced and settles the gate.
+   */
+  private endAudioOutput(): void {
+    // Read and cleared above the guard, not below it: an `interrupted` that
+    // lands before any audio was audible ends nothing, and leaving the flag set
+    // would make the *next* turn end as an interrupted one and refuse to disarm
+    // the gate. Clearing here also means no caller has to assume `turnComplete`
+    // always follows `interrupted`.
+    const wasInterrupted = this.turnInterrupted;
+    this.turnInterrupted = false;
+
+    if (!this.hasStartedAudioOutput) {
+      return;
+    }
+
+    this.hasStartedAudioOutput = false;
+    this.turnCompleteSeen = false;
+
+    // Paused before the end is reported, as in the OpenAI client: the analyzer
+    // smooths its readings and would keep emitting a decaying level, which
+    // `RealtimeManager` turns back into an audio start with nothing left to
+    // close it.
+    this.lipSyncAnalyzer.pause();
+    this.emitEvent({ type: "audio.output.ended" });
+
+    // A turn disarms the gate only by running to a clean end, and only once the
+    // canceller has had `CONVERGENCE_GATE_MS` of audible speech to adapt to.
+    // The total is cumulative across the session and killed turns bank into it
+    // as well: the two interrupted Safari turns banked ~1 s between them and
+    // the third then ran seven seconds untouched. So a short clean reply leaves
+    // the gate armed however cleanly it finished, and an interrupted turn
+    // leaves it armed however long it ran.
+    if (
+      this.gateArmed &&
+      !wasInterrupted &&
+      this.audibleExposureMs >= CONVERGENCE_GATE_MS
+    ) {
+      this.gateArmed = false;
+      this.log(
+        `Convergence gate disarmed after ${Math.round(this.audibleExposureMs)}ms of audible playback`,
+      );
+    }
   }
 
   /**
@@ -518,7 +810,7 @@ export class GeminiLiveClient implements RealtimeTransportClient {
   /**
    * Whether this moment falls inside the convergence gate: still armed, and
    * within `CONVERGENCE_GATE_MS` of the current turn's playback becoming
-   * audible. Task 7 disarms the gate by accumulated audible exposure.
+   * audible.
    */
   private isWithinConvergenceGate(): boolean {
     return (
@@ -584,9 +876,22 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // assuming the adaptation survived would cost whole turns.
     this.gateArmed = true;
     this.playbackAudibleSince = null;
+    // Zeroed after the flush above, which banks its final span into the total
+    // being discarded here.
+    this.audibleExposureMs = 0;
+    this.audibleSpanStartedAt = null;
 
-    // Task 7 clears per-turn state and zeroes the exposure accumulator its
-    // gate-disarm rule sums into.
+    // Turn state is dropped rather than completed: the turn it describes
+    // belonged to the socket just closed. No pairing `audio.output.ended` is
+    // emitted for a turn cut off this way — `RealtimeManager` closes its own
+    // audio output when it hears `connection.lost`.
+    this.hasStartedAudioOutput = false;
+    this.turnCompleteSeen = false;
+    this.turnInterrupted = false;
+    this.hasStartedAssistantResponse = false;
+    this.assistantText = "";
+    this.latestUsage = undefined;
+
     // Task 8 clears the tool-call map: call IDs are session-scoped.
     //
     // Nothing here unbinds browser-lifecycle listeners because this client
@@ -765,6 +1070,20 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + stride));
   }
   return btoa(binary);
+}
+
+/**
+ * Mirrors `bytesToBase64`, and is called from inside the message pump's error
+ * boundary: `atob` throws on a malformed payload, which is protocol-fatal like
+ * any other frame this client cannot read.
+ */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function resolveWebSocketBootstrap(bootstrap: RealtimeSessionBootstrap): {

@@ -11,12 +11,17 @@ export const OUTPUT_SAMPLE_RATE = 24000;
 /** 20 ms at 16 kHz. No official chunk-size guidance exists. */
 export const CAPTURE_FRAME_SAMPLES = 320;
 /**
- * How long after the character's voice becomes audible microphone frames are
- * held back, so Safari's echo canceller can converge before the model hears the
- * character interrupting itself.
+ * Safari's echo-canceller convergence allowance, in two roles that share one
+ * number: the *window* after the character's voice becomes audible during which
+ * microphone frames are held back, and the cumulative *exposure threshold* of
+ * audible playback that disarms the gate for the rest of the session.
  *
- * Measured on one machine, one room, one pair of speakers — tune it from the
- * interruption offsets the live checks print, not from this constant
+ * They rest on different measurements, so moving this moves both: the window
+ * answers the interruption offsets the live checks print (~0.5 s after playback
+ * started, every time), while the threshold answers how much exposure the
+ * canceller needed to converge (~1 s, banked across two killed turns before the
+ * third survived intact). Both were measured on one machine, one room, one pair
+ * of speakers — tune from those live numbers rather than from this constant
  * (`tests/gemini-live-smoke/README.md`).
  */
 export const CONVERGENCE_GATE_MS = 700;
