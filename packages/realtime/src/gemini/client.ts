@@ -385,11 +385,13 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    * Stop the character mid-sentence.
    *
    * Entirely local, and it has to be: the Live API documents no client message
-   * that cancels an in-flight generation, and the spike left the cost of a
-   * local interrupt as an open question (`tests/gemini-live-smoke/README.md`,
-   * Q2) — Task 11 measures whether the killed turn still runs to its own
-   * `turnComplete`, which this design assumes. So the turn is condemned
-   * instead: what has been scheduled is discarded, and its remaining speech and
+   * that cancels an in-flight generation. So the turn is condemned instead,
+   * which rests on the killed turn still running to its own `turnComplete` —
+   * the single exit from condemnation. That was measured rather than assumed
+   * (`tests/gemini-live-smoke/README.md`, Q2): interrupting mid-count emitted
+   * no completion for the killed turn, and the very next turn completed
+   * normally, which it could not have done had the condemnation never lifted.
+   * What has been scheduled is discarded, and its remaining speech and
    * text are dropped — though not its tool calls, which `applyServerMessage`
    * still dispatches on purpose. Nothing goes on the wire, which is why this
    * needs neither an open socket nor a recovery guard.
@@ -669,8 +671,8 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // which is a decision rather than an oversight — a condemned turn's tool
     // calls are still emitted, executed, and answered onto the wire, as the
     // sibling also leaves them (`openai/client.ts`). The exposure is larger
-    // here, because this design expects a condemned turn to keep sending; that
-    // is the same open question `interrupt()` flags.
+    // here, because this design expects a condemned turn to keep sending —
+    // which it does; see `interrupt()`.
     if (message.toolCall) {
       this.handleToolCall(message.toolCall.functionCalls ?? []);
     }
@@ -791,6 +793,13 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     const wasCondemned = this.turnCondemned;
     this.turnCondemned = false;
 
+    // Emitted unconditionally, including with empty text — deliberately unlike
+    // `openai/client.ts`, which skips empty completions because its tool-using
+    // turns are measured to report twice. Gemini's do not: a live tool-using
+    // turn was measured emitting exactly ONE completion for the whole turn
+    // (`tests/gemini-live-smoke/README.md`), so an empty-text skip here would
+    // swallow the only completion the turn has and strand the manager's send
+    // lock for good. Do not port the sibling's skip.
     if (!wasCondemned) {
       this.emitEvent({
         type: "assistant.response.completed",

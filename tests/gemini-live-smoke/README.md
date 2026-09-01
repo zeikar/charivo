@@ -131,46 +131,50 @@ before trusting them elsewhere:
 Interruptions still landing means the window is too short. Turns being killed
 after the gate disarms means the threshold is.
 
-### OPEN — carried into these live checks
+### ANSWERED — Q2 and the tool frame, measured 2026-09-01
 
-Three things this cycle deliberately did not settle. All three are answered by
-running the harness, and two of them can invalidate a design decision rather
-than just a constant.
+Two of the three questions this cycle deferred are now settled, headlessly,
+through the gated Playwright suite plus two throwaway probe scripts against the
+promoted harness. Neither needed a listener.
 
-**Q2 — what a local `interrupt()` costs, and whether a killed turn still
-finishes.** Never measured. The transport's condemned-turn design *assumes* a
-turn killed by `interrupt()` still runs to its own `turnComplete`, which is the
-single exit from condemnation — that assumption is the load-bearing premise of
-the whole suppression path. If a killed turn never sends one, the client stays
-condemned and swallows the *next* turn's completion, stranding the manager's
-send lock. Protocol: send the counting prompt, press **Interrupt** mid-count,
-and check that (a) audio stops immediately, (b) the log shows
-`Gemini Live turn condemned by a local interrupt` and *no*
-`realtime:assistant:done` for the killed turn, (c) a second prompt afterwards
-completes normally and `assistantCompletions` advances by exactly one. Worth
-noting too: the server front-loads audio far faster than real time, so it keeps
-producing for a turn nobody will hear — how long it goes on after the flush is
-the cost this question is named for.
+**Q2 — a killed turn does still run to its own `turnComplete`.** This is the
+load-bearing premise of the condemned-turn design: `turnComplete` is the single
+exit from condemnation, so if a killed turn never sent one the client would
+stay condemned and swallow the *next* turn's completion, stranding the
+manager's send lock. Measured: interrupting mid-count produced **no** completion
+for the killed turn (`assistantCompletions` unchanged), the log showed
+`Gemini Live turn condemned by a local interrupt`, and the very next prompt
+completed normally, advancing the count by exactly one. It could not have done
+that had the condemnation never lifted. The premise holds.
 
-**The `toolCall` frame shape is unverified.** It comes from the API reference,
-not from measurement: the spike registered no tools. The default `smoke` mode
-registers `setExpression` for exactly this. Ask `이제 웃어줘!` and confirm the
-`tool:call` event carries the name and a populated `args` — i.e. `{ id, name,
-args }` on the wire, with `expressionId: "Smile"` — and that the answer leg
-(`{ id, name, response }`) lands: an `avatar:expression` event should follow
-and the character should speak. Also record **whether the tool leg produces its
-own `turnComplete`** (visible as an assistant completion with empty text,
-before the spoken follow-up) **and whether the follow-up produces a second
-one.** That answer decides whether skipping empty completions is safe to add
-later.
+**The `toolCall` frame shape is confirmed, and a tool-using turn reports exactly
+ONE completion.** The API-reference shape is right: `{ id, name, args }`
+arrived, the `{ id, name, response }` answer was accepted, and the character
+spoke a follow-up. The second half matters more. A tool-using turn was measured
+producing **one** `assistant.response.completed` for the whole turn — the tool
+leg does *not* emit a separate one. So the empty-text-completion skip that
+`openai/client.ts` carries (its tool turns are measured to report twice) must
+**not** be ported here: it would swallow the only completion the turn has and
+strand the send lock. `handleTurnComplete` emits unconditionally on purpose.
 
-**Transcript fragmentation and ordering.** Speak a long multi-clause Korean
-sentence and check the snapshot: does it arrive as **one** `user.transcript` or
-several (`userTranscripts.length`)? And does each user transcript land in the
-event log **before** the assistant turn it prompted? Both are stop-and-redesign
-findings if they fail, not nits — the manager relays user transcripts straight
-through with no accumulation buffer, on the measured basis that input
-transcription is finalized per utterance.
+**`expressionDescriptions` reaches the model and the model uses it.** Asked to
+be angry over the opaque `F01`..`F08` catalog, it called `setExpression` with
+`F03` — which the catalog alone defines as "angry". Nothing else on the wire
+carries that meaning, so the channel survives `bidiGenerateContentSetup` intact.
+
+### OPEN — still needs a human at the machine
+
+One question left, and it is the one no fake device can answer.
+
+**Echo, the convergence gate, and transcript fragmentation.** The AEC control
+and the Safari gate tuning both need real speakers and a real room — see the
+protocol above. Transcript fragmentation and ordering need actual speech:
+speak a long multi-clause Korean sentence and check whether it arrives as
+**one** `user.transcript` or several (`userTranscripts.length`), and whether
+each user transcript lands in the event log **before** the assistant turn it
+prompted. Both are stop-and-redesign findings if they fail, not nits — the
+manager relays user transcripts straight through with no accumulation buffer,
+on the measured basis that input transcription is finalized per utterance.
 
 ## The measured record
 
