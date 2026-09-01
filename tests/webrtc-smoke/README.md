@@ -48,7 +48,8 @@ What it proves:
   `expressionDescriptions` in the `setExpression` schema. The
   `picks a contextually correct expression from opaque IDs` test asks for anger
   and requires an angry ID back. Deleting the `expressionDescriptions` block in
-  `src/main.ts` makes it fail (observed: the model answered with a smiling ID),
+  [`tests/avatar-catalog.ts`](../avatar-catalog.ts) makes it fail (observed: the
+  model answered with a smiling ID),
   so its discriminating power was verified rather than assumed — the realtime
   session config normalizes tool parameters, which is where the channel could
   silently be dropped

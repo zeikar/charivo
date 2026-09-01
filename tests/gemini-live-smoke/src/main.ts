@@ -9,19 +9,54 @@
  * convergence gate the answers produced lives in the transport — so re-tuning
  * it means exercising that gate here rather than reimplementing it.
  */
-import type {
-  EventMap,
-  RealtimeSessionConfig,
-  ToolRegistration,
-} from "@charivo/core";
+import type { Character, EventMap, RealtimeSessionConfig } from "@charivo/core";
 import { Charivo } from "@charivo/core";
-import { createRealtimeManager } from "@charivo/realtime";
+import {
+  SET_EXPRESSION_TOOL_NAME,
+  buildAvatarControlInstructions,
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/avatar";
+import {
+  buildRealtimeSessionConfig,
+  createRealtimeManager,
+} from "@charivo/realtime";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
-import type { HarnessSnapshot, SmokeHarnessApi } from "../harness-types";
+import { AVATAR_CATALOG, SMOKE_AVATAR_CATALOG } from "../../avatar-catalog";
+import type {
+  HarnessMode,
+  HarnessSnapshot,
+  SmokeHarnessApi,
+} from "../harness-types";
 
 type SmokeWindow = Window & {
   __charivoSmoke?: SmokeHarnessApi;
 };
+
+const TEST_CHARACTER: Character = {
+  id: "gemini-live-smoke-hiyori",
+  name: "Hiyori",
+  personality: "Gentle, attentive, and expressive in small moments.",
+};
+
+const HARNESS_MODE = resolveHarnessMode();
+
+const ALL_TEST_TOOLS = createAvatarControlTools(AVATAR_CATALOG);
+
+// Keep the smoke deterministic by exposing only setExpression.
+const SMOKE_TEST_TOOLS = createAvatarControlTools(SMOKE_AVATAR_CATALOG).filter(
+  (tool) => tool.definition.name === SET_EXPRESSION_TOOL_NAME,
+);
+
+const SMOKE_TEST_INSTRUCTIONS = [
+  "너는 친근한 한국어 대화 상대야.",
+  "항상 한국어로만 대답해.",
+  '웃어달라고 하면 setExpression을 expressionId "Smile"로 정확히 한 번 호출해.',
+  "도구가 끝나면 짧은 한 문장으로 말해주고, 다시 요청받기 전에는 도구를 또 호출하지 마.",
+].join(" ");
+
+const ACTIVE_TOOLS =
+  HARNESS_MODE === "avatar-prompt-eval" ? ALL_TEST_TOOLS : SMOKE_TEST_TOOLS;
 
 /**
  * One object, used by both `prepareAudio()` and `startSession()` — see
@@ -31,47 +66,24 @@ type SmokeWindow = Window & {
 const SESSION_CONFIG: RealtimeSessionConfig = {
   provider: "gemini",
   transport: "websocket",
-  instructions: [
-    "너는 친근한 한국어 대화 상대야.",
-    "항상 한국어로만 대답해.",
-    "날씨를 물어보면 반드시 getWeather 도구를 호출하고, 도구가 돌려준 값으로만 대답해.",
-  ].join(" "),
-};
-
-/**
- * A dummy tool, present to observe the wire rather than to be useful: the
- * `toolCall` frame shape comes from the API reference and has never been seen
- * live. One argument, so `args` is observable too.
- */
-const WEATHER_TOOL: ToolRegistration = {
-  definition: {
-    type: "function",
-    name: "getWeather",
-    description:
-      "Return the current weather for a city. Call this whenever the user asks about the weather.",
-    parameters: {
-      type: "object",
-      properties: {
-        city: {
-          type: "string",
-          description: "City name, as the user said it.",
-        },
-      },
-      required: ["city"],
-    },
-  },
-  handler: (args) =>
-    Promise.resolve({ city: args.city, summary: "맑음", temperatureC: 21 }),
+  instructions:
+    HARNESS_MODE === "avatar-prompt-eval"
+      ? buildAvatarPromptEvalInstructions()
+      : SMOKE_TEST_INSTRUCTIONS,
 };
 
 const state: HarnessSnapshot = {
+  mode: HARNESS_MODE,
   sessionStatus: "idle",
   connection: "idle",
   assistantStatus: "idle",
   assistantCompletions: 0,
   assistantText: "",
   userTranscripts: [],
+  registeredTools: ACTIVE_TOOLS.map((tool) => tool.definition.name),
+  sessionInstructions: null,
   toolCalls: [],
+  avatarEvents: [],
   lastError: null,
   events: [],
 };
@@ -85,7 +97,8 @@ const realtimeClient = createRemoteRealtimeClient({
   debug: true,
 });
 const realtimeManager = createRealtimeManager(realtimeClient, {
-  tools: [WEATHER_TOOL],
+  tools: ACTIVE_TOOLS,
+  resultProjectors: [createAvatarResultProjector()],
 });
 
 charivo.attachRealtime(realtimeManager);
@@ -115,6 +128,9 @@ const subscriptions = [
   "tool:result",
   "tool:error",
   "realtime:usage",
+  "avatar:expression",
+  "avatar:motion",
+  "avatar:gaze",
   "realtime:error",
   // Playback boundaries: the Safari convergence gate is anchored to the
   // character's voice becoming audible, so the live checks read interruption
@@ -158,6 +174,8 @@ function applyHarnessEvent(harnessEvent: HarnessEvent): string {
       state.sessionStatus = realtimeState.session.status;
       state.connection = realtimeState.connection;
       state.assistantStatus = realtimeState.response.status;
+      state.sessionInstructions =
+        realtimeState.session.config?.instructions ?? null;
       return `${realtimeState.connection}/${realtimeState.session.status}`;
     }
 
@@ -192,6 +210,30 @@ function applyHarnessEvent(harnessEvent: HarnessEvent): string {
 
     case "tool:result":
       return `${payload.name} ${JSON.stringify(payload.output)}`;
+
+    case "avatar:expression":
+      state.avatarEvents.push({
+        type: "expression",
+        expressionId: payload.expressionId,
+      });
+      return payload.expressionId;
+
+    case "avatar:motion":
+      state.avatarEvents.push({
+        type: "motion",
+        group: payload.group,
+        index: payload.index,
+        muteSound: payload.muteSound,
+      });
+      return `${payload.group} #${String(payload.index)}`;
+
+    case "avatar:gaze":
+      state.avatarEvents.push({
+        type: "gaze",
+        x: payload.x,
+        y: payload.y,
+      });
+      return `x ${String(payload.x)}, y ${String(payload.y)}`;
 
     case "tool:error":
     case "realtime:error":
@@ -312,6 +354,29 @@ function render(): void {
     state.sessionStatus !== "active" && state.connection !== "connecting";
   interruptButton.disabled = state.sessionStatus !== "active";
   sendButton.disabled = state.sessionStatus !== "active";
+}
+
+/**
+ * The evaluation mode deliberately sends what a real app would: the default
+ * `@charivo/realtime` character instructions plus the avatar addendum, so the
+ * opaque expression IDs reach the model only through the descriptions the
+ * addendum and the `setExpression` schema carry.
+ */
+function buildAvatarPromptEvalInstructions(): string {
+  const baseInstructions = buildRealtimeSessionConfig({
+    character: TEST_CHARACTER,
+  }).instructions;
+
+  return [
+    baseInstructions,
+    buildAvatarControlInstructions(AVATAR_CATALOG),
+  ].join("\n");
+}
+
+function resolveHarnessMode(): HarnessMode {
+  const mode = new URL(window.location.href).searchParams.get("mode");
+
+  return mode === "avatar-prompt-eval" ? mode : "smoke";
 }
 
 function requiredElement<T extends HTMLElement>(id: string): T {

@@ -6,6 +6,7 @@ measured record that decided that chain's shape.
 Covered chain:
 
 - `@charivo/core`
+- `@charivo/avatar`
 - `@charivo/realtime`
 - `@charivo/realtime/remote`
 - `@charivo/realtime/gemini`
@@ -32,6 +33,23 @@ Then open the printed URL in a real browser. Test **Chrome and Safari on
 macOS**, and **with speakers, not headphones** — headphones remove the acoustic
 path, so every configuration passes and the run tells you nothing.
 
+Two harness modes, selected with a `?mode=` query param:
+
+- `smoke` (default) — the named-expression catalog (`Smile`), `setExpression`
+  as the only registered tool, and instructions that name the ID verbatim. The
+  tool leg is deterministic on purpose, so a spec asserts a fixed round-trip
+  rather than whatever the model felt like calling.
+- `avatar-prompt-eval` — the opaque `F01`..`F08` catalog, all three canonical
+  avatar tools, and the default `@charivo/realtime` instructions plus the
+  `@charivo/avatar` addendum. Here what the model picks *is* the measurement.
+
+Both catalogs live in [`tests/avatar-catalog.ts`](../avatar-catalog.ts), shared
+with `tests/webrtc-smoke` so the two harnesses cannot drift into measuring
+different things. The `expressionDescriptions` there are the only channel that
+gives `F01`..`F08` any meaning, and they were established by rendering each
+expression and reading the face — don't paraphrase them from a mapping found
+on the web, which is wrong.
+
 The key stays server-side. The vite middleware implements the same
 `/api/realtime` bootstrap contract as `tests/webrtc-smoke`, delegating to
 `createGeminiRealtimeProvider`; the browser gets a socket URL and a single-use
@@ -54,13 +72,28 @@ happen there at all — let alone be measured. Every number below came from a
 human sitting in front of speakers.
 
 The gated Playwright suite beside this harness (`pnpm test:gemini-live`) covers
-what a fake device can: the session connects through the real bootstrap, a turn
-produces assistant text, and the dummy tool round-trips. Transcript ordering is
-**not** among them — `user.transcript` is emitted only from spoken audio, and a
-fake device drives no speech, so an ordering assertion there could never fail
-honestly. It stays in the manual protocol below. Like the live specs in
-`tests/webrtc-smoke`, the suite is not free: each run mints an ephemeral token
-and opens one real Gemini Live session, so repeated runs bill real usage.
+what a fake device can:
+
+- `realtime-gemini-live.spec.ts` drives the default `smoke` mode: the session
+  connects through the real bootstrap, a turn produces assistant text, and a
+  real `setExpression` call round-trips into a canonical `avatar:expression`
+  event carrying the ID the instructions named.
+- `realtime-gemini-avatar-prompt.spec.ts` drives `avatar-prompt-eval`: it asks
+  for anger and requires a displeased ID (`F03` / `F08`) back, failing on a
+  smiling one. Nothing but `expressionDescriptions` can supply that, and on
+  this path they travel through the minted `bidiGenerateContentSetup` —
+  `systemInstruction` for the addendum, `tools.functionDeclarations.parameters`
+  for the schema — which is where they could silently be dropped. It is an
+  **advisory evaluation, not a CI gate**: model outputs are nondeterministic,
+  so treat a failure as a signal to inspect the instructions or the prompt, not
+  as a blocking regression.
+
+Transcript ordering is **not** among them — `user.transcript` is emitted only
+from spoken audio, and a fake device drives no speech, so an ordering assertion
+there could never fail honestly. It stays in the manual protocol below. Like
+the live specs in `tests/webrtc-smoke`, the suite is not free: each spec mints
+an ephemeral token and opens its own real Gemini Live session, so a full run
+costs two sessions and three model turns and repeated runs bill real usage.
 
 ## The manual protocol
 
@@ -120,15 +153,16 @@ producing for a turn nobody will hear — how long it goes on after the flush is
 the cost this question is named for.
 
 **The `toolCall` frame shape is unverified.** It comes from the API reference,
-not from measurement: the spike registered no tools. `src/main.ts` registers a
-dummy `getWeather` for exactly this. Ask `서울 날씨 알려줘.` and confirm the
+not from measurement: the spike registered no tools. The default `smoke` mode
+registers `setExpression` for exactly this. Ask `이제 웃어줘!` and confirm the
 `tool:call` event carries the name and a populated `args` — i.e. `{ id, name,
-args }` on the wire — and that the answer leg (`{ id, name, response }`) lands:
-the character should speak the canned 맑음 / 21도 back. Also record **whether
-the tool leg produces its own `turnComplete`** (visible as an assistant
-completion with empty text, before the spoken follow-up) **and whether the
-follow-up produces a second one.** That answer decides whether skipping empty
-completions is safe to add later.
+args }` on the wire, with `expressionId: "Smile"` — and that the answer leg
+(`{ id, name, response }`) lands: an `avatar:expression` event should follow
+and the character should speak. Also record **whether the tool leg produces its
+own `turnComplete`** (visible as an assistant completion with empty text,
+before the spoken follow-up) **and whether the follow-up produces a second
+one.** That answer decides whether skipping empty completions is safe to add
+later.
 
 **Transcript fragmentation and ordering.** Speak a long multi-clause Korean
 sentence and check the snapshot: does it arrive as **one** `user.transcript` or
