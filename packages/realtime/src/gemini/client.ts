@@ -15,7 +15,8 @@ import {
   isRealtimeSessionBootstrap,
 } from "../internal/shared";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
-import { DEFAULT_GEMINI_LIVE_MODEL } from "./defaults";
+import { DEFAULT_GEMINI_LIVE_MODEL, OUTPUT_SAMPLE_RATE } from "./defaults";
+import { createPlaybackGraph, PlaybackScheduler } from "./playback";
 
 export interface GeminiLiveClientOptions {
   apiEndpoint?: string;
@@ -67,6 +68,12 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     onRms: (rms) => this.emitEvent({ type: "audio.lipsync", rms }),
     onError: (error) => console.error("Failed to setup audio analysis:", error),
   });
+  /**
+   * Created once, inside a user gesture, and reused for the client's whole
+   * life. Only the terminal `cleanup()` closes it.
+   */
+  private playbackContext: AudioContext | null = null;
+  private playbackScheduler: PlaybackScheduler | null = null;
   private currentSessionConfig?: RealtimeSessionConfig;
   private connectionLossNotified = false;
   private isExplicitDisconnect = false;
@@ -107,11 +114,12 @@ export class GeminiLiveClient implements RealtimeTransportClient {
         throw new Error("Realtime session disconnect requested");
       }
 
-      // Task 5 wires ensurePlaybackReady() in here, before the socket opens.
-      // It must also be reachable from `prepareAudio()`, which is where the
-      // user gesture actually is: this call site alone would create the
-      // AudioContext outside one, which is the failure the surviving-context
-      // handling below exists to avoid.
+      // Reuses whatever `prepareAudio()` warmed up, which is where the user
+      // gesture actually is. Only a caller that skipped `prepareAudio()`
+      // creates the AudioContext here, outside a gesture — the case the
+      // surviving-context handling below keeps from repeating on every
+      // reconnect.
+      await this.ensurePlaybackReady();
       // Task 6 wires the microphone capture pipeline in beside it.
 
       await this.openSocket(url, token, config?.model);
@@ -188,6 +196,79 @@ export class GeminiLiveClient implements RealtimeTransportClient {
 
   onEvent(callback: (event: RealtimeTransportEvent) => void): void {
     this.eventCallbacks.add(callback);
+  }
+
+  async prepareAudio(): Promise<void> {
+    await this.ensurePlaybackReady();
+  }
+
+  /**
+   * Build the playback context, graph, scheduler, and lip-sync analyzer once,
+   * and afterwards only nudge that same playback context back towards running.
+   * It does not promise a running context on return; see the resume below.
+   *
+   * Both `prepareAudio()` and `connect()` come here, and the order they arrive
+   * in is the point: whichever runs first builds everything, the other reuses
+   * it. That is what keeps the `AudioContext` the one created inside a user
+   * gesture instead of a replacement built during an automatic reconnect,
+   * which the browser would refuse to start.
+   *
+   * The playback context is the only one this covers, and that leaves a gap
+   * worth knowing about: `lipSyncAnalyzer.prepare()` creates a second
+   * `AudioContext` of its own, and nothing in `@charivo/core` ever resumes it.
+   * A suspended `AnalyserNode` returns all-zero frequency data, so in exactly
+   * the case the nudge below exists for — a caller that skipped
+   * `prepareAudio()` — lip sync reads flat and no error surfaces anywhere.
+   * Pre-existing and identical in `openai/client.ts`; closing it means changing
+   * the analyzer contract, not this file.
+   */
+  private async ensurePlaybackReady(): Promise<void> {
+    const existing = this.playbackContext;
+    if (existing) {
+      // Deliberately not awaited. On a document that has never been interacted
+      // with, `resume()` parks its promise rather than settling it — the spec
+      // appends it to [[pending resume promises]] and aborts — which would hang
+      // connect() at a point where no socket, and so no setup timeout, is armed
+      // yet. A context that stays suspended only delays audio; a connect() that
+      // never settles wedges the session with no error and no way back.
+      //
+      // Anything other than "running" is retried because WebKit also has a
+      // non-standard "interrupted" state, which a "suspended" check alone would
+      // leave stopped for good.
+      if (existing.state !== "running") {
+        void existing
+          .resume()
+          .catch((error) =>
+            console.error(
+              "Failed to resume the playback audio context:",
+              error,
+            ),
+          );
+      }
+      return;
+    }
+
+    const context = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+    const graph = createPlaybackGraph(context);
+
+    // Assigned before the first await, so a second call cannot slip past the
+    // null check above and build a rival context.
+    this.playbackContext = context;
+    this.playbackScheduler = new PlaybackScheduler(context, graph.output, {
+      // Task 7 combines this with `turnComplete` to decide that audio ended —
+      // a drain on its own fires 3 ms into a twelve-second reply.
+      onDrain: () => {},
+      // Task 6 gates the microphone on this for Safari's echo canceller, and
+      // Task 7 resumes/pauses the lip-sync analyzer with it.
+      onPlayingChange: (_playing: boolean) => {},
+    });
+
+    await this.lipSyncAnalyzer.prepare();
+    // The tap is stable for the client's whole life, unlike the OpenAI client's
+    // per-connection remote track, so this attaches once. Attaching starts the
+    // analysis loop, so pause it until audio actually plays.
+    this.lipSyncAnalyzer.attachMediaStream(graph.lipSyncStream);
+    this.lipSyncAnalyzer.pause();
   }
 
   private openSocket(
@@ -348,8 +429,10 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       new Error("Gemini Live session ended before setup completed"),
     );
     this.lipSyncAnalyzer.pause();
+    // Only what was scheduled: the context, graph, and scheduler stay, because
+    // they belong to the gesture rather than to the socket.
+    this.playbackScheduler?.flush();
 
-    // Task 5 flushes the playback scheduler here (the context itself stays).
     // Task 6 stops microphone capture here — it is per-session and rebuilt on
     // every connect(), unlike the prepared playback context.
     // Task 7 clears per-turn state and re-arms the convergence gate with a
@@ -360,9 +443,10 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // binds none yet. Half of what `bindTransportLifecycle` gives the OpenAI
     // client is already covered: a websocket reports a dead connection through
     // its own `onclose`, where WebRTC needed ICE state watched. The other half
-    // has no websocket equivalent — pausing and resuming the analyzer across
-    // visibility/pagehide (Task 5) and refreshing the microphone on
-    // `devicechange` (Task 6) — and is still missing.
+    // has no websocket equivalent and is still missing: pausing and resuming
+    // the analyzer across visibility/pagehide — a real gap now that a playback
+    // tap is attached to it, not a pending wiring step — and refreshing the
+    // microphone on `devicechange` (Task 6).
   }
 
   /**
@@ -379,7 +463,18 @@ export class GeminiLiveClient implements RealtimeTransportClient {
         console.error("Failed to clean up lip-sync analyzer:", error),
       );
 
-    // Task 5 closes the playback AudioContext and nulls the scheduler here.
+    // The transient reset above already flushed the scheduler; this is the only
+    // place the gesture-warmed context is given up. Nulled before the close
+    // settles so a `prepareAudio()` racing it builds a fresh one instead of
+    // reusing the closing one.
+    const playbackContext = this.playbackContext;
+    this.playbackContext = null;
+    this.playbackScheduler = null;
+    playbackContext
+      ?.close()
+      .catch((error) =>
+        console.error("Failed to close the playback audio context:", error),
+      );
 
     this.connectionLossNotified = false;
     this.isCleaningUp = false;
