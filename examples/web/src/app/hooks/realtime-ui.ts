@@ -64,6 +64,49 @@ export function shouldInterruptBeforeSend(
   return state.audioPlaying || state.awaitingResponse;
 }
 
+const REALTIME_SESSION_FAILURE_PREFIX = "Failed to create Realtime session: ";
+
+/**
+ * Turns a realtime failure into something the notice bar can show.
+ *
+ * A failed bootstrap arrives with the route's entire response body pasted into
+ * the message (`packages/realtime/src/remote/client.ts:296-300`), so the user
+ * would otherwise read `Failed to create Realtime session: {"error":"..."}`.
+ * Unwrapping it here keeps a presentation concern out of `@charivo/realtime`.
+ *
+ * `details` is tried first because the route's catch-all sends the generic line
+ * as `error` and the actual cause as `details` (`api/realtime/route.ts:269-272`)
+ * -- but only a non-blank string is usable, and an unusable one falls through to
+ * `error` and then to the raw message. An empty `details` unwrapped as-is would
+ * be worse than not unwrapping at all: `realtimeError` is read by truthiness, so
+ * the UI would show no error while the session is dead.
+ */
+export function toRealtimeErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "Unknown error";
+  }
+
+  if (!error.message.startsWith(REALTIME_SESSION_FAILURE_PREFIX)) {
+    return error.message;
+  }
+
+  try {
+    const envelope = JSON.parse(
+      error.message.slice(REALTIME_SESSION_FAILURE_PREFIX.length),
+    ) as { error?: unknown; details?: unknown } | null;
+    const unwrapped = [envelope?.details, envelope?.error].find(
+      (value): value is string =>
+        typeof value === "string" && value.trim() !== "",
+    );
+
+    return unwrapped ?? error.message;
+  } catch {
+    // Not every failing response is JSON -- a proxy or gateway can answer with
+    // HTML. Showing the raw message beats showing a parse error.
+    return error.message;
+  }
+}
+
 export function createRealtimeAssistantMessage(
   text: string,
   character?: Character,

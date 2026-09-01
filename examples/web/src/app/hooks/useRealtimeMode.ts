@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import type { RealtimeSessionConfig } from "@charivo/core";
 import { createRealtimeManager } from "@charivo/realtime";
 import { createAvatarResultProjector } from "@charivo/avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
@@ -6,11 +7,15 @@ import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import {
+  REALTIME_GEMINI_MODEL,
   REALTIME_OPENAI_MODEL,
   REALTIME_SESSION_MAX_MS,
 } from "../api/demo-limits";
 import { createSessionCap } from "./session-cap";
-import { shouldInterruptBeforeSend } from "./realtime-ui";
+import {
+  shouldInterruptBeforeSend,
+  toRealtimeErrorMessage,
+} from "./realtime-ui";
 
 const REALTIME_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -35,6 +40,7 @@ export function useRealtimeMode() {
     resetRealtimeUiState,
     avatarCatalog,
     setCapNotice,
+    selectedRealtimeProvider,
   } = useChatStore();
 
   const sessionCapRef = useRef(createSessionCap());
@@ -68,9 +74,7 @@ export function useRealtimeMode() {
       console.log("✅ Realtime mode disabled");
     } catch (error) {
       console.error("❌ Failed to disable Realtime mode:", error);
-      setRealtimeError(
-        error instanceof Error ? error.message : "Unknown error",
-      );
+      setRealtimeError(toRealtimeErrorMessage(error));
     }
   }, [
     charivo,
@@ -118,25 +122,37 @@ export function useRealtimeMode() {
           .map((tool) => tool.name),
       });
       charivo.attachRealtime(realtimeManager);
-      await realtimeManager.prepareAudio?.({ provider: "openai" });
 
-      await realtimeManager.startSession({
-        provider: "openai",
-        // The route pins this server-side regardless; sending the same value
-        // keeps the client honest about what it is asking for.
-        model: REALTIME_OPENAI_MODEL,
+      const sessionConfig: RealtimeSessionConfig = {
+        provider: selectedRealtimeProvider,
+        // Transport is explicit because the remote client defaults it to
+        // "webrtc", and it only reaches the Gemini adapter for provider
+        // "gemini" paired with transport "websocket"
+        // (`packages/realtime/src/remote/client.ts:261-272`). The route pins
+        // the model server-side regardless; sending it keeps the client honest
+        // about what it is asking for.
+        ...(selectedRealtimeProvider === "gemini"
+          ? { transport: "websocket", model: REALTIME_GEMINI_MODEL }
+          : { transport: "webrtc", model: REALTIME_OPENAI_MODEL }),
         instructions: buildDemoRealtimeInstructions(
           charivo.getCurrentCharacter(),
           avatarCatalog,
         ),
-      });
+      };
+
+      // Both calls must land on the same adapter, which they do by carrying
+      // the same provider/transport values -- the manager rebuilds the config
+      // on its way to startSession, so object identity is not what matches.
+      await realtimeManager.prepareAudio?.(sessionConfig);
+
+      await realtimeManager.startSession(sessionConfig);
 
       setIsRealtimeMode(true);
 
       // Realtime bills on wall clock, and after bootstrap the browser talks to
-      // OpenAI directly — the server is out of the loop and cannot hang up. So
-      // this timer is what bounds an ordinary visitor's session cost. It is a
-      // courtesy cap, not an abuse control: see `api/demo-limits.ts`.
+      // the provider directly — the server is out of the loop and cannot hang
+      // up. So this timer is what bounds an ordinary visitor's session cost. It
+      // is a courtesy cap, not an abuse control: see `api/demo-limits.ts`.
       sessionCap.arm(REALTIME_SESSION_MAX_MS);
 
       console.log("✅ Realtime mode enabled");
@@ -145,9 +161,7 @@ export function useRealtimeMode() {
       setIsRealtimeMode(false);
       setIsConnected(false);
       resetRealtimeUiState();
-      setRealtimeError(
-        error instanceof Error ? error.message : "Unknown error",
-      );
+      setRealtimeError(toRealtimeErrorMessage(error));
     } finally {
       setIsConnecting(false);
     }
@@ -163,6 +177,7 @@ export function useRealtimeMode() {
     avatarCatalog,
     sessionCap,
     setCapNotice,
+    selectedRealtimeProvider,
   ]);
 
   // The cap must call the CURRENT teardown, not the one that existed when it was
@@ -224,9 +239,7 @@ export function useRealtimeMode() {
         return true;
       } catch (error) {
         console.error("Failed to send Realtime message:", error);
-        setRealtimeError(
-          error instanceof Error ? error.message : "Unknown error",
-        );
+        setRealtimeError(toRealtimeErrorMessage(error));
         return false;
       }
     },
@@ -249,9 +262,7 @@ export function useRealtimeMode() {
       await realtimeManager.interrupt();
     } catch (error) {
       console.error("Failed to interrupt Realtime response:", error);
-      setRealtimeError(
-        error instanceof Error ? error.message : "Unknown error",
-      );
+      setRealtimeError(toRealtimeErrorMessage(error));
     }
   }, [charivo, isRealtimeMode, setRealtimeError]);
 

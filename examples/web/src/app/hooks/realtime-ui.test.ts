@@ -5,6 +5,7 @@ import {
   getRealtimeTurnStatus,
   shouldInterruptBeforeSend,
   shouldResetRealtimeUiState,
+  toRealtimeErrorMessage,
 } from "./realtime-ui";
 
 function createState(overrides: Partial<RealtimeState> = {}): RealtimeState {
@@ -170,5 +171,68 @@ describe("shouldInterruptBeforeSend", () => {
 
   it("does not interrupt without a session", () => {
     expect(shouldInterruptBeforeSend(null)).toBe(false);
+  });
+});
+
+describe("toRealtimeErrorMessage", () => {
+  it("unwraps the route's error line out of the bootstrap envelope", () => {
+    expect(
+      toRealtimeErrorMessage(
+        new Error(
+          'Failed to create Realtime session: {"error":"GEMINI_API_KEY not configured"}',
+        ),
+      ),
+    ).toBe("GEMINI_API_KEY not configured");
+  });
+
+  // The catch-all response carries a generic "error" plus the real cause in
+  // "details", so showing "error" would hide what actually went wrong.
+  it("prefers the envelope's details over its generic error", () => {
+    expect(
+      toRealtimeErrorMessage(
+        new Error(
+          'Failed to create Realtime session: {"error":"Failed to create Realtime session","details":"model not found"}',
+        ),
+      ),
+    ).toBe("model not found");
+  });
+
+  // The envelope is untrusted: `details` being present is not `details` being
+  // usable, and the empty case is the one where unwrapping would leave the UI
+  // with a falsy error and no notice at all.
+  it("falls back to the envelope's error when details is not a string", () => {
+    expect(
+      toRealtimeErrorMessage(
+        new Error(
+          'Failed to create Realtime session: {"error":"real cause","details":{"code":429}}',
+        ),
+      ),
+    ).toBe("real cause");
+  });
+
+  it("falls back to the envelope's error when details is empty", () => {
+    expect(
+      toRealtimeErrorMessage(
+        new Error(
+          'Failed to create Realtime session: {"error":"real cause","details":""}',
+        ),
+      ),
+    ).toBe("real cause");
+  });
+
+  it("passes a message through when there is no JSON envelope to unwrap", () => {
+    expect(toRealtimeErrorMessage(new Error("Realtime request failed"))).toBe(
+      "Realtime request failed",
+    );
+    // A proxy or gateway can answer with HTML instead of the route's JSON.
+    expect(
+      toRealtimeErrorMessage(
+        new Error("Failed to create Realtime session: <html>502</html>"),
+      ),
+    ).toBe("Failed to create Realtime session: <html>502</html>");
+  });
+
+  it("reports a non-Error throw as an unknown error", () => {
+    expect(toRealtimeErrorMessage("boom")).toBe("Unknown error");
   });
 });

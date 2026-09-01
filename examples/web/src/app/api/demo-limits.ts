@@ -46,9 +46,9 @@ export const REALTIME_TRANSCRIPTION_MODEL = "gpt-realtime-whisper";
 
 /**
  * Enforced by a client-side timer (see `useRealtimeMode`). After bootstrap the
- * browser talks to OpenAI directly, so the server is out of the loop and cannot
- * hang up — this bounds an ordinary visitor's cost, and a caller who ignores it
- * is bounded by the spend limit instead.
+ * browser talks to the provider directly, so the server is out of the loop and
+ * cannot hang up — this bounds an ordinary visitor's cost, and a caller who
+ * ignores it is bounded by the spend limit instead.
  *
  * Development loosens it rather than removing it. 90 seconds is pure friction
  * while debugging a realtime session, but realtime bills on wall clock, so a
