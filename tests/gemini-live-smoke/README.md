@@ -1,19 +1,25 @@
-# Gemini Live Spike Harness
+# Gemini Live Smoke Harness
 
-A measurement device for the questions that decide whether a Gemini Live
-transport is worth building, and in what shape. It answers them **before** the
-transport exists, so it deliberately imports nothing from charivo — raw
-WebSocket plus Web Audio and nothing else.
+Package-level browser harness for the Gemini Live realtime chain, and the
+measured record that decided that chain's shape.
+
+Covered chain:
+
+- `@charivo/core`
+- `@charivo/realtime`
+- `@charivo/realtime/remote`
+- `@charivo/realtime/gemini`
+- `@charivo/server/gemini`
+
+It started as a spike that imported nothing from charivo — raw WebSocket plus
+Web Audio — because the questions it had to answer came *before* the transport
+existed. It now drives the real chain instead, but the answers stayed:
+["The measured record"](#the-measured-record) is why the transport is built the
+way it is, and most of it contradicts what the API reference implies. Read it
+before changing the design back toward the documentation.
 
 Background: `.hyperclaude/research/20260829-0612-gemini-live-api-charivo-realtime.md`
 and its `-claude.md` pair.
-
-Unlike the other harnesses here, this one is **driven by hand, not by
-Playwright**. That is not laziness: the question it exists for is acoustic echo,
-and `playwright.webrtc.config.ts` runs Chromium with
-`--use-fake-device-for-media-stream` and `--mute-audio`. A fake microphone and a
-muted output have no speaker, no room, and no acoustic path, so echo cannot
-happen there at all — let alone be measured.
 
 ## Run it
 
@@ -26,14 +32,115 @@ Then open the printed URL in a real browser. Test **Chrome and Safari on
 macOS**, and **with speakers, not headphones** — headphones remove the acoustic
 path, so every configuration passes and the run tells you nothing.
 
-The key stays server-side: the vite middleware mints a single-use ephemeral
-token and the page connects to the `BidiGenerateContentConstrained` endpoint
-with `?access_token=`.
+The key stays server-side. The vite middleware implements the same
+`/api/realtime` bootstrap contract as `tests/webrtc-smoke`, delegating to
+`createGeminiRealtimeProvider`; the browser gets a socket URL and a single-use
+ephemeral token pinned to a session config it cannot exceed — the page proposes
+a model, a voice, and instructions, and the provider decides what survives.
+Model and voice allow-lists live in the provider, not in the route.
 
-## What the probes already established
+Keep the devtools console open. `src/main.ts` builds the remote client with
+`debug: true`, and that log is the measuring instrument: it prints how long
+after playback started each interruption landed, and when the convergence gate
+disarmed.
 
-Verified against the live API on 2026-08-29, so the questions below are what is
-actually left rather than the full original list.
+## Why it is driven by hand
+
+The question this harness exists for is acoustic echo, and
+`playwright.webrtc.config.ts` runs Chromium with
+`--use-fake-device-for-media-stream` and `--mute-audio`. A fake microphone and
+a muted output have no speaker, no room, and no acoustic path, so echo cannot
+happen there at all — let alone be measured. Every number below came from a
+human sitting in front of speakers.
+
+The gated Playwright suite beside this harness will cover what a fake device
+*can* cover — connect, a turn, a tool call, transcript ordering. Like the live specs
+in `tests/webrtc-smoke`, it is not free: each run mints an ephemeral token and
+opens one real Gemini Live session, so repeated runs bill real usage.
+
+## The manual protocol
+
+### Chrome — the echo control
+
+`echoCancellation: true` is what makes the WS playback path usable at all (see
+the measured record). The control run that proved it — cancellation *off*, so
+the acoustic path is demonstrably live — was a spike-only affordance and the
+selector is gone. To re-run it, flip `echoCancellation` to `false` in
+`DEFAULT_MICROPHONE_CONSTRAINTS`
+(`packages/realtime/src/internal/microphone.ts`), take the reading, and put it
+back. Without the control, a run of zero false interruptions means nothing: it
+is equally consistent with a dead microphone.
+
+Send `1부터 50까지 천천히 세어줘.`, then stay silent for the whole reply. Every
+interruption in that window is a false one.
+
+### Safari — re-tuning `CONVERGENCE_GATE_MS`
+
+The gate holds microphone frames back for the first `CONVERGENCE_GATE_MS`
+(`packages/realtime/src/gemini/defaults.ts`) after the character's voice becomes
+audible, and disarms once the session has banked that much audible playback.
+Both halves come from one machine, one room, one pair of speakers, so re-measure
+before trusting them elsewhere:
+
+1. Start the session, then **wait about ten seconds before sending anything.**
+   That offset is what makes the reading conclusive: it separates "tied to the
+   voice starting" from "tied to session start" or "tied to the click".
+2. Send the counting prompt and stay silent.
+3. Read the console. `Gemini Live turn interrupted <n>ms after playback started`
+   is the number the window is tuned from; `Convergence gate disarmed after
+   <n>ms of audible playback` is the number the exposure threshold is tuned
+   from.
+
+Interruptions still landing means the window is too short. Turns being killed
+after the gate disarms means the threshold is.
+
+### OPEN — carried into these live checks
+
+Three things this cycle deliberately did not settle. All three are answered by
+running the harness, and two of them can invalidate a design decision rather
+than just a constant.
+
+**Q2 — what a local `interrupt()` costs, and whether a killed turn still
+finishes.** Never measured. The transport's condemned-turn design *assumes* a
+turn killed by `interrupt()` still runs to its own `turnComplete`, which is the
+single exit from condemnation — that assumption is the load-bearing premise of
+the whole suppression path. If a killed turn never sends one, the client stays
+condemned and swallows the *next* turn's completion, stranding the manager's
+send lock. Protocol: send the counting prompt, press **Interrupt** mid-count,
+and check that (a) audio stops immediately, (b) the log shows
+`Gemini Live turn condemned by a local interrupt` and *no*
+`realtime:assistant:done` for the killed turn, (c) a second prompt afterwards
+completes normally and `assistantCompletions` advances by exactly one. Worth
+noting too: the server front-loads audio far faster than real time, so it keeps
+producing for a turn nobody will hear — how long it goes on after the flush is
+the cost this question is named for.
+
+**The `toolCall` frame shape is unverified.** It comes from the API reference,
+not from measurement: the spike registered no tools. `src/main.ts` registers a
+dummy `getWeather` for exactly this. Ask `서울 날씨 알려줘.` and confirm the
+`tool:call` event carries the name and a populated `args` — i.e. `{ id, name,
+args }` on the wire — and that the answer leg (`{ id, name, response }`) lands:
+the character should speak the canned 맑음 / 21도 back. Also record **whether
+the tool leg produces its own `turnComplete`** (visible as an assistant
+completion with empty text, before the spoken follow-up) **and whether the
+follow-up produces a second one.** That answer decides whether skipping empty
+completions is safe to add later.
+
+**Transcript fragmentation and ordering.** Speak a long multi-clause Korean
+sentence and check the snapshot: does it arrive as **one** `user.transcript` or
+several (`userTranscripts.length`)? And does each user transcript land in the
+event log **before** the assistant turn it prompted? Both are stop-and-redesign
+findings if they fail, not nits — the manager relays user transcripts straight
+through with no accumulation buffer, on the measured basis that input
+transcription is finalized per utterance.
+
+## The measured record
+
+Verified against the live API on 2026-08-29 unless marked otherwise. Anything
+labelled **documented** comes from the API reference and has *not* been seen on
+the wire.
+
+### The token contract
 
 **The research's `liveConnectConstraints` field does not exist.** Both
 `v1alpha` and `v1beta` reject it with `400 Unknown name
@@ -44,30 +151,23 @@ actually left rather than the full original list.
 `{ model }` produced a session that closed with `1007 The requested combination
 of response modalities (TEXT) is not supported by the model` — the unspecified
 rest of the setup fell back to defaults instead of merging with what the client
-sent. So the mint route has to build the entire session config, which is why
-voice and system instruction are posted to `/api/gemini-token` and the page's
-own setup frame carries nothing but the model.
+sent. So the whole session config has to be built at mint time, which is why
+the server provider owns it and the browser's setup frame carries nothing the
+token did not already fix.
 
 **The unconstrained-token threat is real.** A token minted with no
 `bidiGenerateContentSetup` at all opened a session for a model the page never
-offered. That is the shape the research warns about (P5), just under a
-different field name.
+offered — any model, any config, on the key owner's bill.
 
 **`uses: 1` is enforced.** Replaying a spent token closes the socket with
 `1011 Token has been used too many times`, so a reconnect must re-mint rather
 than reuse a cached bootstrap.
 
-**Q4 is answered.** `gemini-3.1-flash-live-preview` accepts both
-`inputAudioTranscription` and `outputAudioTranscription`, and output
-transcription arrives as incremental events — ten of them for a ten-word reply.
-Korean holds without any `languageCode`: asked to count, it returned
-`하나, 둘, 셋, 넷, 다섯. 다 셌어요.` Downstream audio is `audio/pcm;rate=24000`
-as documented. This unblocks R5, which depends on output transcription being
-the assistant-text source.
+### End of playback
 
-**Q3 has a surprise worth knowing before you build the scheduler.** The server
-streams audio far faster than real time and then *holds* `turnComplete` until
-the wall-clock moment that audio would have finished playing:
+The server streams audio far faster than real time and then *holds*
+`turnComplete` until the wall-clock moment that audio would have finished
+playing:
 
 | run | first audio | audio delivered | generationComplete | turnComplete | firstAudio + duration |
 | --- | --- | --- | --- | --- | --- |
@@ -79,12 +179,12 @@ audio", and a browser run confirmed it against real playback: `turnComplete`
 at +12034 ms, the last buffer's `onended` at +12037 ms. **Three milliseconds.**
 
 That closeness is the trap. `turnComplete` is such a good predictor on a
-healthy connection that a shortcut built on it passes every test you are
-likely to run, and only fails when the network stalls — because the server is
-pacing a clock, not observing your speakers.
+healthy connection that a shortcut built on it passes every test you are likely
+to run, and only fails when the network stalls — because the server is pacing a
+clock, not observing your speakers.
 
-**Both halves of R4's condition are load-bearing, and the same browser run
-proves it.** Playback drains spuriously at the *start* of every turn:
+**Drain alone is just as wrong, and the same run proves it.** Playback drains
+spuriously at the *start* of every turn:
 
 ```
 07:28:35.081 first audio chunk of turn
@@ -94,48 +194,55 @@ proves it.** Playback drains spuriously at the *start* of every turn:
 
 The opening chunk is short enough to finish before its successor arrives, so
 the scheduler empties and an "audio ended" fires 3 ms into a twelve-second
-reply. Drain alone is therefore just as wrong as `turnComplete` alone — one
-fires far too early, the other would be silently wrong exactly when it
-mattered. `audio.output.ended` must be **drain AND `turnComplete` seen**, with
-the corollary that if drain already happened when `turnComplete` lands, the
-event fires then rather than waiting for a drain that will never come again.
+reply. `audio.output.ended` therefore has to be **drain AND `turnComplete`
+seen**, with the corollary that if drain already happened when `turnComplete`
+lands, the event fires then rather than waiting for a drain that will never
+come again.
 
-Also seen unprompted: `sessionResumptionUpdate` arrives without being requested
-in setup, and it arrives *constantly* — roughly every 1.2 s, ~50 handles over a
-100 s session, each superseding the last. A transport that persists or logs
-every one will drown; keep only the newest. Top-level keys observed so far are
-`setupComplete`, `serverContent`, `sessionResumptionUpdate`, `usageMetadata`.
+### Transcription and session frames
 
-`usageMetadata` breaks tokens down per modality
-(`promptTokensDetails` / `responseTokensDetails`, `TEXT` vs `AUDIO`), and the
-audio prompt count grows turn over turn (259 → 596 across two turns) — the
-input audio stays in context, which is what makes
-`contextWindowCompression` matter for long sessions.
+`gemini-3.1-flash-live-preview` accepts both `inputAudioTranscription` and
+`outputAudioTranscription`. Output transcription arrives as incremental
+fragments — ten events for a ten-word reply, and 44 fragments in a session where
+two spoken utterances produced exactly two complete-sentence *input*
+transcription events. Korean holds without any `languageCode`: asked to count,
+it returned `하나, 둘, 셋, 넷, 다섯. 다 셌어요.` Downstream audio is
+`audio/pcm;rate=24000`, as documented.
 
-**Q1 passes on Chrome, with a live control to prove it.** Per the Media Capture
-spec, `echoCancellation: true` only guarantees `remote-only` cancellation —
-audio from an `RTCPeerConnection` track — and Web Audio output is not remote,
-so on paper the WS path had no guarantee. Measured on Chrome / macOS, speakers
-on, tester silent for a 30 s reply:
+`sessionResumptionUpdate` arrives without being requested in setup, and it
+arrives *constantly* — roughly every 1.2 s, ~50 handles over a 100 s session,
+each superseding the last. A transport that persists or logs every one will
+drown. Top-level keys observed: `setupComplete`, `serverContent`,
+`sessionResumptionUpdate`, `usageMetadata`. `toolCall`, `toolCallCancellation`,
+and `goAway` are **documented** only.
+
+`usageMetadata` breaks tokens down per modality (`promptTokensDetails` /
+`responseTokensDetails`, `TEXT` vs `AUDIO`), and the audio prompt count grows
+turn over turn (259 → 596 across two turns) — the input audio stays in context,
+which is what makes `contextWindowCompression` matter for long sessions.
+
+### Echo, Chrome
+
+Per the Media Capture spec, `echoCancellation: true` only guarantees
+`remote-only` cancellation — audio from an `RTCPeerConnection` track — and Web
+Audio output is not remote, so on paper the WS path had no guarantee. Measured
+on Chrome / macOS, speakers on, tester silent for a 30 s reply:
 
 | `echoCancellation` | playback route | `interrupted` while silent |
 | --- | --- | --- |
-| `false` (control) | `direct` | **14** |
-| `true` | `direct` | **0** |
+| `false` (control) | direct | **14** |
+| `true` | direct | **0** |
 
 The control is what makes the zero mean anything. With cancellation off the
 model heard its own voice, took it for barge-in fourteen times, and garbled its
-own counting as it repeatedly interrupted itself — the acoustic path was
-demonstrably live. Turning cancellation on silenced it completely.
+own counting as it repeatedly interrupted itself. Turning cancellation on
+silenced it completely. Chrome's software AEC does cover `AudioWorklet` output,
+so the plain worklet → destination path stands and no loopback is needed.
 
-So Chrome's software AEC does cover `AudioWorklet` output in 2026, not just in
-the 2018 blog post, and **the loopback trick is not needed for echo on
-Chrome**. See "Design consequences" below for what that changes.
+### Echo, Safari
 
-**Safari leaks echo for the first half-second of speech, then converges.**
-Same protocol, Safari / macOS. The control climbed, so the path was live there
-too. With cancellation on, interruptions did occur — but never at a random
-time:
+Same protocol, Safari / macOS. The control climbed there too. With cancellation
+on, interruptions did occur — but never at a random time:
 
 ```
 07:44:43.602 sent text: 1부터 50까지 천천히 세어줘.
@@ -149,96 +256,46 @@ time:
 07:44:56.709 turnComplete                       <- ran to completion, 190 tokens
 ```
 
-The run deliberately waited ten seconds between connecting and sending, which
-is what makes it conclusive: both interruptions ignore that offset and land
-**0.5 s after the voice starts**, twice, to the tenth. They are tied to the
-character speaking, not to session start and not to the click that sent the
-message. That is an echo canceller adapting — Safari's needs roughly half a
-second of the new signal to converge, and until it does, the model hears
-itself and treats it as barge-in.
+The run deliberately waited ten seconds between connecting and sending, which is
+what makes it conclusive: both interruptions ignore that offset and land **0.5 s
+after the voice starts**, twice, to the tenth. They are tied to the character
+speaking, not to session start and not to the click that sent the message. That
+is an echo canceller adapting.
 
 It converges *cumulatively*, not per turn: the third attempt survived seven
 seconds of speech untouched, having banked ~1 s of adaptation across the two
-turns it had already killed. The earlier Safari runs fit the same rule — a
-single interruption ~1.2 s into a session where the tester clicked Send
-immediately, which is again ~0.5 s after the voice began.
+turns it had already killed. That is where both halves of `CONVERGENCE_GATE_MS`
+come from — the ~0.5 s window and the ~1 s cumulative exposure threshold.
 
 **Loopback does not fix it** (interruption at 1.1 s, statistically identical to
-`direct`'s 1.3 s). Safari evidently does use the Web Audio output as its
-reference, exactly as Chrome does; what costs time is the convergence itself,
-and routing through an `RTCPeerConnection` does not make an adaptive filter
-adapt faster.
-
-### Q2 — What does a client-side `interrupt()` actually cost?
-
-The Live API documents no client message that cancels an in-flight generation;
-interruption is server-VAD driven. Press **interrupt() — local flush** while
-the model is speaking; the `bytes discarded` counter then holds everything the
-server kept producing for a turn nobody will hear, and the window closes at
-`turnComplete`. Given that the server front-loads audio faster than real time,
-expect this number to be large.
+direct playback's 1.3 s). Safari evidently uses the Web Audio output as its
+reference exactly as Chrome does; what costs time is the convergence itself, and
+routing through an `RTCPeerConnection` does not make an adaptive filter adapt
+faster. Loopback was the designated fallback and it was measured not to work,
+which is why nothing in the transport carries a peer-connection playback path —
+and why the harness no longer offers one to compare against.
 
 ## Design consequences
 
-Chrome's result retires the research's R2, which argued for making the WebRTC
-loopback the default because the spec gave no guarantee. The guarantee is still
-absent, but the behaviour is now measured rather than assumed, so the plain
-`AudioWorklet → destination` path stands on Chrome.
+Two follow-ons from the echo results that the transport's own comments cite
+back to.
 
-That reopens one thing R2 had bundled away. Loopback would have handed lip sync
-a `MediaStream` for free, letting `LipSyncAnalyzer.attachMediaStream()` work
-unchanged. Without it, the answer is **not** `attachAudioNode()` — cross-context
-`AudioNode`s cannot connect, so that signature drags the analyser's whole
-`AudioContext` lifecycle in with it. Use R3's alternative instead: tap the
-playback graph with a `MediaStreamAudioDestinationNode` alongside the audible
-connection and hand `.stream` to the existing `attachMediaStream()`. No core
-change, no peer connection, one extra node.
+**Lip sync gets a tap, not a node.** Loopback would have handed
+`LipSyncAnalyzer.attachMediaStream()` a `MediaStream` for free; with it retired,
+the answer is *not* an `attachAudioNode()` — the analyzer owns its own
+`AudioContext` and `AudioNode`s cannot connect across contexts, so that
+signature would drag the analyzer's whole context lifecycle into the transport.
+A `MediaStreamAudioDestinationNode` alongside the audible connection costs one
+node and leaves the existing `attachMediaStream()` untouched.
 
-Safari's result retires loopback for the second time and for a better reason:
-it was the designated fallback, and it does not work. Nothing in the transport
-should carry a peer-connection playback path.
-
-What Safari needs instead is a **convergence gate — hold mic frames back for
-roughly the first 700 ms after the character's voice becomes audible.** During
-that window the only thing the microphone reliably contains is the character's
-own voice arriving before the canceller has adapted, so sending it buys
-nothing and costs the turn. Three things make this safe to reason about rather
-than a heuristic papering over a signal:
-
-- The window is anchored to a fact the client owns — playback start — not to a
-  guess about what the audio contains.
-- Its cost is bounded and known: a barge-in inside the first 700 ms of a reply
-  is dropped. The alternative is the character killing its own turn, twice,
-  which is what the log above shows.
-- It should decay. Convergence is cumulative across a session, so the gate can
-  apply to the first turns and stop once a turn has survived intact.
-
-Measure before shipping it: the 700 ms comes from one machine, one room, one
-pair of speakers. The harness prints the exact offset for every interruption,
-so widen or narrow it from data rather than from this paragraph.
-
-## Known simplifications
-
-- Downsampling is box-average decimation in the capture worklet, not a proper
-  anti-alias filter. Fine for a spike; revisit if transcription quality looks
-  worse than the model deserves.
-- Capture runs at the device rate and playback at a forced 24 kHz, so there are
-  two `AudioContext`s. The research flags two contexts as fragile on iOS; this
-  harness targets desktop first.
-- No tools are registered. Adding one dummy `functionDeclarations` entry would
-  also confirm the `toolCall` → `{ id, name, response }` mapping, but that is a
-  cycle-1 concern, not a gate.
+**That leaves the client holding several `AudioContext`s** — playback forced to
+24 kHz, capture at the device rate, and the analyzer's own. The research flags
+even two as fragile on iOS. These checks are desktop-first.
 
 ## What it does not prove
 
-- Anything about charivo's own interfaces — it implements none of them.
 - Reconnection, `sessionResumption`, `goAway` handover, or context-window
   compression.
 - iOS or Android behaviour.
-
-## Afterwards
-
-This directory is not throwaway. Once the transport exists, `src/main.ts` gets
-replaced by one that drives the real client, `*.spec.ts` files land beside it,
-and the vite config and token route stay as they are — at which point this
-becomes the Gemini counterpart to `tests/webrtc-smoke/`.
+- Output audio quality, microphone UX, or rendering behaviour.
+- The `examples/web` route; that is covered by `tests/live-realtime/`.

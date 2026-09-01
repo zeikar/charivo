@@ -1,36 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createGeminiRealtimeProvider } from "../../packages/server/src/gemini/index";
+import { workspaceAliases } from "../../test-aliases";
 import { defineConfig } from "vite";
 
 type JsonRecord = Record<string, unknown>;
 
 const harnessRoot = __dirname;
-
-const AUTH_TOKENS_URL =
-  "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
-
-// The browser chooses from these; it cannot name a model of its own. Verified
-// against the live API 2026-08-29 — see README "What the probes established".
-const ALLOWED_MODELS = new Set([
-  "gemini-3.1-flash-live-preview",
-  "gemini-2.5-flash-native-audio-preview-12-2025",
-]);
-
-const ALLOWED_VOICES = new Set([
-  "Puck",
-  "Charon",
-  "Kore",
-  "Fenrir",
-  "Aoede",
-  "Zephyr",
-  "Leda",
-  "Orus",
-]);
-
-const MAX_INSTRUCTION_LENGTH = 2000;
-const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
-// Google's default window to *start* a session is 1 minute. This harness is
-// clicked by hand, so give the tester a little longer between mint and connect.
-const NEW_SESSION_WINDOW_MS = 2 * 60 * 1000;
 
 function sendJson(
   response: ServerResponse,
@@ -59,13 +34,19 @@ async function readJsonBody(request: IncomingMessage): Promise<JsonRecord> {
 
 export default defineConfig({
   root: harnessRoot,
+  resolve: {
+    alias: workspaceAliases,
+  },
   plugins: [
     {
-      name: "gemini-live-token-route",
+      name: "charivo-realtime-bootstrap-route",
       configureServer(server) {
         server.middlewares.use(
-          "/api/gemini-token",
+          "/api/realtime",
           async (request: IncomingMessage, response: ServerResponse, next) => {
+            // Local to this harness for the same reason the WebRTC harness
+            // keeps its own copy: the smoke exercises the realtime packages
+            // without depending on examples/web.
             if (request.method !== "POST") {
               next();
               return;
@@ -73,32 +54,28 @@ export default defineConfig({
 
             try {
               const payload = await readJsonBody(request);
-              const model = payload.model;
-              const voice = payload.voice;
-              const instruction = payload.instruction;
-
-              if (typeof model !== "string" || !ALLOWED_MODELS.has(model)) {
-                sendJson(response, 400, {
-                  error: `Unsupported model: ${String(model)}`,
-                  allowed: [...ALLOWED_MODELS],
-                });
-                return;
-              }
-
-              if (typeof voice !== "string" || !ALLOWED_VOICES.has(voice)) {
-                sendJson(response, 400, {
-                  error: `Unsupported voice: ${String(voice)}`,
-                  allowed: [...ALLOWED_VOICES],
-                });
-                return;
-              }
+              const transport = payload.transport;
+              const session = payload.session;
 
               if (
-                typeof instruction !== "string" ||
-                instruction.length > MAX_INSTRUCTION_LENGTH
+                (transport !== "webrtc" && transport !== "websocket") ||
+                typeof session !== "object" ||
+                session === null
               ) {
                 sendJson(response, 400, {
-                  error: `instruction must be a string of at most ${MAX_INSTRUCTION_LENGTH} characters`,
+                  error: "transport and session are required",
+                });
+                return;
+              }
+
+              const providerName =
+                typeof (session as JsonRecord).provider === "string"
+                  ? (session as JsonRecord).provider
+                  : undefined;
+
+              if (providerName !== "gemini") {
+                sendJson(response, 501, {
+                  error: `Unsupported realtime provider: ${providerName ?? "(unspecified)"}`,
                 });
                 return;
               }
@@ -110,72 +87,30 @@ export default defineConfig({
                 return;
               }
 
-              // `bidiGenerateContentSetup` REPLACES the client's setup frame
-              // rather than validating it, so the whole session config has to
-              // be built here. That is not a burden — it is the defence: a
-              // token minted without it lets the holder pick any model and any
-              // config on the key owner's bill (verified: an unconstrained
-              // token happily opened a session for a model the page never
-              // offered).
-              const now = Date.now();
-              const upstream = await fetch(
-                `${AUTH_TOKENS_URL}?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    uses: 1,
-                    expireTime: new Date(now + TOKEN_LIFETIME_MS).toISOString(),
-                    newSessionExpireTime: new Date(
-                      now + NEW_SESSION_WINDOW_MS,
-                    ).toISOString(),
-                    bidiGenerateContentSetup: {
-                      model: `models/${model}`,
-                      generationConfig: {
-                        responseModalities: ["AUDIO"],
-                        speechConfig: {
-                          voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: voice },
-                          },
-                        },
-                      },
-                      systemInstruction: { parts: [{ text: instruction }] },
-                      inputAudioTranscription: {},
-                      outputAudioTranscription: {},
-                    },
-                  }),
-                },
-              );
+              // The model/voice whitelist and the whole `bidiGenerateContentSetup`
+              // body live in the provider, not here — that is the defence the
+              // spike's own mint route was written to prove, now shipped.
+              const provider = createGeminiRealtimeProvider({
+                apiKey: process.env.GEMINI_API_KEY,
+              });
 
-              const bodyText = await upstream.text();
+              const bootstrap = await provider.createSession({
+                adapter:
+                  typeof payload.adapter === "string"
+                    ? payload.adapter
+                    : undefined,
+                transport,
+                session: session as Record<string, unknown>,
+                sdpOffer:
+                  typeof payload.sdpOffer === "string"
+                    ? payload.sdpOffer
+                    : undefined,
+              });
 
-              if (!upstream.ok) {
-                console.error(
-                  `[gemini-token] ${upstream.status} ${upstream.statusText}: ${bodyText}`,
-                );
-                sendJson(response, 502, {
-                  error: "Token mint failed",
-                  status: upstream.status,
-                  details: bodyText,
-                });
-                return;
-              }
-
-              const minted = JSON.parse(bodyText) as JsonRecord;
-              const token = minted.name;
-
-              if (typeof token !== "string") {
-                sendJson(response, 502, {
-                  error: "Token mint returned no name field",
-                  details: bodyText,
-                });
-                return;
-              }
-
-              sendJson(response, 200, { token, model });
+              sendJson(response, 200, bootstrap as JsonRecord);
             } catch (error) {
               sendJson(response, 500, {
-                error: "Failed to mint ephemeral token",
+                error: "Failed to create realtime session",
                 details:
                   error instanceof Error ? error.message : "Unknown error",
               });

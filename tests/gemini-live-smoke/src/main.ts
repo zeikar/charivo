@@ -1,790 +1,339 @@
 /**
- * Gemini Live spike harness.
+ * Gemini Live smoke harness driver.
  *
- * Deliberately imports nothing from charivo: the questions this answers have to
- * be answerable BEFORE a `RealtimeTransportClient` implementation exists, so
- * this is raw WebSocket + Web Audio and nothing else. It is a measurement
- * device, not a prototype of the transport — see README.md.
+ * Drives the real chain — `@charivo/core` → `@charivo/realtime` →
+ * `@charivo/realtime/remote` → `@charivo/realtime/gemini` → this harness's
+ * `/api/realtime` route → `@charivo/server/gemini`. The spike this replaced
+ * measured with its own WebSocket client, its playback-route toggles and its
+ * echo-mode selector; those questions are settled (README.md), and the
+ * convergence gate the answers produced lives in the transport — so re-tuning
+ * it means exercising that gate here rather than reimplementing it.
  */
-type PlaybackRoute = "direct" | "loopback" | "gated";
-type EchoMode = "true" | "all" | "false";
+import type {
+  EventMap,
+  RealtimeSessionConfig,
+  ToolRegistration,
+} from "@charivo/core";
+import { Charivo } from "@charivo/core";
+import { createRealtimeManager } from "@charivo/realtime";
+import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
+import type { HarnessSnapshot, SmokeHarnessApi } from "../harness-types";
 
-const INPUT_SAMPLE_RATE = 16000;
-const OUTPUT_SAMPLE_RATE = 24000;
-/** 20 ms at 16 kHz. No official chunk-size guidance exists; see README. */
-const CAPTURE_FRAME_SAMPLES = 320;
-const WS_BASE =
-  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
-
-const KNOWN_MESSAGE_KEYS = new Set([
-  "setupComplete",
-  "serverContent",
-  "toolCall",
-  "toolCallCancellation",
-  "goAway",
-  "sessionResumptionUpdate",
-  "usageMetadata",
-]);
-
-interface GeminiPart {
-  text?: string;
-  inlineData?: { data?: string; mimeType?: string };
-}
-
-interface GeminiServerMessage {
-  setupComplete?: Record<string, unknown>;
-  serverContent?: {
-    modelTurn?: { parts?: GeminiPart[] };
-    interrupted?: boolean;
-    generationComplete?: boolean;
-    turnComplete?: boolean;
-    inputTranscription?: { text?: string };
-    outputTranscription?: { text?: string };
-  };
-  toolCall?: { functionCalls?: Array<{ id?: string; name?: string }> };
-  toolCallCancellation?: { ids?: string[] };
-  goAway?: { timeLeft?: string };
-  sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
-  usageMetadata?: Record<string, unknown>;
-}
-
-const CAPTURE_WORKLET_SOURCE = `
-class CaptureProcessor extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    const targetRate = options.processorOptions.targetRate;
-    const frameSamples = options.processorOptions.frameSamples;
-    this.ratio = sampleRate / targetRate;
-    this.frameSamples = frameSamples;
-    this.position = 0;
-    this.sum = 0;
-    this.count = 0;
-    this.pending = [];
-  }
-
-  process(inputs) {
-    const channel = inputs[0] && inputs[0][0];
-    if (!channel) {
-      return true;
-    }
-
-    // Box-average decimation. Not a proper anti-alias filter, but far better
-    // than picking every Nth sample, which folds speech harmonics back down.
-    for (let i = 0; i < channel.length; i += 1) {
-      this.sum += channel[i];
-      this.count += 1;
-      this.position += 1;
-      if (this.position >= this.ratio) {
-        this.position -= this.ratio;
-        this.pending.push(this.count > 0 ? this.sum / this.count : 0);
-        this.sum = 0;
-        this.count = 0;
-      }
-    }
-
-    while (this.pending.length >= this.frameSamples) {
-      const chunk = this.pending.splice(0, this.frameSamples);
-      const frame = new Int16Array(chunk.length);
-      for (let i = 0; i < chunk.length; i += 1) {
-        const clamped = Math.max(-1, Math.min(1, chunk[i]));
-        frame[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
-      }
-      this.port.postMessage(frame.buffer, [frame.buffer]);
-    }
-
-    return true;
-  }
-}
-
-registerProcessor("capture-processor", CaptureProcessor);
-`;
-
-function el<T extends HTMLElement>(id: string): T {
-  const node = document.getElementById(id);
-  if (!node) {
-    throw new Error(`Missing #${id}`);
-  }
-  return node as T;
-}
-
-const routeSelect = el<HTMLSelectElement>("route-select");
-const echoSelect = el<HTMLSelectElement>("echo-select");
-const modelSelect = el<HTMLSelectElement>("model-select");
-const voiceSelect = el<HTMLSelectElement>("voice-select");
-const instructionInput = el<HTMLInputElement>("instruction-input");
-const textInput = el<HTMLInputElement>("text-input");
-const silentRun = el<HTMLInputElement>("silent-run");
-const connectButton = el<HTMLButtonElement>("connect-button");
-const disconnectButton = el<HTMLButtonElement>("disconnect-button");
-const interruptButton = el<HTMLButtonElement>("interrupt-button");
-const sendButton = el<HTMLButtonElement>("send-button");
-const dumpButton = el<HTMLButtonElement>("dump-button");
-const loopbackAudio = el<HTMLAudioElement>("loopback-audio");
-const eventLog = el<HTMLPreElement>("event-log");
-const transcriptText = el<HTMLPreElement>("transcript-text");
-const micMeterFill = el<HTMLSpanElement>("mic-meter").firstElementChild;
-const playbackMeterFill =
-  el<HTMLSpanElement>("playback-meter").firstElementChild;
-
-const logLines: string[] = [];
-
-function log(message: string): void {
-  const line = `${new Date().toISOString().slice(11, 23)} ${message}`;
-  logLines.push(line);
-  eventLog.textContent = logLines.slice(-400).join("\n");
-  eventLog.scrollTop = eventLog.scrollHeight;
-}
-
-function setText(id: string, value: string): void {
-  el(id).textContent = value;
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const stride = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += stride) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + stride));
-  }
-  return btoa(binary);
-}
-
-interface SchedulerCallbacks {
-  onDrain(): void;
-  onPlayingChange(playing: boolean): void;
-}
+type SmokeWindow = Window & {
+  __charivoSmoke?: SmokeHarnessApi;
+};
 
 /**
- * Owns every scheduled sample, which is the whole point: with the server out of
- * the playback business there is no authoritative "audio ended" event to wait
- * for, but there is exact bookkeeping — we know when the last thing we
- * scheduled finished.
+ * One object, used by both `prepareAudio()` and `startSession()` — see
+ * `startSession()` for why they must agree. `provider` + `transport` are what
+ * the remote client's adapter resolver reads to pick the Gemini Live adapter.
  */
-class PlaybackScheduler {
-  private nextStartTime = 0;
-  private generation = 0;
-  private readonly active = new Set<AudioBufferSourceNode>();
+const SESSION_CONFIG: RealtimeSessionConfig = {
+  provider: "gemini",
+  transport: "websocket",
+  instructions: [
+    "너는 친근한 한국어 대화 상대야.",
+    "항상 한국어로만 대답해.",
+    "날씨를 물어보면 반드시 getWeather 도구를 호출하고, 도구가 돌려준 값으로만 대답해.",
+  ].join(" "),
+};
 
-  constructor(
-    private readonly context: AudioContext,
-    private readonly destination: AudioNode,
-    private readonly callbacks: SchedulerCallbacks,
-  ) {}
-
-  enqueue(pcm: Uint8Array): void {
-    const sampleCount = Math.floor(pcm.byteLength / 2);
-    if (sampleCount === 0) {
-      return;
-    }
-
-    const generation = this.generation;
-    const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
-    const buffer = this.context.createBuffer(
-      1,
-      sampleCount,
-      OUTPUT_SAMPLE_RATE,
-    );
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < sampleCount; i += 1) {
-      channel[i] = view.getInt16(i * 2, true) / 32768;
-    }
-
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.destination);
-    source.onended = () => {
-      this.active.delete(source);
-      if (generation !== this.generation || this.active.size > 0) {
-        return;
-      }
-      this.callbacks.onPlayingChange(false);
-      this.callbacks.onDrain();
-    };
-
-    const wasIdle = this.active.size === 0;
-    const startAt = Math.max(this.context.currentTime, this.nextStartTime);
-    this.active.add(source);
-    source.start(startAt);
-    this.nextStartTime = startAt + buffer.duration;
-
-    if (wasIdle) {
-      this.callbacks.onPlayingChange(true);
-    }
-  }
-
-  flush(): void {
-    this.generation += 1;
-    const wasPlaying = this.active.size > 0;
-
-    for (const source of this.active) {
-      source.onended = null;
-      try {
-        source.stop();
-      } catch {
-        // Already finished between the size check and here; nothing to stop.
-      }
-    }
-
-    this.active.clear();
-    this.nextStartTime = 0;
-
-    if (wasPlaying) {
-      this.callbacks.onPlayingChange(false);
-    }
-  }
-}
-
-let socket: WebSocket | null = null;
-let captureContext: AudioContext | null = null;
-let playbackContext: AudioContext | null = null;
-let micStream: MediaStream | null = null;
-let micAnalyser: AnalyserNode | null = null;
-let playbackAnalyser: AnalyserNode | null = null;
-let scheduler: PlaybackScheduler | null = null;
-let loopbackPeers: {
-  local: RTCPeerConnection;
-  remote: RTCPeerConnection;
-} | null = null;
-let meterFrame = 0;
-
-let setupComplete = false;
 /**
- * Anchor for the age of each interruption. An echo canceller has to converge on
- * the room before it works, so "how many" is the wrong question on its own —
- * early leaks that stop are a different verdict from leaks that keep coming.
+ * A dummy tool, present to observe the wire rather than to be useful: the
+ * `toolCall` frame shape comes from the API reference and has never been seen
+ * live. One argument, so `args` is observable too.
  */
-let sessionStartedAt = 0;
-/**
- * When the character's voice actually became audible, cleared at `turnComplete`.
- * The anchor that separates the two explanations for an interruption: echo can
- * only be blamed while something is coming out of the speakers, so an
- * interruption logged with no playback in flight is not an echo at all.
- */
-let speakingSince = 0;
-let activeRoute: PlaybackRoute = "direct";
-
-let interruptedCount = 0;
-let falseInterruptCount = 0;
-let inputTranscriptCount = 0;
-let outputTranscriptCount = 0;
-let discardedBytes = 0;
-let flushedAt = 0;
-
-let turnStartedAt = 0;
-let generationCompleteAt = 0;
-let turnCompleteAt = 0;
-
-function resetTurnTiming(): void {
-  turnStartedAt = 0;
-  generationCompleteAt = 0;
-  turnCompleteAt = 0;
-}
-
-function since(anchor: number, at: number): string {
-  if (anchor === 0 || at === 0) {
-    return "-";
-  }
-  return `+${Math.round(at - anchor)} ms`;
-}
-
-async function mintToken(model: string): Promise<string> {
-  // Voice and instruction travel to the mint route, not into the setup frame:
-  // the token's `bidiGenerateContentSetup` replaces whatever this page sends,
-  // so the server is the only place the real session config can be built.
-  const response = await fetch("/api/gemini-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      voice: voiceSelect.value,
-      instruction: instructionInput.value,
-    }),
-  });
-
-  const payload = (await response.json()) as Record<string, unknown>;
-  if (!response.ok) {
-    throw new Error(
-      `Token mint failed (${response.status}): ${JSON.stringify(payload)}`,
-    );
-  }
-
-  return payload.token as string;
-}
-
-function buildAudioConstraints(mode: EchoMode): MediaStreamConstraints {
-  // `{ ideal: "all" }` is a newer constraint value than the DOM typings model,
-  // so the cast is the honest way to request it. An engine that does not know
-  // the value silently falls back to `true`, which is exactly the comparison
-  // this harness exists to make.
-  const echoCancellation = mode === "all" ? { ideal: "all" } : mode === "true";
-
-  return {
-    audio: {
-      echoCancellation,
-      noiseSuppression: true,
-      autoGainControl: true,
-    } as MediaTrackConstraints,
-  };
-}
-
-async function buildPlaybackRoute(
-  context: AudioContext,
-  route: PlaybackRoute,
-): Promise<AudioNode> {
-  const gain = context.createGain();
-  playbackAnalyser = context.createAnalyser();
-  playbackAnalyser.fftSize = 512;
-  gain.connect(playbackAnalyser);
-
-  if (route !== "loopback") {
-    gain.connect(context.destination);
-    return gain;
-  }
-
-  // Route playback through a local RTCPeerConnection pair so the audio the user
-  // hears arrives on a *remote* track. `echoCancellation: true` is only
-  // guaranteed to cancel remote-sourced audio, so this is the difference
-  // between relying on an implementation detail and relying on the spec.
-  const destination = context.createMediaStreamDestination();
-  gain.connect(destination);
-
-  const local = new RTCPeerConnection();
-  const remote = new RTCPeerConnection();
-  loopbackPeers = { local, remote };
-
-  local.onicecandidate = (event) => {
-    if (event.candidate) {
-      void remote.addIceCandidate(event.candidate);
-    }
-  };
-  remote.onicecandidate = (event) => {
-    if (event.candidate) {
-      void local.addIceCandidate(event.candidate);
-    }
-  };
-  remote.ontrack = (event) => {
-    loopbackAudio.srcObject = event.streams[0];
-    void loopbackAudio.play().catch((error: unknown) => {
-      log(`loopback <audio>.play() rejected: ${String(error)}`);
-    });
-  };
-
-  for (const track of destination.stream.getAudioTracks()) {
-    local.addTrack(track, destination.stream);
-  }
-
-  const offer = await local.createOffer();
-  await local.setLocalDescription(offer);
-  await remote.setRemoteDescription(offer);
-  const answer = await remote.createAnswer();
-  await remote.setLocalDescription(answer);
-  await local.setRemoteDescription(answer);
-
-  log("loopback peer pair established");
-  return gain;
-}
-
-function setMicEnabled(enabled: boolean): void {
-  for (const track of micStream?.getAudioTracks() ?? []) {
-    track.enabled = enabled;
-  }
-}
-
-function updateMeters(): void {
-  meterFrame = requestAnimationFrame(updateMeters);
-
-  const paint = (analyser: AnalyserNode | null, fill: Element | null): void => {
-    if (!analyser || !fill) {
-      return;
-    }
-    const samples = new Uint8Array(analyser.fftSize);
-    analyser.getByteTimeDomainData(samples);
-    let sum = 0;
-    for (let i = 0; i < samples.length; i += 1) {
-      const centered = (samples[i] - 128) / 128;
-      sum += centered * centered;
-    }
-    const rms = Math.sqrt(sum / samples.length);
-    (fill as HTMLElement).style.width = `${Math.min(rms * 300, 100)}%`;
-  };
-
-  paint(micAnalyser, micMeterFill);
-  paint(playbackAnalyser, playbackMeterFill);
-}
-
-function handleServerMessage(message: GeminiServerMessage): void {
-  for (const key of Object.keys(message)) {
-    if (!KNOWN_MESSAGE_KEYS.has(key)) {
-      log(
-        `UNKNOWN top-level key "${key}": ${JSON.stringify(message[key as keyof GeminiServerMessage])}`,
-      );
-    }
-  }
-
-  if (message.setupComplete) {
-    setupComplete = true;
-    sessionStartedAt = performance.now();
-    log("setupComplete — streaming microphone");
-    return;
-  }
-
-  if (message.goAway) {
-    log(`goAway timeLeft=${message.goAway.timeLeft ?? "(none)"}`);
-  }
-
-  if (message.sessionResumptionUpdate) {
-    const update = message.sessionResumptionUpdate;
-    log(
-      `sessionResumptionUpdate resumable=${String(update.resumable)} handle=${
-        update.newHandle ? `${update.newHandle.slice(0, 12)}…` : "(none)"
-      }`,
-    );
-  }
-
-  if (message.toolCall?.functionCalls) {
-    log(
-      `toolCall x${message.toolCall.functionCalls.length}: ${message.toolCall.functionCalls
-        .map((call) => `${call.name ?? "?"}#${call.id ?? "?"}`)
-        .join(", ")}`,
-    );
-  }
-
-  if (message.toolCallCancellation) {
-    log(
-      `toolCallCancellation: ${(message.toolCallCancellation.ids ?? []).join(", ")}`,
-    );
-  }
-
-  if (message.usageMetadata) {
-    log(`usageMetadata: ${JSON.stringify(message.usageMetadata)}`);
-  }
-
-  const content = message.serverContent;
-  if (!content) {
-    return;
-  }
-
-  if (content.inputTranscription?.text) {
-    inputTranscriptCount += 1;
-    setText("input-transcript-count", String(inputTranscriptCount));
-    transcriptText.textContent += `\n[in ] ${content.inputTranscription.text}`;
-  }
-
-  if (content.outputTranscription?.text) {
-    outputTranscriptCount += 1;
-    setText("output-transcript-count", String(outputTranscriptCount));
-    transcriptText.textContent += `\n[out] ${content.outputTranscription.text}`;
-  }
-
-  for (const part of content.modelTurn?.parts ?? []) {
-    if (!part.inlineData?.data) {
-      continue;
-    }
-
-    const bytes = base64ToBytes(part.inlineData.data);
-
-    // Audio that keeps arriving after a local flush is exactly the waste Q2 is
-    // about: the server has no documented "cancel" and does not stop.
-    if (flushedAt > 0) {
-      discardedBytes += bytes.byteLength;
-      setText("discarded-bytes", String(discardedBytes));
-      setText(
-        "discarded-window",
-        `${Math.round(performance.now() - flushedAt)} ms and counting`,
-      );
-      continue;
-    }
-
-    if (turnStartedAt === 0) {
-      turnStartedAt = performance.now();
-      log("first audio chunk of turn");
-    }
-    scheduler?.enqueue(bytes);
-  }
-
-  if (content.interrupted) {
-    interruptedCount += 1;
-    setText("interrupted-count", String(interruptedCount));
-    const now = performance.now();
-    const sessionAge =
-      sessionStartedAt === 0
-        ? "?"
-        : `${((now - sessionStartedAt) / 1000).toFixed(1)}s`;
-    const speechAge =
-      speakingSince === 0
-        ? "NOTHING WAS PLAYING — cannot be echo"
-        : `${((now - speakingSince) / 1000).toFixed(1)}s after the voice started`;
-    if (silentRun.checked) {
-      falseInterruptCount += 1;
-      setText("false-interrupt-count", String(falseInterruptCount));
-      setText("last-false-interrupt", `${sessionAge} / ${speechAge}`);
-      log(
-        `interrupted (FALSE — silent run armed) #${falseInterruptCount} at ${sessionAge} into session, ${speechAge}`,
-      );
-    } else {
-      log(
-        `interrupted #${interruptedCount} at ${sessionAge} into session, ${speechAge}`,
-      );
-    }
-    scheduler?.flush();
-    resetTurnTiming();
-  }
-
-  if (content.generationComplete) {
-    generationCompleteAt = performance.now();
-    setText("delta-generation", since(turnStartedAt, generationCompleteAt));
-    log("generationComplete");
-  }
-
-  if (content.turnComplete) {
-    turnCompleteAt = performance.now();
-    speakingSince = 0;
-    setText("delta-turn", since(turnStartedAt, turnCompleteAt));
-    log("turnComplete (server stopped sending — NOT playback end)");
-
-    // The flushed turn is over, so stop discarding and let the next one play.
-    // What the counter holds now is the answer to Q2: everything the server
-    // kept producing for a turn the user had already cancelled.
-    if (flushedAt > 0) {
-      setText(
-        "discarded-window",
-        `${Math.round(turnCompleteAt - flushedAt)} ms (flush → turnComplete)`,
-      );
-      log(
-        `discarded ${discardedBytes} bytes between flush and turnComplete (Q2)`,
-      );
-      flushedAt = 0;
-    }
-  }
-}
-
-function onDrain(): void {
-  const drainedAt = performance.now();
-  setText("delta-drain", since(turnStartedAt, drainedAt));
-  setText(
-    "delta-gap",
-    turnCompleteAt === 0
-      ? "(drained before turnComplete)"
-      : since(turnCompleteAt, drainedAt),
-  );
-  log(
-    turnCompleteAt === 0
-      ? "playback drained BEFORE turnComplete — server still sending"
-      : "playback drained — this is the real end of audio",
-  );
-  resetTurnTiming();
-}
-
-function onPlayingChange(playing: boolean): void {
-  // Held across the spurious mid-turn drains, so it marks when the voice first
-  // became audible rather than when the last buffer happened to start.
-  if (playing && speakingSince === 0) {
-    speakingSince = performance.now();
-  }
-
-  if (activeRoute === "gated") {
-    setMicEnabled(!playing);
-    log(`gated: mic ${playing ? "muted" : "live"}`);
-  }
-}
-
-async function connect(): Promise<void> {
-  connectButton.disabled = true;
-
-  try {
-    const model = modelSelect.value;
-    const route = routeSelect.value as PlaybackRoute;
-    activeRoute = route;
-
-    const token = await mintToken(model);
-    log(`token minted for ${model}`);
-
-    micStream = await navigator.mediaDevices.getUserMedia(
-      buildAudioConstraints(echoSelect.value as EchoMode),
-    );
-    const settings = micStream.getAudioTracks()[0]?.getSettings() ?? {};
-    log(
-      `mic settings: echoCancellation=${String(settings.echoCancellation)} sampleRate=${String(settings.sampleRate)}`,
-    );
-
-    captureContext = new AudioContext();
-    log(`capture context at ${captureContext.sampleRate} Hz`);
-    const workletUrl = URL.createObjectURL(
-      new Blob([CAPTURE_WORKLET_SOURCE], { type: "application/javascript" }),
-    );
-    await captureContext.audioWorklet.addModule(workletUrl);
-    URL.revokeObjectURL(workletUrl);
-
-    const micSource = captureContext.createMediaStreamSource(micStream);
-    micAnalyser = captureContext.createAnalyser();
-    micAnalyser.fftSize = 512;
-    micSource.connect(micAnalyser);
-
-    const capture = new AudioWorkletNode(captureContext, "capture-processor", {
-      processorOptions: {
-        targetRate: INPUT_SAMPLE_RATE,
-        frameSamples: CAPTURE_FRAME_SAMPLES,
+const WEATHER_TOOL: ToolRegistration = {
+  definition: {
+    type: "function",
+    name: "getWeather",
+    description:
+      "Return the current weather for a city. Call this whenever the user asks about the weather.",
+    parameters: {
+      type: "object",
+      properties: {
+        city: {
+          type: "string",
+          description: "City name, as the user said it.",
+        },
       },
-    });
-    micSource.connect(capture);
-    capture.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      if (!setupComplete || socket?.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      socket.send(
-        JSON.stringify({
-          realtimeInput: {
-            audio: {
-              data: bytesToBase64(new Uint8Array(event.data)),
-              mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
-            },
-          },
-        }),
-      );
-    };
+      required: ["city"],
+    },
+  },
+  handler: (args) =>
+    Promise.resolve({ city: args.city, summary: "맑음", temperatureC: 21 }),
+};
 
-    playbackContext = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
-    const destination = await buildPlaybackRoute(playbackContext, route);
-    scheduler = new PlaybackScheduler(playbackContext, destination, {
-      onDrain,
-      onPlayingChange,
-    });
+const state: HarnessSnapshot = {
+  sessionStatus: "idle",
+  connection: "idle",
+  assistantStatus: "idle",
+  assistantCompletions: 0,
+  assistantText: "",
+  userTranscripts: [],
+  toolCalls: [],
+  lastError: null,
+  events: [],
+};
 
-    socket = new WebSocket(
-      `${WS_BASE}?access_token=${encodeURIComponent(token)}`,
-    );
-    socket.onopen = () => {
-      // A setup frame is still required, but it carries only the model: the
-      // token already pins the real one, and anything else sent here is
-      // discarded in favour of it.
-      log("websocket open — sending setup");
-      socket?.send(JSON.stringify({ setup: { model: `models/${model}` } }));
-      disconnectButton.disabled = false;
-      interruptButton.disabled = false;
-      sendButton.disabled = false;
-    };
-    socket.onmessage = (event: MessageEvent) => {
-      void (async () => {
-        const raw =
-          typeof event.data === "string"
-            ? event.data
-            : await (event.data as Blob).text();
-        try {
-          handleServerMessage(JSON.parse(raw) as GeminiServerMessage);
-        } catch (error) {
-          log(
-            `failed to handle message: ${String(error)} :: ${raw.slice(0, 200)}`,
-          );
-        }
-      })();
-    };
-    socket.onerror = () => {
-      log("websocket error");
-    };
-    socket.onclose = (event) => {
-      log(
-        `websocket closed code=${event.code} reason="${event.reason}" clean=${String(event.wasClean)}`,
-      );
-      void disconnect();
-    };
+const charivo = new Charivo();
+const realtimeClient = createRemoteRealtimeClient({
+  apiEndpoint: "/api/realtime",
+  // The transport's debug log is the tuning instrument: it prints how long
+  // after playback started each interruption landed, and when the convergence
+  // gate disarmed. Without it `CONVERGENCE_GATE_MS` can only be guessed at.
+  debug: true,
+});
+const realtimeManager = createRealtimeManager(realtimeClient, {
+  tools: [WEATHER_TOOL],
+});
 
-    meterFrame = requestAnimationFrame(updateMeters);
-  } catch (error) {
-    log(`connect failed: ${String(error)}`);
-    await disconnect();
-  }
+charivo.attachRealtime(realtimeManager);
+
+const connectButton = requiredElement<HTMLButtonElement>("connect-button");
+const disconnectButton =
+  requiredElement<HTMLButtonElement>("disconnect-button");
+const interruptButton = requiredElement<HTMLButtonElement>("interrupt-button");
+const sendButton = requiredElement<HTMLButtonElement>("send-button");
+const messageInput = requiredElement<HTMLInputElement>("message-input");
+const sessionStatusElement = requiredElement<HTMLSpanElement>("session-status");
+const assistantStatusElement =
+  requiredElement<HTMLSpanElement>("assistant-status");
+const lastErrorElement = requiredElement<HTMLSpanElement>("last-error");
+const transcriptElement = requiredElement<HTMLPreElement>("transcript");
+const eventLogElement = requiredElement<HTMLPreElement>("event-log");
+
+const subscriptions = [
+  "realtime:session:start",
+  "realtime:session:end",
+  "realtime:state",
+  "realtime:user:transcript",
+  "realtime:assistant:start",
+  "realtime:assistant:delta",
+  "realtime:assistant:done",
+  "tool:call",
+  "tool:result",
+  "tool:error",
+  "realtime:usage",
+  "realtime:error",
+  // Playback boundaries: the Safari convergence gate is anchored to the
+  // character's voice becoming audible, so the live checks read interruption
+  // offsets against these.
+  "tts:audio:start",
+  "tts:audio:end",
+] as const satisfies ReadonlyArray<keyof EventMap>;
+
+/**
+ * `charivo.on` types its payload from the event name alone, so subscribing in a
+ * loop widens it to every `EventMap` value at once. Re-pairing each payload
+ * with the name it arrived under rebuilds a discriminated union the switch can
+ * narrow.
+ */
+type HarnessEvent = {
+  [K in (typeof subscriptions)[number]]: { event: K; payload: EventMap[K] };
+}[(typeof subscriptions)[number]];
+
+for (const eventName of subscriptions) {
+  charivo.on(eventName, (payload) => {
+    const harnessEvent = { event: eventName, payload } as HarnessEvent;
+    const detail = applyHarnessEvent(harnessEvent);
+    recordEvent(eventName, payload, detail);
+    render();
+  });
 }
 
-async function disconnect(): Promise<void> {
-  cancelAnimationFrame(meterFrame);
-  scheduler?.flush();
-  scheduler = null;
+/**
+ * Folds one event into the snapshot and returns the detail worth showing
+ * beside its name in the log — one switch, so the two never disagree about
+ * what an event carried.
+ */
+function applyHarnessEvent(harnessEvent: HarnessEvent): string {
+  const { event: eventName, payload } = harnessEvent;
 
-  if (socket && socket.readyState <= WebSocket.OPEN) {
-    socket.onclose = null;
-    socket.close();
+  switch (eventName) {
+    case "realtime:session:start":
+    case "realtime:session:end":
+    case "realtime:state": {
+      const realtimeState = payload.state;
+      state.sessionStatus = realtimeState.session.status;
+      state.connection = realtimeState.connection;
+      state.assistantStatus = realtimeState.response.status;
+      return `${realtimeState.connection}/${realtimeState.session.status}`;
+    }
+
+    case "realtime:user:transcript":
+      state.userTranscripts.push(payload.text);
+      appendTranscript(`user: ${payload.text}`);
+      return payload.text;
+
+    case "realtime:assistant:start":
+      state.assistantStatus = "responding";
+      state.assistantText = "";
+      return "";
+
+    case "realtime:assistant:delta":
+      state.assistantText += payload.text;
+      return payload.text;
+
+    case "realtime:assistant:done":
+      state.assistantStatus = "completed";
+      state.assistantCompletions += 1;
+      state.assistantText = payload.text;
+      appendTranscript(`assistant: ${payload.text}`);
+      return payload.text;
+
+    case "tool:call":
+      state.toolCalls.push({
+        name: payload.name,
+        callId: payload.callId,
+        args: payload.args,
+      });
+      return `${payload.name} ${JSON.stringify(payload.args)}`;
+
+    case "tool:result":
+      return `${payload.name} ${JSON.stringify(payload.output)}`;
+
+    case "tool:error":
+    case "realtime:error":
+      state.lastError = payload.error.message;
+      return payload.error.message;
+
+    default:
+      return "";
   }
-  socket = null;
-  setupComplete = false;
-
-  for (const track of micStream?.getAudioTracks() ?? []) {
-    track.stop();
-  }
-  micStream = null;
-  micAnalyser = null;
-  playbackAnalyser = null;
-
-  loopbackPeers?.local.close();
-  loopbackPeers?.remote.close();
-  loopbackPeers = null;
-  loopbackAudio.srcObject = null;
-
-  await captureContext?.close();
-  captureContext = null;
-  await playbackContext?.close();
-  playbackContext = null;
-
-  connectButton.disabled = false;
-  disconnectButton.disabled = true;
-  interruptButton.disabled = true;
-  sendButton.disabled = true;
-  log("disconnected");
 }
 
 connectButton.addEventListener("click", () => {
-  void connect();
+  void startSession();
 });
-
 disconnectButton.addEventListener("click", () => {
-  void disconnect();
+  void stopSession();
 });
-
-function localFlush(): void {
-  flushedAt = performance.now();
-  discardedBytes = 0;
-  scheduler?.flush();
-  resetTurnTiming();
-  log("local flush — watching for audio that keeps arriving (Q2)");
-}
-
-function sendText(text: string): void {
-  if (socket?.readyState !== WebSocket.OPEN) {
-    return;
-  }
-  flushedAt = 0;
-  setText("discarded-window", "-");
-  socket.send(
-    JSON.stringify({
-      clientContent: {
-        turns: [{ role: "user", parts: [{ text }] }],
-        turnComplete: true,
-      },
-    }),
-  );
-  log(`sent text: ${text}`);
-}
-
-interruptButton.addEventListener("click", localFlush);
-
+interruptButton.addEventListener("click", () => {
+  void interrupt();
+});
 sendButton.addEventListener("click", () => {
-  sendText(textInput.value);
+  void sendPrompt();
 });
 
-dumpButton.addEventListener("click", () => {
-  const blob = new Blob([logLines.join("\n")], { type: "text/plain" });
-  const anchor = document.createElement("a");
-  anchor.href = URL.createObjectURL(blob);
-  anchor.download = `gemini-live-spike-${Date.now()}.log`;
-  anchor.click();
-  URL.revokeObjectURL(anchor.href);
+/**
+ * `prepareAudio()` and `startSession()` take the same config inside the same
+ * click: the config picks the adapter, so passing it to both is what lets
+ * `connect()` reuse the instance whose `AudioContext` was built in the gesture.
+ * Safari only unlocks such a context, which is the path the convergence-gate
+ * check has to exercise.
+ */
+async function startSession(): Promise<void> {
+  state.lastError = null;
+  render();
+
+  try {
+    await realtimeManager.prepareAudio(SESSION_CONFIG);
+    await realtimeManager.startSession(SESSION_CONFIG);
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+    throw error;
+  }
+}
+
+async function sendPrompt(text = messageInput.value): Promise<void> {
+  state.lastError = null;
+  render();
+
+  try {
+    await realtimeManager.sendMessage(text);
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+    throw error;
+  }
+}
+
+async function interrupt(): Promise<void> {
+  state.lastError = null;
+  render();
+
+  try {
+    await realtimeManager.interrupt();
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+    throw error;
+  }
+}
+
+async function stopSession(): Promise<void> {
+  try {
+    await realtimeManager.stopSession();
+  } catch (error) {
+    state.lastError =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    render();
+  }
+}
+
+function recordEvent<K extends keyof EventMap>(
+  type: K,
+  payload: EventMap[K],
+  detail: string,
+): void {
+  const at = Date.now();
+  state.events.push({ type, payload, at });
+  appendLog(`${formatOffset(at)} ${type}${detail ? ` — ${detail}` : ""}`);
+}
+
+/** Seconds since the first event, which is the frame every live check reads in. */
+function formatOffset(at: number): string {
+  const first = state.events[0]?.at ?? at;
+  return `+${((at - first) / 1000).toFixed(3)}s`;
+}
+
+function appendTranscript(line: string): void {
+  transcriptElement.textContent += `${line}\n`;
+}
+
+function appendLog(line: string): void {
+  eventLogElement.textContent += `${line}\n`;
+  eventLogElement.scrollTop = eventLogElement.scrollHeight;
+}
+
+function render(): void {
+  sessionStatusElement.textContent = `${state.connection}/${state.sessionStatus}`;
+  assistantStatusElement.textContent = state.assistantStatus;
+  lastErrorElement.textContent = state.lastError ?? "-";
+
+  connectButton.disabled =
+    state.sessionStatus === "active" || state.connection === "connecting";
+  disconnectButton.disabled =
+    state.sessionStatus !== "active" && state.connection !== "connecting";
+  interruptButton.disabled = state.sessionStatus !== "active";
+  sendButton.disabled = state.sessionStatus !== "active";
+}
+
+function requiredElement<T extends HTMLElement>(id: string): T {
+  const element = document.getElementById(id);
+  if (!element) {
+    throw new Error(`Missing required element #${id}`);
+  }
+
+  return element as T;
+}
+
+const smokeWindow = window as SmokeWindow;
+smokeWindow.__charivoSmoke = {
+  startSession,
+  sendPrompt,
+  interrupt,
+  stopSession,
+  getSnapshot: () => structuredClone(state),
+};
+
+window.addEventListener("beforeunload", () => {
+  void stopSession();
 });
 
-log("ready — pick a configuration, then Connect");
+render();

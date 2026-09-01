@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gemini Live Spike Harness</title>
+    <title>Charivo Gemini Live Smoke Harness</title>
     <style>
       :root {
         color-scheme: light;
@@ -61,12 +61,7 @@
         align-items: center;
       }
 
-      .row + .row {
-        margin-top: 12px;
-      }
-
       button,
-      select,
       input {
         font: inherit;
       }
@@ -86,15 +81,7 @@
         opacity: 0.55;
       }
 
-      select {
-        border-radius: 12px;
-        border: 1px solid #475569;
-        background: #020617;
-        color: #e2e8f0;
-        padding: 8px 10px;
-      }
-
-      input[type="text"] {
+      input {
         flex: 1 1 360px;
         min-width: 0;
         border-radius: 12px;
@@ -116,197 +103,73 @@
 
       .label {
         display: inline-block;
-        min-width: 168px;
+        min-width: 140px;
         color: #93c5fd;
-      }
-
-      .meter {
-        flex: 1 1 200px;
-        height: 10px;
-        border-radius: 999px;
-        background: #020617;
-        overflow: hidden;
-      }
-
-      .meter > span {
-        display: block;
-        height: 100%;
-        width: 0;
-        background: #38bdf8;
-      }
-
-      #playback-meter > span {
-        background: #f472b6;
-      }
-
-      .alarm {
-        color: #fca5a5;
-        font-weight: 700;
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>Gemini Live Spike Harness</h1>
+      <h1>Charivo Gemini Live Smoke Harness</h1>
       <p>
-        A measurement device, not an implementation. It imports nothing from
-        charivo — raw WebSocket plus Web Audio — so it can answer the four gate
-        questions before the transport exists. Run it in a real browser with
-        real speakers; see README.md for the protocol.
+        Package-level browser harness for the Gemini Live realtime chain. This
+        page is test infrastructure, not product UI. Run it in a real browser
+        with real speakers; see README.md for the manual protocol.
       </p>
 
       <section class="panel">
-        <h2>Configuration</h2>
         <div class="row">
-          <span class="label">Playback route</span>
-          <select id="route-select">
-            <option value="direct">direct (worklet → destination)</option>
-            <option value="loopback">loopback (via RTCPeerConnection)</option>
-            <option value="gated">gated (mute mic while speaking)</option>
-          </select>
-        </div>
-        <div class="row">
-          <span class="label">echoCancellation</span>
-          <select id="echo-select">
-            <option value="true">true</option>
-            <option value="all">{ ideal: "all" }</option>
-            <option value="false">false (control)</option>
-          </select>
-        </div>
-        <div class="row">
-          <span class="label">Model</span>
-          <select id="model-select">
-            <option value="gemini-3.1-flash-live-preview">
-              gemini-3.1-flash-live-preview
-            </option>
-            <option value="gemini-2.5-flash-native-audio-preview-12-2025">
-              gemini-2.5-flash-native-audio-preview-12-2025
-            </option>
-          </select>
-        </div>
-        <div class="row">
-          <span class="label">Voice</span>
-          <select id="voice-select">
-            <option>Puck</option>
-            <option>Charon</option>
-            <option>Kore</option>
-            <option>Fenrir</option>
-            <option>Aoede</option>
-            <option>Zephyr</option>
-            <option>Leda</option>
-            <option>Orus</option>
-          </select>
-        </div>
-        <div class="row">
-          <input
-            id="instruction-input"
-            type="text"
-            value="너는 친근한 한국어 대화 상대야. 항상 한국어로만 대답해."
-          />
+          <button id="connect-button" data-testid="connect-button">
+            Start Realtime Session
+          </button>
+          <button id="disconnect-button" data-testid="disconnect-button">
+            Stop Session
+          </button>
+          <button id="interrupt-button" data-testid="interrupt-button">
+            Interrupt
+          </button>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Session</h2>
-        <div class="row">
-          <button id="connect-button">Connect</button>
-          <button id="disconnect-button" disabled>Disconnect</button>
-          <button id="interrupt-button" disabled>
-            interrupt() — local flush
-          </button>
-          <button id="dump-button">Dump log to file</button>
-        </div>
         <div class="row">
           <input
-            id="text-input"
-            type="text"
+            id="message-input"
+            data-testid="message-input"
             value="1부터 50까지 천천히 세어줘."
           />
-          <button id="send-button" disabled>Send text</button>
+          <button id="send-button" data-testid="send-button">Send</button>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Q1 — Echo / AEC</h2>
-        <div class="row">
-          <label>
-            <input type="checkbox" id="silent-run" />
-            Silent run — I am not speaking, so count every interruption as false
-          </label>
+        <div>
+          <span class="label">Session:</span
+          ><span id="session-status" data-testid="session-status">idle</span>
         </div>
         <div>
-          <span class="label">interrupted count</span
-          ><span id="interrupted-count">0</span>
+          <span class="label">Assistant:</span
+          ><span id="assistant-status" data-testid="assistant-status"
+            >idle</span
+          >
         </div>
         <div>
-          <span class="label">…while you were silent</span
-          ><span id="false-interrupt-count" class="alarm">0</span>
-        </div>
-        <div>
-          <span class="label">last one, into session</span
-          ><span id="last-false-interrupt">-</span>
-        </div>
-        <div class="row">
-          <span class="label">mic RMS</span>
-          <span class="meter" id="mic-meter"><span></span></span>
-        </div>
-        <div class="row">
-          <span class="label">playback RMS</span>
-          <span class="meter" id="playback-meter"><span></span></span>
+          <span class="label">Last Error:</span
+          ><span id="last-error" data-testid="last-error">-</span>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Q3 — End-of-playback deltas (last turn)</h2>
-        <div>
-          <span class="label">generationComplete</span
-          ><span id="delta-generation">-</span>
-        </div>
-        <div>
-          <span class="label">turnComplete</span><span id="delta-turn">-</span>
-        </div>
-        <div>
-          <span class="label">last buffer onended</span
-          ><span id="delta-drain">-</span>
-        </div>
-        <div>
-          <span class="label">turnComplete → drain</span
-          ><span id="delta-gap">-</span>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Q2 — Audio arriving after a local flush</h2>
-        <div>
-          <span class="label">bytes discarded</span
-          ><span id="discarded-bytes">0</span>
-        </div>
-        <div>
-          <span class="label">for (ms after flush)</span
-          ><span id="discarded-window">-</span>
-        </div>
-      </section>
-
-      <section class="panel">
-        <h2>Q4 — Transcription</h2>
-        <div>
-          <span class="label">input events</span
-          ><span id="input-transcript-count">0</span>
-        </div>
-        <div>
-          <span class="label">output events</span
-          ><span id="output-transcript-count">0</span>
-        </div>
-        <pre id="transcript-text"></pre>
+        <h2>Transcript</h2>
+        <pre id="transcript" data-testid="transcript"></pre>
       </section>
 
       <section class="panel">
         <h2>Event log</h2>
-        <pre id="event-log"></pre>
+        <pre id="event-log" data-testid="event-log"></pre>
       </section>
     </main>
 
-    <audio id="loopback-audio" autoplay></audio>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
