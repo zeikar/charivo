@@ -3,18 +3,19 @@
  *
  * Every route under `src/app/api/` is an unauthenticated proxy. All of them
  * except `/api/chat-openclaw` — which forwards to `OPENCLAW_BASE_URL` with
- * `OPENCLAW_TOKEN` — spend a paid OpenAI key. There is no auth, no per-IP quota,
- * and no rate limiting — read the README's "Deploying this demo" section before
- * copying any of it.
+ * `OPENCLAW_TOKEN` — spend a paid OpenAI key; `/api/realtime` also spends a
+ * paid Gemini key (`GEMINI_API_KEY`) when the Gemini provider is selected.
+ * There is no auth, no per-IP quota, and no rate limiting — read the README's
+ * "Deploying this demo" section before copying any of it.
  *
- * The limits below cover the OpenAI-backed routes; `/api/chat-openclaw` shares
- * only the `chat-request` payload bounds.
+ * The limits below cover the OpenAI- and Gemini-backed routes; `/api/chat-openclaw`
+ * shares only the `chat-request` payload bounds.
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot
  * repoint the key at an expensive model, raise the output ceiling, or make one
  * request cost meaningful money. Bounding *total* volume is a different problem
- * and is left to a per-project spend limit on the OpenAI side.
+ * and is left to a per-project spend limit on each provider's side.
  *
  * `instructions` is the deliberate exception: the demo composes them in the
  * browser from the avatar catalog of whichever model finished loading, so the
@@ -25,9 +26,17 @@ import { CHARACTER_CONFIGS } from "../config/characters";
 
 /**
  * Realtime is billed on wall-clock audio, so session duration — not request
- * count — is what drives its cost.
+ * count — is what drives its cost, for either provider.
  */
-export const REALTIME_MODEL = "gpt-realtime-2.1-mini";
+export const REALTIME_OPENAI_MODEL = "gpt-realtime-2.1-mini";
+
+/**
+ * Pinned here so the route picks the model it pays for instead of inheriting
+ * `@charivo/server/gemini`'s default. `gemini-3.1-flash-live-preview` is the
+ * model `tests/gemini-live-smoke/README.md` records as exercised against the
+ * live API.
+ */
+export const REALTIME_GEMINI_MODEL = "gemini-3.1-flash-live-preview";
 
 /**
  * Matches the model `@charivo/stt/openai-realtime` sends. Pinned here anyway:

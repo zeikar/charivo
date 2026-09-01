@@ -15,7 +15,7 @@ import {
   REALTIME_MAX_OUTPUT_TOKENS,
   REALTIME_MAX_TOOLS,
   REALTIME_MAX_TOOLS_BYTES,
-  REALTIME_MODEL,
+  REALTIME_OPENAI_MODEL,
 } from "../demo-limits";
 
 function postRequest(body: unknown): Request {
@@ -60,7 +60,7 @@ describe("examples/web /api/realtime route", () => {
       transport: "webrtc",
       session: {
         provider: "openai",
-        model: REALTIME_MODEL,
+        model: REALTIME_OPENAI_MODEL,
         maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
       },
       sdpOffer: undefined,
@@ -91,7 +91,7 @@ describe("examples/web /api/realtime route", () => {
     );
 
     const session = createSession.mock.calls[0][0].session;
-    expect(session.model).toBe(REALTIME_MODEL);
+    expect(session.model).toBe(REALTIME_OPENAI_MODEL);
     expect(session.maxTokens).toBe(REALTIME_MAX_OUTPUT_TOKENS);
   });
 

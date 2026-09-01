@@ -5,7 +5,10 @@ import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
-import { REALTIME_MODEL, REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
+import {
+  REALTIME_OPENAI_MODEL,
+  REALTIME_SESSION_MAX_MS,
+} from "../api/demo-limits";
 import { createSessionCap } from "./session-cap";
 import { shouldInterruptBeforeSend } from "./realtime-ui";
 
@@ -121,7 +124,7 @@ export function useRealtimeMode() {
         provider: "openai",
         // The route pins this server-side regardless; sending the same value
         // keeps the client honest about what it is asking for.
-        model: REALTIME_MODEL,
+        model: REALTIME_OPENAI_MODEL,
         instructions: buildDemoRealtimeInstructions(
           charivo.getCurrentCharacter(),
           avatarCatalog,

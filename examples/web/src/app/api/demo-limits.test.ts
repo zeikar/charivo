@@ -33,7 +33,8 @@ describe("demo limits", () => {
     const dev = await loadLimits("development");
 
     for (const key of [
-      "REALTIME_MODEL",
+      "REALTIME_OPENAI_MODEL",
+      "REALTIME_GEMINI_MODEL",
       "REALTIME_TRANSCRIPTION_MODEL",
       "REALTIME_MAX_OUTPUT_TOKENS",
       "TTS_MAX_TEXT_CHARS",

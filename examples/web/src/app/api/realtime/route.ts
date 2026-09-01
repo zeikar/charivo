@@ -12,7 +12,7 @@ import {
   REALTIME_MAX_OUTPUT_TOKENS,
   REALTIME_MAX_TOOLS,
   REALTIME_MAX_TOOLS_BYTES,
-  REALTIME_MODEL,
+  REALTIME_OPENAI_MODEL,
   REALTIME_TOOL_CHOICES,
   REALTIME_TRANSCRIPTION_MODEL,
   TTS_ALLOWED_VOICES,
@@ -90,7 +90,7 @@ function buildSessionConfig(
     ok: true,
     value: {
       provider: "openai",
-      model: REALTIME_MODEL,
+      model: REALTIME_OPENAI_MODEL,
       maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
       ...(instructions !== undefined ? { instructions } : {}),
       ...(tools !== undefined ? { tools } : {}),
