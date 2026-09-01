@@ -9,8 +9,9 @@ current architecture as it is actually shipped:
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, direct OpenAI, and streaming OpenAI
   Realtime transcribers
-- Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`
-  using the OpenAI Agents WebRTC adapter by default
+- Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
+  over either the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket
+  adapter, chosen in the settings menu
 - Avatar expression/motion/gaze tool calling from `@charivo/avatar`, wired into
   both LLM chat and realtime voice sessions
 
@@ -20,30 +21,34 @@ current architecture as it is actually shipped:
 > them as-is.**
 
 Every route under `src/app/api/` is an unauthenticated proxy that anyone can
-POST to. All of them except `/api/chat-openclaw` spend your paid
-`OPENAI_API_KEY`; `/api/chat-openclaw` forwards to whatever `OPENCLAW_BASE_URL`
-points at using `OPENCLAW_TOKEN`, so it exposes that credential and that backend
-instead. That is fine for `pnpm dev:web` on your own machine, and it is what the
-hosted demo accepts deliberately — it is not a production template, however much
-it looks like one.
+POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/realtime` spends
+your paid `GEMINI_API_KEY` instead whenever the caller asks for the Gemini
+provider. `/api/chat-openclaw` spends neither: it forwards to whatever
+`OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
+credential and that backend. That is fine for `pnpm dev:web` on your own
+machine, and it is what the hosted demo accepts deliberately — it is not a
+production template, however much it looks like one.
 
 What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
 
 - **The model is pinned server-side.** `/api/realtime` rebuilds the session
-  config instead of forwarding the caller's, so nobody can repoint the key at an
-  expensive model or raise `maxTokens`. Same for the transcription model on
+  config instead of forwarding the caller's and pins its own model for whichever
+  provider it dispatched to, so nobody can repoint either key at an expensive
+  model or raise `maxTokens`. Same for the transcription model on
   `/api/realtime-transcription`.
 - **Single requests are bounded.** Caps on chat message count, length, and
   serialized tool payloads; TTS input characters; STT upload size; realtime
   instruction and tool size.
-- **Voices are restricted** to the ones the shipped characters use.
+- **Voices are restricted** to the ones the shipped characters use, on the paths
+  that take a voice at all — the Gemini realtime branch forwards none and lets
+  that provider pick its own.
 - **Realtime sessions and STT recordings stop after 90 seconds** in a production
   build; `pnpm dev:web` loosens that to 15 minutes so a debugging session is not
   cut off, and nothing but the build mode selects between them. Both are
-  client-side timers: after bootstrap the browser talks to OpenAI directly, so
-  the server cannot hang up. When either fires, a notice above the chat input
-  (`SessionCapNotice`) says which cap stopped things, so it does not read as a
-  bug. They bound an ordinary visitor, not a determined caller.
+  client-side timers: after bootstrap the browser talks to the provider
+  directly, so the server cannot hang up. When either fires, a notice above the
+  chat input (`SessionCapNotice`) says which cap stopped things, so it does not
+  read as a bug. They bound an ordinary visitor, not a determined caller.
 
 One thing the routes deliberately do **not** pin is `instructions`. The demo
 composes them in the browser from the avatar catalog of whichever Live2D model
@@ -57,9 +62,13 @@ What they do **not** defend against — you have to add these yourself:
   small sessions, and realtime bills on wall clock.
 - The STT cap is a byte cap, not a duration cap. Low-bitrate audio packs more
   minutes into the same upload, and transcription bills per minute.
-- Nothing caps total spend. Put a **hard per-project spend limit** on the
-  OpenAI key you use, in its own project — enforcement is not instantaneous, so
-  treat it as a backstop rather than a control.
+- Input transcription on the Gemini realtime path is always on and always
+  billed: that provider rejects an `inputAudioTranscription` block naming a
+  model, so its own default stands.
+- Nothing caps total spend. Put a **hard per-project spend limit** on every key
+  you use — the OpenAI one, and the Gemini one if you enable that provider —
+  each in its own project; enforcement is not instantaneous, so treat it as a
+  backstop rather than a control.
 
 ## Environment
 
@@ -72,11 +81,19 @@ cp examples/web/.env.example examples/web/.env.local
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 
+# Optional, and only for realtime requests that ask for the Gemini provider
+GEMINI_API_KEY=your_gemini_api_key_here
+
 # Optional OpenClaw proxy settings
 OPENCLAW_TOKEN=your_openclaw_token_here
 OPENCLAW_BASE_URL=http://127.0.0.1:18789/v1
 OPENCLAW_AGENT_ID=main
 ```
+
+The settings menu lists both realtime providers whatever you configure, because
+the browser has no way to ask which keys a deployment set. So a missing
+`GEMINI_API_KEY` surfaces only once a call is attempted: it fails at connect
+time, and the failure arrives above the chat input (`RealtimeErrorNotice`).
 
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
@@ -142,8 +159,11 @@ The demo ships these routes:
   Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
 - `POST /api/realtime`
-  Uses `@charivo/server/openai` to create a realtime session
-  bootstrap for `@charivo/realtime/remote`
+  Creates a realtime session bootstrap for `@charivo/realtime/remote`, using
+  `@charivo/server/openai` or `@charivo/server/gemini` as `session.provider`
+  selects. Either branch rebuilds the session config server-side rather than
+  forwarding the caller's; the Gemini branch additionally requires
+  `transport: "websocket"`
 - `POST /api/realtime-transcription`
   Mints an ephemeral transcription session secret and performs the SDP exchange
   for `@charivo/stt/openai-realtime`
@@ -164,6 +184,11 @@ compare the tradeoffs:
 - Browser TTS/STT options use Web Speech APIs and depend on browser support.
 - The streaming STT option keeps the key on the server and writes interim
   transcripts into the message box while you hold the mic.
+- The realtime provider selector chooses OpenAI Realtime or Gemini Live for the
+  next call. It locks while a call is connecting or up — the manager is built
+  once per session, so a mid-call switch could not take effect — and a Gemini
+  call locks the character picker too, since that transport cannot patch a live
+  session the way OpenAI can.
 - The stub LLM mode is useful for UI work and deterministic demos.
 
 ## Structure
@@ -188,11 +213,11 @@ The current lifecycle boundary is deliberate:
 - `useLive2D` owns canvas mount and unmount.
 - `useCharivoChat` owns Charivo setup, manager attachment, event subscription, and teardown.
 
-The demo also calls `realtimeManager.prepareAudio?.({ provider: "openai" })`
-from the realtime connect click before it starts a WebRTC session — the remote
-client needs that config to resolve which adapter to prepare. Keep that
-user-gesture path intact on iOS or the first realtime lipsync pass may stay
-silent.
+The demo also calls `realtimeManager.prepareAudio?.(...)` from the realtime
+connect click, before `startSession(...)`. Both calls must be given the same
+`provider`/`transport` pair, because that pair is what selects the adapter — so
+the Gemini path needs `transport: "websocket"` in both. Keep that user-gesture
+path intact on iOS or the first realtime lipsync pass may stay silent.
 
 That split keeps renderer lifecycle separate from conversation/session lifecycle.
 
