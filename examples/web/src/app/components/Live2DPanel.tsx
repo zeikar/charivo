@@ -7,6 +7,7 @@ import {
   CHARACTERS,
   type CharacterId,
 } from "../stores/useCharacterStore";
+import { useChatStore } from "../stores/useChatStore";
 
 type Live2DPanelProps = {
   canvasContainerRef: RefObject<HTMLDivElement | null>;
@@ -14,8 +15,26 @@ type Live2DPanelProps = {
 
 export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
   const { selectedCharacter, setSelectedCharacter } = useCharacterStore();
+  const { isRealtimeMode, isConnecting, selectedRealtimeProvider } =
+    useChatStore();
+
+  // Gemini only: on an active session `useCharivoChat`'s character sync first
+  // calls `syncAvatarControlTools`, whose tool (un)registration refreshes the
+  // session, and then calls `realtimeManager.updateSession(...)` itself. The
+  // Gemini Live transport rejects all of them, because the ephemeral token
+  // fixes the whole session at mint time. During the connecting window there is
+  // no session to patch yet, and the `syncedCharacterIdRef` early return means
+  // nothing corrects the mismatch later. OpenAI patches sessions fine, so it
+  // stays switchable.
+  const characterSwitchLocked =
+    (isRealtimeMode || isConnecting) && selectedRealtimeProvider === "gemini";
 
   const handleCharacterSelect = (id: string) => {
+    // Disabling the button only blocks the toggle: a menu already open when the
+    // lock engaged stays mounted and clickable.
+    if (characterSwitchLocked) {
+      return;
+    }
     setSelectedCharacter(id as CharacterId);
   };
 
@@ -26,7 +45,10 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
         <Menu>
           {({ open }) => (
             <>
-              <MenuButton className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-2 md:px-4 md:py-2 rounded-full shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs md:text-sm font-bold text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-all hover:shadow-xl inline-flex items-center gap-2">
+              <MenuButton
+                disabled={characterSwitchLocked}
+                className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-2 md:px-4 md:py-2 rounded-full shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs md:text-sm font-bold text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-all hover:shadow-xl inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 {selectedCharacter}
                 <ChevronDownIcon
                   className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
@@ -59,6 +81,15 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
             </>
           )}
         </Menu>
+
+        {characterSwitchLocked && (
+          <p
+            role="status"
+            className="mt-2 max-w-[13rem] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs text-gray-600 dark:text-gray-300"
+          >
+            🔒 Voice session active — end the call to switch
+          </p>
+        )}
       </div>
 
       {/* Canvas Container */}
