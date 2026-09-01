@@ -51,6 +51,7 @@
     "test": "vitest run",
     "test:live-bootstrap": "vitest run --config vitest.live.config.ts",
     "test:webrtc": "playwright test -c playwright.webrtc.config.ts",
+    "test:gemini-live": "playwright test -c playwright.gemini-live.config.ts",
     "test:voice": "playwright test -c playwright.voice.config.ts",
     "test:cascade": "playwright test -c playwright.cascade.config.ts",
     "test:streaming-stt": "playwright test -c playwright.streaming-stt.config.ts",

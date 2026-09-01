@@ -53,10 +53,14 @@ a muted output have no speaker, no room, and no acoustic path, so echo cannot
 happen there at all — let alone be measured. Every number below came from a
 human sitting in front of speakers.
 
-The gated Playwright suite beside this harness will cover what a fake device
-*can* cover — connect, a turn, a tool call, transcript ordering. Like the live specs
-in `tests/webrtc-smoke`, it is not free: each run mints an ephemeral token and
-opens one real Gemini Live session, so repeated runs bill real usage.
+The gated Playwright suite beside this harness (`pnpm test:gemini-live`) covers
+what a fake device can: the session connects through the real bootstrap, a turn
+produces assistant text, and the dummy tool round-trips. Transcript ordering is
+**not** among them — `user.transcript` is emitted only from spoken audio, and a
+fake device drives no speech, so an ordering assertion there could never fail
+honestly. It stays in the manual protocol below. Like the live specs in
+`tests/webrtc-smoke`, the suite is not free: each run mints an ephemeral token
+and opens one real Gemini Live session, so repeated runs bill real usage.
 
 ## The manual protocol
 
