@@ -12,9 +12,12 @@ import {
   CpuChipIcon,
   ExclamationTriangleIcon,
   SignalIcon,
+  SparklesIcon,
+  PhoneIcon,
 } from "@heroicons/react/24/solid";
 import type {
   LLMClientType,
+  RealtimeProviderType,
   TTSPlayerType,
   STTTranscriberType,
 } from "../../types/chat";
@@ -26,6 +29,10 @@ type ChatSettingsProps = {
   onSelectTTSPlayer: (type: TTSPlayerType) => void;
   selectedSTTTranscriber: STTTranscriberType;
   onSelectSTTTranscriber: (type: STTTranscriberType) => void;
+  selectedRealtimeProvider: RealtimeProviderType;
+  onSelectRealtimeProvider: (type: RealtimeProviderType) => void;
+  /** A session is up or coming up, so the manager is already built. */
+  realtimeProviderLocked: boolean;
   llmError: string | null;
   ttsError: string | null;
   sttError: string | null;
@@ -152,6 +159,26 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
   },
 ];
 
+/**
+ * Both are listed unconditionally: each needs its own server key, and the
+ * browser has no way to ask which of them the deployment actually set. A
+ * missing key surfaces as the session failure in `RealtimeErrorNotice`.
+ */
+const REALTIME_OPTIONS: Option<RealtimeProviderType>[] = [
+  {
+    label: "OpenAI Realtime",
+    value: "openai",
+    description: "Server-mediated WebRTC session. Needs OPENAI_API_KEY.",
+    Icon: SignalIcon,
+  },
+  {
+    label: "Gemini Live",
+    value: "gemini",
+    description: "Server-mediated WebSocket session. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
+  },
+];
+
 export function ChatSettings({
   selectedLLMClient,
   onSelectLLMClient,
@@ -159,6 +186,9 @@ export function ChatSettings({
   onSelectTTSPlayer,
   selectedSTTTranscriber,
   onSelectSTTTranscriber,
+  selectedRealtimeProvider,
+  onSelectRealtimeProvider,
+  realtimeProviderLocked,
   llmError,
   ttsError,
   sttError,
@@ -171,6 +201,9 @@ export function ChatSettings({
   );
   const selectedSTT = STT_OPTIONS.find(
     (opt) => opt.value === selectedSTTTranscriber,
+  );
+  const selectedRealtime = REALTIME_OPTIONS.find(
+    (opt) => opt.value === selectedRealtimeProvider,
   );
 
   return (
@@ -273,7 +306,7 @@ export function ChatSettings({
             </div>
 
             {/* STT Settings */}
-            <div className="p-3">
+            <div className="p-3 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-1.5 mb-2">
                 <MicrophoneIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                 <h3 className="text-xs font-semibold text-gray-800 dark:text-white">
@@ -307,6 +340,48 @@ export function ChatSettings({
                 <div className="text-xs text-red-600 dark:text-red-400 mt-1.5 p-1.5 bg-red-50 dark:bg-red-900/20 rounded">
                   ⚠️ {sttError}
                 </div>
+              )}
+            </div>
+
+            {/* Realtime Settings */}
+            <div className="p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <PhoneIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                <h3 className="text-xs font-semibold text-gray-800 dark:text-white">
+                  Realtime Voice
+                </h3>
+              </div>
+              <div className="space-y-1">
+                {REALTIME_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => onSelectRealtimeProvider(option.value)}
+                    disabled={realtimeProviderLocked}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selectedRealtimeProvider === option.value
+                        ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium"
+                        : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <option.Icon className="w-3.5 h-3.5" />
+                      <span>{option.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Said out loud rather than left to a `title`: a disabled button
+                  does not reliably surface one. The manager is rebuilt per
+                  session, so a switch now could not take effect. */}
+              {realtimeProviderLocked && (
+                <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5 p-1.5 bg-gray-100 dark:bg-gray-700/50 rounded">
+                  🔒 End the call to switch providers
+                </div>
+              )}
+              {selectedRealtime && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                  {selectedRealtime.description}
+                </p>
               )}
             </div>
           </div>

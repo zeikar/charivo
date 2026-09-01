@@ -10,6 +10,7 @@ import { ControlPanel } from "./components/chat/ControlPanel";
 import { AvatarDebugPanel } from "./components/chat/AvatarDebugPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { SessionCapNotice } from "./components/chat/SessionCapNotice";
+import { RealtimeErrorNotice } from "./components/chat/RealtimeErrorNotice";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import { useRealtimeMode } from "./hooks/useRealtimeMode";
 import { useChatStore } from "./stores/useChatStore";
@@ -25,16 +26,20 @@ export default function Home() {
     isLoading,
     isSpeaking,
     isRealtimeMode,
+    isConnecting,
     selectedLLMClient,
     setSelectedLLMClient,
     selectedTTSPlayer,
     setSelectedTTSPlayer,
     selectedSTTTranscriber,
     setSelectedSTTTranscriber,
+    selectedRealtimeProvider,
+    setSelectedRealtimeProvider,
     llmError,
     ttsError,
     sttError,
     realtimeError,
+    setRealtimeError,
     realtimeAssistantDraft,
     realtimeInterruptedDraft,
   } = useChatStore();
@@ -117,6 +122,9 @@ export default function Home() {
               onSelectTTSPlayer={setSelectedTTSPlayer}
               selectedSTTTranscriber={selectedSTTTranscriber}
               onSelectSTTTranscriber={setSelectedSTTTranscriber}
+              selectedRealtimeProvider={selectedRealtimeProvider}
+              onSelectRealtimeProvider={setSelectedRealtimeProvider}
+              realtimeProviderLocked={isRealtimeMode || isConnecting}
               llmError={llmError}
               ttsError={ttsError}
               sttError={sttError}
@@ -141,6 +149,11 @@ export default function Home() {
           </div>
 
           <SessionCapNotice />
+
+          <RealtimeErrorNotice
+            message={realtimeError}
+            onDismiss={() => setRealtimeError(null)}
+          />
 
           {/* Chat Input Area */}
           <ChatInput

@@ -2,6 +2,7 @@
 
 import { useChatStore } from "../../stores/useChatStore";
 import { REALTIME_SESSION_MAX_MS } from "../../api/demo-limits";
+import { NoticeBar } from "./NoticeBar";
 
 // Read off the same constant the cap timers use, so the copy can never claim a
 // budget they do not enforce. Production is 90s; a dev build's 15 minutes reads
@@ -29,22 +30,12 @@ export function SessionCapNotice() {
   }
 
   return (
-    <div
+    <NoticeBar
+      tone="warning"
       role="status"
-      className="mx-auto mb-2 flex w-full max-w-3xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[13px] leading-relaxed text-amber-900 md:max-w-[42rem] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-    >
-      <span aria-hidden className="mt-px flex-shrink-0">
-        ⏱️
-      </span>
-      <p className="flex-1">{MESSAGES[capNotice]}</p>
-      <button
-        type="button"
-        onClick={() => setCapNotice(null)}
-        aria-label="Dismiss"
-        className="flex-shrink-0 cursor-pointer rounded-full px-1.5 leading-none text-amber-700 transition-colors hover:text-amber-950 dark:text-amber-300/70 dark:hover:text-amber-100"
-      >
-        ✕
-      </button>
-    </div>
+      icon="⏱️"
+      message={MESSAGES[capNotice]}
+      onDismiss={() => setCapNotice(null)}
+    />
   );
 }

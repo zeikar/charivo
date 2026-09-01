@@ -36,4 +36,12 @@ export default defineConfig({
   resolve: {
     alias: workspaceAliases,
   },
+  // The `examples/` tsconfigs say `jsx: "preserve"` because Next.js owns the
+  // transform and uses the automatic runtime, so their components never import
+  // React. Without this, esbuild reads those tsconfigs, falls back to the
+  // classic transform, and every rendered component throws "React is not
+  // defined".
+  esbuild: {
+    jsx: "automatic",
+  },
 });
