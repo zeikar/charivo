@@ -8,9 +8,11 @@ import {
   CharivoStateError,
   toCharivoError,
   fetchWithTimeout,
+  GEMINI_LIVE_ADAPTER,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
+import { createGeminiLiveClient } from "../gemini";
 import { createOpenAIRealtimeAgentsClient } from "../openai-agents";
 import { createOpenAIRealtimeClient } from "../openai";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
@@ -38,6 +40,11 @@ export const DEFAULT_REMOTE_REALTIME_ADAPTERS = {
     }),
   [OPENAI_REALTIME_ADAPTER]: (options) =>
     createOpenAIRealtimeClient({
+      debug: options.debug,
+      sessionBootstrap: options.requestBootstrap,
+    }),
+  [GEMINI_LIVE_ADAPTER]: (options) =>
+    createGeminiLiveClient({
       debug: options.debug,
       sessionBootstrap: options.requestBootstrap,
     }),
@@ -254,6 +261,9 @@ export class RemoteRealtimeClient implements RealtimeTransportClient {
     const transport = config?.transport ?? "webrtc";
     if (config?.provider === "openai" && transport === "webrtc") {
       return OPENAI_REALTIME_AGENTS_ADAPTER;
+    }
+    if (config?.provider === "gemini" && transport === "websocket") {
+      return GEMINI_LIVE_ADAPTER;
     }
 
     throw new CharivoStateError(

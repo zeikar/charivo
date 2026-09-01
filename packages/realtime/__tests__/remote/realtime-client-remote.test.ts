@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GEMINI_LIVE_ADAPTER,
   OPENAI_REALTIME_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
@@ -86,6 +87,40 @@ vi.mock("@charivo/realtime/openai", () => ({
   }),
 }));
 
+const geminiTransportState = vi.hoisted(() => ({
+  bootstrap: null as unknown,
+  options: null as unknown,
+}));
+
+const geminiTransportClient = {
+  connect: vi.fn(async (_config?: unknown) => {
+    const options = geminiTransportState.options as {
+      sessionBootstrap: (request: unknown) => Promise<unknown>;
+    };
+    geminiTransportState.bootstrap = await options.sessionBootstrap({
+      transport: "websocket",
+      session: _config ?? {},
+    });
+  }),
+  updateSession: vi.fn(async (_config?: unknown) => undefined),
+  recover: vi.fn(async (_config?: unknown) => undefined),
+  disconnect: vi.fn(async () => undefined),
+  sendText: vi.fn(async (_text: string) => undefined),
+  sendAudio: vi.fn(async (_audio: ArrayBuffer) => undefined),
+  sendToolResult: vi.fn(
+    async (_callId: string, _output: Record<string, unknown>) => undefined,
+  ),
+  interrupt: vi.fn(async () => undefined),
+  onEvent: vi.fn((_callback: (event: unknown) => void) => undefined),
+};
+
+vi.mock("@charivo/realtime/gemini", () => ({
+  createGeminiLiveClient: vi.fn((options) => {
+    geminiTransportState.options = options;
+    return geminiTransportClient;
+  }),
+}));
+
 import { RemoteRealtimeClient } from "../../src/remote/client";
 import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
 
@@ -119,6 +154,17 @@ afterEach(() => {
   legacyTransportClient.sendToolResult.mockClear();
   legacyTransportClient.interrupt.mockClear();
   legacyTransportClient.onEvent.mockClear();
+  geminiTransportState.bootstrap = null;
+  geminiTransportState.options = null;
+  geminiTransportClient.connect.mockClear();
+  geminiTransportClient.disconnect.mockClear();
+  geminiTransportClient.updateSession.mockClear();
+  geminiTransportClient.recover.mockClear();
+  geminiTransportClient.sendText.mockClear();
+  geminiTransportClient.sendAudio.mockClear();
+  geminiTransportClient.sendToolResult.mockClear();
+  geminiTransportClient.interrupt.mockClear();
+  geminiTransportClient.onEvent.mockClear();
 });
 
 describe("RemoteRealtimeClient", () => {
@@ -342,6 +388,91 @@ describe("RemoteRealtimeClient", () => {
       transport: "webrtc",
       answerSdp: "answer-sdp",
     });
+  });
+
+  it("resolves the Gemini adapter for a websocket transport", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: GEMINI_LIVE_ADAPTER,
+            transport: "websocket",
+            url: "wss://example.test",
+            token: "gemini-token",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "gemini",
+      transport: "websocket",
+    });
+
+    expect(
+      JSON.parse(
+        String(
+          (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]
+            ?.body,
+        ),
+      ),
+    ).toMatchObject({
+      adapter: GEMINI_LIVE_ADAPTER,
+    });
+    expect(geminiTransportState.bootstrap).toEqual({
+      adapter: GEMINI_LIVE_ADAPTER,
+      transport: "websocket",
+      url: "wss://example.test",
+      token: "gemini-token",
+    });
+  });
+
+  it("does not resolve the Gemini adapter when transport is omitted", async () => {
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await expect(
+      client.connect({
+        provider: "gemini",
+      }),
+    ).rejects.toThrow(
+      'No remote realtime adapter resolver for provider "gemini" and transport "webrtc"',
+    );
+  });
+
+  it("rejects a mismatched bootstrap adapter for the Gemini transport", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: "different-adapter",
+            transport: "websocket",
+            url: "wss://example.test",
+            token: "gemini-token",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new RemoteRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await expect(
+      client.connect({
+        provider: "gemini",
+        transport: "websocket",
+      }),
+    ).rejects.toThrow("Realtime session bootstrap adapter mismatch");
   });
 
   it("prepares the resolved adapter and connect() reuses the same instance", async () => {
