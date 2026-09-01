@@ -68,4 +68,29 @@ describe("useChatStore realtime UI state", () => {
     expect(useChatStore.getState().realtimeInterruptedDraft).toBeNull();
     expect(useChatStore.getState().realtimeTurnStatus).toBe("idle");
   });
+
+  it("clears a standing realtime error when the provider is switched", () => {
+    const state = useChatStore.getState();
+
+    state.setRealtimeError("GEMINI_API_KEY not configured");
+    state.setSelectedRealtimeProvider("openai");
+
+    expect(useChatStore.getState().realtimeError).toBeNull();
+    expect(useChatStore.getState().selectedRealtimeProvider).toBe("openai");
+  });
+
+  /**
+   * disableRealtimeMode runs resetRealtimeUiState on every teardown — so if
+   * that reset ever swept the provider selection away too, ending a Gemini
+   * call would silently drop the user back to OpenAI, and the next Talk
+   * would connect to the wrong provider.
+   */
+  it("keeps the provider selection through the realtime UI reset that teardown runs", () => {
+    const state = useChatStore.getState();
+
+    state.setSelectedRealtimeProvider("gemini");
+    state.resetRealtimeUiState();
+
+    expect(useChatStore.getState().selectedRealtimeProvider).toBe("gemini");
+  });
 });

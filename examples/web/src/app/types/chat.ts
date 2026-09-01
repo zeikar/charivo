@@ -32,3 +32,5 @@ export type LLMClientType =
   | "openclaw-remote"
   | "openclaw"
   | "stub";
+
+export type RealtimeProviderType = "openai" | "gemini";

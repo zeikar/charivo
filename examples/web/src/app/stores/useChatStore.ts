@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   DemoCapNotice,
   LLMClientType,
+  RealtimeProviderType,
   RealtimeTurnStatus,
   TTSPlayerType,
   STTTranscriberType,
@@ -44,6 +45,8 @@ type ChatStore = {
   setSelectedTTSPlayer: (type: TTSPlayerType) => void;
   selectedSTTTranscriber: STTTranscriberType;
   setSelectedSTTTranscriber: (type: STTTranscriberType) => void;
+  selectedRealtimeProvider: RealtimeProviderType;
+  setSelectedRealtimeProvider: (type: RealtimeProviderType) => void;
 
   // Errors
   llmError: string | null;
@@ -141,6 +144,14 @@ export const useChatStore = create<ChatStore>((set) => ({
   selectedSTTTranscriber: "remote",
   setSelectedSTTTranscriber: (selectedSTTTranscriber) =>
     set({ selectedSTTTranscriber }),
+  selectedRealtimeProvider: "openai",
+  // Clears realtimeError too, unlike its siblings: llmError/ttsError/sttError
+  // render only inside ChatSettings' menu panel, which unmounts on close, but
+  // realtimeError is meant to stay visible in an always-mounted notice bar.
+  // Its message can name a provider (as the missing-key message does), so a
+  // stale one would accuse the provider just left.
+  setSelectedRealtimeProvider: (selectedRealtimeProvider) =>
+    set({ selectedRealtimeProvider, realtimeError: null }),
 
   // Errors
   llmError: null,
