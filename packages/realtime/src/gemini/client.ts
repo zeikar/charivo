@@ -40,6 +40,17 @@ interface GeminiPart {
 }
 
 /**
+ * One entry of a `toolCall` frame. Optional throughout because this is parsed
+ * wire data rather than anything this client constructs; `handleToolCall`
+ * decides which absences it can survive.
+ */
+interface GeminiFunctionCall {
+  id?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+}
+
+/**
  * Top-level server frame. `setupComplete`, `serverContent`,
  * `sessionResumptionUpdate`, and `usageMetadata` were seen on a live session;
  * the tool and `goAway` shapes come from the API reference and are unverified
@@ -54,14 +65,7 @@ interface GeminiServerMessage {
     interrupted?: boolean;
     turnComplete?: boolean;
   };
-  /** Task 8 maps both of these into `tool.call` and the call-id map. */
-  toolCall?: {
-    functionCalls?: Array<{
-      id?: string;
-      name?: string;
-      args?: Record<string, unknown>;
-    }>;
-  };
+  toolCall?: { functionCalls?: GeminiFunctionCall[] };
   toolCallCancellation?: { ids?: string[] };
   goAway?: { timeLeft?: string };
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
@@ -181,6 +185,41 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    * banks its audible exposure like any other but never disarms the gate.
    */
   private turnInterrupted = false;
+  /**
+   * Whether the server has a model turn open — content has arrived and its
+   * `turnComplete` has not. It is the only proof `interrupt()` accepts that
+   * there is a turn to condemn, and neither existing flag answers that
+   * question: `hasStartedAssistantResponse` follows output transcription, which
+   * is a server-side session setting this client does not control, and the
+   * audio flags deliberately outlive `turnComplete`.
+   */
+  private modelTurnInFlight = false;
+  /**
+   * Whether a local `interrupt()` killed the turn in flight. Nothing on the
+   * wire stops the server generating it, so while this is set the rest of that
+   * turn is dropped at the guard in `applyServerMessage`, which is where what
+   * "the rest" covers is settled, and its completion is never reported:
+   * `RealtimeTransportEvent` forbids reporting an interrupted turn once a
+   * replacement may have started, because `RealtimeManager` would credit that
+   * completion to the replacement and release its send lock.
+   * `handleTurnComplete` is the single exit.
+   *
+   * A boolean where `openai/client.ts` learned to keep a count. That lesson
+   * does not transfer: it can issue `response.create` itself and stack a
+   * replacement behind a cancel, whereas turns here are the server's to open
+   * and it opens them one at a time, so there is never more than one to
+   * condemn.
+   */
+  private turnCondemned = false;
+  /**
+   * Live `functionCall.id` -> tool name, which `sendToolResult` needs because a
+   * Gemini `functionResponse` carries the name alongside the id. An entry lives
+   * from the `toolCall` frame until that call is answered or cancelled, and the
+   * map as a whole belongs to the session: the transient reset drops it, so a
+   * handler finishing after a reconnect throws instead of answering into a
+   * session that never asked.
+   */
+  private readonly pendingToolCalls = new Map<string, string>();
   /**
    * Newest `usageMetadata` of the turn in progress, reported as `usage` when it
    * completes and dropped there. Nothing measured guarantees one frame per
@@ -322,23 +361,91 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     }
   }
 
-  // Task 8 replaces the bodies of sendText(), interrupt(), and
-  // sendToolResult() with the real client frames. Until then they refuse rather
-  // than accept input the socket will never carry. sendAudio() below is not one
-  // of them: its no-op is the final behavior.
-  async sendText(_text: string): Promise<void> {
-    throw new Error("Gemini Live transport is not ready to send text");
+  async sendText(text: string): Promise<void> {
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
+    const socket = this.requireReadySocket();
+    // `turnComplete: true` closes the user turn, which is what asks the model
+    // to answer it. The condemned-turn state is deliberately untouched: sending
+    // replacement input says nothing about whether a condemned turn has
+    // finished arriving.
+    socket.send(
+      JSON.stringify({
+        clientContent: {
+          turns: [{ role: "user", parts: [{ text }] }],
+          turnComplete: true,
+        },
+      }),
+    );
   }
 
+  /**
+   * Stop the character mid-sentence.
+   *
+   * Entirely local, and it has to be: the Live API documents no client message
+   * that cancels an in-flight generation, and the spike left the cost of a
+   * local interrupt as an open question (`tests/gemini-live-smoke/README.md`,
+   * Q2) — Task 11 measures whether the killed turn still runs to its own
+   * `turnComplete`, which this design assumes. So the turn is condemned
+   * instead: what has been scheduled is discarded, and its remaining speech and
+   * text are dropped — though not its tool calls, which `applyServerMessage`
+   * still dispatches on purpose. Nothing goes on the wire, which is why this
+   * needs neither an open socket nor a recovery guard.
+   */
   async interrupt(): Promise<void> {
-    throw new Error("Gemini Live transport is not ready to interrupt");
+    // Condemn only a turn the wire proves is running, as in the OpenAI client:
+    // condemning with nothing open would swallow the *next* turn's completion
+    // and strand the manager's send lock for good.
+    if (this.modelTurnInFlight) {
+      this.turnCondemned = true;
+      this.log("Gemini Live turn condemned by a local interrupt");
+    }
+
+    // Silencing what is already scheduled is separate, for the reason the
+    // OpenAI client clears its output buffer unconditionally: playback outlives
+    // the turn that produced it. `turnComplete` is paced to land as the audio
+    // finishes, so on a healthy connection that overlap is the measured 3 ms of
+    // post-`turnComplete` tail — but the server is pacing a clock, not watching
+    // the speakers, and a stall widens it. An interrupt has to stop the voice
+    // either way.
+    //
+    // `turnInterrupted` stays down on purpose: it marks a turn the model killed
+    // after hearing itself through an unconverged canceller, and a local
+    // interrupt is no evidence of that, so this turn's exposure still counts
+    // towards disarming the gate.
+    this.playbackScheduler?.flush();
+    this.endAudioOutput();
   }
 
   async sendToolResult(
-    _callId: string,
-    _output: Record<string, unknown>,
+    callId: string,
+    output: Record<string, unknown>,
   ): Promise<void> {
-    throw new Error("Gemini Live transport is not ready to send tool results");
+    if (this.isRecovering) {
+      throw new Error("Realtime transport reconnecting");
+    }
+
+    // Resolved before the socket is asked for, so a dead id fails as a dead id.
+    const name = this.pendingToolCalls.get(callId);
+    if (!name) {
+      throw new Error(
+        `Unknown Gemini Live tool call "${callId}": it was already answered, cancelled by the server, or belongs to a session that has ended`,
+      );
+    }
+
+    const socket = this.requireReadySocket();
+    socket.send(
+      JSON.stringify({
+        toolResponse: {
+          functionResponses: [{ id: callId, name, response: output }],
+        },
+      }),
+    );
+    // Dropped only once the answer is on the wire: a send that throws leaves
+    // the call answerable rather than unknown.
+    this.pendingToolCalls.delete(callId);
   }
 
   async sendAudio(_audio: ArrayBuffer): Promise<void> {
@@ -556,6 +663,25 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       this.latestUsage = message.usageMetadata;
     }
 
+    // Above the `serverContent` guard below, deliberately: a tool frame carries
+    // no `serverContent` at all, so handling it down there would drop every
+    // tool call silently. That leaves it above the condemned-turn guard too,
+    // which is a decision rather than an oversight — a condemned turn's tool
+    // calls are still emitted, executed, and answered onto the wire, as the
+    // sibling also leaves them (`openai/client.ts`). The exposure is larger
+    // here, because this design expects a condemned turn to keep sending; that
+    // is the same open question `interrupt()` flags.
+    if (message.toolCall) {
+      this.handleToolCall(message.toolCall.functionCalls ?? []);
+    }
+
+    // The model gave up on these calls, so their ids are dead. Dropping them
+    // here is what turns a handler that answers one late into a diagnosable
+    // throw rather than a response the session cannot place.
+    for (const id of message.toolCallCancellation?.ids ?? []) {
+      this.pendingToolCalls.delete(id);
+    }
+
     // `sessionResumptionUpdate` and `goAway` are read by nothing on purpose.
     // Handles arrive roughly every 1.2 s, each superseding the last (~50 per
     // 100 s session), and none of them can be spent here for the reason
@@ -581,6 +707,22 @@ export class GeminiLiveClient implements RealtimeTransportClient {
         type: "user.transcript",
         text: content.inputTranscription.text,
       });
+    }
+
+    // Everything below belongs to the model, so a condemned turn stops here:
+    // its audio, its transcription, and a late `interrupted` are dropped alike
+    // until its own `turnComplete`, the single exit. The user transcription
+    // above is not part of it — the user speaking is usually what prompted the
+    // interrupt in the first place.
+    if (this.turnCondemned) {
+      if (content.turnComplete) {
+        this.handleTurnComplete();
+      }
+      return;
+    }
+
+    if (content.outputTranscription?.text || content.modelTurn) {
+      this.modelTurnInFlight = true;
     }
 
     if (content.outputTranscription?.text) {
@@ -625,19 +767,39 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     this.log(`Gemini Live turn interrupted ${offset}`);
 
     this.turnInterrupted = true;
-    // Banks the open audible span through `onPlayingChange(false)`, so the
-    // ending below settles the gate against a total that includes it.
+    // The turn is dead, so there is nothing left for a later `interrupt()` to
+    // condemn. Left standing, this would survive the turn boundary if
+    // `turnComplete` ever failed to follow, and the next `interrupt()` with
+    // nothing open would suppress a whole innocent turn in silence.
+    this.modelTurnInFlight = false;
     this.playbackScheduler?.flush();
     this.endAudioOutput();
   }
 
+  /**
+   * Settle the turn that `turnComplete` just closed.
+   *
+   * Two callers, two worlds. `applyServerMessage`'s condemned branch brings a
+   * turn a local `interrupt()` killed: it reports nothing and its audio ended
+   * back at the interrupt. The normal path brings a turn that ran: it reports
+   * its completion, and may still owe an ending. Everything between is per-turn
+   * state both worlds drop.
+   */
   private handleTurnComplete(): void {
-    // Task 8 suppresses this completion for a client-condemned turn.
-    this.emitEvent({
-      type: "assistant.response.completed",
-      text: this.assistantText,
-      usage: this.latestUsage,
-    });
+    // Read and cleared first, as in `endAudioOutput`: this is the single exit
+    // from condemnation, and see `turnCondemned` for why the turn is silent.
+    const wasCondemned = this.turnCondemned;
+    this.turnCondemned = false;
+
+    if (!wasCondemned) {
+      this.emitEvent({
+        type: "assistant.response.completed",
+        text: this.assistantText,
+        usage: this.latestUsage,
+      });
+    }
+
+    this.modelTurnInFlight = false;
     this.assistantText = "";
     this.hasStartedAssistantResponse = false;
     this.latestUsage = undefined;
@@ -659,6 +821,71 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // end the turn while the character is still talking.
     if (this.playbackScheduler?.isIdle()) {
       this.endAudioOutput();
+    }
+  }
+
+  /**
+   * Fan a `toolCall` frame out, one `tool.call` per usable entry, recording the
+   * id -> name pairing each answer will need.
+   *
+   * This frame's shape comes from the API reference and has never been seen
+   * live — the spike registered no tools (`tests/gemini-live-smoke/README.md`)
+   * — so an entry missing either field is *reported* rather than trusted or
+   * dropped in silence: without both there is no answer this client can send,
+   * and a session that runs on while the model waits forever for a response
+   * fails invisibly. It travels as a transport `error`, which `RealtimeManager`
+   * handles without ending the session — releasing the send lock, so the user
+   * is not stuck. Killing the socket over it would instead livelock: recovery
+   * succeeds because the socket was never the problem, the model re-issues the
+   * same call on the fresh session, and every lap burns another `uses: 1`
+   * token. Strictness belongs on shapes that have been measured.
+   *
+   * The whole frame is decided before any of it is emitted, so a malformed
+   * entry cannot destroy a well-formed sibling whose handler is already
+   * running and whose id would be cleared out from under it. The report names
+   * the keys that did arrive — enough to read the real shape off one failure —
+   * and never quotes argument values.
+   *
+   * This covers the one absence worth surviving: an entry that arrived and
+   * cannot be answered. A payload that is not this shape at all — a null entry,
+   * a `functionCalls` that is not an array — still throws into the message
+   * pump's fatal catch, and nothing here parses defensively for it.
+   */
+  private handleToolCall(calls: GeminiFunctionCall[]): void {
+    const usable: Array<{
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+    }> = [];
+    const unusable: string[] = [];
+
+    for (const call of calls) {
+      if (call.id && call.name) {
+        usable.push({ id: call.id, name: call.name, args: call.args ?? {} });
+      } else {
+        unusable.push(`{${Object.keys(call).join(", ")}}`);
+      }
+    }
+
+    for (const call of usable) {
+      // Recorded before the event goes out, so a handler that answers on the
+      // spot finds its id already there.
+      this.pendingToolCalls.set(call.id, call.name);
+      this.emitEvent({
+        type: "tool.call",
+        name: call.name,
+        args: call.args,
+        callId: call.id,
+      });
+    }
+
+    if (unusable.length > 0) {
+      this.emitEvent({
+        type: "error",
+        error: new Error(
+          `Gemini Live sent tool calls this client cannot answer: an id or name is missing (keys received: ${unusable.join(" ")})`,
+        ),
+      });
     }
   }
 
@@ -730,6 +957,11 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    * audio ended — always from the scheduler being idle and `turnComplete` seen,
    * never from a timer or an RMS reading — and this keeps the start/end pair
    * balanced and settles the gate.
+   *
+   * Both interrupt paths flush the scheduler immediately before calling in.
+   * That flush is what closes the open audible span through
+   * `onPlayingChange(false)`, so the gate below settles against a total that
+   * includes it.
    */
   private endAudioOutput(): void {
     // Read and cleared above the guard, not below it: an `interrupted` that
@@ -774,20 +1006,51 @@ export class GeminiLiveClient implements RealtimeTransportClient {
   }
 
   /**
-   * The only path microphone audio takes to the wire.
-   *
-   * Frames are dropped rather than queued whenever they cannot be sent now:
-   * before `setupComplete` the session does not exist yet to receive them, and
-   * a frame held across a reconnect is audio the user spoke into a session that
-   * has ended.
+   * The socket a frame can go out on right now, or null. `setupComplete` is
+   * part of the answer: until the server acknowledges setup there is no session
+   * to receive anything. Callers differ only in what they make of a null.
    */
-  private sendCaptureFrame(frame: Uint8Array): void {
+  private getReadySocket(): WebSocket | null {
     const socket = this.activeSocket?.socket;
     if (
       !socket ||
       !this.isSetupComplete ||
       socket.readyState !== WebSocket.OPEN
     ) {
+      return null;
+    }
+
+    return socket;
+  }
+
+  /**
+   * `getReadySocket()` for the caller-driven frames, which refuse rather than
+   * drop: `sendText()` and `sendToolResult()` have someone to tell.
+   *
+   * The recovery guard stays at those call sites instead of folding in here as
+   * the OpenAI client's does, so a `sendToolResult()` during a reconnect
+   * reports the reconnect rather than the unknown call id it would otherwise
+   * hit — the map is already empty by then.
+   */
+  private requireReadySocket(): WebSocket {
+    const socket = this.getReadySocket();
+    if (!socket) {
+      throw new Error("Gemini Live session is not ready to send");
+    }
+
+    return socket;
+  }
+
+  /**
+   * The only path microphone audio takes to the wire.
+   *
+   * Frames are dropped rather than queued whenever `getReadySocket()` says they
+   * cannot go out now: a frame held across a reconnect is audio the user spoke
+   * into a session that has ended.
+   */
+  private sendCaptureFrame(frame: Uint8Array): void {
+    const socket = this.getReadySocket();
+    if (!socket) {
       return;
     }
 
@@ -884,16 +1147,22 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // Turn state is dropped rather than completed: the turn it describes
     // belonged to the socket just closed. No pairing `audio.output.ended` is
     // emitted for a turn cut off this way — `RealtimeManager` closes its own
-    // audio output when it hears `connection.lost`.
+    // audio output when it hears `connection.lost`. This is also the roster of
+    // what "per-turn" means: everything `handleTurnComplete()` and
+    // `endAudioOutput()` own between them.
     this.hasStartedAudioOutput = false;
     this.turnCompleteSeen = false;
     this.turnInterrupted = false;
+    this.modelTurnInFlight = false;
+    this.turnCondemned = false;
     this.hasStartedAssistantResponse = false;
     this.assistantText = "";
     this.latestUsage = undefined;
 
-    // Task 8 clears the tool-call map: call IDs are session-scoped.
-    //
+    // Session-scoped, per `pendingToolCalls`. The terminal `cleanup()` inherits
+    // this, since it runs the reset first.
+    this.pendingToolCalls.clear();
+
     // Nothing here unbinds browser-lifecycle listeners because this client
     // binds none yet. Half of what `bindTransportLifecycle` gives the OpenAI
     // client is already covered: a websocket reports a dead connection through
