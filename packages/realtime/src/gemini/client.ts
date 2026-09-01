@@ -10,12 +10,20 @@ import {
   fetchWithTimeout,
   GEMINI_LIVE_ADAPTER,
 } from "@charivo/core";
+import { acquireMicrophoneStream } from "../internal/microphone";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   isRealtimeSessionBootstrap,
 } from "../internal/shared";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
-import { DEFAULT_GEMINI_LIVE_MODEL, OUTPUT_SAMPLE_RATE } from "./defaults";
+import type { CapturePipeline } from "./capture";
+import { createCapturePipeline } from "./capture";
+import {
+  CONVERGENCE_GATE_MS,
+  DEFAULT_GEMINI_LIVE_MODEL,
+  INPUT_SAMPLE_RATE,
+  OUTPUT_SAMPLE_RATE,
+} from "./defaults";
 import { createPlaybackGraph, PlaybackScheduler } from "./playback";
 
 export interface GeminiLiveClientOptions {
@@ -74,6 +82,43 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    */
   private playbackContext: AudioContext | null = null;
   private playbackScheduler: PlaybackScheduler | null = null;
+  /**
+   * Per-session, unlike the playback context above: both the stream and the
+   * pipeline reading it are acquired by every `connect()` and dropped by the
+   * transient reset.
+   */
+  private captureStream: MediaStream | null = null;
+  private capturePipeline: CapturePipeline | null = null;
+  /**
+   * Whether the server has acknowledged setup. Microphone frames wait on it —
+   * see `sendCaptureFrame`.
+   */
+  private isSetupComplete = false;
+  /**
+   * Convergence gate. Safari's echo canceller leaks the character's own voice
+   * for roughly the first half-second after it starts speaking, and converges
+   * cumulatively across turns (measured,
+   * `tests/gemini-live-smoke/README.md`), so while armed the client drops the
+   * microphone frames landing within `CONVERGENCE_GATE_MS` of playback becoming
+   * audible.
+   *
+   * Dropping them does not slow that adaptation down: the canceller runs inside
+   * the `getUserMedia` pipeline and adapts to whatever plays out, forwarded or
+   * not. The gate only keeps the not-yet-converged residue from reaching the
+   * model, at a bounded cost — a barge-in inside the gate window at the start
+   * of a reply is lost, against the character killing its own turn twice.
+   *
+   * Task 7 owns the disarm rule, by accumulated audible exposure.
+   */
+  private gateArmed = true;
+  /**
+   * `performance.now()` at the moment the current turn's playback became
+   * audible, and the only thing the gate window is measured from: a fact this
+   * client owns, never a guess about what the microphone contains. Recorded per
+   * turn by Task 7; read by `sendCaptureFrame` and cleared by the transient
+   * reset.
+   */
+  private playbackAudibleSince: number | null = null;
   private currentSessionConfig?: RealtimeSessionConfig;
   private connectionLossNotified = false;
   private isExplicitDisconnect = false;
@@ -120,7 +165,45 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       // surviving-context handling below keeps from repeating on every
       // reconnect.
       await this.ensurePlaybackReady();
-      // Task 6 wires the microphone capture pipeline in beside it.
+
+      // Ahead of the socket, deliberately: `openSocket()` arms the setup
+      // timeout the moment it opens, and a permission prompt left sitting would
+      // burn it. Plain `echoCancellation: true` over the ordinary playback path
+      // is what the Chrome control measured as sufficient — 14 self-
+      // interruptions with cancellation off against 0 with it on
+      // (`tests/gemini-live-smoke/README.md`).
+      try {
+        this.captureStream = await acquireMicrophoneStream();
+      } catch (error) {
+        // The message the OpenAI client already gives for a refused
+        // microphone — one package should not answer the same question two
+        // ways — with the original `DOMException` kept as `cause`, because
+        // denial and no-such-device are different repairs.
+        throw new Error("Microphone access required for Realtime API", {
+          cause: error,
+        });
+      }
+
+      // The prompt above is the widest window in connect() for a disconnect()
+      // to land in; the throw hands the stream to the teardown below.
+      if (this.isExplicitDisconnect) {
+        throw new Error("Realtime session disconnect requested");
+      }
+
+      const capturePipeline = await createCapturePipeline({
+        stream: this.captureStream,
+        onFrame: (frame) => this.sendCaptureFrame(frame),
+      });
+
+      // Assigned only once it is this client's to tear down. A disconnect()
+      // landing inside the await above already ran the teardown, which found a
+      // null field and stopped nothing, so an unconditional assignment would
+      // strand a live `AudioContext` that no later reset can reach.
+      if (this.isExplicitDisconnect) {
+        capturePipeline.stop();
+        throw new Error("Realtime session disconnect requested");
+      }
+      this.capturePipeline = capturePipeline;
 
       await this.openSocket(url, token, config?.model);
 
@@ -258,8 +341,15 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       // Task 7 combines this with `turnComplete` to decide that audio ended —
       // a drain on its own fires 3 ms into a twelve-second reply.
       onDrain: () => {},
-      // Task 6 gates the microphone on this for Safari's echo canceller, and
-      // Task 7 resumes/pauses the lip-sync analyzer with it.
+      // Task 7 records `playbackAudibleSince` at the turn's *first* audible
+      // playback, and sums these intervals into the exposure total that
+      // disarms the gate. Not once per audible span: this fires again on every
+      // mid-turn underrun, so re-anchoring on it would let a stalling
+      // connection hold the gate open for a whole reply — silently, which is
+      // the failure class the measured record already warns about. Once
+      // anchored, leave it standing when playback stops; the window has to
+      // expire on its own clock rather than on silence the acoustic path has
+      // not caught up with. Task 7 also resumes/pauses the analyzer here.
       onPlayingChange: (_playing: boolean) => {},
     });
 
@@ -383,11 +473,59 @@ export class GeminiLiveClient implements RealtimeTransportClient {
   private applyServerMessage(message: GeminiServerMessage): void {
     if (message.setupComplete) {
       this.log("Gemini Live setup complete");
+      this.isSetupComplete = true;
       this.resolvePendingConnect();
       return;
     }
 
     // Task 7 maps serverContent / toolCall / usageMetadata from here.
+  }
+
+  /**
+   * The only path microphone audio takes to the wire.
+   *
+   * Frames are dropped rather than queued whenever they cannot be sent now:
+   * before `setupComplete` the session does not exist yet to receive them, and
+   * a frame held across a reconnect is audio the user spoke into a session that
+   * has ended.
+   */
+  private sendCaptureFrame(frame: Uint8Array): void {
+    const socket = this.activeSocket?.socket;
+    if (
+      !socket ||
+      !this.isSetupComplete ||
+      socket.readyState !== WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    if (this.isWithinConvergenceGate()) {
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        realtimeInput: {
+          audio: {
+            data: bytesToBase64(frame),
+            mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
+          },
+        },
+      }),
+    );
+  }
+
+  /**
+   * Whether this moment falls inside the convergence gate: still armed, and
+   * within `CONVERGENCE_GATE_MS` of the current turn's playback becoming
+   * audible. Task 7 disarms the gate by accumulated audible exposure.
+   */
+  private isWithinConvergenceGate(): boolean {
+    return (
+      this.gateArmed &&
+      this.playbackAudibleSince !== null &&
+      performance.now() - this.playbackAudibleSince < CONVERGENCE_GATE_MS
+    );
   }
 
   /**
@@ -425,6 +563,7 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // holding the outgoing socket's epoch.
     this.socketEpoch += 1;
     this.closeActiveSocket();
+    this.isSetupComplete = false;
     this.rejectPendingConnect(
       new Error("Gemini Live session ended before setup completed"),
     );
@@ -433,10 +572,21 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // they belong to the gesture rather than to the socket.
     this.playbackScheduler?.flush();
 
-    // Task 6 stops microphone capture here — it is per-session and rebuilt on
-    // every connect(), unlike the prepared playback context.
-    // Task 7 clears per-turn state and re-arms the convergence gate with a
-    // zeroed exposure accumulator.
+    // Capture goes the other way: it is rebuilt on every connect(), and the
+    // tracks are stopped so the browser's recording indicator clears.
+    this.capturePipeline?.stop();
+    this.capturePipeline = null;
+    this.captureStream?.getTracks().forEach((track) => track.stop());
+    this.captureStream = null;
+    // Re-armed with the stream it gates: whatever the canceller had adapted to
+    // belonged to the `getUserMedia` stream just stopped, so its replacement
+    // starts unadapted. Gating again costs at most one more bounded window;
+    // assuming the adaptation survived would cost whole turns.
+    this.gateArmed = true;
+    this.playbackAudibleSince = null;
+
+    // Task 7 clears per-turn state and zeroes the exposure accumulator its
+    // gate-disarm rule sums into.
     // Task 8 clears the tool-call map: call IDs are session-scoped.
     //
     // Nothing here unbinds browser-lifecycle listeners because this client
@@ -446,7 +596,10 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     // has no websocket equivalent and is still missing: pausing and resuming
     // the analyzer across visibility/pagehide — a real gap now that a playback
     // tap is attached to it, not a pending wiring step — and refreshing the
-    // microphone on `devicechange` (Task 6).
+    // microphone on `devicechange`, equally real now that capture is wired.
+    // `replaceMicrophoneTrack` has no counterpart here because there is no
+    // sender to swap a track into, so following a device change would mean
+    // rebuilding the capture pipeline around a fresh stream mid-session.
   }
 
   /**
@@ -596,6 +749,22 @@ export class GeminiLiveClient implements RealtimeTransportClient {
       console.log(...args);
     }
   }
+}
+
+/**
+ * A generic helper whose only caller hands it one 640-byte capture frame, so
+ * the loop runs a single time today. The chunking stays because the trap it
+ * avoids is real and silent: `btoa` wants a binary string, and building one
+ * with `String.fromCharCode(...bytes)` makes every byte an argument, which
+ * throws once a payload outgrows the engine's argument limit.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const stride = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += stride) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + stride));
+  }
+  return btoa(binary);
 }
 
 function resolveWebSocketBootstrap(bootstrap: RealtimeSessionBootstrap): {
