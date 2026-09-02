@@ -23,10 +23,8 @@ import {
 } from "../internal/shared";
 import { delay } from "../internal/timing";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
-import {
-  DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-  DEFAULT_OPENAI_REALTIME_VOICE,
-} from "./defaults";
+import { DEFAULT_OPENAI_REALTIME_VOICE } from "./defaults";
+import { resolveOpenAIAudioInput } from "./transcription";
 
 interface ServerError {
   code?: string;
@@ -1022,23 +1020,9 @@ function toOpenAIRealtimeSessionUpdate(
     },
   };
 
-  const transcription = config?.inputAudioTranscription;
-  if (transcription !== undefined) {
-    if (transcription.enabled === false) {
-      audio.input = { transcription: null };
-    } else if (
-      transcription.enabled === true ||
-      transcription.model !== undefined
-    ) {
-      // OpenAI requires a model on this block (measured: `{}` is a 400), so an
-      // enable without one gets the default rather than being dropped.
-      audio.input = {
-        transcription: {
-          model:
-            transcription.model ?? DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-        },
-      };
-    }
+  const input = resolveOpenAIAudioInput(config?.inputAudioTranscription);
+  if (input) {
+    audio.input = input;
   }
 
   const session: Record<string, unknown> = {
