@@ -60,6 +60,12 @@ character state aligned.
 - useful for local development and testing
 - exposes credentials to the browser
 
+### Direct Gemini
+
+- `@charivo/llm/gemini`
+- useful for local development and testing
+- exposes credentials to the browser
+
 ### Direct OpenClaw
 
 - `@charivo/llm/openclaw`
@@ -77,6 +83,10 @@ Remote clients pair with provider packages on the server:
 
 - `@charivo/server/openai`
 - `@charivo/server/openclaw`
+- `@charivo/server/gemini` — Gemini 3 rejects a resent tool-call turn that
+  lacks a thought signature, so this provider sends Google's documented
+  `skip_thought_signature_validator` placeholder on the first tool call of
+  each turn, and reasoning continuity across tool rounds is lost
 
 Minimal OpenAI route shape:
 
@@ -203,13 +213,14 @@ the [core README](https://github.com/zeikar/charivo/blob/main/packages/core/READ
 
 `Charivo` also passes a per-turn `signal` alongside `isCancelled`, so a
 superseded turn's in-flight request is aborted when the client honors it.
-`@charivo/llm/remote` does; the direct OpenAI dev client ignores it and runs to
-completion. A custom `LLMManager` should forward `signal` to its client — the
-built-in one already does.
+`@charivo/llm/remote` does; the direct OpenAI and Gemini dev clients ignore it
+and run to completion. A custom `LLMManager` should forward `signal` to its
+client — the built-in one already does.
 
 ## Alternatives
 
 - Use OpenClaw when your backend or testing flow targets OpenClaw instead of OpenAI.
+- Use Gemini when you already hold a Gemini API key for Gemini Live realtime voice and want one vendor for both text chat and voice.
 - Use the stub client when you want UI behavior without network or model variability.
 - Use direct browser clients only when development speed matters more than credential isolation.
 
