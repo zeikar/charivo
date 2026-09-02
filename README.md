@@ -33,17 +33,19 @@ rewriting the whole stack.
 
 Want to watch a full Live2D character talk before wiring your own app? The
 [`examples/web`](./examples/web) demo bundles the Live2D models and every
-modality. Clone the repo, add an OpenAI key, and run:
+modality. Clone the repo, add an OpenAI key (and a Gemini key for realtime
+voice, which defaults to Gemini Live), and run:
 
 ```bash
 pnpm install
-cp examples/web/.env.example examples/web/.env.local   # then set OPENAI_API_KEY
+cp examples/web/.env.example examples/web/.env.local   # then set OPENAI_API_KEY and GEMINI_API_KEY
 pnpm dev:web
 ```
 
 Open <http://localhost:3000>. The in-app settings menu lets you compare the
 server-mediated (production) and browser-direct dev clients for chat, TTS, and
-STT; realtime voice always uses the server route in this demo.
+STT; realtime voice always uses the server route in this demo, and the same
+menu switches it between Gemini Live and OpenAI Realtime.
 
 The snippets below are for adding Charivo to your own app, not for pasting into
 an empty file — a Live2D scene needs a canvas, the Cubism runtime, model assets,
@@ -116,8 +118,8 @@ For a complete app with the production server-mediated path, see
 Text chat can also drive the character's face and body: register the
 catalog-constrained tools from `@charivo/avatar` on the LLM manager and the
 model calls `setExpression` / `playMotion` / `lookAt` while it replies. See the
-[LLM guide's avatar tool-calling walkthrough](./docs/guide/llm.md) for the
-wiring.
+[LLM guide's avatar tool-calling walkthrough](./docs/guide/llm.md#avatar-tool-calling)
+for the wiring.
 
 ## Realtime Voice
 
@@ -196,6 +198,34 @@ requested per session. For production, swap the direct client for the
 server-mediated `@charivo/realtime/remote` client backed by a server route (see
 [Choosing Packages](#choosing-packages)).
 
+Gemini Live is the other realtime provider. `@charivo/realtime/gemini` never
+takes an API key — there is no `apiKey` shortcut like the Agents transport's —
+so a session always starts from a bootstrap your server route returns, here
+through the remote client and a route backed by `@charivo/server/gemini`. The
+same `startSession` call selects it — the manager, character, and avatar wiring
+do not change:
+
+```ts
+import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
+
+const charivo = createCharivo({
+  renderer: renderManager,
+  realtime: createRealtimeManager(
+    createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" }),
+  ),
+  character,
+});
+
+await charivo.getRealtimeManager()!.startSession({
+  provider: "gemini",
+  transport: "websocket",
+  instructions: base.instructions,
+});
+```
+
+The [Realtime guide](./docs/guide/realtime.md#provider-route) shows the route
+for both providers.
+
 To let the live model drive avatar expressions and motions, register the avatar
 tools and result projector from `@charivo/avatar` (the same tools also work
 with `@charivo/llm`'s `LLMManager`; formerly published as
@@ -210,7 +240,7 @@ Use the remote/server-mediated path by default:
 - LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/openclaw`
 - TTS: `@charivo/tts/remote` + `@charivo/server/openai`
 - STT: `@charivo/stt/remote` + `@charivo/server/openai`
-- Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai`
+- Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/gemini`
 
 Direct browser packages are for local development, demos, and testing only:
 
@@ -220,8 +250,9 @@ Direct browser packages are for local development, demos, and testing only:
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
 
-`@charivo/realtime/openai` is server-mediated despite being a direct transport —
-it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
+`@charivo/realtime/openai` and `@charivo/realtime/gemini` are server-mediated
+despite being direct transports — each accepts only `apiEndpoint` or
+`sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
 or transcriber factory on each of these four subpaths
@@ -301,11 +332,13 @@ STT:
 Realtime:
 
 - `@charivo/realtime`: provider-agnostic realtime manager, tool registry, typed state, and session config helpers
-  Supports explicit `updateSession(...)` session patching without a reconnect.
+  Supports explicit `updateSession(...)` session patching without a reconnect on the OpenAI transports.
 - `@charivo/realtime/remote`: adapter-dispatched browser client for server realtime routes
 - `@charivo/realtime/openai-agents`: OpenAI Agents SDK realtime transport client and adapter
 - `@charivo/realtime/openai`: legacy low-level OpenAI realtime transport client and adapter
+- `@charivo/realtime/gemini`: Gemini Live WebSocket realtime transport client and adapter
 - `@charivo/server/openai`: exports `createOpenAIRealtimeProvider(...)`
+- `@charivo/server/gemini`: exports `createGeminiRealtimeProvider(...)`
 
 Avatar:
 

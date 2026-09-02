@@ -28,7 +28,7 @@ their tradeoffs.
 | Local development against vendor APIs | Browser-direct vendor package | Faster setup, but credentials bundle into shipped JavaScript |
 | Zero-server browser speech | Browser-native web package | No backend needed, but browser support varies |
 | Deterministic demo or UI work | Stub client where available | No model dependency |
-| Realtime voice today | `@charivo/realtime/remote` | Resolves the OpenAI Agents WebRTC adapter by default |
+| Realtime voice today | `@charivo/realtime/remote` | Resolves the OpenAI Agents WebRTC or Gemini Live WebSocket adapter from the session's `provider`/`transport` |
 
 ## Runtime Modes
 
@@ -67,10 +67,11 @@ Examples:
 - `@charivo/stt/openai`
 - `@charivo/realtime/openai-agents`
 
-`@charivo/realtime/openai` is NOT in this list: the legacy low-level transport
-takes only `apiEndpoint` or `sessionBootstrap`, so it always goes through your
-server and never holds a provider credential. It is a legacy/debugging path,
-not a credential-exposing one.
+`@charivo/realtime/openai` and `@charivo/realtime/gemini` are NOT in this list:
+both take only `apiEndpoint` or `sessionBootstrap`, so they never hold a
+provider credential themselves and start every session from a bootstrap your
+server (or code you supply) returns. The former is a legacy/debugging path and
+the latter the only Gemini Live transport; neither is a credential-exposing one.
 
 The browser-direct caveat above is about the browser client, player, or
 transcriber factory (`createOpenAILLMClient`, `createOpenClawLLMClient`,
@@ -137,7 +138,7 @@ Choose this path when:
 @charivo/core
 @charivo/realtime
 @charivo/realtime/remote
-@charivo/server/openai
+@charivo/server/openai or @charivo/server/gemini
 ```
 
 ### Live2D rendering

@@ -84,17 +84,17 @@ interfaces, not concrete classes.
   `CharivoDisposeError`) are a second intentional exception: an error
   *taxonomy* to check with `isCharivoError`/`error.code`, not a constructible
   component.
-- The OpenAI/OpenClaw provider classes (`OpenAILLMProvider`,
-  `OpenClawLLMProvider`, `OpenAITTSProvider`, `OpenAISTTProvider`,
-  `OpenAIRealtimeProvider`) are a third intentional exception, exported as
+- The server provider classes (`OpenAILLMProvider`, `OpenClawLLMProvider`,
+  `OpenAITTSProvider`, `OpenAISTTProvider`, `OpenAIRealtimeProvider`,
+  `GeminiRealtimeProvider`) are a third intentional exception, exported as
   concrete classes alongside their `create*Provider` factories: consumers rely
   on `instanceof` checks and on provider methods outside the narrow core
   interface (e.g. `OpenAITTSProvider.setModel`, absent from `TTSProvider`) — a
   contract `packages/server/__tests__/barrel.test.ts` pins. Separately, and not
   a "Node-only" restriction, the factories are also callable directly from a
   browser via `dangerouslyAllowBrowser`, letting a local app or test skip
-  standing up a server. `@charivo/server/*` re-exports all five for server use;
-  `OpenAIRealtimeProvider` is implemented directly there instead of in a
+  standing up a server. `@charivo/server/*` exports all six for server use;
+  the two realtime providers are implemented directly there instead of in a
   modality package (see Server Providers below).
 - Subclassing `Charivo` is unsupported; extend it through composition
   (attach managers, listen to events) rather than inheritance.
@@ -132,6 +132,7 @@ when you explicitly want local development shortcuts or zero-server behavior.
 - `@charivo/realtime/remote`
 - `@charivo/realtime/openai-agents`
 - `@charivo/realtime/openai`
+- `@charivo/realtime/gemini`
 
 ### Rendering
 
@@ -144,12 +145,14 @@ Provider packages belong behind your own API routes:
 
 - `@charivo/server/openai`
 - `@charivo/server/openclaw`
+- `@charivo/server/gemini`
 
 The LLM/TTS/STT providers under these subpaths are implemented in the
 matching modality package (`@charivo/llm/openai`, `@charivo/llm/openclaw`,
 `@charivo/tts/openai`, `@charivo/stt/openai`) and re-exported here; only the
-OpenAI realtime provider (ephemeral client-secret minting) is implemented
-directly in `@charivo/server`.
+realtime providers — OpenAI (ephemeral client-secret minting) and Gemini Live
+(single-use ephemeral tokens carrying the whole session config) — are
+implemented directly in `@charivo/server`.
 
 That placement is deliberate, not an inverted layering: each of those modality
 subpaths also ships a dev/testing browser client that wraps the same provider
@@ -185,7 +188,7 @@ For production browser apps:
 - LLM: `@charivo/llm` + `@charivo/llm/remote` + `@charivo/server/openai`
 - TTS: `@charivo/tts` + `@charivo/tts/remote` + `@charivo/server/openai`
 - STT: `@charivo/stt` + `@charivo/stt/remote` + `@charivo/server/openai`
-- Realtime: `@charivo/realtime` + `@charivo/realtime/remote` + `@charivo/server/openai`
+- Realtime: `@charivo/realtime` + `@charivo/realtime/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 
 Direct browser vendor packages are mainly for development, demos, and testing.
 

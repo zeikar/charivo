@@ -29,6 +29,42 @@ const llm = createOpenAILLMProvider({
 });
 ```
 
+### Gemini providers
+
+```ts
+import { createGeminiRealtimeProvider } from "@charivo/server/gemini";
+
+const realtime = createGeminiRealtimeProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+});
+```
+
+`createSession` mints a single-use Gemini Live ephemeral token and returns a
+websocket bootstrap (`{ adapter, transport: "websocket", url, token }`) for
+`@charivo/realtime/remote` or `@charivo/realtime/gemini`. The whole session
+config goes into the token: Google's `bidiGenerateContentSetup` replaces the
+browser's setup frame rather than validating it, and a token minted without one
+lets the holder open any model on your key (both measured), so model, voice,
+instructions, tools, `maxTokens`, and transcription are all fixed at mint time
+and cannot be changed by the browser afterwards — which is also why the
+transport refuses `updateSession()`. The API key travels in the
+`x-goog-api-key` header, never the URL. Replaying a spent token closes the
+socket with `1011`, so a reconnect calls this again.
+
+What it pins itself, on top of whatever your route pins:
+
+- `model` must be on its allow-list (`gemini-3.1-flash-live-preview`, the
+  default and the model measured against the live API, or
+  `gemini-2.5-flash-native-audio-preview-12-2025`); anything else throws
+- `voice` must be one of Google's prebuilt voice names; an unknown one falls
+  back to the default `Kore` silently, since voice costs nothing
+- `transport` must be `"websocket"`, and `toolChoice` may only be `"auto"` —
+  `"none"` and `"required"` are rejected because the Live API has no equivalent
+- `inputAudioTranscription.model` is rejected for the same reason; input
+  transcription is requested unless `enabled: false`, and output transcription
+  is always requested, because on a native-audio model it is the only source of
+  assistant text
+
 ### OpenClaw providers
 
 ```ts
@@ -74,30 +110,38 @@ is unaffected. Verified against OpenClaw 2026.6.11.
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
 - `@charivo/server/openclaw`: `createOpenClawLLMProvider`
+- `@charivo/server/gemini`: `createGeminiRealtimeProvider`
 
 The LLM/TTS/STT providers are re-exported from `@charivo/llm`, `@charivo/tts`,
-and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only
-`createOpenAIRealtimeProvider` is implemented in this package.
+and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only the
+realtime providers, `createOpenAIRealtimeProvider` and
+`createGeminiRealtimeProvider`, are implemented in this package.
 
 ## Errors
 
 Every provider in this package (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
-`createOpenAISTTProvider`, `createOpenAIRealtimeProvider`, `createOpenClawLLMProvider`)
+`createOpenAISTTProvider`, `createOpenAIRealtimeProvider`,
+`createGeminiRealtimeProvider`, `createOpenClawLLMProvider`)
 throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
   The LLM/TTS/STT providers wrap the SDK's own error: its message is preserved and
-  the original error is kept on `cause`. `createOpenAIRealtimeProvider`'s
-  HTTP-status errors (non-2xx responses, invalid client secret response) are
-  built from the response body text, so they carry the API's message but no
-  `cause`; its network/connection failures and response body/JSON parsing
-  failures are wrapped with the original error kept on `cause`.
-- Request timeouts (OpenAI LLM/TTS/STT/Realtime, 30s) throw `CharivoTimeoutError`
-  (`code: "CHARIVO_TIMEOUT_ERROR"`).
+  the original error is kept on `cause`. The two realtime providers'
+  HTTP-status errors (non-2xx responses, an invalid client secret or token
+  response) are built from the response body text, so they carry the API's
+  message but no `cause`; their network/connection failures and response
+  body/JSON parsing failures are wrapped with the original error kept on `cause`.
+- Request timeouts (OpenAI LLM/TTS/STT/Realtime and Gemini Realtime, 30s) throw
+  `CharivoTimeoutError` (`code: "CHARIVO_TIMEOUT_ERROR"`). For the two realtime
+  providers the timer covers the request up to the response headers; reading
+  the body afterwards is not timed.
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`
   throws `CharivoStateError` (`code: "CHARIVO_STATE_ERROR"`).
-  `createOpenAIRealtimeProvider` also throws `CharivoStateError` for invalid
-  session requests (unsupported provider/transport/adapter, missing SDP offer).
+  The realtime providers also throw `CharivoStateError` for invalid session
+  requests: an unsupported provider/transport/adapter or a missing SDP offer on
+  OpenAI; an unsupported provider/transport/adapter, a model off the allow-list,
+  a `toolChoice` of `"none"`/`"required"`, or an `inputAudioTranscription.model`
+  on Gemini.
 
 `CharivoError extends Error`, so existing `catch (e)` handling still works;
 use `isCharivoError(error)` or `error.code` to branch on the failure kind.
