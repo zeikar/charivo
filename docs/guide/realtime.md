@@ -277,9 +277,10 @@ const manager = createRealtimeManager(
 Option precedence is `sessionBootstrap` > `apiEndpoint` > `apiKey`. The
 `apiKey` path mints the same single-use, session-fixing token the server
 provider mints — Google's `auth_tokens` endpoint answers browser origins — so
-nothing downstream differs from production; it skips only the model and voice
-allow-lists, which protect a key the browser now holds anyway. Like the OpenAI
-one it needs microphone permission, a secure context, and a user gesture. Use
+nothing downstream differs from production. It skips only the model
+allow-list, which protects a key the browser now holds anyway; voices get the
+same prebuilt-name fallback the server provider applies. Like the OpenAI one it
+needs microphone permission, a secure context, and a user gesture. Use
 the server-mediated [Provider Route](#provider-route) below for production.
 
 Its design follows the measurements in
@@ -684,7 +685,7 @@ function buildOpenAISessionConfig(
     // model counts as a request too — the provider treats it as on.
     ...(requested.inputAudioTranscription?.enabled === true ||
     (requested.inputAudioTranscription?.enabled !== false &&
-      requested.inputAudioTranscription?.model)
+      requested.inputAudioTranscription?.model !== undefined)
       ? {
           inputAudioTranscription: {
             enabled: true,

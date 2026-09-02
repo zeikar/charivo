@@ -1026,7 +1026,10 @@ function toOpenAIRealtimeSessionUpdate(
   if (transcription !== undefined) {
     if (transcription.enabled === false) {
       audio.input = { transcription: null };
-    } else if (transcription.enabled === true || transcription.model) {
+    } else if (
+      transcription.enabled === true ||
+      transcription.model !== undefined
+    ) {
       // OpenAI requires a model on this block (measured: `{}` is a 400), so an
       // enable without one gets the default rather than being dropped.
       audio.input = {
