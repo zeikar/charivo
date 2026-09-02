@@ -49,6 +49,7 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
                 disabled={characterSwitchLocked}
                 className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-2 md:px-4 md:py-2 rounded-full shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs md:text-sm font-bold text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-all hover:shadow-xl inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
+                {characterSwitchLocked && <span aria-hidden>🔒</span>}
                 {selectedCharacter}
                 <ChevronDownIcon
                   className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
@@ -81,15 +82,6 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
             </>
           )}
         </Menu>
-
-        {characterSwitchLocked && (
-          <p
-            role="status"
-            className="mt-2 max-w-[13rem] bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-lg ring-1 ring-black/5 dark:ring-white/5 text-xs text-gray-600 dark:text-gray-300"
-          >
-            🔒 Voice session active — end the call to switch
-          </p>
-        )}
       </div>
 
       {/* Canvas Container */}
