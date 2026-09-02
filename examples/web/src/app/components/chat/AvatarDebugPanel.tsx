@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChevronDownIcon } from "@heroicons/react/24/solid";
 import { useChatStore } from "../../stores/useChatStore";
 
 function formatTime(timestamp: number | undefined): string {
@@ -26,6 +28,9 @@ type AvatarDebugPanelProps = {
 
 export function AvatarDebugPanel({ mobile = false }: AvatarDebugPanelProps) {
   const { avatarDebug, isRealtimeMode } = useChatStore();
+  // Per-instance, not stored: the desktop and mobile panels are separate mounts
+  // and each viewer's preference is a UI convenience, not app state.
+  const [open, setOpen] = useState(true);
 
   if (
     !isRealtimeMode &&
@@ -46,16 +51,29 @@ export function AvatarDebugPanel({ mobile = false }: AvatarDebugPanelProps) {
           : "hidden md:block absolute right-4 bottom-4 z-20 w-80 max-w-[calc(100%-2rem)] rounded-2xl bg-slate-950/85 text-slate-100 shadow-2xl ring-1 ring-white/10 backdrop-blur-sm"
       }
     >
-      <div className="border-b border-white/10 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold tracking-wide">Avatar Debug</h3>
+      <button
+        type="button"
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
+        aria-expanded={open}
+        className={`flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5 ${
+          open ? "border-b border-white/10" : ""
+        }`}
+      >
+        <h3 className="text-sm font-semibold tracking-wide">Avatar Debug</h3>
+        <span className="flex items-center gap-2">
           <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
             {isRealtimeMode ? "Realtime" : "Idle"}
           </span>
-        </div>
-      </div>
+          <ChevronDownIcon
+            aria-hidden
+            className={`h-4 w-4 text-slate-400 transition-transform ${
+              open ? "" : "-rotate-90"
+            }`}
+          />
+        </span>
+      </button>
 
-      <div className="space-y-3 px-4 py-3 text-xs">
+      <div hidden={!open} className="space-y-3 px-4 py-3 text-xs">
         <section className="space-y-1">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Last Tool Call
