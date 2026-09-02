@@ -51,7 +51,11 @@ Run this from the repository root before publishing public packages.
 
 ## Publish Failure Checks
 
-- Confirm `NPM_TOKEN` is configured and has publish rights.
+- Confirm every published package still trusts `zeikar/charivo` / `release.yml`
+  (`npm trust list @charivo/<pkg>` shows `createPackage`); publishing runs on
+  OIDC, and the workflow upgrades the runner's npm to 11 because trusted
+  publishing needs 11.5.1+. `NPM_TOKEN` is only a fallback: to use it, pass it
+  back into the changesets step's `env`.
 - Confirm GitHub Actions is allowed to create pull requests.
 - Confirm the target version does not already exist on npm.
 - Confirm the release PR was merged, not just opened.
