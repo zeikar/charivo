@@ -1,5 +1,6 @@
 /**
- * Shared request-body validation for `/api/chat` and `/api/chat-openclaw`.
+ * Shared request-body validation for `/api/chat`, `/api/chat-gemini`, and
+ * `/api/chat-openclaw`.
  *
  * Message validation is role-discriminated: a payload that would produce a
  * protocol-invalid OpenAI request (an unknown role, `toolCalls` on a

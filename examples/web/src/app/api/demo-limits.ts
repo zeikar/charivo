@@ -3,13 +3,15 @@
  *
  * Every route under `src/app/api/` is an unauthenticated proxy. All of them
  * except `/api/chat-openclaw` — which forwards to `OPENCLAW_BASE_URL` with
- * `OPENCLAW_TOKEN` — spend a paid OpenAI key; `/api/realtime` also spends a
- * paid Gemini key (`GEMINI_API_KEY`) when the Gemini provider is selected.
- * There is no auth, no per-IP quota, and no rate limiting — read the README's
- * "Deploying this demo" section before copying any of it.
+ * `OPENCLAW_TOKEN` — spend a paid OpenAI key; `/api/chat-gemini` also spends
+ * a paid Gemini key (`GEMINI_API_KEY`), as does `/api/realtime` when the
+ * Gemini provider is selected. There is no auth, no per-IP quota, and no
+ * rate limiting — read the README's "Deploying this demo" section before
+ * copying any of it.
  *
- * The limits below cover the OpenAI- and Gemini-backed routes; `/api/chat-openclaw`
- * shares only the `chat-request` payload bounds.
+ * The limits below cover the OpenAI- and Gemini-backed routes, including
+ * `/api/chat-gemini`; `/api/chat-openclaw` shares only the `chat-request`
+ * payload bounds.
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot
@@ -109,6 +111,9 @@ export const TTS_ALLOWED_VOICES: ReadonlySet<string> = new Set(
  * `whisper-1` rates. Treat it as an upload bound, not a cost guarantee.
  */
 export const STT_MAX_AUDIO_BYTES = 1024 * 1024;
+
+/** Pinned here so the route picks the model it pays for instead of inheriting `@charivo/server/gemini`'s default. */
+export const CHAT_GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 export const CHAT_MAX_MESSAGES = 40;
 
