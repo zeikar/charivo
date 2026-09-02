@@ -4,6 +4,7 @@ import {
   createOpenAISTTProvider,
   createOpenAITTSProvider,
 } from "../../packages/server/src/openai/index";
+import { createGeminiLLMProvider } from "../../packages/server/src/gemini/index";
 import type { LLMMessage, ToolDefinition } from "../../packages/core/src/types";
 import { workspaceAliases } from "../../test-aliases";
 import { defineConfig } from "vite";
@@ -15,7 +16,9 @@ const harnessRoot = __dirname;
 // These routes are intentionally local to the cascade harness so the smoke
 // test can validate the STT → LLM → TTS chain without depending on
 // examples/web. They mirror the examples/web /api/stt, /api/chat, /api/tts
-// route contracts, backed by @charivo/server/openai.
+// route contracts, backed by @charivo/server/openai. CASCADE_LLM=gemini swaps
+// only the /api/chat leg to @charivo/server/gemini, so the same specs drive the
+// Gemini LLM provider end to end while STT and TTS stay on OpenAI.
 
 function sendJson(
   response: ServerResponse,
@@ -67,14 +70,36 @@ function isToolishMessage(message: unknown): boolean {
   );
 }
 
-function requireApiKey(response: ServerResponse): string | null {
-  const apiKey = process.env.OPENAI_API_KEY;
+type ApiKeyEnv = "OPENAI_API_KEY" | "GEMINI_API_KEY";
+
+function requireApiKey(
+  response: ServerResponse,
+  envName: ApiKeyEnv,
+): string | null {
+  const apiKey = process.env[envName];
   if (!apiKey) {
-    sendJson(response, 500, { error: "OPENAI_API_KEY not configured" });
+    sendJson(response, 500, { error: `${envName} not configured` });
     return null;
   }
 
   return apiKey;
+}
+
+// Resolved once at config load so a typo fails the run up front instead of
+// silently testing the default provider.
+const CASCADE_LLM = process.env.CASCADE_LLM ?? "openai";
+if (CASCADE_LLM !== "openai" && CASCADE_LLM !== "gemini") {
+  throw new Error(
+    `CASCADE_LLM must be "openai" or "gemini", received "${CASCADE_LLM}"`,
+  );
+}
+const LLM_API_KEY_ENV: ApiKeyEnv =
+  CASCADE_LLM === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
+
+function createLLMProvider(apiKey: string) {
+  return CASCADE_LLM === "gemini"
+    ? createGeminiLLMProvider({ apiKey, model: "gemini-3.5-flash-lite" })
+    : createOpenAILLMProvider({ apiKey, model: "gpt-4.1-nano" });
 }
 
 export default defineConfig({
@@ -95,7 +120,7 @@ export default defineConfig({
               return;
             }
 
-            const apiKey = requireApiKey(response);
+            const apiKey = requireApiKey(response, "OPENAI_API_KEY");
             if (!apiKey) {
               return;
             }
@@ -147,7 +172,7 @@ export default defineConfig({
               return;
             }
 
-            const apiKey = requireApiKey(response);
+            const apiKey = requireApiKey(response, LLM_API_KEY_ENV);
             if (!apiKey) {
               return;
             }
@@ -165,10 +190,7 @@ export default defineConfig({
                 return;
               }
 
-              const provider = createOpenAILLMProvider({
-                apiKey,
-                model: "gpt-4.1-nano",
-              });
+              const provider = createLLMProvider(apiKey);
 
               if (tools !== undefined || messages.some(isToolishMessage)) {
                 const result = await provider.generateResponseWithTools(
@@ -209,7 +231,7 @@ export default defineConfig({
               return;
             }
 
-            const apiKey = requireApiKey(response);
+            const apiKey = requireApiKey(response, "OPENAI_API_KEY");
             if (!apiKey) {
               return;
             }

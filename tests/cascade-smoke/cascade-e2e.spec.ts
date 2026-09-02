@@ -27,7 +27,12 @@ const WAV_PATH = fileURLToPath(
 const WAV_PRESENT = existsSync(WAV_PATH);
 
 const LIVE_ENABLED = process.env.RUN_LIVE_CASCADE === "1";
-const HAS_API_KEY = Boolean(process.env.OPENAI_API_KEY);
+// STT and TTS always run on OpenAI; CASCADE_LLM=gemini moves only the chat leg
+// to the Gemini provider, which needs its own key (see vite.config.ts).
+const CASCADE_LLM = process.env.CASCADE_LLM ?? "openai";
+const HAS_API_KEYS =
+  Boolean(process.env.OPENAI_API_KEY) &&
+  (CASCADE_LLM !== "gemini" || Boolean(process.env.GEMINI_API_KEY));
 
 // Mirrors the AVATAR_CATALOG expressions in src/main.ts, so the assertion
 // below can prove the model only ever picked from the enum offered to it.
@@ -54,8 +59,8 @@ test.describe("cascade stt → llm → tts e2e", () => {
     "voice-smoke-input.wav missing — see tests/webrtc-smoke/fixtures/README.md",
   );
   test.skip(
-    !LIVE_ENABLED || !HAS_API_KEY,
-    "Set RUN_LIVE_CASCADE=1 OPENAI_API_KEY=... to run the cascade suite.",
+    !LIVE_ENABLED || !HAS_API_KEYS,
+    "Set RUN_LIVE_CASCADE=1 OPENAI_API_KEY=... to run the cascade suite (plus GEMINI_API_KEY=... when CASCADE_LLM=gemini).",
   );
 
   test("transcribes canned audio, generates a reply, synthesizes speech, and drives lip-sync", async ({

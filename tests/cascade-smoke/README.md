@@ -6,7 +6,8 @@ without depending on `examples/web`.
 Covered chain (the recommended remote-client + server-provider path):
 
 - `@charivo/stt/remote` → `/api/stt` → `@charivo/server/openai` (whisper-1)
-- `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano)
+- `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano),
+  or `@charivo/server/gemini` (gemini-3.5-flash-lite) with `CASCADE_LLM=gemini`
 - `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts)
 - `@charivo/core` (`Charivo.userSay`) + `@charivo/render` (`RenderManager` lip-sync)
 
@@ -15,13 +16,17 @@ Run it explicitly:
 ```bash
 pnpm exec playwright install chromium
 RUN_LIVE_CASCADE=1 OPENAI_API_KEY=your-key pnpm test:cascade
+
+# Same specs, with the LLM leg on the Gemini provider (STT and TTS stay on OpenAI):
+RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 ```
 
 It reuses the realtime voice fixture
 ([../webrtc-smoke/fixtures/voice-smoke-input.wav](../webrtc-smoke/fixtures/voice-smoke-input.wav))
 as canned speech fed into Chromium's fake microphone, so the suite runs without
 local setup. The spec skips cleanly if the fixture is missing or if
-`RUN_LIVE_CASCADE` / `OPENAI_API_KEY` are not set.
+`RUN_LIVE_CASCADE` / `OPENAI_API_KEY` are not set (or `GEMINI_API_KEY`, when
+`CASCADE_LLM=gemini`).
 
 What it proves:
 
@@ -36,7 +41,9 @@ What it proves:
 - the LLM avatar-tool loop — the LLM manager is wired with `@charivo/avatar`'s
   tools and result projector, so the reply to the canned "smile for me"
   utterance drives a real `setExpression` tool call and an `avatar:expression`
-  event, not just plain text
+  event, not just plain text. With `CASCADE_LLM=gemini` this round trip is
+  also what exercises the Gemini provider's thought-signature placeholder on
+  the resent tool call, the one leg unit tests cannot prove
 - the per-expression description channel — a second test drives a text-only turn
   (`runTextTurn`, no STT) asking the character to be angry, against a catalog of
   OPAQUE IDs (`F01`..`F08`, the shape a real Cubism model ships). The meanings
@@ -55,6 +62,8 @@ What it does not prove:
 - Live2D rendering behavior (the harness renderer only records RMS calls)
 - `examples/web` app behavior
 
-Cost note: each run makes five live OpenAI calls — three for the cascade test
-(one transcription, one chat completion, one speech synthesis) and two more for
-the description test (one chat completion, one speech synthesis; it skips STT).
+Cost note: each run makes five live calls — three for the cascade test (one
+transcription, one chat completion, one speech synthesis) and two more for the
+description test (one chat completion, one speech synthesis; it skips STT). All
+five go to OpenAI by default; with `CASCADE_LLM=gemini` the two chat
+completions go to Gemini instead.
