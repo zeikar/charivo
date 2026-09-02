@@ -52,6 +52,8 @@ type UseCharivoChatOptions = {
 
 const OPENAI_TESTING_PROMPT =
   "Enter your OpenAI API key. This direct browser client is for development/testing only.";
+const GEMINI_TESTING_PROMPT =
+  "Enter your Gemini API key. This direct browser client is for development/testing only.";
 const OPENCLAW_TESTING_PROMPT =
   "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
 const REALTIME_TRANSCRIPTION_ENDPOINT = "/api/realtime-transcription";
@@ -252,6 +254,22 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
               "@charivo/llm/openai"
             );
             return createOpenAILLMClient({ apiKey });
+          }
+          case "gemini-remote": {
+            const { createRemoteLLMClient } = await import(
+              "@charivo/llm/remote"
+            );
+            return createRemoteLLMClient({ apiEndpoint: "/api/chat-gemini" });
+          }
+          case "gemini": {
+            const apiKey = promptForSecret(
+              GEMINI_TESTING_PROMPT,
+              "API key is required for the direct Gemini LLM client.",
+            );
+            const { createGeminiLLMClient } = await import(
+              "@charivo/llm/gemini"
+            );
+            return createGeminiLLMClient({ apiKey });
           }
           case "openclaw-remote": {
             const { createRemoteLLMClient } = await import(

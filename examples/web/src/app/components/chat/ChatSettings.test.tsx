@@ -54,6 +54,13 @@ function renderOpenSettings(
 }
 
 describe("ChatSettings", () => {
+  it("offers both Gemini LLM options", () => {
+    renderOpenSettings();
+
+    expect(queryButton("Gemini Remote")).not.toBeNull();
+    expect(queryButton("Gemini Direct (Dev)")).not.toBeNull();
+  });
+
   it("offers both realtime providers", () => {
     renderOpenSettings();
 

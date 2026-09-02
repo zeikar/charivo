@@ -29,6 +29,8 @@ export type STTTranscriberType =
 export type LLMClientType =
   | "remote"
   | "openai"
+  | "gemini-remote"
+  | "gemini"
   | "openclaw-remote"
   | "openclaw"
   | "stub";

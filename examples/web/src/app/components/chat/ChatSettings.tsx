@@ -89,6 +89,18 @@ const LLM_OPTIONS: Option<LLMClientType>[] = [
     description: "Direct browser key usage. Development/testing only.",
     Icon: BoltIcon,
   },
+  {
+    label: "Gemini Remote",
+    value: "gemini-remote",
+    description: "Calls the server Gemini route. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
+  },
+  {
+    label: "Gemini Direct (Dev)",
+    value: "gemini",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: SparklesIcon,
+  },
   ...OPENCLAW_OPTIONS,
   {
     label: "Test Stub",
