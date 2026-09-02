@@ -13,6 +13,10 @@ export const workspaceAliases = [
     replacement: resolvePackage("packages/llm/src/openclaw/index.ts"),
   },
   {
+    find: "@charivo/llm/gemini",
+    replacement: resolvePackage("packages/llm/src/gemini/index.ts"),
+  },
+  {
     find: "@charivo/llm/remote",
     replacement: resolvePackage("packages/llm/src/remote/index.ts"),
   },

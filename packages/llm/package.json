@@ -26,6 +26,11 @@
       "import": "./dist/openclaw/index.mjs",
       "require": "./dist/openclaw/index.js"
     },
+    "./gemini": {
+      "types": "./dist/gemini/index.d.ts",
+      "import": "./dist/gemini/index.mjs",
+      "require": "./dist/gemini/index.js"
+    },
     "./stub": {
       "types": "./dist/stub/index.d.ts",
       "import": "./dist/stub/index.mjs",

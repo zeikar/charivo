@@ -9,6 +9,7 @@
       "@charivo/core": ["packages/core/src/index.ts"],
       "@charivo/llm/openai": ["packages/llm/src/openai/index.ts"],
       "@charivo/llm/openclaw": ["packages/llm/src/openclaw/index.ts"],
+      "@charivo/llm/gemini": ["packages/llm/src/gemini/index.ts"],
       "@charivo/llm/remote": ["packages/llm/src/remote/index.ts"],
       "@charivo/llm/stub": ["packages/llm/src/stub/index.ts"],
       "@charivo/llm": ["packages/llm/src/index.ts"],
