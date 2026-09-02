@@ -4,8 +4,8 @@ This is the reference Next.js app for the Charivo workspace. It exercises the
 current architecture as it is actually shipped:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, OpenClaw proxy (dev builds only), and
-  stub clients
+- LLM chat through remote, direct, Gemini (remote and direct), OpenClaw proxy
+  (dev builds only), and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, direct OpenAI, and streaming OpenAI
   Realtime transcribers
@@ -21,13 +21,13 @@ current architecture as it is actually shipped:
 > them as-is.**
 
 Every route under `src/app/api/` is an unauthenticated proxy that anyone can
-POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/realtime` spends
-your paid `GEMINI_API_KEY` instead whenever the caller asks for the Gemini
-provider, which the demo's own UI does by default. `/api/chat-openclaw` spends neither: it forwards to whatever
-`OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
-credential and that backend. That is fine for `pnpm dev:web` on your own
-machine, and it is what the hosted demo accepts deliberately — it is not a
-production template, however much it looks like one.
+POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/chat-gemini`
+spends `GEMINI_API_KEY` instead. So does `/api/realtime`, whenever the caller
+asks for the Gemini provider — the demo UI's default. `/api/chat-openclaw`
+spends neither: it forwards to whatever `OPENCLAW_BASE_URL` points at using
+`OPENCLAW_TOKEN`, so it exposes that credential and that backend. That is fine
+for `pnpm dev:web` on your own machine, and it is what the hosted demo accepts
+deliberately — it is not a production template, however much it looks like one.
 
 What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
 
@@ -78,7 +78,7 @@ cp examples/web/.env.example examples/web/.env.local
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Needed for realtime voice, which defaults to Gemini Live
+# Needed for realtime voice (defaults to Gemini Live) and for /api/chat-gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional OpenClaw proxy settings
@@ -88,12 +88,15 @@ OPENCLAW_AGENT_ID=main
 ```
 
 Realtime voice defaults to Gemini Live, which is the cheaper of the two APIs, so
-`GEMINI_API_KEY` is what an out-of-the-box call spends. The settings menu lists
-both providers whatever you configure, because the browser has no way to ask
-which keys a deployment set. So a missing key surfaces only once a call is
-attempted: it fails at connect time, the reason arrives above the chat input
-(`RealtimeErrorNotice`), and switching to OpenAI Realtime in the menu is one
-click away.
+`GEMINI_API_KEY` is what an out-of-the-box realtime call spends;
+`/api/chat-gemini` spends the same key whenever you pick the Gemini Remote LLM
+option. The settings menu lists both realtime providers whatever you configure,
+because the browser has no way to ask which keys a deployment set. So a missing
+key surfaces only once you use it: a realtime call fails at connect time, the
+reason arrives above the chat input (`RealtimeErrorNotice`), and switching to
+OpenAI Realtime in the menu is one click away. The Gemini Remote chat option has
+no such fallback — it simply fails until the key is set. Gemini Direct (Dev)
+needs no server key at all; it prompts for its own in the browser.
 
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
@@ -151,6 +154,8 @@ The demo ships these routes:
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
+- `POST /api/chat-gemini`
+  Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
 - `POST /api/tts`
   Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The voice comes
   from the request (restricted to the shipped characters' voices); a character's
@@ -179,8 +184,8 @@ The settings menu intentionally mixes several implementation styles so you can
 compare the tradeoffs:
 
 - Remote API options are the production-ready defaults.
-- Browser-direct OpenAI and OpenClaw options expose credentials to the browser.
-  They are for local development and testing only.
+- Browser-direct OpenAI, Gemini, and OpenClaw options expose credentials to the
+  browser. They are for local development and testing only.
 - Browser TTS/STT options use Web Speech APIs and depend on browser support.
 - The streaming STT option keeps the key on the server and writes interim
   transcripts into the message box while you hold the mic.
@@ -198,6 +203,7 @@ compare the tradeoffs:
 examples/web/src/app
   api/
     chat/route.ts
+    chat-gemini/route.ts
     chat-openclaw/route.ts
     realtime/route.ts
     realtime-transcription/route.ts

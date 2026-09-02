@@ -15,8 +15,8 @@ example, not just a demo. The other is
 The app exercises the current package stack:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, OpenClaw proxy (dev builds only), and
-  stub clients
+- LLM chat through remote, direct, Gemini (remote and direct), OpenClaw proxy
+  (dev builds only), and stub clients
 - TTS through remote, browser-native, and direct OpenAI players
 - STT through remote, browser-native, direct OpenAI, and streaming
   (`@charivo/stt/openai-realtime`) transcribers
@@ -45,6 +45,8 @@ The current reference app ships:
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
+- `POST /api/chat-gemini`
+  Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
 - `POST /api/tts`
   Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The route resolves
   the voice itself and passes it explicitly, so the provider default is never
@@ -80,7 +82,7 @@ The settings UI intentionally exposes several implementation styles in one
 place:
 
 - remote API paths for production-oriented flows
-- browser-direct OpenAI and OpenClaw paths for development and testing
+- browser-direct OpenAI, Gemini, and OpenClaw paths for development and testing
   (the OpenClaw options are hidden in production builds — they need a gateway
   on `OPENCLAW_BASE_URL`, which defaults to localhost)
 - browser-native TTS and STT paths for zero-server speech experiments
