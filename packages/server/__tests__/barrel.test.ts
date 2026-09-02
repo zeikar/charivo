@@ -14,6 +14,8 @@ import {
   OpenClawLLMProvider,
 } from "@charivo/server/openclaw";
 import {
+  createGeminiLLMProvider,
+  GeminiLLMProvider,
   createGeminiRealtimeProvider,
   GeminiRealtimeProvider,
 } from "@charivo/server/gemini";
@@ -60,5 +62,10 @@ describe("@charivo/server/gemini", () => {
   it("re-exports the realtime provider and factory", () => {
     const provider = createGeminiRealtimeProvider({ apiKey: "key" });
     expect(provider).toBeInstanceOf(GeminiRealtimeProvider);
+  });
+
+  it("re-exports the LLM provider and factory", () => {
+    const provider = createGeminiLLMProvider({ apiKey: "key" });
+    expect(provider).toBeInstanceOf(GeminiLLMProvider);
   });
 });
