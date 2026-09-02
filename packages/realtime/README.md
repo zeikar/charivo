@@ -283,8 +283,9 @@ Successful reconnects are treated as a continuation of the same live session.
 - the next reconnect attempt always rebuilds from the latest effective config
 - in-flight assistant responses are marked as interrupted and are not resumed
 - old tool-call ids are not replayed after reconnect
-- on Gemini Live every attempt re-mints through your route — tokens are
-  `uses: 1`, and replaying one closes the socket with `1011` (measured) — and
+- on Gemini Live every attempt re-mints, through your route or (on the dev
+  `apiKey` path) straight from Google's token endpoint — tokens are `uses: 1`,
+  and replaying one closes the socket with `1011` (measured) — and
   the recovered session is a fresh one: `sessionResumptionUpdate` handles are
   not spent, `goAway` is not acted on (the close after it drives this same
   recovery), and the transport's microphone gate re-arms

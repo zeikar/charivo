@@ -550,9 +550,10 @@ session active and attempts recovery with the latest effective config.
 - `realtime:reconnect:attempt`, `realtime:reconnect:success`, and
   `realtime:reconnect:exhausted` are emitted for observability
 
-On Gemini Live every attempt goes back through your route: the ephemeral token
-is minted `uses: 1`, and replaying one closes the socket with `1011` (measured),
-so a reconnect re-mints rather than reusing the cached bootstrap. What comes
+On Gemini Live every attempt mints again — through your route, or straight from
+Google's token endpoint on the dev `apiKey` path: the ephemeral token is minted
+`uses: 1`, and replaying one closes the socket with `1011` (measured), so a
+reconnect never reuses the cached bootstrap. What comes
 back is a fresh Live session, not a resumed one — the transport does nothing
 with the `sessionResumptionUpdate` handles the server sends (it could not spend
 one anyway, since the session config lives in the token) and does not act on
@@ -679,10 +680,11 @@ function buildOpenAISessionConfig(
     ...(requested.voice && OPENAI_VOICES.has(requested.voice)
       ? { voice: requested.voice }
       : {}),
-    // Honor the request to transcribe, but on your model, not theirs. A block
-    // without `enabled` is a request too — the provider treats it as on.
-    ...(requested.inputAudioTranscription &&
-    requested.inputAudioTranscription.enabled !== false
+    // Honor the request to transcribe, but on your model, not theirs. A named
+    // model counts as a request too — the provider treats it as on.
+    ...(requested.inputAudioTranscription?.enabled === true ||
+    (requested.inputAudioTranscription?.enabled !== false &&
+      requested.inputAudioTranscription?.model)
       ? {
           inputAudioTranscription: {
             enabled: true,

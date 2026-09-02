@@ -21,11 +21,48 @@ const AUTH_TOKENS_URL =
 const GEMINI_LIVE_WEBSOCKET_URL =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
 
+// Google's prebuilt voice names, as in the server provider.
+const ALLOWED_VOICES = new Set([
+  "Zephyr",
+  "Puck",
+  "Charon",
+  "Kore",
+  "Fenrir",
+  "Leda",
+  "Orus",
+  "Aoede",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat",
+]);
+
 // Mirrors toMintBody in packages/server/src/gemini/realtime/index.ts.
 // Duplicated intentionally: browser clients must not import from @charivo/server
-// (the same self-contained pattern as the OpenAI dev bootstrap). The model and
-// voice allow-lists are the one thing not copied: they protect a key owner from
-// a browser that holds only a token, and here the browser holds the key.
+// (the same self-contained pattern as the OpenAI dev bootstrap). The model
+// allow-list is the one thing not copied: it protects a key owner from a
+// browser that holds only a token, and here the browser holds the key. The
+// voice fallback IS copied, for a different reason — `RealtimeManager` folds
+// `character.voice.voiceId` into the session, and Charivo characters carry
+// OpenAI voice ids, so without it every character would fail to mint here.
 function toMintBody(session: RealtimeSessionConfig): Record<string, unknown> {
   if (session.toolChoice === "none" || session.toolChoice === "required") {
     // The Live API has no tool-choice equivalent; refused rather than coerced,
@@ -41,13 +78,19 @@ function toMintBody(session: RealtimeSessionConfig): Record<string, unknown> {
     );
   }
 
+  // Unknown voices fall back to the default rather than erroring, as the
+  // server provider does: voice costs nothing, and a stale value should not
+  // break the session.
+  const voice =
+    session.voice && ALLOWED_VOICES.has(session.voice)
+      ? session.voice
+      : DEFAULT_GEMINI_LIVE_VOICE;
+
   const generationConfig: Record<string, unknown> = {
     responseModalities: ["AUDIO"],
     speechConfig: {
       voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName: session.voice ?? DEFAULT_GEMINI_LIVE_VOICE,
-        },
+        prebuiltVoiceConfig: { voiceName: voice },
       },
     },
   };

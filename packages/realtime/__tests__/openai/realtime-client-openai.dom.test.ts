@@ -414,6 +414,67 @@ describe("OpenAIRealtimeClient", () => {
     await updatePromise;
   });
 
+  it("applies the default transcription model when inputAudioTranscription is enabled without one", async () => {
+    const localStream = {
+      getTracks: () => [new MockMediaTrack()],
+    } as unknown as MediaStream;
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: vi.fn(async () => localStream),
+      },
+      configurable: true,
+    });
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            adapter: OPENAI_REALTIME_ADAPTER,
+            transport: "webrtc",
+            answerSdp: "answer-sdp",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+    });
+
+    const peer = MockPeerConnection.instances[0]!;
+    const updatePromise = client.updateSession({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { enabled: true },
+    });
+
+    const sendPayload = peer.dataChannel.send.mock.calls.at(-1)?.[0] as string;
+    const parsed = JSON.parse(sendPayload) as Record<string, unknown>;
+    const session = parsed.session as Record<string, unknown>;
+    const audio = session.audio as Record<string, unknown>;
+    expect(audio.input).toEqual({
+      transcription: { model: "gpt-4o-mini-transcribe" },
+    });
+
+    peer.dataChannel.onmessage?.(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "session.updated",
+          event_id: "charivo-session-update-1",
+        }),
+      }),
+    );
+
+    await updatePromise;
+  });
+
   it("includes audio.input.transcription.model when inputAudioTranscription.model is set", async () => {
     const localStream = {
       getTracks: () => [new MockMediaTrack()],

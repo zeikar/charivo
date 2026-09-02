@@ -126,6 +126,30 @@ describe("getGeminiLiveBootstrap — apiKey (dev-bootstrap) path", () => {
     });
   });
 
+  it("falls back to the default voice for one Google does not offer, as the server provider does", async () => {
+    const mockFetch = makeFetchOk({ name: "auth_tokens/abc123" });
+    globalThis.fetch = mockFetch;
+
+    // What RealtimeManager folds in from a character carrying an OpenAI voice.
+    await getGeminiLiveBootstrap(
+      { apiKey: "g-key" },
+      {
+        transport: "websocket",
+        session: { provider: "gemini", voice: "marin" },
+      },
+    );
+
+    const setup = mintBody(mockFetch).bidiGenerateContentSetup as Record<
+      string,
+      unknown
+    >;
+    expect(setup.generationConfig).toMatchObject({
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+      },
+    });
+  });
+
   it("requests input transcription only when enabled, and maps tools and maxTokens", async () => {
     const mockFetch = makeFetchOk({ name: "auth_tokens/abc123" });
     globalThis.fetch = mockFetch;
