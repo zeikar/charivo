@@ -114,6 +114,12 @@ export interface RealtimeSessionConfig {
   maxTokens?: number;
   tools?: ToolDefinition[];
   toolChoice?: RealtimeToolChoice;
+  /**
+   * Off unless asked, on every provider. `{ enabled: true }` turns it on with
+   * the provider's default transcription model; a `model` implies on where the
+   * provider offers a choice (OpenAI) and is rejected where it does not
+   * (Gemini); `{ enabled: false }` turns it off.
+   */
   inputAudioTranscription?: {
     model?: string;
     enabled?: boolean;

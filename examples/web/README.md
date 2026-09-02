@@ -62,9 +62,6 @@ What they do **not** defend against — you have to add these yourself:
   small sessions, and realtime bills on wall clock.
 - The STT cap is a byte cap, not a duration cap. Low-bitrate audio packs more
   minutes into the same upload, and transcription bills per minute.
-- Input transcription on the Gemini realtime path is always on and always
-  billed: that provider rejects an `inputAudioTranscription` block naming a
-  model, so its own default stands.
 - Nothing caps total spend. Put a **hard per-project spend limit** on every key
   you use — the OpenAI one, and the Gemini one if you enable that provider —
   each in its own project; enforcement is not instantaneous, so treat it as a

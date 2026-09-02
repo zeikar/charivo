@@ -107,6 +107,36 @@ describe("OpenAIRealtimeProvider", () => {
     });
   });
 
+  it("applies the default transcription model on the WebRTC adapter when enabled without one", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const formData = init?.body as FormData;
+        const session = JSON.parse(String(formData.get("session"))) as Record<
+          string,
+          unknown
+        >;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        });
+
+        return new Response("answer-sdp", {
+          headers: { "Content-Type": "application/sdp" },
+        });
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      transport: "webrtc",
+      sdpOffer: "offer-sdp",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { enabled: true },
+      },
+    });
+  });
+
   it("emits audio.input.transcription: null on the WebRTC adapter when transcription is disabled", async () => {
     globalThis.fetch = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -279,6 +309,33 @@ describe("OpenAIRealtimeProvider", () => {
       session: {
         provider: "openai",
         inputAudioTranscription: { enabled: false },
+      },
+    });
+  });
+
+  it("applies the default transcription model on the agents adapter when enabled without one", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const session = body.session as Record<string, unknown>;
+        const audio = session.audio as Record<string, unknown>;
+        expect(audio.input).toEqual({
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        });
+
+        return Response.json({
+          client_secret: { value: "client-secret" },
+        });
+      },
+    ) as typeof fetch;
+
+    const provider = new OpenAIRealtimeProvider({ apiKey: "key" });
+    await provider.createSession({
+      adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+      transport: "webrtc",
+      session: {
+        provider: "openai",
+        inputAudioTranscription: { enabled: true },
       },
     });
   });

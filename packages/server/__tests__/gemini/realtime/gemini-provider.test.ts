@@ -34,7 +34,6 @@ describe("GeminiRealtimeProvider", () => {
               },
             },
             outputAudioTranscription: {},
-            inputAudioTranscription: {},
           },
         });
 
@@ -123,6 +122,27 @@ describe("GeminiRealtimeProvider", () => {
       session: {
         provider: "gemini",
         inputAudioTranscription: { enabled: false },
+      },
+    });
+  });
+
+  it("requests inputAudioTranscription only when enabled", async () => {
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const setup = body.bidiGenerateContentSetup as Record<string, unknown>;
+        expect(setup.inputAudioTranscription).toEqual({});
+
+        return Response.json({ name: "auth_tokens/abc123" });
+      },
+    ) as typeof fetch;
+
+    const provider = new GeminiRealtimeProvider({ apiKey: "secret-key" });
+    await provider.createSession({
+      transport: "websocket",
+      session: {
+        provider: "gemini",
+        inputAudioTranscription: { enabled: true },
       },
     });
   });

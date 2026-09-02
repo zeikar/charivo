@@ -24,6 +24,7 @@ const DEFAULT_CLIENT_SECRETS_URL =
 // same pattern the tts/stt OpenAI defaults follow.
 const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
+const DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const DEFAULT_REQUEST_TIMEOUT_MS = DEFAULT_FETCH_TIMEOUT_MS;
 
 const REQUEST_TIMEOUT_OPTIONS: FetchWithTimeoutOptions = {
@@ -189,8 +190,15 @@ function toOpenAIRealtimeSession(
   if (transcription !== undefined) {
     if (transcription.enabled === false) {
       audio.input = { transcription: null };
-    } else if (transcription.model !== undefined) {
-      audio.input = { transcription: { model: transcription.model } };
+    } else if (transcription.enabled === true || transcription.model) {
+      // OpenAI requires a model on this block (measured: `{}` is a 400), so an
+      // enable without one gets the default rather than being dropped.
+      audio.input = {
+        transcription: {
+          model:
+            transcription.model ?? DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+        },
+      };
     }
   }
 

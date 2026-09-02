@@ -66,6 +66,8 @@ const ACTIVE_TOOLS =
 const SESSION_CONFIG: RealtimeSessionConfig = {
   provider: "gemini",
   transport: "websocket",
+  // Off unless asked; the harness measures `realtime:user:transcript`.
+  inputAudioTranscription: { enabled: true },
   instructions:
     HARNESS_MODE === "avatar-prompt-eval"
       ? buildAvatarPromptEvalInstructions()

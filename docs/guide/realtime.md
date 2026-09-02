@@ -132,37 +132,46 @@ than at Google.
 
 ### Input Audio Transcription
 
-`RealtimeSessionConfig.inputAudioTranscription` controls how the provider
-transcribes the user's microphone input. The field is optional, and what an
-unset field means differs by provider:
+`RealtimeSessionConfig.inputAudioTranscription` controls whether the provider
+transcribes the user's microphone input. It is off unless asked, on both
+providers, and `enabled` is the switch:
 
-- OpenAI's Realtime API defaults transcription to off, so set `model`
-  explicitly if you want user transcripts. The block lands under
-  `audio.input.transcription` on the wire (OpenAI Realtime GA shape), and the
-  `updateSession` calls below switch it mid-session.
-- Gemini Live transcribes input by default: `@charivo/server/gemini` requests
-  it unless you pass `{ enabled: false }`, and rejects a `model` because the
-  Live API offers no choice of transcription model. It is billed, and the
-  session is fixed at connect time (see [Session Updates](#session-updates)),
-  so decide before `startSession(...)`. Transcripts arrive whole — one
-  `realtime:user:transcript` per utterance, ahead of the reply it prompted.
-  Output transcription is always requested there as well: on a native-audio
-  model it is the only source of assistant text, and it is what
-  `realtime:assistant:delta` carries, in fragments.
+- unset, `{}`, or `{ enabled: false }` — off
+- `{ enabled: true }` — on, with the provider's default transcription model
+  (`gpt-4o-mini-transcribe` on OpenAI)
+- `{ model }` — on with that model, on OpenAI; Gemini Live offers no choice of
+  model, and `@charivo/server/gemini` rejects the field
+
+On OpenAI the block lands under `audio.input.transcription` on the wire (OpenAI
+Realtime GA shape), and the `updateSession` calls below switch it mid-session.
+On Gemini Live the session is fixed at connect time (see
+[Session Updates](#session-updates)), so decide before `startSession(...)`.
+Transcripts there arrive whole — one `realtime:user:transcript` per utterance,
+ahead of the reply it prompted. Output transcription is always requested on
+Gemini: on a native-audio model it is the only source of assistant text, and it
+is what `realtime:assistant:delta` carries, in fragments. Either way input
+transcription is billed, which is why nothing is transcribed until you ask.
 
 ```ts
-// Cheaper transcription model.
+// On, with the provider default — the same shape on either provider.
+await manager.startSession({
+  provider: "gemini",
+  transport: "websocket",
+  inputAudioTranscription: { enabled: true },
+});
+
+// Or name the model (OpenAI only).
 await manager.startSession({
   provider: "openai",
   inputAudioTranscription: { model: "gpt-4o-mini-transcribe" },
 });
 
-// Higher-quality transcription model.
+// Switch models mid-session (OpenAI only).
 await manager.updateSession({
   inputAudioTranscription: { model: "gpt-4o-transcribe" },
 });
 
-// Skip user transcription entirely (useful when your UI never shows it).
+// Turn it off (useful when your UI never shows user transcripts).
 await manager.updateSession({
   inputAudioTranscription: { enabled: false },
 });
@@ -171,8 +180,7 @@ await manager.updateSession({
 Model strings pass through to OpenAI without local validation, so unknown
 values surface as upstream errors. Known options today include `whisper-1`,
 `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`, and `gpt-realtime-whisper` (the
-one the [Provider Route](#provider-route) example pins); none is applied unless
-you set `model` explicitly.
+one the [Provider Route](#provider-route) example pins).
 
 ### Instruction Layering
 
@@ -673,8 +681,8 @@ function buildGeminiSessionConfig(
   requested: RealtimeSessionConfig,
 ): RealtimeSessionConfig {
   // No voice and no transcription model: the Gemini provider allowlists voices
-  // itself and rejects a transcription model. Input transcription stays on
-  // unless you add `inputAudioTranscription: { enabled: false }` here.
+  // itself and rejects a transcription model. Add
+  // `inputAudioTranscription: { enabled: true }` here to turn transcription on.
   return {
     provider: "gemini",
     model: GEMINI_MODEL,

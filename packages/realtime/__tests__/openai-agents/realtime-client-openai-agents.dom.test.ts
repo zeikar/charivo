@@ -411,6 +411,34 @@ describe("OpenAIRealtimeAgentsClient", () => {
     });
   });
 
+  it("applies the default transcription model when inputAudioTranscription is enabled without one", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({
+        adapter: OPENAI_REALTIME_AGENTS_ADAPTER,
+        transport: "webrtc",
+        clientSecret: "client-secret",
+      }),
+    ) as typeof fetch;
+
+    const client = new OpenAIRealtimeAgentsClient({
+      apiEndpoint: "/api/realtime",
+    });
+
+    await client.connect({
+      provider: "openai",
+      voice: "marin",
+      inputAudioTranscription: { enabled: true },
+    });
+
+    expect(sdkState.session?.options.config).toMatchObject({
+      audio: {
+        input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
+        },
+      },
+    });
+  });
+
   it("forwards inputAudioTranscription disable shape (null) into audio.input.transcription on initial connect", async () => {
     globalThis.fetch = vi.fn(async () =>
       Response.json({

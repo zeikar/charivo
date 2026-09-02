@@ -154,9 +154,8 @@ function buildGeminiSessionConfig(
 
   // No `voice`: the shipped characters carry OpenAI voice ids, and
   // `@charivo/server/gemini` picks its own default from Google's list.
-  // No `inputAudioTranscription` either — that provider rejects the block when
-  // it names a model — so its default stands: input transcription is always on,
-  // and always billed, on this path.
+  // No `inputAudioTranscription` either: the demo never reads user
+  // transcripts, and leaving the block out keeps them off and unbilled.
   return {
     ok: true,
     value: {

@@ -10,6 +10,7 @@ import type {
 } from "@charivo/core";
 import {
   DEFAULT_OPENAI_REALTIME_MODEL,
+  DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
   DEFAULT_OPENAI_REALTIME_VOICE,
 } from "../openai/defaults";
 import { DEFAULT_REQUEST_TIMEOUT_MS, isRecord } from "../internal/shared";
@@ -33,8 +34,15 @@ function toClientSecretsSession(
   if (transcription !== undefined) {
     if (transcription.enabled === false) {
       audio.input = { transcription: null };
-    } else if (transcription.model !== undefined) {
-      audio.input = { transcription: { model: transcription.model } };
+    } else if (transcription.enabled === true || transcription.model) {
+      // OpenAI requires a model on this block (measured: `{}` is a 400), so an
+      // enable without one gets the default rather than being dropped.
+      audio.input = {
+        transcription: {
+          model:
+            transcription.model ?? DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+        },
+      };
     }
   }
 

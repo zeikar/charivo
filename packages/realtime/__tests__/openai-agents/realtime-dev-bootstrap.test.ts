@@ -181,6 +181,36 @@ describe("getOpenAIRealtimeAgentsBootstrap — apiKey (dev-bootstrap) path", () 
   });
 });
 
+describe("getOpenAIRealtimeAgentsBootstrap — input transcription", () => {
+  it("sends the default transcription model when enabled without one", async () => {
+    const mockFetch = makeFetchOk({ value: "ek_transcription" });
+    globalThis.fetch = mockFetch;
+
+    await getOpenAIRealtimeAgentsBootstrap(
+      { apiKey: "sk-test" },
+      {
+        ...request,
+        session: {
+          ...request.session,
+          inputAudioTranscription: { enabled: true },
+        },
+      },
+    );
+
+    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    const { session } = JSON.parse(init.body as string) as {
+      session: { audio: { input?: unknown } };
+    };
+
+    expect(session.audio.input).toEqual({
+      transcription: { model: "gpt-4o-mini-transcribe" },
+    });
+  });
+});
+
 describe("getOpenAIRealtimeAgentsBootstrap — precedence", () => {
   it("uses sessionBootstrap callback when provided alongside apiKey; fetch is not called", async () => {
     const mockFetch = vi.fn();

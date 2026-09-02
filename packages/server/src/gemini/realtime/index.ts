@@ -248,9 +248,9 @@ function toMintBody(
     ];
   }
 
-  // Transcription bills extra, so an explicit opt-out omits the block; it is
-  // otherwise always requested.
-  if (session.inputAudioTranscription?.enabled !== false) {
+  // Off unless asked, as on OpenAI: the block is what turns it on, and it
+  // bills extra.
+  if (session.inputAudioTranscription?.enabled === true) {
     setup.inputAudioTranscription = {};
   }
 

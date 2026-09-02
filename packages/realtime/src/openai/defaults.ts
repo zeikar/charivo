@@ -6,5 +6,8 @@ import { DEFAULT_REALTIME_AGENT_INSTRUCTIONS as DEFAULT_GENERIC_REALTIME_AGENT_I
 // same pattern the tts/stt OpenAI defaults follow.
 export const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1-mini";
 export const DEFAULT_OPENAI_REALTIME_VOICE = "marin";
+/** Applied when `inputAudioTranscription.enabled` is set without a `model`. */
+export const DEFAULT_OPENAI_REALTIME_TRANSCRIPTION_MODEL =
+  "gpt-4o-mini-transcribe";
 export const DEFAULT_OPENAI_REALTIME_AGENT_INSTRUCTIONS =
   DEFAULT_GENERIC_REALTIME_AGENT_INSTRUCTIONS;

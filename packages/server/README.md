@@ -61,9 +61,9 @@ What it pins itself, on top of whatever your route pins:
 - `transport` must be `"websocket"`, and `toolChoice` may only be `"auto"` —
   `"none"` and `"required"` are rejected because the Live API has no equivalent
 - `inputAudioTranscription.model` is rejected for the same reason; input
-  transcription is requested unless `enabled: false`, and output transcription
-  is always requested, because on a native-audio model it is the only source of
-  assistant text
+  transcription is requested only with `enabled: true` (off unless asked, as on
+  OpenAI), and output transcription is always requested, because on a
+  native-audio model it is the only source of assistant text
 
 ### OpenClaw providers
 
