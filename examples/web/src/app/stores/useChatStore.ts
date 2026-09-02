@@ -144,7 +144,9 @@ export const useChatStore = create<ChatStore>((set) => ({
   selectedSTTTranscriber: "remote",
   setSelectedSTTTranscriber: (selectedSTTTranscriber) =>
     set({ selectedSTTTranscriber }),
-  selectedRealtimeProvider: "openai",
+  // Gemini Live by default: it is the cheaper of the two realtime APIs, and
+  // this demo pays for every visitor's session.
+  selectedRealtimeProvider: "gemini",
   // Clears realtimeError too, unlike its siblings: llmError/ttsError/sttError
   // render only inside ChatSettings' menu panel, which unmounts on close, but
   // realtimeError is meant to stay visible in an always-mounted notice bar.

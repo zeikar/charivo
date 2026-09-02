@@ -23,7 +23,7 @@ current architecture as it is actually shipped:
 Every route under `src/app/api/` is an unauthenticated proxy that anyone can
 POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/realtime` spends
 your paid `GEMINI_API_KEY` instead whenever the caller asks for the Gemini
-provider. `/api/chat-openclaw` spends neither: it forwards to whatever
+provider, which the demo's own UI does by default. `/api/chat-openclaw` spends neither: it forwards to whatever
 `OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
 credential and that backend. That is fine for `pnpm dev:web` on your own
 machine, and it is what the hosted demo accepts deliberately — it is not a
@@ -81,7 +81,7 @@ cp examples/web/.env.example examples/web/.env.local
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Optional, and only for realtime requests that ask for the Gemini provider
+# Needed for realtime voice, which defaults to Gemini Live
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional OpenClaw proxy settings
@@ -90,10 +90,13 @@ OPENCLAW_BASE_URL=http://127.0.0.1:18789/v1
 OPENCLAW_AGENT_ID=main
 ```
 
-The settings menu lists both realtime providers whatever you configure, because
-the browser has no way to ask which keys a deployment set. So a missing
-`GEMINI_API_KEY` surfaces only once a call is attempted: it fails at connect
-time, and the failure arrives above the chat input (`RealtimeErrorNotice`).
+Realtime voice defaults to Gemini Live, which is the cheaper of the two APIs, so
+`GEMINI_API_KEY` is what an out-of-the-box call spends. The settings menu lists
+both providers whatever you configure, because the browser has no way to ask
+which keys a deployment set. So a missing key surfaces only once a call is
+attempted: it fails at connect time, the reason arrives above the chat input
+(`RealtimeErrorNotice`), and switching to OpenAI Realtime in the menu is one
+click away.
 
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
@@ -185,7 +188,8 @@ compare the tradeoffs:
 - The streaming STT option keeps the key on the server and writes interim
   transcripts into the message box while you hold the mic.
 - The realtime provider selector chooses OpenAI Realtime or Gemini Live for the
-  next call. It locks while a call is connecting or up — the manager is built
+  next call, and starts on Gemini Live. It locks while a call is connecting or
+  up — the manager is built
   once per session, so a mid-call switch could not take effect — and a Gemini
   call locks the character picker too, since that transport cannot patch a live
   session the way OpenAI can.

@@ -81,9 +81,9 @@ describe("useChatStore realtime UI state", () => {
 
   /**
    * disableRealtimeMode runs resetRealtimeUiState on every teardown — so if
-   * that reset ever swept the provider selection away too, ending a Gemini
-   * call would silently drop the user back to OpenAI, and the next Talk
-   * would connect to the wrong provider.
+   * that reset ever swept the provider selection away too, ending a call would
+   * silently drop the user back to the default provider, and the next Talk
+   * would connect to the wrong one.
    */
   it("keeps the provider selection through the realtime UI reset that teardown runs", () => {
     const state = useChatStore.getState();
