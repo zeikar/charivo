@@ -258,13 +258,29 @@ short-lived and re-minted per session. Use the server-mediated
 - `@charivo/realtime/gemini`
 - WebSocket transport for the Gemini Live API, what the remote client resolves
   for `provider: "gemini"` with `transport: "websocket"`
-- takes `apiEndpoint` or `sessionBootstrap` and never an API key: unlike the
-  Agents transport there is no `apiKey` shortcut, so every session starts from
-  a bootstrap your own code supplies — normally your route, via the remote
-  client
+- dev/testing only: pass `apiKey` to mint Google's ephemeral token in the
+  browser (no server), the same escape hatch the Agents transport has
 - captures the microphone itself (16 kHz PCM, echo cancellation on) and plays
   the model's 24 kHz PCM through its own Web Audio scheduler, with a tap feeding
   lip-sync; `sendAudioChunk(...)` is not needed
+
+```ts
+import { createRealtimeManager } from "@charivo/realtime";
+import { createGeminiLiveClient } from "@charivo/realtime/gemini";
+
+// Dev/testing only — the key is exposed in the browser.
+const manager = createRealtimeManager(
+  createGeminiLiveClient({ apiKey: "AIza..." }),
+);
+```
+
+Option precedence is `sessionBootstrap` > `apiEndpoint` > `apiKey`. The
+`apiKey` path mints the same single-use, session-fixing token the server
+provider mints — Google's `auth_tokens` endpoint answers browser origins — so
+nothing downstream differs from production; it skips only the model and voice
+allow-lists, which protect a key the browser now holds anyway. Like the OpenAI
+one it needs microphone permission, a secure context, and a user gesture. Use
+the server-mediated [Provider Route](#provider-route) below for production.
 
 Its design follows the measurements in
 [`tests/gemini-live-smoke/README.md`](https://github.com/zeikar/charivo/blob/main/tests/gemini-live-smoke/README.md),
@@ -766,8 +782,9 @@ refuses what the Live API cannot express instead of coercing it: a `transport`
 other than `websocket`, a `toolChoice` of `none` or `required`, and an
 `inputAudioTranscription.model`.
 
-For a no-server development setup on OpenAI, see
-[OpenAI Agents SDK Transport](#openai-agents-sdk-transport).
+For a no-server development setup, see
+[OpenAI Agents SDK Transport](#openai-agents-sdk-transport) and
+[Gemini Live Transport](#gemini-live-transport).
 
 ## Alternatives
 

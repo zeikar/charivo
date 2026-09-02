@@ -66,12 +66,12 @@ Examples:
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
 - `@charivo/realtime/openai-agents`
+- `@charivo/realtime/gemini`
 
-`@charivo/realtime/openai` and `@charivo/realtime/gemini` are NOT in this list:
-both take only `apiEndpoint` or `sessionBootstrap`, so they never hold a
-provider credential themselves and start every session from a bootstrap your
-server (or code you supply) returns. The former is a legacy/debugging path and
-the latter the only Gemini Live transport; neither is a credential-exposing one.
+`@charivo/realtime/openai` is NOT in this list: the legacy low-level transport
+takes only `apiEndpoint` or `sessionBootstrap`, so it always goes through your
+server and never holds a provider credential. It is a legacy/debugging path,
+not a credential-exposing one.
 
 The browser-direct caveat above is about the browser client, player, or
 transcriber factory (`createOpenAILLMClient`, `createOpenClawLLMClient`,

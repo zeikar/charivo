@@ -104,31 +104,39 @@ session active and drives reconnect attempts internally. During that window
 `state.session.status` stays `"active"` while `state.connection` moves back to
 `"connecting"`.
 
-## No-server dev (OpenAI Agents transport)
+## No-server dev
 
-For local development you can skip the server route: pass an OpenAI API key to
-the direct Agents transport client and it mints a short-lived realtime client
-secret in the browser, mirroring `@charivo/llm/openai` and `@charivo/tts/openai`.
+For local development you can skip the server route: pass a provider API key to
+the direct transport client and it mints the short-lived credential in the
+browser — OpenAI's realtime client secret, or Google's single-use ephemeral
+token — mirroring `@charivo/llm/openai` and `@charivo/tts/openai`.
 
 ```ts
 import { createRealtimeManager } from "@charivo/realtime";
 import { createOpenAIRealtimeAgentsClient } from "@charivo/realtime/openai-agents";
+import { createGeminiLiveClient } from "@charivo/realtime/gemini";
 
 // Dev/testing only: the API key is exposed in the browser.
-const client = createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." });
-const manager = createRealtimeManager(client);
-
+const manager = createRealtimeManager(
+  createOpenAIRealtimeAgentsClient({ apiKey: "sk-..." }),
+);
 await manager.startSession({ provider: "openai", model: "gpt-realtime-2.1-mini" });
+
+// Or Gemini Live, the same way.
+const geminiManager = createRealtimeManager(
+  createGeminiLiveClient({ apiKey: "AIza..." }),
+);
+await geminiManager.startSession({ provider: "gemini", transport: "websocket" });
 ```
 
-`createOpenAIRealtimeAgentsClient` option precedence is `sessionBootstrap` >
-`apiEndpoint` > `apiKey`. The `apiKey` path is dev/testing only and additionally
-requires microphone permission, a secure context (`localhost` or `https`), and a
-user gesture to start; the minted client secret is short-lived (re-minted per
-session). For production, use the server-mediated `@charivo/realtime/remote`
-client shown above. There is no equivalent for Gemini Live:
-`@charivo/realtime/gemini` takes only `apiEndpoint` or `sessionBootstrap` and
-never a key.
+Both clients share the option precedence `sessionBootstrap` > `apiEndpoint` >
+`apiKey`. The `apiKey` path is dev/testing only and additionally requires
+microphone permission, a secure context (`localhost` or `https`), and a user
+gesture to start; the minted credential is short-lived (re-minted per session).
+The Gemini token still carries the whole session, exactly as the server
+provider mints it, so nothing downstream differs from production. For
+production, use the server-mediated `@charivo/realtime/remote` client shown
+above.
 
 ## Exports
 
@@ -150,9 +158,9 @@ Transport clients live on subpaths:
 - `@charivo/realtime/openai`: `createOpenAIRealtimeClient(options?)` — the
   legacy low-level OpenAI WebRTC transport
 - `@charivo/realtime/gemini`: `createGeminiLiveClient(options?)` — Gemini Live
-  over WebSocket; no `apiKey` option (`apiEndpoint` or `sessionBootstrap` only),
-  captures the microphone at 16 kHz and plays the model's 24 kHz PCM through
-  its own scheduler with a lip-sync tap
+  over WebSocket (`apiEndpoint`, `sessionBootstrap`, or a dev/testing
+  `apiKey`); captures the microphone at 16 kHz and plays the model's 24 kHz PCM
+  through its own scheduler with a lip-sync tap
 
 ## Instruction Layering
 

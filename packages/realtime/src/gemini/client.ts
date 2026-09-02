@@ -3,19 +3,14 @@ import type {
   RealtimeSessionConfig,
   RealtimeSessionRequest,
 } from "@charivo/core";
-import {
-  CharivoProviderError,
-  CharivoStateError,
-  createLipSyncAnalyzer,
-  fetchWithTimeout,
-  GEMINI_LIVE_ADAPTER,
-} from "@charivo/core";
+import { createLipSyncAnalyzer, GEMINI_LIVE_ADAPTER } from "@charivo/core";
 import { acquireMicrophoneStream } from "../internal/microphone";
-import {
-  DEFAULT_REQUEST_TIMEOUT_MS,
-  isRealtimeSessionBootstrap,
-} from "../internal/shared";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../internal/shared";
 import type { RealtimeTransportClient, RealtimeTransportEvent } from "../types";
+import {
+  getGeminiLiveBootstrap,
+  type GeminiLiveBootstrapLoaderOptions,
+} from "./bootstrap";
 import type { CapturePipeline } from "./capture";
 import { createCapturePipeline } from "./capture";
 import {
@@ -26,12 +21,16 @@ import {
 } from "./defaults";
 import { createPlaybackGraph, PlaybackScheduler } from "./playback";
 
-export interface GeminiLiveClientOptions {
-  apiEndpoint?: string;
+/**
+ * @remarks
+ * `apiKey` is a dev/testing-only escape hatch. The key is exposed in the
+ * browser. For production, use `sessionBootstrap` or `apiEndpoint` instead.
+ * Intentional dev/test escape hatch: this direct browser client exposes
+ * credentials. For production, see docs/guide/choosing-packages.md#remote.
+ */
+export interface GeminiLiveClientOptions
+  extends GeminiLiveBootstrapLoaderOptions {
   debug?: boolean;
-  sessionBootstrap?: (
-    request: RealtimeSessionRequest,
-  ) => Promise<RealtimeSessionBootstrap>;
 }
 
 /** One `inlineData` part carries one `audio/pcm;rate=24000` chunk. */
@@ -1279,47 +1278,7 @@ export class GeminiLiveClient implements RealtimeTransportClient {
   private async getSessionBootstrap(
     request: RealtimeSessionRequest,
   ): Promise<RealtimeSessionBootstrap> {
-    if (this.options.sessionBootstrap) {
-      return this.options.sessionBootstrap(request);
-    }
-
-    const apiEndpoint = this.options.apiEndpoint;
-    if (!apiEndpoint) {
-      throw new CharivoStateError(
-        "Gemini Live client requires apiEndpoint or sessionBootstrap",
-      );
-    }
-
-    const response = await fetchWithTimeout(
-      apiEndpoint,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(request),
-      },
-      {
-        timeoutMessage: `Realtime session request timed out after ${DEFAULT_REQUEST_TIMEOUT_MS}ms`,
-        failureMessage: "Realtime request failed",
-      },
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new CharivoProviderError(
-        `Failed to create Realtime session: ${errorText}`,
-      );
-    }
-
-    const bootstrap = (await response.json()) as unknown;
-    if (!isRealtimeSessionBootstrap(bootstrap)) {
-      throw new CharivoProviderError(
-        "Invalid realtime session bootstrap response",
-      );
-    }
-
-    return bootstrap;
+    return getGeminiLiveBootstrap(this.options, request);
   }
 
   private emitEvent(event: RealtimeTransportEvent): void {

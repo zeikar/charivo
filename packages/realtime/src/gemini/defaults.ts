@@ -3,6 +3,7 @@
 // server providers self-contained (no shared module / cross-package dep) — the
 // same pattern the OpenAI realtime and tts/stt defaults follow.
 export const DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview";
+export const DEFAULT_GEMINI_LIVE_VOICE = "Kore";
 
 /** Rate the Live API expects for `audio/pcm` microphone input. */
 export const INPUT_SAMPLE_RATE = 16000;

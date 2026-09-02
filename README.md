@@ -198,20 +198,21 @@ requested per session. For production, swap the direct client for the
 server-mediated `@charivo/realtime/remote` client backed by a server route (see
 [Choosing Packages](#choosing-packages)).
 
-Gemini Live is the other realtime provider. `@charivo/realtime/gemini` never
-takes an API key — there is no `apiKey` shortcut like the Agents transport's —
-so a session always starts from a bootstrap your server route returns, here
-through the remote client and a route backed by `@charivo/server/gemini`. The
-same `startSession` call selects it — the manager, character, and avatar wiring
-do not change:
+Gemini Live is the other realtime provider, and the swap is the client plus
+the `startSession` call — the manager, character, and avatar wiring do not
+change. `createGeminiLiveClient({ apiKey })` is the same dev/testing-only
+shortcut: it mints Google's single-use ephemeral token in the browser.
 
 ```ts
-import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
+import { createGeminiLiveClient } from "@charivo/realtime/gemini";
+
+// Dev/demo only, exactly like the OpenAI key above.
+const GEMINI_API_KEY = "AIza...";
 
 const charivo = createCharivo({
   renderer: renderManager,
   realtime: createRealtimeManager(
-    createRemoteRealtimeClient({ apiEndpoint: "/api/realtime" }),
+    createGeminiLiveClient({ apiKey: GEMINI_API_KEY }),
   ),
   character,
 });
@@ -223,8 +224,10 @@ await charivo.getRealtimeManager()!.startSession({
 });
 ```
 
-The [Realtime guide](./docs/guide/realtime.md#provider-route) shows the route
-for both providers.
+For production, both providers run through `@charivo/realtime/remote` and a
+server route backed by `@charivo/server/openai` or `@charivo/server/gemini`;
+the [Realtime guide](./docs/guide/realtime.md#provider-route) shows that route
+for both.
 
 To let the live model drive avatar expressions and motions, register the avatar
 tools and result projector from `@charivo/avatar` (the same tools also work
@@ -247,12 +250,12 @@ Direct browser packages are for local development, demos, and testing only:
 - `@charivo/llm/openai`
 - `@charivo/llm/openclaw`
 - `@charivo/realtime/openai-agents` (dev `apiKey` mints the client secret in-browser)
+- `@charivo/realtime/gemini` (dev `apiKey` mints the ephemeral token in-browser)
 - `@charivo/tts/openai`
 - `@charivo/stt/openai`
 
-`@charivo/realtime/openai` and `@charivo/realtime/gemini` are server-mediated
-despite being direct transports — each accepts only `apiEndpoint` or
-`sessionBootstrap` and never takes a key.
+`@charivo/realtime/openai` is server-mediated despite being a direct transport —
+it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
 or transcriber factory on each of these four subpaths
