@@ -22,7 +22,10 @@ const openaiMocks = vi.hoisted(() => {
   };
 
   const createCompletion = vi.fn(
-    async (_payload: ChatPayload): Promise<ChatCompletionLike> => ({
+    async (
+      _payload: ChatPayload,
+      _options?: { signal?: AbortSignal },
+    ): Promise<ChatCompletionLike> => ({
       choices: [
         {
           message: { content: "Final answer" },
@@ -129,12 +132,15 @@ describe("GeminiLLMProvider", () => {
 
     await provider.generateResponse([{ role: "user", content: "hi" }]);
 
-    expect(openaiMocks.createCompletion).toHaveBeenCalledWith({
-      model: "custom-model",
-      messages: [{ role: "user", content: "hi" }],
-      temperature: 0,
-      max_tokens: 500,
-    });
+    expect(openaiMocks.createCompletion).toHaveBeenCalledWith(
+      {
+        model: "custom-model",
+        messages: [{ role: "user", content: "hi" }],
+        temperature: 0,
+        max_tokens: 500,
+      },
+      { signal: expect.any(AbortSignal) },
+    );
   });
 
   it("passes plain messages through unchanged", async () => {
@@ -193,9 +199,15 @@ describe("GeminiLLMProvider", () => {
       message: "Gemini LLM request timed out after 30000ms",
     });
 
+    const signal = openaiMocks.createCompletion.mock.calls[0]![1]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+
     await vi.advanceTimersByTimeAsync(30_000);
 
     await expectation;
+
+    expect(signal?.aborted).toBe(true);
   });
 });
 
@@ -414,8 +426,14 @@ describe("GeminiLLMProvider.generateResponseWithTools", () => {
       message: "Gemini LLM request timed out after 30000ms",
     });
 
+    const signal = openaiMocks.createCompletion.mock.calls[0]![1]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+
     await vi.advanceTimersByTimeAsync(30_000);
 
     await expectation;
+
+    expect(signal?.aborted).toBe(true);
   });
 });

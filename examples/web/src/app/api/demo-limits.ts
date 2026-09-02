@@ -1,13 +1,13 @@
 /**
  * Cost boundaries for the public demo deployment.
  *
- * Every route under `src/app/api/` is an unauthenticated proxy. All of them
- * except `/api/chat-openclaw` — which forwards to `OPENCLAW_BASE_URL` with
- * `OPENCLAW_TOKEN` — spend a paid OpenAI key; `/api/chat-gemini` also spends
- * a paid Gemini key (`GEMINI_API_KEY`), as does `/api/realtime` when the
- * Gemini provider is selected. There is no auth, no per-IP quota, and no
- * rate limiting — read the README's "Deploying this demo" section before
- * copying any of it.
+ * Every route under `src/app/api/` is an unauthenticated proxy. The OpenAI-backed
+ * routes spend `OPENAI_API_KEY`; `/api/chat-gemini` spends only `GEMINI_API_KEY`;
+ * `/api/realtime` spends `GEMINI_API_KEY` when the Gemini provider is selected
+ * and `OPENAI_API_KEY` otherwise; `/api/chat-openclaw` — which forwards to
+ * `OPENCLAW_BASE_URL` with `OPENCLAW_TOKEN` — spends neither. There is no auth,
+ * no per-IP quota, and no rate limiting — read the README's "Deploying this
+ * demo" section before copying any of it.
  *
  * The limits below cover the OpenAI- and Gemini-backed routes, including
  * `/api/chat-gemini`; `/api/chat-openclaw` shares only the `chat-request`

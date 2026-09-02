@@ -90,14 +90,18 @@ export class GeminiLLMProvider implements LLMProvider {
       }));
 
       const completion = await withTimeout(
-        this.openai.chat.completions.create({
-          model: this.model,
-          messages: openAIMessages,
-          ...(this.temperature !== undefined
-            ? { temperature: this.temperature }
-            : {}),
-          max_tokens: this.maxTokens,
-        }),
+        (signal) =>
+          this.openai.chat.completions.create(
+            {
+              model: this.model,
+              messages: openAIMessages,
+              ...(this.temperature !== undefined
+                ? { temperature: this.temperature }
+                : {}),
+              max_tokens: this.maxTokens,
+            },
+            { signal },
+          ),
         `Gemini LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
       );
 
@@ -115,15 +119,19 @@ export class GeminiLLMProvider implements LLMProvider {
       const openAITools = toOpenAITools(tools);
 
       const completion = await withTimeout(
-        this.openai.chat.completions.create({
-          model: this.model,
-          messages: toGeminiChatMessages(messages),
-          ...(this.temperature !== undefined
-            ? { temperature: this.temperature }
-            : {}),
-          max_tokens: this.maxTokens,
-          ...(openAITools ? { tools: openAITools } : {}),
-        }),
+        (signal) =>
+          this.openai.chat.completions.create(
+            {
+              model: this.model,
+              messages: toGeminiChatMessages(messages),
+              ...(this.temperature !== undefined
+                ? { temperature: this.temperature }
+                : {}),
+              max_tokens: this.maxTokens,
+              ...(openAITools ? { tools: openAITools } : {}),
+            },
+            { signal },
+          ),
         `Gemini LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
       );
 
@@ -148,6 +156,10 @@ export function createGeminiLLMProvider(
  */
 function toGeminiChatMessages(messages: LLMMessage[]): GeminiChatMessage[] {
   return toOpenAIChatMessages(messages).map((message) => {
+    // `role: "tool"` messages pass through unchanged, with no `name` field: the
+    // OpenAI-compatible endpoint resolves the function from `tool_call_id`
+    // (verified across sequential and parallel tool rounds). `name` is a
+    // requirement of the native `functionResponse` / Interactions surfaces, not this one.
     if (message.role !== "assistant" || !message.tool_calls?.length) {
       return message;
     }
@@ -168,21 +180,28 @@ function toGeminiChatMessages(messages: LLMMessage[]): GeminiChatMessage[] {
   });
 }
 
+/**
+ * Aborts the underlying SDK request on timeout instead of only abandoning the
+ * wrapper promise: the SDK stops waiting and stops retrying, and the aborted
+ * request becomes a cancellation request to the server. Work Gemini already
+ * accepted before the abort may still be billed.
+ */
 async function withTimeout<T>(
-  promise: Promise<T>,
+  makeRequest: (signal: AbortSignal) => Promise<T>,
   timeoutMessage: string,
 ): Promise<T> {
+  const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new CharivoTimeoutError(timeoutMessage)),
-      REQUEST_TIMEOUT_MS,
-    );
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new CharivoTimeoutError(timeoutMessage));
+    }, REQUEST_TIMEOUT_MS);
   });
 
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([makeRequest(controller.signal), timeoutPromise]);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
