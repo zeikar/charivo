@@ -52,9 +52,9 @@ interface GeminiFunctionCall {
 
 /**
  * Top-level server frame. `setupComplete`, `serverContent`,
- * `sessionResumptionUpdate`, and `usageMetadata` were seen on a live session;
- * the tool and `goAway` shapes come from the API reference and are unverified
- * (`tests/gemini-live-smoke/README.md`).
+ * `sessionResumptionUpdate`, `usageMetadata`, and `toolCall` were seen on a
+ * live session; the `toolCallCancellation` and `goAway` shapes come from the
+ * API reference and are unverified (`tests/gemini-live-smoke/README.md`).
  */
 interface GeminiServerMessage {
   setupComplete?: Record<string, unknown>;
@@ -837,10 +837,11 @@ export class GeminiLiveClient implements RealtimeTransportClient {
    * Fan a `toolCall` frame out, one `tool.call` per usable entry, recording the
    * id -> name pairing each answer will need.
    *
-   * This frame's shape comes from the API reference and has never been seen
-   * live — the spike registered no tools (`tests/gemini-live-smoke/README.md`)
-   * — so an entry missing either field is *reported* rather than trusted or
-   * dropped in silence: without both there is no answer this client can send,
+   * This frame's shape was written from the API reference and confirmed live
+   * only afterwards (`tests/gemini-live-smoke/README.md`, 2026-09-01); the
+   * leniency stays. An entry missing either field is *reported* rather than
+   * trusted or dropped in silence: without both there is no answer this client
+   * can send,
    * and a session that runs on while the model waits forever for a response
    * fails invisibly. It travels as a transport `error`, which `RealtimeManager`
    * handles without ending the session — releasing the send lock, so the user

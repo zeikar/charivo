@@ -288,8 +288,9 @@ it returned `하나, 둘, 셋, 넷, 다섯. 다 셌어요.` Downstream audio is
 arrives *constantly* — roughly every 1.2 s, ~50 handles over a 100 s session,
 each superseding the last. A transport that persists or logs every one will
 drown. Top-level keys observed: `setupComplete`, `serverContent`,
-`sessionResumptionUpdate`, `usageMetadata`. `toolCall`, `toolCallCancellation`,
-and `goAway` are **documented** only.
+`sessionResumptionUpdate`, `usageMetadata` — and, since 2026-09-01, `toolCall` (see
+[ANSWERED](#answered--q2-and-the-tool-frame-measured-2026-09-01) above).
+`toolCallCancellation` and `goAway` are **documented** only.
 
 `usageMetadata` breaks tokens down per modality (`promptTokensDetails` /
 `responseTokensDetails`, `TEXT` vs `AUDIO`), and the audio prompt count grows
@@ -373,4 +374,6 @@ even two as fragile on iOS. These checks are desktop-first.
   compression.
 - iOS or Android behaviour.
 - Output audio quality, microphone UX, or rendering behaviour.
-- The `examples/web` route; that is covered by `tests/live-realtime/`.
+- The `examples/web` route. `tests/live-realtime/` covers its OpenAI branch
+  live; the Gemini branch has only the route's unit tests
+  (`examples/web/src/app/api/realtime/route.test.ts`).
