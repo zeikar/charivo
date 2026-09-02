@@ -161,6 +161,12 @@ modalities can reuse.
   history, not rotate a pinned gateway session, so a client-side `sessionKey`
   would silently replay the old transcript after a reset. Server routes that
   construct the provider directly can rotate `sessionKey` themselves.
+- `@charivo/llm/gemini`: `createGeminiLLMClient(config)` (browser client,
+  dev/testing only) and, for server-side use, `createGeminiLLMProvider(config)`,
+  `GeminiLLMProvider`, `type GeminiLLMConfig`. Tool-call history is resent with
+  Gemini's documented `skip_thought_signature_validator` placeholder because
+  `LLMToolCall` carries no thought signature, so reasoning continuity across
+  tool rounds is lost.
 
 ## Manager API
 

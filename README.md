@@ -240,7 +240,7 @@ for realtime voice with cross-session memory.
 
 Use the remote/server-mediated path by default:
 
-- LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/openclaw`
+- LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai`, `@charivo/server/openclaw`, or `@charivo/server/gemini`
 - TTS: `@charivo/tts/remote` + `@charivo/server/openai`
 - STT: `@charivo/stt/remote` + `@charivo/server/openai`
 - Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/gemini`
@@ -249,6 +249,7 @@ Direct browser packages are for local development, demos, and testing only:
 
 - `@charivo/llm/openai`
 - `@charivo/llm/openclaw`
+- `@charivo/llm/gemini`
 - `@charivo/realtime/openai-agents` (dev `apiKey` mints the client secret in-browser)
 - `@charivo/realtime/gemini` (dev `apiKey` mints the ephemeral token in-browser)
 - `@charivo/tts/openai`
@@ -258,12 +259,13 @@ Direct browser packages are for local development, demos, and testing only:
 it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
-or transcriber factory on each of these four subpaths
-(`createOpenAILLMClient`, `createOpenClawLLMClient`, `createOpenAITTSPlayer`,
-`createOpenAISTTTranscriber`). The same subpaths also export the server-side
-provider (`createOpenAILLMProvider`, `createOpenClawLLMProvider`,
-`createOpenAITTSProvider`, `createOpenAISTTProvider`), which refuses to run in a
-browser unless you pass `dangerouslyAllowBrowser: true`.
+or transcriber factory on each of these five subpaths
+(`createOpenAILLMClient`, `createOpenClawLLMClient`, `createGeminiLLMClient`,
+`createOpenAITTSPlayer`, `createOpenAISTTTranscriber`). The same subpaths also
+export the server-side provider (`createOpenAILLMProvider`,
+`createOpenClawLLMProvider`, `createGeminiLLMProvider`, `createOpenAITTSProvider`,
+`createOpenAISTTProvider`), which refuses to run in a browser unless you pass
+`dangerouslyAllowBrowser: true`.
 
 Browser-native packages are useful when you explicitly want no server dependency:
 
@@ -306,11 +308,15 @@ LLM:
   `createOpenAILLMProvider` server-side provider
 - `@charivo/llm/openclaw`: direct OpenClaw browser client (dev/testing only)
   and the `createOpenClawLLMProvider` server-side provider
+- `@charivo/llm/gemini`: direct Gemini browser client (dev/testing only) and
+  the `createGeminiLLMProvider` server-side provider
 - `@charivo/llm/stub`: canned responses for tests and demos
 - `@charivo/server/openai`: re-exports `createOpenAILLMProvider` from
   `@charivo/llm/openai` (realtime is implemented here; see Realtime below)
 - `@charivo/server/openclaw`: re-exports `createOpenClawLLMProvider` from
   `@charivo/llm/openclaw`
+- `@charivo/server/gemini`: re-exports `createGeminiLLMProvider` from
+  `@charivo/llm/gemini` (realtime is implemented here; see Realtime below)
 
 TTS:
 

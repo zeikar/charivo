@@ -32,12 +32,27 @@ const llm = createOpenAILLMProvider({
 ### Gemini providers
 
 ```ts
-import { createGeminiRealtimeProvider } from "@charivo/server/gemini";
+import {
+  createGeminiLLMProvider,
+  createGeminiRealtimeProvider,
+} from "@charivo/server/gemini";
+
+const llm = createGeminiLLMProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+  // Optional: defaults to "gemini-3.5-flash-lite".
+  model: "gemini-3.5-flash-lite",
+});
 
 const realtime = createGeminiRealtimeProvider({
   apiKey: process.env.GEMINI_API_KEY!,
 });
 ```
+
+`createGeminiLLMProvider` (implemented in `@charivo/llm/gemini`) calls Gemini's
+OpenAI-compatible endpoint. Tool-call history is resent with Gemini's
+documented `skip_thought_signature_validator` placeholder because
+`LLMToolCall` carries no thought signature, so reasoning continuity across
+tool rounds is lost.
 
 `createSession` mints a single-use Gemini Live ephemeral token and returns a
 websocket bootstrap (`{ adapter, transport: "websocket", url, token }`) for
@@ -110,10 +125,10 @@ is unaffected. Verified against OpenClaw 2026.6.11.
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
 - `@charivo/server/openclaw`: `createOpenClawLLMProvider`
-- `@charivo/server/gemini`: `createGeminiRealtimeProvider`
+- `@charivo/server/gemini`: `createGeminiLLMProvider`, `createGeminiRealtimeProvider`
 
 The LLM/TTS/STT providers are re-exported from `@charivo/llm`, `@charivo/tts`,
-and `@charivo/stt` (the `openai`/`openclaw` subpaths implement them). Only the
+and `@charivo/stt` (the `openai`/`openclaw`/`gemini` subpaths implement them). Only the
 realtime providers, `createOpenAIRealtimeProvider` and
 `createGeminiRealtimeProvider`, are implemented in this package.
 
@@ -121,7 +136,7 @@ realtime providers, `createOpenAIRealtimeProvider` and
 
 Every provider in this package (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
 `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`,
-`createGeminiRealtimeProvider`, `createOpenClawLLMProvider`)
+`createGeminiLLMProvider`, `createGeminiRealtimeProvider`, `createOpenClawLLMProvider`)
 throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
@@ -131,7 +146,7 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
   response) are built from the response body text, so they carry the API's
   message but no `cause`; their network/connection failures and response
   body/JSON parsing failures are wrapped with the original error kept on `cause`.
-- Request timeouts (OpenAI LLM/TTS/STT/Realtime and Gemini Realtime, 30s) throw
+- Request timeouts (OpenAI LLM/TTS/STT/Realtime and Gemini LLM/Realtime, 30s) throw
   `CharivoTimeoutError` (`code: "CHARIVO_TIMEOUT_ERROR"`). For the two realtime
   providers the timer covers the request up to the response headers; reading
   the body afterwards is not timed.
