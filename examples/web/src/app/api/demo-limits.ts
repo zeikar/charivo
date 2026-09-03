@@ -2,16 +2,17 @@
  * Cost boundaries for the public demo deployment.
  *
  * Every route under `src/app/api/` is an unauthenticated proxy. The OpenAI-backed
- * routes spend `OPENAI_API_KEY`; `/api/chat-gemini` and `/api/tts-gemini` spend
- * only `GEMINI_API_KEY`; `/api/realtime` spends `GEMINI_API_KEY` when the Gemini
- * provider is selected and `OPENAI_API_KEY` otherwise; `/api/chat-openclaw` —
- * which forwards to `OPENCLAW_BASE_URL` with `OPENCLAW_TOKEN` — spends neither.
- * There is no auth, no per-IP quota, and no rate limiting — read the README's
- * "Deploying this demo" section before copying any of it.
+ * routes spend `OPENAI_API_KEY`; `/api/chat-gemini`, `/api/tts-gemini`, and
+ * `/api/stt-gemini` spend only `GEMINI_API_KEY`; `/api/realtime` spends
+ * `GEMINI_API_KEY` when the Gemini provider is selected and `OPENAI_API_KEY`
+ * otherwise; `/api/chat-openclaw` — which forwards to `OPENCLAW_BASE_URL` with
+ * `OPENCLAW_TOKEN` — spends neither. There is no auth, no per-IP quota, and no
+ * rate limiting — read the README's "Deploying this demo" section before
+ * copying any of it.
  *
  * The limits below cover the OpenAI- and Gemini-backed routes, including
- * `/api/chat-gemini` and `/api/tts-gemini`; `/api/chat-openclaw` shares only the
- * `chat-request` payload bounds.
+ * `/api/chat-gemini`, `/api/tts-gemini`, and `/api/stt-gemini`;
+ * `/api/chat-openclaw` shares only the `chat-request` payload bounds.
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot
@@ -148,6 +149,12 @@ export const TTS_GEMINI_ALLOWED_VOICES: ReadonlySet<string> = new Set([
  * `whisper-1` rates. Treat it as an upload bound, not a cost guarantee.
  */
 export const STT_MAX_AUDIO_BYTES = 1024 * 1024;
+
+/**
+ * Pinned here so the route picks the model it pays for instead of inheriting
+ * `@charivo/server/gemini`'s default.
+ */
+export const STT_GEMINI_MODEL = "gemini-3.5-transcribe";
 
 /** Pinned here so the route picks the model it pays for instead of inheriting `@charivo/server/gemini`'s default. */
 export const CHAT_GEMINI_MODEL = "gemini-3.5-flash-lite";
