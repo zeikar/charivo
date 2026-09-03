@@ -44,7 +44,9 @@ export default defineConfig({
     command:
       "pnpm exec vite --config tests/cascade-smoke/vite.config.ts --host 127.0.0.1 --port 4175 --strictPort",
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: the harness fixes its LLM provider from CASCADE_LLM when the
+    // vite config loads, so a leftover server could silently run the wrong one.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

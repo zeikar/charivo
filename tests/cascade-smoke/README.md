@@ -62,8 +62,8 @@ What it does not prove:
 - Live2D rendering behavior (the harness renderer only records RMS calls)
 - `examples/web` app behavior
 
-Cost note: each run makes five live calls — three for the cascade test (one
-transcription, one chat completion, one speech synthesis) and two more for the
-description test (one chat completion, one speech synthesis; it skips STT). All
-five go to OpenAI by default; with `CASCADE_LLM=gemini` the two chat
-completions go to Gemini instead.
+Cost note: each run makes one transcription, two speech syntheses, and between
+four and eight chat completions — every turn is a tool loop, so each of the two
+tests spends two to four completions depending on how many tool rounds the
+model takes. All of it goes to OpenAI by default; with `CASCADE_LLM=gemini`
+the chat completions go to Gemini instead.

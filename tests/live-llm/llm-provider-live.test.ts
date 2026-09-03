@@ -23,13 +23,18 @@ import { SMOKE_AVATAR_CATALOG } from "../avatar-catalog";
 // the thought-signature placeholder path.
 
 const RUN_LIVE_LLM_TESTS = process.env.RUN_LIVE_LLM_TESTS === "1";
-// Gemini function-calling turns were measured at ~1 s with a single 29 s
-// outlier, so the per-test budget is well above the config default.
-const LIVE_TEST_TIMEOUT_MS = 60_000;
+// Each provider gives a request 30 s before mapping it to CharivoTimeoutError.
+// The budgets below are sized per provider call, so a slow-but-successful call
+// (Gemini was measured at ~1 s with one 29 s outlier) cannot trip a test before
+// the provider's own timeout does.
+const PROVIDER_TIMEOUT_MS = 30_000;
+const SINGLE_CALL_TEST_TIMEOUT_MS = PROVIDER_TIMEOUT_MS + 10_000;
 // LLMManager keeps looping while the model keeps calling tools. The smoke
 // instructions ask for one expression before speaking, but OpenAI was measured
 // spending a second round on playMotion before it spoke, so allow one more.
 const MAX_TOOL_ROUNDS = 4;
+const TOOL_LOOP_TEST_TIMEOUT_MS =
+  MAX_TOOL_ROUNDS * PROVIDER_TIMEOUT_MS + 10_000;
 
 interface LiveProvider {
   generateResponse(
@@ -101,7 +106,7 @@ for (const providerCase of PROVIDERS) {
         console.log(`[live-llm] ${providerCase.name} plain: ${reply}`);
         expect(reply.trim().length).toBeGreaterThan(0);
       },
-      LIVE_TEST_TIMEOUT_MS,
+      SINGLE_CALL_TEST_TIMEOUT_MS,
     );
 
     it(
@@ -120,7 +125,7 @@ for (const providerCase of PROVIDERS) {
         expect(response.content.trim().length).toBeGreaterThan(0);
         expect(response.toolCalls).toBeUndefined();
       },
-      LIVE_TEST_TIMEOUT_MS,
+      SINGLE_CALL_TEST_TIMEOUT_MS,
     );
 
     it(
@@ -179,7 +184,7 @@ for (const providerCase of PROVIDERS) {
         );
         expect(latest.content.trim().length).toBeGreaterThan(0);
       },
-      LIVE_TEST_TIMEOUT_MS,
+      TOOL_LOOP_TEST_TIMEOUT_MS,
     );
   });
 }
