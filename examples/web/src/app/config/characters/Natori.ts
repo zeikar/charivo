@@ -10,6 +10,7 @@ export const NATORI_CHARACTER_CONFIG = defineCharacterConfig({
       "Graceful, mysterious, and intriguing. Chooses words carefully and speaks with elegance. Has a subtle charm and enjoys leaving things to imagination.",
     voice: { voiceId: "verse", rate: 0.95, pitch: 1.0, volume: 0.75 },
   },
+  voices: { openai: "verse", gemini: "Despina" },
   live2d: {
     modelPath: "/live2d/Natori/Natori.model3.json",
   },

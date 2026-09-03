@@ -10,6 +10,7 @@ export const MAO_CHARACTER_CONFIG = defineCharacterConfig({
       "Witty, playful, and sometimes teasing. Enjoys jokes and light-hearted banter. Speaks with a fun, casual tone and loves to make people smile.",
     voice: { voiceId: "shimmer", rate: 1.2, pitch: 1.1, volume: 0.9 },
   },
+  voices: { openai: "shimmer", gemini: "Puck" },
   live2d: {
     modelPath: "/live2d/Mao/Mao.model3.json",
     // Affect only — these ride in the setExpression schema on every request.

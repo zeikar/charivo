@@ -5,9 +5,9 @@ import { MARK_CHARACTER_CONFIG } from "./Mark";
 import { NATORI_CHARACTER_CONFIG } from "./Natori";
 import { RICE_CHARACTER_CONFIG } from "./Rice";
 import { WANKO_CHARACTER_CONFIG } from "./Wanko";
-import type { CharacterConfig } from "./types";
+import type { CharacterConfig, CharacterVoiceProvider } from "./types";
 
-export { type CharacterConfig } from "./types";
+export { type CharacterConfig, type CharacterVoiceProvider } from "./types";
 
 export const CHARACTER_CONFIGS = {
   Haru: HARU_CHARACTER_CONFIG,
@@ -37,4 +37,14 @@ export function getCharacterConfig(
 
 export function getCharacter(id: CharacterId): AppCharacter {
   return getCharacterConfig(id).character;
+}
+
+export function resolveCharacterVoice<TId extends string>(
+  config: CharacterConfig<TId>,
+  provider: CharacterVoiceProvider,
+): CharacterConfig<TId>["character"] {
+  return {
+    ...config.character,
+    voice: { ...config.character.voice, voiceId: config.voices[provider] },
+  };
 }

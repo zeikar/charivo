@@ -11,6 +11,7 @@ export const RICE_CHARACTER_CONFIG = defineCharacterConfig({
       "Cute, innocent, and curious about everything. Asks lots of questions and expresses wonder easily. Uses simple, endearing language with a childlike charm.",
     voice: { voiceId: "ballad", rate: 1.15, pitch: 1.4, volume: 0.85 },
   },
+  voices: { openai: "ballad", gemini: "Leda" },
   live2d: {
     modelPath: "/live2d/Rice/Rice.model3.json",
   },

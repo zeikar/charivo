@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CHARACTER_CONFIGS, CHARACTER_IDS } from "./index";
+import {
+  CHARACTER_CONFIGS,
+  CHARACTER_IDS,
+  resolveCharacterVoice,
+} from "./index";
 
 const EXPECTED_VOICE_IDS = {
   Haru: "coral",
@@ -11,6 +15,16 @@ const EXPECTED_VOICE_IDS = {
   Natori: "verse",
   Rice: "ballad",
   Wanko: "alloy",
+} as const;
+
+const EXPECTED_GEMINI_VOICE_IDS = {
+  Haru: "Zephyr",
+  Hiyori: "Achernar",
+  Mao: "Puck",
+  Mark: "Charon",
+  Natori: "Despina",
+  Rice: "Leda",
+  Wanko: "Fenrir",
 } as const;
 
 const BUILT_IN_DEMO_VOICES = new Set([
@@ -23,6 +37,42 @@ const BUILT_IN_DEMO_VOICES = new Set([
   "verse",
 ]);
 
+// Local copy of ALLOWED_VOICES from packages/server/src/gemini/realtime/index.ts:
+// that set is module-private, so the demo's own allow-list is derived from the
+// characters and checked against this copy instead of importing it.
+const GEMINI_PREBUILT_VOICES = new Set([
+  "Zephyr",
+  "Puck",
+  "Charon",
+  "Kore",
+  "Fenrir",
+  "Leda",
+  "Orus",
+  "Aoede",
+  "Callirrhoe",
+  "Autonoe",
+  "Enceladus",
+  "Iapetus",
+  "Umbriel",
+  "Algieba",
+  "Despina",
+  "Erinome",
+  "Algenib",
+  "Rasalgethi",
+  "Laomedeia",
+  "Achernar",
+  "Alnilam",
+  "Schedar",
+  "Gacrux",
+  "Pulcherrima",
+  "Achird",
+  "Zubenelgenubi",
+  "Vindemiatrix",
+  "Sadachbia",
+  "Sadaltager",
+  "Sulafat",
+]);
+
 describe("demo character voice defaults", () => {
   it("assigns an explicit curated voiceId to every demo character", () => {
     for (const id of CHARACTER_IDS) {
@@ -31,6 +81,37 @@ describe("demo character voice defaults", () => {
       expect(voiceId).toBe(EXPECTED_VOICE_IDS[id]);
       expect(BUILT_IN_DEMO_VOICES.has(voiceId ?? "")).toBe(true);
     }
+  });
+
+  it("maps voices.openai to the character's own voiceId and voices.gemini to a curated prebuilt voice", () => {
+    for (const id of CHARACTER_IDS) {
+      const { character, voices } = CHARACTER_CONFIGS[id];
+
+      expect(voices.openai).toBe(character.voice?.voiceId);
+      expect(voices.gemini).toBe(EXPECTED_GEMINI_VOICE_IDS[id]);
+      expect(GEMINI_PREBUILT_VOICES.has(voices.gemini)).toBe(true);
+    }
+  });
+});
+
+describe("resolveCharacterVoice", () => {
+  it("swaps in the gemini voiceId and leaves every other field equal to the original", () => {
+    const original = CHARACTER_CONFIGS.Haru;
+    const originalVoiceId = original.character.voice?.voiceId;
+
+    const resolved = resolveCharacterVoice(original, "gemini");
+
+    expect(resolved).toEqual({
+      ...original.character,
+      voice: { ...original.character.voice, voiceId: "Zephyr" },
+    });
+    expect(original.character.voice?.voiceId).toBe(originalVoiceId);
+  });
+
+  it("resolves the openai provider to the character's existing voiceId", () => {
+    const resolved = resolveCharacterVoice(CHARACTER_CONFIGS.Haru, "openai");
+
+    expect(resolved.voice?.voiceId).toBe("coral");
   });
 });
 

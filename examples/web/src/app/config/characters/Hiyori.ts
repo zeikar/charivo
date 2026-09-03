@@ -10,6 +10,7 @@ export const HIYORI_CHARACTER_CONFIG = defineCharacterConfig({
       "Soft-spoken, empathetic, and caring. Takes time to listen and respond thoughtfully. Uses polite and soothing language, creating a comfortable atmosphere.",
     voice: { voiceId: "marin", rate: 1.0, pitch: 1.2, volume: 0.8 },
   },
+  voices: { openai: "marin", gemini: "Achernar" },
   live2d: {
     modelPath: "/live2d/Hiyori/Hiyori.model3.json",
   },
