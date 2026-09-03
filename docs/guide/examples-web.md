@@ -17,7 +17,8 @@ The app exercises the current package stack:
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - LLM chat through remote, direct, Gemini (remote and direct), OpenClaw proxy
   (dev builds only), and stub clients
-- TTS through remote, browser-native, and direct OpenAI players
+- TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
+  direct) players
 - STT through remote, browser-native, direct OpenAI, and streaming
   (`@charivo/stt/openai-realtime`) transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
@@ -52,6 +53,12 @@ The current reference app ships:
   the voice itself and passes it explicitly, so the provider default is never
   consulted: a supplied voice must be on the allowlist or the request is
   rejected with 400, and the `sage` fallback applies only when none is sent
+- `POST /api/tts-gemini`
+  Uses `@charivo/server/gemini` with model `gemini-3.1-flash-tts-preview`. Same
+  voice-resolution behavior as `/api/tts`, against a Gemini-specific allowlist
+  with a `Kore` fallback; text is capped at 400 characters, sized to the
+  route's 25s deadline, which is kept under the remote player's 30s timeout,
+  and `speed` is accepted but ignored
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
 - `POST /api/realtime-transcription`
@@ -69,9 +76,9 @@ The routes are unauthenticated by design — they are a demo, not a deployable
 backend. What they do carry is cost bounding, worth copying even though the auth
 is missing: cost-bearing session fields are pinned server side
 (`examples/web/src/app/api/demo-limits.ts`), TTS text and realtime
-instructions/tools are size-capped, voices come from an allowlist, and a
-client-side timer caps a production realtime session at 90 seconds (15 minutes
-in development) because the browser talks to the provider directly once
+instructions/tools are size-capped, voices come from a per-provider allowlist,
+and a client-side timer caps a production realtime session at 90 seconds (15
+minutes in development) because the browser talks to the provider directly once
 bootstrapped and the server can no longer hang up. A separate timer with the
 same limit arms on STT recording, where the streaming transcriber holds an
 equally wall-clock-billed session for as long as it records.
@@ -84,7 +91,8 @@ place:
 - remote API paths for production-oriented flows
 - browser-direct OpenAI, Gemini, and OpenClaw paths for development and testing
   (the OpenClaw options are hidden in production builds — they need a gateway
-  on `OPENCLAW_BASE_URL`, which defaults to localhost)
+  on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS mirrors the LLM
+  split with its own Gemini Remote and Gemini Direct (Dev) options
 - browser-native TTS and STT paths for zero-server speech experiments
 - a streaming STT path backed by `/api/realtime-transcription`
 - a realtime provider selector, OpenAI Realtime or Gemini Live, that starts on
