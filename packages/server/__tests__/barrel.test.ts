@@ -16,6 +16,8 @@ import {
 import {
   createGeminiLLMProvider,
   GeminiLLMProvider,
+  createGeminiTTSProvider,
+  GeminiTTSProvider,
   createGeminiRealtimeProvider,
   GeminiRealtimeProvider,
 } from "@charivo/server/gemini";
@@ -67,5 +69,12 @@ describe("@charivo/server/gemini", () => {
   it("re-exports the LLM provider and factory", () => {
     const provider = createGeminiLLMProvider({ apiKey: "key" });
     expect(provider).toBeInstanceOf(GeminiLLMProvider);
+  });
+
+  it("re-exports the TTS provider and factory with concrete setVoice/setModel", () => {
+    const provider = createGeminiTTSProvider({ apiKey: "key" });
+    expect(provider).toBeInstanceOf(GeminiTTSProvider);
+    expect(typeof provider.setVoice).toBe("function");
+    expect(typeof provider.setModel).toBe("function");
   });
 });

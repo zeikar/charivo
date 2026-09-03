@@ -4,6 +4,11 @@ export {
   createGeminiLLMProvider,
 } from "@charivo/llm/gemini";
 export {
+  type GeminiTTSConfig,
+  GeminiTTSProvider,
+  createGeminiTTSProvider,
+} from "@charivo/tts/gemini";
+export {
   type GeminiRealtimeProviderConfig,
   GeminiRealtimeProvider,
   createGeminiRealtimeProvider,
