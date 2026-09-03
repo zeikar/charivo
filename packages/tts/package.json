@@ -21,6 +21,11 @@
       "import": "./dist/openai/index.mjs",
       "require": "./dist/openai/index.js"
     },
+    "./gemini": {
+      "types": "./dist/gemini/index.d.ts",
+      "import": "./dist/gemini/index.mjs",
+      "require": "./dist/gemini/index.js"
+    },
     "./web": {
       "types": "./dist/web/index.d.ts",
       "import": "./dist/web/index.mjs",

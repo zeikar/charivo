@@ -35,6 +35,7 @@
       "@charivo/stt/web": ["packages/stt/src/web/index.ts"],
       "@charivo/tts": ["packages/tts/src/index.ts"],
       "@charivo/tts/openai": ["packages/tts/src/openai/index.ts"],
+      "@charivo/tts/gemini": ["packages/tts/src/gemini/index.ts"],
       "@charivo/tts/remote": ["packages/tts/src/remote/index.ts"],
       "@charivo/tts/web": ["packages/tts/src/web/index.ts"]
     },
