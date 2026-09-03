@@ -5,6 +5,7 @@ export default defineConfig({
     "src/index.ts",
     "src/remote/index.ts",
     "src/openai/index.ts",
+    "src/gemini/index.ts",
     "src/openai-realtime/index.ts",
     "src/web/index.ts",
   ],
