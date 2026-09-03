@@ -10,6 +10,7 @@ export default defineConfig({
     exclude: [
       ...configDefaults.exclude,
       "tests/live-realtime/**",
+      "tests/live-llm/**",
       "tests/webrtc-smoke/**",
       "tests/gemini-live-smoke/**",
       "tests/cascade-smoke/**",
