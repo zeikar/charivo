@@ -8,8 +8,8 @@ current architecture as it is actually shipped:
   (dev builds only), and stub clients
 - TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
   direct) players
-- STT through remote, browser-native, direct OpenAI, and streaming OpenAI
-  Realtime transcribers
+- STT through remote, browser-native, direct OpenAI, Gemini (remote and
+  direct), and streaming OpenAI Realtime transcribers
 - Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over either the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket
   adapter, chosen in the settings menu
@@ -22,9 +22,10 @@ current architecture as it is actually shipped:
 > them as-is.**
 
 Every route under `src/app/api/` is an unauthenticated proxy that anyone can
-POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/chat-gemini` and
-`/api/tts-gemini` spend `GEMINI_API_KEY` instead. So does `/api/realtime`,
-whenever the caller asks for the Gemini provider — the demo UI's default.
+POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/chat-gemini`,
+`/api/tts-gemini`, and `/api/stt-gemini` spend `GEMINI_API_KEY` instead. So
+does `/api/realtime`, whenever the caller asks for the Gemini provider — the
+demo UI's default.
 `/api/chat-openclaw` spends neither: it forwards to whatever
 `OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
 credential and that backend. That is fine for `pnpm dev:web` on your own
@@ -81,7 +82,7 @@ cp examples/web/.env.example examples/web/.env.local
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Needed for realtime voice (defaults to Gemini Live), /api/chat-gemini, and /api/tts-gemini
+# Needed for realtime voice (defaults to Gemini Live), /api/chat-gemini, /api/tts-gemini, and /api/stt-gemini
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional OpenClaw proxy settings
@@ -92,15 +93,16 @@ OPENCLAW_AGENT_ID=main
 
 Realtime voice defaults to Gemini Live, which is the cheaper of the two APIs, so
 `GEMINI_API_KEY` is what an out-of-the-box realtime call spends;
-`/api/chat-gemini` and `/api/tts-gemini` spend the same key whenever you pick
-the Gemini Remote LLM or Gemini Remote TTS option. The settings menu lists
-both realtime providers whatever you configure, because the browser has no way
-to ask which keys a deployment set. So a missing key surfaces only once you use
-it: a realtime call fails at connect time, the reason arrives above the chat
-input (`RealtimeErrorNotice`), and switching to OpenAI Realtime in the menu is
-one click away. The Gemini Remote chat and TTS options have no such fallback —
-they simply fail until the key is set. Both Gemini Direct (Dev) options need no
-server key at all; each prompts for its own in the browser.
+`/api/chat-gemini`, `/api/tts-gemini`, and `/api/stt-gemini` spend the same key
+whenever you pick the Gemini Remote LLM, TTS, or STT option. The settings menu
+lists both realtime providers whatever you configure, because the browser has
+no way to ask which keys a deployment set. So a missing key surfaces only once
+you use it: a realtime call fails at connect time, the reason arrives above the
+chat input (`RealtimeErrorNotice`), and switching to OpenAI Realtime in the
+menu is one click away. The Gemini Remote chat, TTS, and STT options have no
+such fallback — they simply fail until the key is set. All three Gemini Direct
+(Dev) options need no server key at all; each prompts for its own in the
+browser.
 
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
@@ -174,6 +176,11 @@ The demo ships these routes:
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
+- `POST /api/stt-gemini`
+  Uses `@charivo/server/gemini` with model `gemini-3.5-transcribe`. Accepts
+  the same multipart contract and 1 MB cap as `/api/stt`. The free tier
+  allows 3 requests per minute on this model, so a fourth within a minute
+  fails with the route's generic 500 — the demo does not throttle
 - `POST /api/realtime`
   Creates a realtime session bootstrap for `@charivo/realtime/remote`, using
   `@charivo/server/openai` or `@charivo/server/gemini` as `session.provider`
@@ -196,8 +203,9 @@ compare the tradeoffs:
 
 - Remote API options are the production-ready defaults.
 - Browser-direct OpenAI, Gemini, and OpenClaw options expose credentials to the
-  browser. They are for local development and testing only. TTS mirrors the LLM
-  split with its own Gemini Remote and Gemini Direct (Dev) options.
+  browser. They are for local development and testing only. TTS and STT
+  mirror the LLM split with their own Gemini Remote and Gemini Direct (Dev)
+  options.
 - Browser TTS/STT options use Web Speech APIs and depend on browser support.
 - The streaming STT option keeps the key on the server and writes interim
   transcripts into the message box while you hold the mic.
@@ -220,6 +228,7 @@ examples/web/src/app
     realtime/route.ts
     realtime-transcription/route.ts
     stt/route.ts
+    stt-gemini/route.ts
     tts/route.ts
     tts-gemini/route.ts
   components/

@@ -19,8 +19,8 @@ The app exercises the current package stack:
   (dev builds only), and stub clients
 - TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
   direct) players
-- STT through remote, browser-native, direct OpenAI, and streaming
-  (`@charivo/stt/openai-realtime`) transcribers
+- STT through remote, browser-native, direct OpenAI, Gemini (remote and
+  direct), and streaming (`@charivo/stt/openai-realtime`) transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket adapter,
   chosen in the settings menu (Gemini Live by default)
@@ -61,6 +61,11 @@ The current reference app ships:
   and `speed` is accepted but ignored
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
+- `POST /api/stt-gemini`
+  Uses `@charivo/server/gemini` with model `gemini-3.5-transcribe`. Same
+  multipart contract and 1 MB cap as `/api/stt`. The free tier allows 3
+  requests per minute on this model, so a fourth within a minute fails with
+  the route's generic 500 — the demo does not throttle
 - `POST /api/realtime-transcription`
   Exchanges the streaming transcriber's SDP offer with OpenAI so the browser
   never holds a key
@@ -91,8 +96,8 @@ place:
 - remote API paths for production-oriented flows
 - browser-direct OpenAI, Gemini, and OpenClaw paths for development and testing
   (the OpenClaw options are hidden in production builds — they need a gateway
-  on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS mirrors the LLM
-  split with its own Gemini Remote and Gemini Direct (Dev) options
+  on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS and STT mirror the
+  LLM split with their own Gemini Remote and Gemini Direct (Dev) options
 - browser-native TTS and STT paths for zero-server speech experiments
 - a streaming STT path backed by `/api/realtime-transcription`
 - a realtime provider selector, OpenAI Realtime or Gemini Live, that starts on
