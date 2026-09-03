@@ -10,10 +10,8 @@ import {
 
 // The request targets `models/{model}:generateContent`: it is the shape
 // measured working and the simpler one-shot request for charivo's one
-// utterance per call, and it stays fully supported even though Google now
-// labels it legacy. The newer Interactions API (stateless via `store=false`)
-// can replace it later without touching this provider's public surface,
-// because only the private request builder below knows the endpoint.
+// utterance per call. Google labels it legacy but still fully supports it;
+// only the private request builder below knows the endpoint.
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 const DEFAULT_MODEL = "gemini-3.1-flash-tts-preview";
 const DEFAULT_VOICE = "Kore";
@@ -340,6 +338,13 @@ async function readResponseText(response: Response): Promise<string> {
   try {
     return await response.text();
   } catch (error) {
+    // Re-thrown unchanged so fetchWithTimeout's own abort classification
+    // (still watching this in-flight body read) can tell a body-phase
+    // timeout from a genuine parse failure; wrapping it here would turn
+    // every large-response timeout into a CharivoProviderError.
+    if (isAbortError(error)) {
+      throw error;
+    }
     throw toCharivoError(
       "provider",
       error,
@@ -352,10 +357,23 @@ async function readResponseJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     throw toCharivoError(
       "provider",
       error,
       "Failed to parse Gemini TTS response body",
     );
   }
+}
+
+// Mirrors fetchWithTimeout's own check: only that helper decides whether an
+// abort came from its timeout or an external signal, so the readers must
+// recognize the same shape of error to hand it back unclassified.
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }

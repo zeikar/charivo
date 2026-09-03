@@ -105,9 +105,11 @@ export const TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
 
 /**
  * The provider's `timeoutMs`, set below `@charivo/tts/remote`'s fixed 30s
- * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first and
- * never keeps generating — and billing — for a request the browser already
- * abandoned. The provider's single retry shares this budget.
+ * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first: the
+ * deadline bounds how long the route waits and aborts the transport (a
+ * cancellation request), so the browser is never left holding a request the
+ * server already gave up on. Work Gemini has already accepted may still be
+ * billed. The provider's single retry shares this budget.
  */
 export const TTS_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
 

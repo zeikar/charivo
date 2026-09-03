@@ -58,9 +58,7 @@ await ttsManager.speak("Hello", { voice: "marin" });
   `timeoutMs`, per Google's documented mitigations. It calls
   `models/{model}:generateContent` because that is the shape measured working
   and the simpler one-shot request for one utterance per call, even though
-  Google now labels it legacy (still fully supported); the newer Interactions
-  API — which also supports stateless calls via `store=false` — can replace it
-  later without changing the provider's public surface. `timeoutMs` defaults
+  Google now labels it legacy (still fully supported). `timeoutMs` defaults
   to 90s, since synthesis takes roughly 0.55–0.7x the audio's length; that
   default suits the direct player and callers that own their own deadline. A
   route behind `@charivo/tts/remote` must pass a `timeoutMs` under that

@@ -518,6 +518,41 @@ describe("GeminiTTSProvider", () => {
     await expectation;
   });
 
+  it("classifies a timeout during body download as CharivoTimeoutError, not a provider error", async () => {
+    vi.useFakeTimers();
+    // Headers arrive immediately (a real fetch() would already have resolved),
+    // but reading the body never settles on its own — only the timeout's
+    // abort, observed by consumeBody's signal, ever rejects it.
+    const fetchMock = stubFetch((_input, init) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          }),
+      } as unknown as Response),
+    );
+    const provider = new GeminiTTSProvider({
+      apiKey: "secret-key",
+      timeoutMs: 5_000,
+    });
+
+    const request = provider.generateSpeech("hello");
+    const expectation = expect(request).rejects.toMatchObject({
+      name: "CharivoTimeoutError",
+      code: "CHARIVO_TIMEOUT_ERROR",
+      message: "Gemini TTS request timed out after 5000ms",
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expectation;
+    // A body-phase timeout spends the deadline outright rather than retrying.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("enforces server-only usage unless dangerouslyAllowBrowser is enabled", () => {
     vi.stubGlobal("window", {});
 
