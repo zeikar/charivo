@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Charivo, RealtimeSessionConfig } from "@charivo/core";
 import { clickElement, renderComponent } from "../test-utils/render-component";
 import { useChatStore } from "../stores/useChatStore";
+import { useCharacterStore } from "../stores/useCharacterStore";
+import { CHARACTER_CONFIGS } from "../config/characters";
 import {
   REALTIME_GEMINI_MODEL,
   REALTIME_OPENAI_MODEL,
@@ -85,6 +87,9 @@ const PROVIDER_CASES = [
 beforeEach(() => {
   useChatStore.setState(initialStoreState, true);
   useChatStore.setState({ charivo });
+  // The voice under test belongs to a character, so name one instead of
+  // leaning on whatever the store happens to default to.
+  useCharacterStore.setState({ selectedCharacter: "Haru" });
   prepareAudio.mockClear();
   startSession.mockClear();
 });
@@ -136,6 +141,20 @@ describe.each(PROVIDER_CASES)(
       // only worth something once both halves of the route are actually there.
       expect(preparedRoute.provider).toBeDefined();
       expect(preparedRoute.transport).toBeDefined();
+    });
+
+    /**
+     * The character the Charivo instance holds carries the TTS player's voice,
+     * which the realtime provider may not even accept. So the voice the model
+     * speaks with has to be named on the session config itself.
+     */
+    it(`asks for Haru's ${provider} voice`, async () => {
+      await toggleRealtimeModeOn();
+
+      const voice = CHARACTER_CONFIGS.Haru.voices[provider];
+
+      expect(sessionConfigFrom(prepareAudio).voice).toBe(voice);
+      expect(sessionConfigFrom(startSession).voice).toBe(voice);
     });
   },
 );

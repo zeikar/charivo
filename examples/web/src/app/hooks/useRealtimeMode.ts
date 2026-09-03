@@ -4,6 +4,8 @@ import { createRealtimeManager } from "@charivo/realtime";
 import { createAvatarResultProjector } from "@charivo/avatar";
 import { createRemoteRealtimeClient } from "@charivo/realtime/remote";
 import { useChatStore } from "../stores/useChatStore";
+import { useCharacterStore } from "../stores/useCharacterStore";
+import { getCharacterConfig } from "../config/characters";
 import { buildDemoRealtimeTools } from "../lib/avatar-tools";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import {
@@ -42,6 +44,7 @@ export function useRealtimeMode() {
     setCapNotice,
     selectedRealtimeProvider,
   } = useChatStore();
+  const { selectedCharacter } = useCharacterStore();
 
   const sessionCapRef = useRef(createSessionCap());
   const sessionCap = sessionCapRef.current;
@@ -138,6 +141,17 @@ export function useRealtimeMode() {
           charivo.getCurrentCharacter(),
           avatarCatalog,
         ),
+        // The character `charivo` holds carries the TTS player's voice, and the
+        // two providers name their voices differently -- so the realtime voice
+        // is chosen here instead. `buildRealtimeSessionConfig`
+        // (`packages/realtime/src/instructions.ts`) prefers an explicit `voice`
+        // over `character.voice.voiceId`, and `updateSession` merges patches
+        // over this base config, so the voice named here also outlives the
+        // character sync's `updateSession({ instructions })`.
+        voice:
+          getCharacterConfig(selectedCharacter).voices[
+            selectedRealtimeProvider
+          ],
       };
 
       // Both calls must land on the same adapter, which they do by carrying
@@ -178,6 +192,7 @@ export function useRealtimeMode() {
     sessionCap,
     setCapNotice,
     selectedRealtimeProvider,
+    selectedCharacter,
   ]);
 
   // The cap must call the CURRENT teardown, not the one that existed when it was

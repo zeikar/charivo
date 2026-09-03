@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type MutableRefObject,
+} from "react";
 import {
   type AvatarControlCatalog,
   createCharivo,
@@ -37,6 +43,11 @@ import { useLive2D } from "./useLive2D";
 import { buildDemoRealtimeInstructions } from "../lib/realtime-instructions";
 import { syncAvatarControlTools } from "../lib/avatar-tools";
 import { useCharacterStore } from "../stores/useCharacterStore";
+import {
+  type CharacterVoiceProvider,
+  getCharacterConfig,
+  resolveCharacterVoice,
+} from "../config/characters";
 import { useChatStore } from "../stores/useChatStore";
 import {
   createRealtimeAssistantMessage,
@@ -176,6 +187,11 @@ function readAvatarCatalog(
   };
 }
 
+/** Which of a character's voice ids the selected TTS player speaks with. */
+function ttsVoiceProviderFor(type: TTSPlayerType): CharacterVoiceProvider {
+  return type === "gemini" || type === "gemini-remote" ? "gemini" : "openai";
+}
+
 export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const {
     getLive2DModelPath,
@@ -220,18 +236,32 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setCapNotice,
   } = useChatStore();
 
+  // The realtime voice is named on the session config by `useRealtimeMode`, so
+  // the character handed to Charivo only ever needs the TTS player's voice.
+  // `character` is a module-level config object, so this stays referentially
+  // stable until the character or the player actually changes -- the effects
+  // below depend on its identity.
+  const resolvedCharacter = useMemo(
+    () =>
+      resolveCharacterVoice(
+        getCharacterConfig(character.id),
+        ttsVoiceProviderFor(selectedTTSPlayer),
+      ),
+    [character, selectedTTSPlayer],
+  );
+
   const rendererRef = useRef<Live2DRendererHandle | null>(null);
   const renderManagerRef = useRef<RenderManager | null>(null);
   const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
   const recordingCapRef = useRef(createSessionCap());
-  const currentCharacterRef = useRef(character);
+  const currentCharacterRef = useRef(resolvedCharacter);
   const syncedCharacterIdRef = useRef<string | null>(null);
   const isRealtimeRefreshPendingRef = useRef(false);
 
   useEffect(() => {
-    currentCharacterRef.current = character;
-  }, [character]);
+    currentCharacterRef.current = resolvedCharacter;
+  }, [resolvedCharacter]);
 
   const createLLMClient = useCallback(
     async (type: LLMClientType): Promise<LLMClient> => {
@@ -915,7 +945,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       return;
     }
 
-    if (syncedCharacterIdRef.current === character.id) {
+    if (syncedCharacterIdRef.current === resolvedCharacter.id) {
       return;
     }
 
@@ -928,18 +958,18 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         resetAvatarDebug();
         setRealtimeError(null);
         charivo.clearHistory();
-        charivo.setCharacter(character);
+        charivo.setCharacter(resolvedCharacter);
         await renderManagerRef.current?.loadModel?.(
-          getLive2DModelPath(character.id),
+          getLive2DModelPath(resolvedCharacter.id),
         );
         const nextCatalog = readAvatarCatalog(
           rendererRef.current,
-          getExpressionDescriptions(character.id),
-          getMotionDescriptions(character.id),
+          getExpressionDescriptions(resolvedCharacter.id),
+          getMotionDescriptions(resolvedCharacter.id),
         );
         setAvatarCatalog(nextCatalog);
         logAvatarControl("catalog.loaded", {
-          characterId: character.id,
+          characterId: resolvedCharacter.id,
           expressions: nextCatalog.expressions,
           motions: nextCatalog.motions,
           expressionDescriptions: nextCatalog.expressionDescriptions,
@@ -950,7 +980,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           return;
         }
 
-        syncedCharacterIdRef.current = character.id;
+        syncedCharacterIdRef.current = resolvedCharacter.id;
 
         const llmManager = llmManagerRef.current;
         if (llmManager) {
@@ -964,7 +994,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           const realtimeManager = charivo.getRealtimeManager();
           if (realtimeManager?.getState().session.status === "active") {
             logAvatarControl("catalog.sync", {
-              characterId: character.id,
+              characterId: resolvedCharacter.id,
               expressions: nextCatalog.expressions,
               motions: nextCatalog.motions,
             });
@@ -977,7 +1007,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             setRealtimeTurnStatus("reconnecting");
             await realtimeManager.updateSession({
               instructions: buildDemoRealtimeInstructions(
-                character,
+                resolvedCharacter,
                 nextCatalog,
               ),
             });
@@ -1003,7 +1033,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       cancelled = true;
     };
   }, [
-    character,
+    resolvedCharacter,
     charivo,
     clearMessages,
     getExpressionDescriptions,
