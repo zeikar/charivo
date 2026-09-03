@@ -84,12 +84,11 @@ on top of that deadline (the demo caps at 400 characters via
 
 `createGeminiSTTProvider` (implemented in `@charivo/stt/gemini`) posts the
 recording inline as base64 to `models/{model}:generateContent`; the default
-model is `gemini-3.5-transcribe`. It returns the `audioTranscription` part's
-text, or `""` for silence. `language` is optional and only a soft hint, and
+model is `gemini-3.5-transcribe`. It returns the `audioTranscription` parts'
+text joined in order, or `""` for silence. `language` is optional and only a soft hint, and
 there is no retry. Its 30s default `timeoutMs` also covers reading the
-response body, same as Gemini TTS. The free tier allows 3 requests per
-minute; beyond that, the 429 is a `CharivoProviderError` for the caller to
-handle.
+response body, same as Gemini TTS. Gemini's free-tier rate limit surfaces as a
+429 wrapped in a `CharivoProviderError` for the caller to handle.
 
 `createSession` mints a single-use Gemini Live ephemeral token and returns a
 websocket bootstrap (`{ adapter, transport: "websocket", url, token }`) for
@@ -181,8 +180,8 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
   The SDK-backed providers (OpenAI LLM/TTS/STT, Gemini LLM, and OpenClaw LLM)
   wrap the SDK's own error: its message is preserved and the original error is
   kept on `cause`. The Gemini TTS and STT providers (raw `fetch`, no SDK) build
-  HTTP-status errors from the response body text the same way the two realtime
-  providers do (non-2xx responses, an invalid client secret or token
+  HTTP-status errors from non-2xx response body text the same way the two
+  realtime providers do (which also cover an invalid client secret or token
   response), so they carry the API's message but no `cause`; their network/
   connection failures and response body/JSON parsing failures are wrapped with
   the original error kept on `cause`.

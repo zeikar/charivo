@@ -115,9 +115,12 @@ const STT_API_KEY_ENV: ApiKeyEnv =
 
 function createSTTProvider(apiKey: string) {
   return CASCADE_STT === "gemini"
-    ? createGeminiSTTProvider({
+    ? // timeoutMs below @charivo/stt/remote's fixed 30s so the harness route
+      // gives up before the browser does.
+      createGeminiSTTProvider({
         apiKey,
         defaultModel: "gemini-3.5-transcribe",
+        timeoutMs: 25_000,
       })
     : createOpenAISTTProvider({ apiKey, defaultModel: "whisper-1" });
 }

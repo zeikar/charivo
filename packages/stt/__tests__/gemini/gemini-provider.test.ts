@@ -202,6 +202,28 @@ describe("GeminiSTTProvider", () => {
     ).resolves.toBe("hello there");
   });
 
+  it("joins every transcription part of a segmented answer", async () => {
+    stubFetch(async () =>
+      Response.json({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { audioTranscription: { text: "Hello, " } },
+                { audioTranscription: { text: "world." } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const provider = new GeminiSTTProvider({ apiKey: "secret-key" });
+
+    await expect(
+      provider.transcribe(new Blob([AUDIO], { type: "audio/webm" })),
+    ).resolves.toBe("Hello, world.");
+  });
+
   it("resolves an empty string for the silent answer", async () => {
     stubFetch(async () => Response.json({ candidates: [{ content: {} }] }));
     const provider = new GeminiSTTProvider({ apiKey: "secret-key" });

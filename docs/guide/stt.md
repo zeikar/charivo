@@ -62,7 +62,7 @@ const text = await charivo.getSTTManager()?.stop();
 
 - the `language` hint is optional and only a soft nudge — a wrong hint does not override what the model actually hears
 - one request per utterance, with no streaming — the live transcription model is a separate transport this package does not cover
-- the free tier allows 3 requests per minute; beyond that the 429 surfaces as a provider error
+- Gemini's free-tier rate limit surfaces as a 429 wrapped in a provider error
 
 ### Browser-Native
 

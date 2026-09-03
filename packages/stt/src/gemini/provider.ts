@@ -126,8 +126,8 @@ export class GeminiSTTProvider implements STTProvider {
         // parsing the body.
         async (response) => {
           if (!response.ok) {
-            // 400 for audio the model cannot decode, 429 once the free tier's
-            // 3 requests per minute run out; neither is retried here.
+            // 400 for audio the model cannot decode, 429 with Google's retry
+            // hint on the free tier; nothing is retried here.
             throw new CharivoProviderError(
               `Gemini STT Error: ${await readResponseText(response)}`,
             );
@@ -173,14 +173,21 @@ function extractTranscript(payload: unknown): string {
   }
 
   // audioTranscription is its own part type, not `text`, and a text part can
-  // precede it.
+  // precede it. Every transcription part is joined because a segmented answer
+  // spreads one utterance across several of them, and returning only the first
+  // would truncate it into a plausible-looking partial transcript.
+  const texts: string[] = [];
   for (const part of candidate.content.parts) {
     if (isRecord(part) && isRecord(part.audioTranscription)) {
       const { text } = part.audioTranscription;
       if (typeof text === "string") {
-        return text;
+        texts.push(text);
       }
     }
+  }
+
+  if (texts.length > 0) {
+    return texts.join("");
   }
 
   throw new CharivoProviderError(

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createGeminiSTTProvider } from "@charivo/server/gemini";
-import { STT_GEMINI_MODEL, STT_MAX_AUDIO_BYTES } from "../demo-limits";
+import {
+  STT_GEMINI_MODEL,
+  STT_GEMINI_ROUTE_TIMEOUT_MS,
+  STT_MAX_AUDIO_BYTES,
+} from "../demo-limits";
 
 function getGeminiKey(): string {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -17,6 +21,7 @@ export async function POST(request: NextRequest) {
     const sttProvider = createGeminiSTTProvider({
       apiKey: getGeminiKey(),
       defaultModel: STT_GEMINI_MODEL,
+      timeoutMs: STT_GEMINI_ROUTE_TIMEOUT_MS,
     });
 
     // Read the audio file from FormData

@@ -146,7 +146,8 @@ export const TTS_GEMINI_ALLOWED_VOICES: ReadonlySet<string> = new Set([
  * of proportion here — so this is sized for the worst case instead of the
  * typical one. A demo utterance runs well under 1 MB at ordinary bitrates, while
  * 1 MB of 8 kbps audio is still only ~17 minutes, or roughly $0.10 at
- * `whisper-1` rates. Treat it as an upload bound, not a cost guarantee.
+ * `whisper-1` rates. `/api/stt-gemini` gets the same byte bound at Gemini's
+ * own per-minute price. Treat it as an upload bound, not a cost guarantee.
  */
 export const STT_MAX_AUDIO_BYTES = 1024 * 1024;
 
@@ -155,6 +156,15 @@ export const STT_MAX_AUDIO_BYTES = 1024 * 1024;
  * `@charivo/server/gemini`'s default.
  */
 export const STT_GEMINI_MODEL = "gemini-3.5-transcribe";
+
+/**
+ * The provider's `timeoutMs`, set below `@charivo/stt/remote`'s fixed 30s
+ * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first: with
+ * equal budgets the browser's timer fires first and leaves an in-flight,
+ * billable Gemini request nobody is waiting for. Ample for this model, which
+ * answers in 1.5-3.4s on a demo-length clip.
+ */
+export const STT_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
 
 /** Pinned here so the route picks the model it pays for instead of inheriting `@charivo/server/gemini`'s default. */
 export const CHAT_GEMINI_MODEL = "gemini-3.5-flash-lite";

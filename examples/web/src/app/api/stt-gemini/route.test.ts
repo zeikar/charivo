@@ -11,7 +11,11 @@ vi.mock("@charivo/server/gemini", () => ({
 }));
 
 import { POST } from "./route";
-import { STT_GEMINI_MODEL, STT_MAX_AUDIO_BYTES } from "../demo-limits";
+import {
+  STT_GEMINI_MODEL,
+  STT_GEMINI_ROUTE_TIMEOUT_MS,
+  STT_MAX_AUDIO_BYTES,
+} from "../demo-limits";
 
 describe("examples/web /api/stt-gemini route", () => {
   beforeEach(() => {
@@ -40,6 +44,7 @@ describe("examples/web /api/stt-gemini route", () => {
     expect(createGeminiSTTProvider).toHaveBeenCalledWith({
       apiKey: "test-key",
       defaultModel: STT_GEMINI_MODEL,
+      timeoutMs: STT_GEMINI_ROUTE_TIMEOUT_MS,
     });
   });
 

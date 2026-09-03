@@ -38,8 +38,8 @@ const text = await sttManager.stop();
   the model transcribes what it hears even when the hint is wrong. `timeoutMs`
   defaults to 30s and also covers reading the response body. Inline requests
   are capped at 20MB, and there is no streaming: the live transcription model
-  is a separate transport. The free tier allows 3 requests per minute; beyond
-  that the 429 surfaces as a provider error.
+  is a separate transport. Gemini's free-tier rate limit surfaces as a 429
+  wrapped in a provider error.
 - `@charivo/stt/openai-realtime`: `createOpenAIRealtimeSTTTranscriber({ bootstrap })`
   (live WebRTC streaming transcriber, `gpt-realtime-whisper`) — the app injects
   `bootstrap(request) => Promise<{ answerSdp }>`, owns the credentials, and
