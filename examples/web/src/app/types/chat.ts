@@ -30,6 +30,8 @@ export type STTTranscriberType =
   | "web"
   | "openai"
   | "openai-realtime"
+  | "gemini-remote"
+  | "gemini"
   | "none";
 
 export type LLMClientType =

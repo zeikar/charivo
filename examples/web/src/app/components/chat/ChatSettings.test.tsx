@@ -74,17 +74,30 @@ describe("ChatSettings", () => {
     const onSelectTTSPlayer = vi.fn();
     renderOpenSettings({ onSelectTTSPlayer });
 
-    // The LLM pair contributes one of each label; the TTS pair the other.
-    expect(queryButtons("Gemini Remote")).toHaveLength(2);
-    expect(queryButtons("Gemini Direct (Dev)")).toHaveLength(2);
+    // The LLM pair contributes one of each label, the TTS pair another, and
+    // the STT pair the third.
+    expect(queryButtons("Gemini Remote")).toHaveLength(3);
+    expect(queryButtons("Gemini Direct (Dev)")).toHaveLength(3);
 
-    // The TTS section renders after the LLM section, so the last match is
-    // the TTS button.
-    clickElement(queryButtons("Gemini Remote").at(-1)!);
+    // The TTS section renders after the LLM section but before the STT
+    // section, so the middle match is the TTS button.
+    clickElement(queryButtons("Gemini Remote")[1]!);
     expect(onSelectTTSPlayer).toHaveBeenCalledWith("gemini-remote");
 
-    clickElement(queryButtons("Gemini Direct (Dev)").at(-1)!);
+    clickElement(queryButtons("Gemini Direct (Dev)")[1]!);
     expect(onSelectTTSPlayer).toHaveBeenCalledWith("gemini");
+  });
+
+  it("offers both Gemini STT options after the TTS ones", () => {
+    const onSelectSTTTranscriber = vi.fn();
+    renderOpenSettings({ onSelectSTTTranscriber });
+
+    // The STT section renders last, so the last match is the STT button.
+    clickElement(queryButtons("Gemini Remote").at(-1)!);
+    expect(onSelectSTTTranscriber).toHaveBeenCalledWith("gemini-remote");
+
+    clickElement(queryButtons("Gemini Direct (Dev)").at(-1)!);
+    expect(onSelectSTTTranscriber).toHaveBeenCalledWith("gemini");
   });
 
   it("reports the picked provider", () => {

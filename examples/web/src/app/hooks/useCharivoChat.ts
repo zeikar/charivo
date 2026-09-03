@@ -417,6 +417,24 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             );
             return createOpenAISTTTranscriber({ apiKey });
           }
+          case "gemini-remote": {
+            const { createRemoteSTTTranscriber } = await import(
+              "@charivo/stt/remote"
+            );
+            return createRemoteSTTTranscriber({
+              apiEndpoint: "/api/stt-gemini",
+            });
+          }
+          case "gemini": {
+            const apiKey = promptForSecret(
+              GEMINI_TESTING_PROMPT,
+              "API key is required for the direct Gemini STT client.",
+            );
+            const { createGeminiSTTTranscriber } = await import(
+              "@charivo/stt/gemini"
+            );
+            return createGeminiSTTTranscriber({ apiKey });
+          }
           case "openai-realtime": {
             const { createOpenAIRealtimeSTTTranscriber } = await import(
               "@charivo/stt/openai-realtime"

@@ -169,6 +169,18 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     Icon: BoltIcon,
   },
   {
+    label: "Gemini Remote",
+    value: "gemini-remote",
+    description: "Calls the server Gemini STT route. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
+  },
+  {
+    label: "Gemini Direct (Dev)",
+    value: "gemini",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: SparklesIcon,
+  },
+  {
     label: "OpenAI Realtime (Streaming)",
     value: "openai-realtime",
     description:
