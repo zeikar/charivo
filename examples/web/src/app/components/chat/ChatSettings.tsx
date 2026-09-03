@@ -130,6 +130,18 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
     Icon: BoltIcon,
   },
   {
+    label: "Gemini Remote",
+    value: "gemini-remote",
+    description: "Calls the server Gemini TTS route. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
+  },
+  {
+    label: "Gemini Direct (Dev)",
+    value: "gemini",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: SparklesIcon,
+  },
+  {
     label: "Disabled",
     value: "none",
     description: "No voice synthesis",

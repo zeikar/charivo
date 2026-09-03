@@ -9,12 +9,14 @@ import {
 import { ChatSettings } from "./ChatSettings";
 
 /** Options are matched by their visible label; the icons contribute no text. */
-function queryButton(label: string): HTMLButtonElement | null {
-  const match = Array.from(document.body.querySelectorAll("button")).find(
+function queryButtons(label: string): HTMLButtonElement[] {
+  return Array.from(document.body.querySelectorAll("button")).filter(
     (candidate) => candidate.textContent?.trim() === label,
   );
+}
 
-  return match ?? null;
+function queryButton(label: string): HTMLButtonElement | null {
+  return queryButtons(label)[0] ?? null;
 }
 
 function clickButton(label: string): void {
@@ -66,6 +68,23 @@ describe("ChatSettings", () => {
 
     expect(queryButton("OpenAI Realtime")).not.toBeNull();
     expect(queryButton("Gemini Live")).not.toBeNull();
+  });
+
+  it("offers both Gemini TTS options beside the LLM ones", () => {
+    const onSelectTTSPlayer = vi.fn();
+    renderOpenSettings({ onSelectTTSPlayer });
+
+    // The LLM pair contributes one of each label; the TTS pair the other.
+    expect(queryButtons("Gemini Remote")).toHaveLength(2);
+    expect(queryButtons("Gemini Direct (Dev)")).toHaveLength(2);
+
+    // The TTS section renders after the LLM section, so the last match is
+    // the TTS button.
+    clickElement(queryButtons("Gemini Remote").at(-1)!);
+    expect(onSelectTTSPlayer).toHaveBeenCalledWith("gemini-remote");
+
+    clickElement(queryButtons("Gemini Direct (Dev)").at(-1)!);
+    expect(onSelectTTSPlayer).toHaveBeenCalledWith("gemini");
   });
 
   it("reports the picked provider", () => {

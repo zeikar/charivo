@@ -17,7 +17,13 @@ export type RealtimeTurnStatus =
  */
 export type DemoCapNotice = "realtime-session" | "stt-recording";
 
-export type TTSPlayerType = "remote" | "web" | "openai" | "none";
+export type TTSPlayerType =
+  | "remote"
+  | "web"
+  | "openai"
+  | "gemini-remote"
+  | "gemini"
+  | "none";
 
 export type STTTranscriberType =
   | "remote"

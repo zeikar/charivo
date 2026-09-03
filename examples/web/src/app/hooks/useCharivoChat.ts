@@ -329,6 +329,22 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             );
             return createOpenAITTSPlayer({ apiKey });
           }
+          case "gemini-remote": {
+            const { createRemoteTTSPlayer } = await import(
+              "@charivo/tts/remote"
+            );
+            return createRemoteTTSPlayer({ apiEndpoint: "/api/tts-gemini" });
+          }
+          case "gemini": {
+            const apiKey = promptForSecret(
+              GEMINI_TESTING_PROMPT,
+              "API key is required for the direct Gemini TTS client.",
+            );
+            const { createGeminiTTSPlayer } = await import(
+              "@charivo/tts/gemini"
+            );
+            return createGeminiTTSPlayer({ apiKey });
+          }
           case "none":
           default:
             return null;
