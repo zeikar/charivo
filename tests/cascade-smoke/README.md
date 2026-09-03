@@ -5,7 +5,8 @@ without depending on `examples/web`.
 
 Covered chain (the recommended remote-client + server-provider path):
 
-- `@charivo/stt/remote` → `/api/stt` → `@charivo/server/openai` (whisper-1)
+- `@charivo/stt/remote` → `/api/stt` → `@charivo/server/openai` (whisper-1),
+  or `@charivo/server/gemini` (gemini-3.5-transcribe) with `CASCADE_STT=gemini`
 - `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano),
   or `@charivo/server/gemini` (gemini-3.5-flash-lite) with `CASCADE_LLM=gemini`
 - `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts),
@@ -18,22 +19,26 @@ Run it explicitly:
 pnpm exec playwright install chromium
 RUN_LIVE_CASCADE=1 OPENAI_API_KEY=your-key pnpm test:cascade
 
+# Same specs, with the STT leg on the Gemini provider (LLM and TTS stay on OpenAI):
+RUN_LIVE_CASCADE=1 CASCADE_STT=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
+
 # Same specs, with the LLM leg on the Gemini provider (STT and TTS stay on OpenAI):
 RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 
 # Same specs, with the TTS leg on the Gemini provider (STT and LLM stay on OpenAI):
 RUN_LIVE_CASCADE=1 CASCADE_TTS=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 
-# Both legs on Gemini (STT stays on OpenAI):
-RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini CASCADE_TTS=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
+# All three legs on Gemini (only GEMINI_API_KEY needed):
+RUN_LIVE_CASCADE=1 CASCADE_STT=gemini CASCADE_LLM=gemini CASCADE_TTS=gemini GEMINI_API_KEY=your-key pnpm test:cascade
 ```
 
 It reuses the realtime voice fixture
 ([../webrtc-smoke/fixtures/voice-smoke-input.wav](../webrtc-smoke/fixtures/voice-smoke-input.wav))
 as canned speech fed into Chromium's fake microphone, so the suite runs without
-local setup. The spec skips cleanly if the fixture is missing or if
-`RUN_LIVE_CASCADE` / `OPENAI_API_KEY` are not set (or `GEMINI_API_KEY`, when
-`CASCADE_LLM=gemini` and/or `CASCADE_TTS=gemini`).
+local setup. The spec skips cleanly if the fixture is missing, if
+`RUN_LIVE_CASCADE` is not set, or if the API key for a selected provider is
+missing (`OPENAI_API_KEY` for any leg left on openai, `GEMINI_API_KEY` for any
+leg switched to gemini via `CASCADE_STT` / `CASCADE_LLM` / `CASCADE_TTS`).
 
 What it proves:
 
@@ -74,4 +79,6 @@ four and eight chat completions — every turn is a tool loop, so each of the tw
 tests spends two to four completions depending on how many tool rounds the
 model takes. All of it goes to OpenAI by default; with `CASCADE_LLM=gemini`
 the chat completions go to Gemini instead, and with `CASCADE_TTS=gemini` the
-speech syntheses go to Gemini instead.
+speech syntheses go to Gemini instead. With `CASCADE_STT=gemini` that one
+transcription goes to Gemini instead and counts against the
+`gemini-3.5-transcribe` free tier's 3 requests per minute.

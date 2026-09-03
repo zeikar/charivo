@@ -27,16 +27,18 @@ const WAV_PATH = fileURLToPath(
 const WAV_PRESENT = existsSync(WAV_PATH);
 
 const LIVE_ENABLED = process.env.RUN_LIVE_CASCADE === "1";
-// STT always runs on OpenAI; CASCADE_LLM=gemini moves the chat leg and
-// CASCADE_TTS=gemini moves the speech leg to the Gemini provider,
-// independently of one another, each needing GEMINI_API_KEY when set (see
-// vite.config.ts).
+// CASCADE_STT=gemini, CASCADE_LLM=gemini, and CASCADE_TTS=gemini each move
+// their own leg (transcription, chat, or speech) to the Gemini provider,
+// independently of one another (see vite.config.ts). OPENAI_API_KEY is
+// required when any leg still runs on OpenAI; GEMINI_API_KEY is required
+// when any leg runs on Gemini.
+const CASCADE_STT = process.env.CASCADE_STT ?? "openai";
 const CASCADE_LLM = process.env.CASCADE_LLM ?? "openai";
 const CASCADE_TTS = process.env.CASCADE_TTS ?? "openai";
+const CASCADE_LEGS = [CASCADE_STT, CASCADE_LLM, CASCADE_TTS];
 const HAS_API_KEYS =
-  Boolean(process.env.OPENAI_API_KEY) &&
-  (CASCADE_LLM !== "gemini" || Boolean(process.env.GEMINI_API_KEY)) &&
-  (CASCADE_TTS !== "gemini" || Boolean(process.env.GEMINI_API_KEY));
+  (!CASCADE_LEGS.includes("openai") || Boolean(process.env.OPENAI_API_KEY)) &&
+  (!CASCADE_LEGS.includes("gemini") || Boolean(process.env.GEMINI_API_KEY));
 
 // Mirrors the AVATAR_CATALOG expressions in src/main.ts, so the assertion
 // below can prove the model only ever picked from the enum offered to it.
@@ -64,7 +66,7 @@ test.describe("cascade stt → llm → tts e2e", () => {
   );
   test.skip(
     !LIVE_ENABLED || !HAS_API_KEYS,
-    "Set RUN_LIVE_CASCADE=1 OPENAI_API_KEY=... to run the cascade suite (plus GEMINI_API_KEY=... when CASCADE_LLM=gemini and/or CASCADE_TTS=gemini).",
+    "Set RUN_LIVE_CASCADE=1 plus the API key(s) for whichever provider(s) CASCADE_STT / CASCADE_LLM / CASCADE_TTS select (OPENAI_API_KEY for any leg on openai, GEMINI_API_KEY for any leg on gemini).",
   );
 
   test("transcribes canned audio, generates a reply, synthesizes speech, and drives lip-sync", async ({

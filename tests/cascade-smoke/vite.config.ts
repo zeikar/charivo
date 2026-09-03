@@ -6,6 +6,7 @@ import {
 } from "../../packages/server/src/openai/index";
 import {
   createGeminiLLMProvider,
+  createGeminiSTTProvider,
   createGeminiTTSProvider,
 } from "../../packages/server/src/gemini/index";
 import type { LLMMessage, ToolDefinition } from "../../packages/core/src/types";
@@ -19,10 +20,10 @@ const harnessRoot = __dirname;
 // These routes are intentionally local to the cascade harness so the smoke
 // test can validate the STT → LLM → TTS chain without depending on
 // examples/web. They mirror the examples/web /api/stt, /api/chat, /api/tts
-// route contracts, backed by @charivo/server/openai. CASCADE_LLM=gemini and
-// CASCADE_TTS=gemini each swap only their own leg to @charivo/server/gemini,
-// independently of one another, so the same specs can drive either provider
-// end to end while the rest of the chain stays on OpenAI.
+// route contracts, backed by @charivo/server/openai. CASCADE_STT=gemini,
+// CASCADE_LLM=gemini, and CASCADE_TTS=gemini each swap only their own leg to
+// @charivo/server/gemini, independently of one another, so the same specs can
+// drive any mix of providers end to end.
 
 function sendJson(
   response: ServerResponse,
@@ -94,7 +95,7 @@ type CascadeProvider = "openai" | "gemini";
 // Resolved once at config load so a typo fails the run up front instead of
 // silently testing the default provider.
 function resolveCascadeSwitch(
-  name: "CASCADE_LLM" | "CASCADE_TTS",
+  name: "CASCADE_STT" | "CASCADE_LLM" | "CASCADE_TTS",
 ): CascadeProvider {
   const value = process.env[name] ?? "openai";
   if (value !== "openai" && value !== "gemini") {
@@ -105,8 +106,21 @@ function resolveCascadeSwitch(
 
   return value;
 }
+const CASCADE_STT = resolveCascadeSwitch("CASCADE_STT");
 const CASCADE_LLM = resolveCascadeSwitch("CASCADE_LLM");
 const CASCADE_TTS = resolveCascadeSwitch("CASCADE_TTS");
+
+const STT_API_KEY_ENV: ApiKeyEnv =
+  CASCADE_STT === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
+
+function createSTTProvider(apiKey: string) {
+  return CASCADE_STT === "gemini"
+    ? createGeminiSTTProvider({
+        apiKey,
+        defaultModel: "gemini-3.5-transcribe",
+      })
+    : createOpenAISTTProvider({ apiKey, defaultModel: "whisper-1" });
+}
 
 const LLM_API_KEY_ENV: ApiKeyEnv =
   CASCADE_LLM === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
@@ -155,7 +169,7 @@ export default defineConfig({
               return;
             }
 
-            const apiKey = requireApiKey(response, "OPENAI_API_KEY");
+            const apiKey = requireApiKey(response, STT_API_KEY_ENV);
             if (!apiKey) {
               return;
             }
@@ -179,10 +193,7 @@ export default defineConfig({
                 return;
               }
 
-              const provider = createOpenAISTTProvider({
-                apiKey,
-                defaultModel: "whisper-1",
-              });
+              const provider = createSTTProvider(apiKey);
               const transcription = await provider.transcribe(audio, {
                 language: typeof language === "string" ? language : undefined,
               });

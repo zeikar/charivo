@@ -28,7 +28,9 @@ import type {
 // Package-level browser harness for the cascading STT → LLM → TTS chain.
 // This page is test infrastructure, not product UI. It wires the recommended
 // remote-client + server-provider path: the Vite middleware in vite.config.ts
-// backs /api/stt, /api/chat, /api/tts with @charivo/server/openai.
+// backs /api/stt, /api/chat, /api/tts with @charivo/server/openai, each leg
+// switchable to @charivo/server/gemini via CASCADE_STT / CASCADE_LLM /
+// CASCADE_TTS.
 
 type CascadeWindow = Window & { __charivoCascade?: CascadeHarnessApi };
 
