@@ -86,15 +86,15 @@ interfaces, not concrete classes.
   component.
 - The server provider classes (`OpenAILLMProvider`, `OpenClawLLMProvider`,
   `GeminiLLMProvider`, `OpenAITTSProvider`, `GeminiTTSProvider`,
-  `OpenAISTTProvider`, `OpenAIRealtimeProvider`, `GeminiRealtimeProvider`) are
-  a third intentional exception, exported as concrete classes alongside their
-  `create*Provider` factories: consumers rely on `instanceof` checks and on
-  provider methods outside the narrow core interface (e.g.
-  `OpenAITTSProvider.setModel`, absent from `TTSProvider`) — a contract
-  `packages/server/__tests__/barrel.test.ts` pins. Separately, and not a
-  "Node-only" restriction, the factories are also callable directly from a
+  `OpenAISTTProvider`, `GeminiSTTProvider`, `OpenAIRealtimeProvider`,
+  `GeminiRealtimeProvider`) are a third intentional exception, exported as
+  concrete classes alongside their `create*Provider` factories: consumers rely
+  on `instanceof` checks and on provider methods outside the narrow core
+  interface (e.g. `OpenAITTSProvider.setModel`, absent from `TTSProvider`) — a
+  contract `packages/server/__tests__/barrel.test.ts` pins. Separately, and not
+  a "Node-only" restriction, the factories are also callable directly from a
   browser via `dangerouslyAllowBrowser`, letting a local app or test skip
-  standing up a server. `@charivo/server/*` exports all eight for server use;
+  standing up a server. `@charivo/server/*` exports all nine for server use;
   the two realtime providers are implemented directly there instead of in a
   modality package (see Server Providers below).
 - Subclassing `Charivo` is unsupported; extend it through composition
@@ -126,6 +126,7 @@ when you explicitly want local development shortcuts or zero-server behavior.
 
 - `@charivo/stt/remote`
 - `@charivo/stt/openai` — also exports the `createOpenAISTTProvider` server-side provider
+- `@charivo/stt/gemini` — also exports the `createGeminiSTTProvider` server-side provider
 - `@charivo/stt/web`
 - `@charivo/stt/openai-realtime` — streaming transcriber; the app supplies the
   bootstrap function that owns credentials
@@ -153,7 +154,7 @@ Provider packages belong behind your own API routes:
 The LLM/TTS/STT providers under these subpaths are implemented in the
 matching modality package (`@charivo/llm/openai`, `@charivo/llm/openclaw`,
 `@charivo/llm/gemini`, `@charivo/tts/openai`, `@charivo/tts/gemini`,
-`@charivo/stt/openai`) and re-exported here; only the
+`@charivo/stt/openai`, `@charivo/stt/gemini`) and re-exported here; only the
 realtime providers — OpenAI (ephemeral client-secret minting) and Gemini Live
 (single-use ephemeral tokens carrying the whole session config) — are
 implemented directly in `@charivo/server`.
@@ -191,7 +192,7 @@ For production browser apps:
 
 - LLM: `@charivo/llm` + `@charivo/llm/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 - TTS: `@charivo/tts` + `@charivo/tts/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
-- STT: `@charivo/stt` + `@charivo/stt/remote` + `@charivo/server/openai`
+- STT: `@charivo/stt` + `@charivo/stt/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 - Realtime: `@charivo/realtime` + `@charivo/realtime/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 
 Direct browser vendor packages are mainly for development, demos, and testing.

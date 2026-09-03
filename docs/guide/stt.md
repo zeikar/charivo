@@ -8,7 +8,7 @@ sidebar_position: 8
 Charivo's STT layer combines `@charivo/stt` with a concrete transcriber.
 
 For production browser apps, use the remote transcriber with a server route
-backed by `@charivo/server/openai`.
+backed by `@charivo/server/openai` or `@charivo/server/gemini`.
 
 ## Recommended Stack
 
@@ -16,7 +16,7 @@ backed by `@charivo/server/openai`.
 @charivo/stt
 @charivo/stt/remote
 your /api/stt route
-@charivo/server/openai
+@charivo/server/openai or @charivo/server/gemini
 ```
 
 The browser records locally. The backend handles transcription.
@@ -51,6 +51,18 @@ const text = await charivo.getSTTManager()?.stop();
 - `@charivo/stt/openai`
 - useful for local development and testing
 - exposes credentials to the browser
+
+### Direct Gemini
+
+- `@charivo/stt/gemini`
+- useful for local development and testing
+- exposes credentials to the browser
+
+**Limitations:**
+
+- the `language` hint is optional and only a soft nudge — a wrong hint does not override what the model actually hears
+- one request per utterance, with no streaming — the live transcription model is a separate transport this package does not cover
+- the free tier allows 3 requests per minute; beyond that the 429 surfaces as a provider error
 
 ### Browser-Native
 
@@ -90,8 +102,8 @@ event bus.
 
 ## Provider Route
 
-The remote transcriber usually pairs with `@charivo/server/openai` on the
-server:
+The remote transcriber usually pairs with `@charivo/server/openai` or
+`@charivo/server/gemini` on the server:
 
 ```ts
 const provider = createOpenAISTTProvider({
@@ -104,10 +116,18 @@ const text = await provider.transcribe(audioBlob, {
 });
 ```
 
+```ts
+const geminiProvider = createGeminiSTTProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+  defaultModel: "gemini-3.5-transcribe",
+});
+```
+
 ## Alternatives
 
 - Use `@charivo/stt/web` when you want the fewest moving parts and browser support is good enough.
 - Use `@charivo/stt/openai` when you are testing direct vendor behavior.
+- Use `@charivo/stt/gemini` when you are testing the Gemini transcriber directly.
 - Move to [Realtime](./realtime.md) when you want continuous session-based voice interaction instead of turn-based transcription.
 
 ## References
