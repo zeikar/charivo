@@ -8,7 +8,8 @@ Covered chain (the recommended remote-client + server-provider path):
 - `@charivo/stt/remote` → `/api/stt` → `@charivo/server/openai` (whisper-1)
 - `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano),
   or `@charivo/server/gemini` (gemini-3.5-flash-lite) with `CASCADE_LLM=gemini`
-- `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts)
+- `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts),
+  or `@charivo/server/gemini` (gemini-3.1-flash-tts-preview) with `CASCADE_TTS=gemini`
 - `@charivo/core` (`Charivo.userSay`) + `@charivo/render` (`RenderManager` lip-sync)
 
 Run it explicitly:
@@ -19,6 +20,12 @@ RUN_LIVE_CASCADE=1 OPENAI_API_KEY=your-key pnpm test:cascade
 
 # Same specs, with the LLM leg on the Gemini provider (STT and TTS stay on OpenAI):
 RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
+
+# Same specs, with the TTS leg on the Gemini provider (STT and LLM stay on OpenAI):
+RUN_LIVE_CASCADE=1 CASCADE_TTS=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
+
+# Both legs on Gemini (STT stays on OpenAI):
+RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini CASCADE_TTS=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 ```
 
 It reuses the realtime voice fixture
@@ -26,7 +33,7 @@ It reuses the realtime voice fixture
 as canned speech fed into Chromium's fake microphone, so the suite runs without
 local setup. The spec skips cleanly if the fixture is missing or if
 `RUN_LIVE_CASCADE` / `OPENAI_API_KEY` are not set (or `GEMINI_API_KEY`, when
-`CASCADE_LLM=gemini`).
+`CASCADE_LLM=gemini` and/or `CASCADE_TTS=gemini`).
 
 What it proves:
 
@@ -66,4 +73,5 @@ Cost note: each run makes one transcription, two speech syntheses, and between
 four and eight chat completions — every turn is a tool loop, so each of the two
 tests spends two to four completions depending on how many tool rounds the
 model takes. All of it goes to OpenAI by default; with `CASCADE_LLM=gemini`
-the chat completions go to Gemini instead.
+the chat completions go to Gemini instead, and with `CASCADE_TTS=gemini` the
+speech syntheses go to Gemini instead.

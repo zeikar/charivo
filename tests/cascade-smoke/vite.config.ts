@@ -4,7 +4,10 @@ import {
   createOpenAISTTProvider,
   createOpenAITTSProvider,
 } from "../../packages/server/src/openai/index";
-import { createGeminiLLMProvider } from "../../packages/server/src/gemini/index";
+import {
+  createGeminiLLMProvider,
+  createGeminiTTSProvider,
+} from "../../packages/server/src/gemini/index";
 import type { LLMMessage, ToolDefinition } from "../../packages/core/src/types";
 import { workspaceAliases } from "../../test-aliases";
 import { defineConfig } from "vite";
@@ -16,9 +19,10 @@ const harnessRoot = __dirname;
 // These routes are intentionally local to the cascade harness so the smoke
 // test can validate the STT → LLM → TTS chain without depending on
 // examples/web. They mirror the examples/web /api/stt, /api/chat, /api/tts
-// route contracts, backed by @charivo/server/openai. CASCADE_LLM=gemini swaps
-// only the /api/chat leg to @charivo/server/gemini, so the same specs drive the
-// Gemini LLM provider end to end while STT and TTS stay on OpenAI.
+// route contracts, backed by @charivo/server/openai. CASCADE_LLM=gemini and
+// CASCADE_TTS=gemini each swap only their own leg to @charivo/server/gemini,
+// independently of one another, so the same specs can drive either provider
+// end to end while the rest of the chain stays on OpenAI.
 
 function sendJson(
   response: ServerResponse,
@@ -85,14 +89,25 @@ function requireApiKey(
   return apiKey;
 }
 
+type CascadeProvider = "openai" | "gemini";
+
 // Resolved once at config load so a typo fails the run up front instead of
 // silently testing the default provider.
-const CASCADE_LLM = process.env.CASCADE_LLM ?? "openai";
-if (CASCADE_LLM !== "openai" && CASCADE_LLM !== "gemini") {
-  throw new Error(
-    `CASCADE_LLM must be "openai" or "gemini", received "${CASCADE_LLM}"`,
-  );
+function resolveCascadeSwitch(
+  name: "CASCADE_LLM" | "CASCADE_TTS",
+): CascadeProvider {
+  const value = process.env[name] ?? "openai";
+  if (value !== "openai" && value !== "gemini") {
+    throw new Error(
+      `${name} must be "openai" or "gemini", received "${value}"`,
+    );
+  }
+
+  return value;
 }
+const CASCADE_LLM = resolveCascadeSwitch("CASCADE_LLM");
+const CASCADE_TTS = resolveCascadeSwitch("CASCADE_TTS");
+
 const LLM_API_KEY_ENV: ApiKeyEnv =
   CASCADE_LLM === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
 
@@ -100,6 +115,26 @@ function createLLMProvider(apiKey: string) {
   return CASCADE_LLM === "gemini"
     ? createGeminiLLMProvider({ apiKey, model: "gemini-3.5-flash-lite" })
     : createOpenAILLMProvider({ apiKey, model: "gpt-4.1-nano" });
+}
+
+const TTS_API_KEY_ENV: ApiKeyEnv =
+  CASCADE_TTS === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
+
+function createTTSProvider(apiKey: string) {
+  return CASCADE_TTS === "gemini"
+    ? // timeoutMs below @charivo/tts/remote's fixed 30s so the harness route
+      // gives up before the browser does - the same reason examples/web sets
+      // TTS_GEMINI_ROUTE_TIMEOUT_MS.
+      createGeminiTTSProvider({
+        apiKey,
+        defaultModel: "gemini-3.1-flash-tts-preview",
+        timeoutMs: 25_000,
+      })
+    : createOpenAITTSProvider({
+        apiKey,
+        defaultVoice: "marin",
+        defaultModel: "gpt-4o-mini-tts",
+      });
 }
 
 export default defineConfig({
@@ -231,7 +266,7 @@ export default defineConfig({
               return;
             }
 
-            const apiKey = requireApiKey(response, "OPENAI_API_KEY");
+            const apiKey = requireApiKey(response, TTS_API_KEY_ENV);
             if (!apiKey) {
               return;
             }
@@ -247,16 +282,22 @@ export default defineConfig({
                 return;
               }
 
-              const provider = createOpenAITTSProvider({
-                apiKey,
-                defaultVoice: "marin",
-                defaultModel: "gpt-4o-mini-tts",
-              });
-              const audioBuffer = await provider.generateSpeech(text, {
-                voice:
-                  typeof payload.voice === "string" ? payload.voice : "marin",
-                rate: typeof payload.speed === "number" ? payload.speed : 1.0,
-              });
+              const provider = createTTSProvider(apiKey);
+              // The harness character has no voice, and the remote player's
+              // default voice ("marin") is an OpenAI name, so on the Gemini
+              // leg the route pins a Gemini voice itself instead of forwarding
+              // payload.voice/speed - CASCADE_TTS ignores rate entirely.
+              const audioBuffer =
+                CASCADE_TTS === "gemini"
+                  ? await provider.generateSpeech(text, { voice: "Kore" })
+                  : await provider.generateSpeech(text, {
+                      voice:
+                        typeof payload.voice === "string"
+                          ? payload.voice
+                          : "marin",
+                      rate:
+                        typeof payload.speed === "number" ? payload.speed : 1.0,
+                    });
 
               response.statusCode = 200;
               response.setHeader("Content-Type", "audio/wav");
