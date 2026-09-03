@@ -65,6 +65,7 @@ Examples:
 - `@charivo/llm/openclaw`
 - `@charivo/llm/gemini`
 - `@charivo/tts/openai`
+- `@charivo/tts/gemini`
 - `@charivo/stt/openai`
 - `@charivo/realtime/openai-agents`
 - `@charivo/realtime/gemini`
@@ -76,12 +77,14 @@ not a credential-exposing one.
 
 The browser-direct caveat above is about the browser client, player, or
 transcriber factory (`createOpenAILLMClient`, `createOpenClawLLMClient`,
-`createGeminiLLMClient`, `createOpenAITTSPlayer`, `createOpenAISTTTranscriber`)
-on the first five subpaths. Those same subpaths double as the home of the
-matching server-side provider factory (`createOpenAILLMProvider`,
-`createOpenClawLLMProvider`, `createGeminiLLMProvider`, `createOpenAITTSProvider`,
-`createOpenAISTTProvider`) — the provider is meant to run on the server and
-refuses to run in a browser unless you pass `dangerouslyAllowBrowser: true`.
+`createGeminiLLMClient`, `createOpenAITTSPlayer`, `createGeminiTTSPlayer`,
+`createOpenAISTTTranscriber`) on the first six subpaths. Those same subpaths
+double as the home of the matching server-side provider factory
+(`createOpenAILLMProvider`, `createOpenClawLLMProvider`,
+`createGeminiLLMProvider`, `createOpenAITTSProvider`,
+`createGeminiTTSProvider`, `createOpenAISTTProvider`) — the provider is meant
+to run on the server and refuses to run in a browser unless you pass
+`dangerouslyAllowBrowser: true`.
 
 Choose this path when:
 
@@ -121,7 +124,7 @@ Choose this path when:
 @charivo/core
 @charivo/tts
 @charivo/tts/remote
-@charivo/server/openai
+@charivo/server/openai or @charivo/server/gemini
 ```
 
 ### Speech-to-text from the microphone

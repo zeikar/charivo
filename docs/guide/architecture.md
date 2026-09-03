@@ -85,17 +85,18 @@ interfaces, not concrete classes.
   *taxonomy* to check with `isCharivoError`/`error.code`, not a constructible
   component.
 - The server provider classes (`OpenAILLMProvider`, `OpenClawLLMProvider`,
-  `GeminiLLMProvider`, `OpenAITTSProvider`, `OpenAISTTProvider`,
-  `OpenAIRealtimeProvider`, `GeminiRealtimeProvider`) are a third intentional
-  exception, exported as concrete classes alongside their `create*Provider`
-  factories: consumers rely on `instanceof` checks and on provider methods
-  outside the narrow core interface (e.g. `OpenAITTSProvider.setModel`, absent
-  from `TTSProvider`) — a contract `packages/server/__tests__/barrel.test.ts`
-  pins. Separately, and not a "Node-only" restriction, the factories are also
-  callable directly from a browser via `dangerouslyAllowBrowser`, letting a
-  local app or test skip standing up a server. `@charivo/server/*` exports all
-  seven for server use; the two realtime providers are implemented directly
-  there instead of in a modality package (see Server Providers below).
+  `GeminiLLMProvider`, `OpenAITTSProvider`, `GeminiTTSProvider`,
+  `OpenAISTTProvider`, `OpenAIRealtimeProvider`, `GeminiRealtimeProvider`) are
+  a third intentional exception, exported as concrete classes alongside their
+  `create*Provider` factories: consumers rely on `instanceof` checks and on
+  provider methods outside the narrow core interface (e.g.
+  `OpenAITTSProvider.setModel`, absent from `TTSProvider`) — a contract
+  `packages/server/__tests__/barrel.test.ts` pins. Separately, and not a
+  "Node-only" restriction, the factories are also callable directly from a
+  browser via `dangerouslyAllowBrowser`, letting a local app or test skip
+  standing up a server. `@charivo/server/*` exports all eight for server use;
+  the two realtime providers are implemented directly there instead of in a
+  modality package (see Server Providers below).
 - Subclassing `Charivo` is unsupported; extend it through composition
   (attach managers, listen to events) rather than inheritance.
 - The concrete event bus implementation is internal; `CharivoEventBus` and
@@ -118,6 +119,7 @@ when you explicitly want local development shortcuts or zero-server behavior.
 
 - `@charivo/tts/remote`
 - `@charivo/tts/openai` — also exports the `createOpenAITTSProvider` server-side provider
+- `@charivo/tts/gemini` — also exports the `createGeminiTTSProvider` server-side provider
 - `@charivo/tts/web`
 
 ### STT
@@ -150,8 +152,8 @@ Provider packages belong behind your own API routes:
 
 The LLM/TTS/STT providers under these subpaths are implemented in the
 matching modality package (`@charivo/llm/openai`, `@charivo/llm/openclaw`,
-`@charivo/llm/gemini`, `@charivo/tts/openai`, `@charivo/stt/openai`) and
-re-exported here; only the
+`@charivo/llm/gemini`, `@charivo/tts/openai`, `@charivo/tts/gemini`,
+`@charivo/stt/openai`) and re-exported here; only the
 realtime providers — OpenAI (ephemeral client-secret minting) and Gemini Live
 (single-use ephemeral tokens carrying the whole session config) — are
 implemented directly in `@charivo/server`.
@@ -188,7 +190,7 @@ redesigned.
 For production browser apps:
 
 - LLM: `@charivo/llm` + `@charivo/llm/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
-- TTS: `@charivo/tts` + `@charivo/tts/remote` + `@charivo/server/openai`
+- TTS: `@charivo/tts` + `@charivo/tts/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 - STT: `@charivo/stt` + `@charivo/stt/remote` + `@charivo/server/openai`
 - Realtime: `@charivo/realtime` + `@charivo/realtime/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 

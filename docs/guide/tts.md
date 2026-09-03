@@ -8,7 +8,7 @@ sidebar_position: 7
 Charivo's TTS layer combines `@charivo/tts` with a concrete player.
 
 For production browser apps, use the remote player with a server route backed
-by `@charivo/server/openai`.
+by `@charivo/server/openai` or `@charivo/server/gemini`.
 
 ## Recommended Stack
 
@@ -16,7 +16,7 @@ by `@charivo/server/openai`.
 @charivo/tts
 @charivo/tts/remote
 your /api/tts route
-@charivo/server/openai
+@charivo/server/openai or @charivo/server/gemini
 ```
 
 ## Basic Setup
@@ -42,6 +42,12 @@ const charivo = createCharivo({
 ### Direct OpenAI
 
 - `@charivo/tts/openai`
+- useful for local development and testing
+- exposes credentials to the browser
+
+### Direct Gemini
+
+- `@charivo/tts/gemini`
 - useful for local development and testing
 - exposes credentials to the browser
 
@@ -102,8 +108,8 @@ leaves the turn running to completion behind it.
 
 ## Provider Route
 
-The remote player usually pairs with `@charivo/server/openai` on the
-server:
+The remote player usually pairs with `@charivo/server/openai` or
+`@charivo/server/gemini` on the server:
 
 ```ts
 const provider = createOpenAITTSProvider({
@@ -118,10 +124,33 @@ const audio = await provider.generateSpeech(text, {
 });
 ```
 
+```ts
+const geminiProvider = createGeminiTTSProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+  // `@charivo/tts/remote` gives up at 30s, so the server must give up first.
+  timeoutMs: 25_000,
+});
+```
+
+A text cap is the real latency control on top of that deadline — the demo
+caps at 400 characters via `TTS_GEMINI_MAX_TEXT_CHARS`. The provider's 90s
+default `timeoutMs` is only for the direct player and callers that own their
+own deadline.
+
+### Gemini TTS limitations
+
+- the provider wraps Gemini's raw PCM response as a 16-bit WAV file
+- `rate` and `pitch` are ignored, since the API has no speed or pitch control
+- voices are Google's prebuilt names, not OpenAI-style voice IDs
+- the text is sent behind a fixed synthesis preamble, and a 5xx or a
+  text-only answer is retried once within the configured `timeoutMs`
+- latency runs roughly 0.55–0.7x the audio length, so keep replies short
+
 ## Alternatives
 
 - Use `@charivo/tts/web` when you want no backend and browser variability is acceptable.
 - Use `@charivo/tts/openai` when you are debugging OpenAI TTS behavior directly.
+- Use `@charivo/tts/gemini` when you are debugging Gemini TTS behavior directly.
 - Skip TTS when text chat is enough for the current experience.
 
 ## References
