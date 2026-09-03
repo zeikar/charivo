@@ -3,6 +3,7 @@ import {
   GEMINI_LIVE_ADAPTER,
   OPENAI_REALTIME_AGENTS_ADAPTER,
 } from "@charivo/core";
+import { CHARACTER_CONFIGS } from "../../config/characters";
 
 const createSession = vi.fn();
 const createGeminiSession = vi.fn();
@@ -251,7 +252,7 @@ describe("examples/web /api/realtime route", () => {
     expect(session.maxTokens).toBe(REALTIME_MAX_OUTPUT_TOKENS);
   });
 
-  it("keeps voice and input transcription out of the gemini session", async () => {
+  it("drops an OpenAI voice and input transcription from the gemini session", async () => {
     createGeminiSession.mockResolvedValue(GEMINI_BOOTSTRAP);
 
     await POST(
@@ -259,10 +260,10 @@ describe("examples/web /api/realtime route", () => {
         transport: "websocket",
         session: {
           provider: "gemini",
-          // Both are values the OpenAI path would have forwarded — a voice in
-          // the allowlist, and a transcription block whose `enabled: true` is
-          // what makes that path emit it at all — so this proves the gemini
-          // assembler drops them rather than an upstream filter doing it.
+          // `TTS_FALLBACK_VOICE` is an OpenAI id, off the Gemini allowlist, so
+          // it must not be forwarded. The transcription block's `enabled: true`
+          // is what makes the OpenAI path emit it at all — so this proves the
+          // gemini assembler drops both rather than an upstream filter doing it.
           voice: TTS_FALLBACK_VOICE,
           inputAudioTranscription: { enabled: true, model: "whisper-1" },
         },
@@ -272,6 +273,24 @@ describe("examples/web /api/realtime route", () => {
     const session = createGeminiSession.mock.calls[0][0].session;
     expect(session).not.toHaveProperty("voice");
     expect(session).not.toHaveProperty("inputAudioTranscription");
+  });
+
+  it("forwards a Gemini voice a shipped character uses", async () => {
+    createGeminiSession.mockResolvedValue(GEMINI_BOOTSTRAP);
+
+    await POST(
+      postRequest({
+        transport: "websocket",
+        session: {
+          provider: "gemini",
+          voice: CHARACTER_CONFIGS.Wanko.voices.gemini,
+        },
+      }) as never,
+    );
+
+    expect(createGeminiSession.mock.calls[0][0].session.voice).toBe(
+      CHARACTER_CONFIGS.Wanko.voices.gemini,
+    );
   });
 
   it("rejects a toolChoice the Gemini Live API cannot express", async () => {

@@ -20,6 +20,7 @@ import {
   REALTIME_TOOL_CHOICES,
   REALTIME_TRANSCRIPTION_MODEL,
   TTS_ALLOWED_VOICES,
+  TTS_GEMINI_ALLOWED_VOICES,
 } from "../demo-limits";
 
 type SessionResult =
@@ -152,10 +153,16 @@ function buildGeminiSessionConfig(
     };
   }
 
-  // No `voice`: the shipped characters carry OpenAI voice ids, and
-  // `@charivo/server/gemini` picks its own default from Google's list.
-  // No `inputAudioTranscription` either: the demo never reads user
-  // transcripts, and leaving the block out keeps them off and unbilled.
+  // The shipped characters' `voices.gemini` are forwarded when allow-listed,
+  // otherwise `voice` falls back to the provider default rather than erroring:
+  // voice costs nothing, so a stale value should not break the demo. No
+  // `inputAudioTranscription` either: the demo never reads user transcripts,
+  // and leaving the block out keeps them off and unbilled.
+  const voice =
+    requested.voice && TTS_GEMINI_ALLOWED_VOICES.has(requested.voice)
+      ? requested.voice
+      : undefined;
+
   return {
     ok: true,
     value: {
@@ -164,6 +171,7 @@ function buildGeminiSessionConfig(
       maxTokens: REALTIME_MAX_OUTPUT_TOKENS,
       ...(instructions !== undefined ? { instructions } : {}),
       ...(tools !== undefined ? { tools } : {}),
+      ...(voice !== undefined ? { voice } : {}),
     },
   };
 }
