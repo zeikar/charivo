@@ -9,6 +9,11 @@ export {
   createGeminiTTSProvider,
 } from "@charivo/tts/gemini";
 export {
+  type GeminiSTTConfig,
+  GeminiSTTProvider,
+  createGeminiSTTProvider,
+} from "@charivo/stt/gemini";
+export {
   type GeminiRealtimeProviderConfig,
   GeminiRealtimeProvider,
   createGeminiRealtimeProvider,

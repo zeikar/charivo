@@ -18,6 +18,8 @@ import {
   GeminiLLMProvider,
   createGeminiTTSProvider,
   GeminiTTSProvider,
+  createGeminiSTTProvider,
+  GeminiSTTProvider,
   createGeminiRealtimeProvider,
   GeminiRealtimeProvider,
 } from "@charivo/server/gemini";
@@ -76,5 +78,10 @@ describe("@charivo/server/gemini", () => {
     expect(provider).toBeInstanceOf(GeminiTTSProvider);
     expect(typeof provider.setVoice).toBe("function");
     expect(typeof provider.setModel).toBe("function");
+  });
+
+  it("re-exports the STT provider and factory", () => {
+    const provider = createGeminiSTTProvider({ apiKey: "key" });
+    expect(provider).toBeInstanceOf(GeminiSTTProvider);
   });
 });
