@@ -29,6 +29,17 @@ const text = await sttManager.stop();
 - `@charivo/stt/openai`: `createOpenAISTTTranscriber(config)` (browser
   transcriber, dev/testing only) and, for server-side use,
   `createOpenAISTTProvider(config)`, `OpenAISTTProvider`, `type OpenAISTTConfig`
+- `@charivo/stt/gemini`: `createGeminiSTTTranscriber(config)` (browser
+  transcriber, dev/testing only) and, for server-side use,
+  `createGeminiSTTProvider(config)`, `GeminiSTTProvider`, `type GeminiSTTConfig`.
+  The recording is posted inline (base64) to Gemini's
+  `models/{model}:generateContent` over `fetch`, with a default model of
+  `gemini-3.5-transcribe`. `language` is optional and only a soft hint —
+  the model transcribes what it hears even when the hint is wrong. `timeoutMs`
+  defaults to 30s and also covers reading the response body. Inline requests
+  are capped at 20MB, and there is no streaming: the live transcription model
+  is a separate transport. The free tier allows 3 requests per minute; beyond
+  that the 429 surfaces as a provider error.
 - `@charivo/stt/openai-realtime`: `createOpenAIRealtimeSTTTranscriber({ bootstrap })`
   (live WebRTC streaming transcriber, `gpt-realtime-whisper`) — the app injects
   `bootstrap(request) => Promise<{ answerSdp }>`, owns the credentials, and

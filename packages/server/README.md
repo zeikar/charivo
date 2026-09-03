@@ -35,6 +35,7 @@ const llm = createOpenAILLMProvider({
 import {
   createGeminiLLMProvider,
   createGeminiTTSProvider,
+  createGeminiSTTProvider,
   createGeminiRealtimeProvider,
 } from "@charivo/server/gemini";
 
@@ -51,6 +52,12 @@ const tts = createGeminiTTSProvider({
   defaultVoice: "Kore",
   // `@charivo/tts/remote` gives up at 30s, so the server must give up first.
   timeoutMs: 25_000,
+});
+
+const stt = createGeminiSTTProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+  // Optional: defaults to "gemini-3.5-transcribe".
+  defaultModel: "gemini-3.5-transcribe",
 });
 
 const realtime = createGeminiRealtimeProvider({
@@ -74,6 +81,15 @@ own deadline — a route behind `@charivo/tts/remote` must set it below that
 player's fixed 30s, as above — and the text cap is the real latency control
 on top of that deadline (the demo caps at 400 characters via
 `TTS_GEMINI_MAX_TEXT_CHARS`).
+
+`createGeminiSTTProvider` (implemented in `@charivo/stt/gemini`) posts the
+recording inline as base64 to `models/{model}:generateContent`; the default
+model is `gemini-3.5-transcribe`. It returns the `audioTranscription` part's
+text, or `""` for silence. `language` is optional and only a soft hint, and
+there is no retry. Its 30s default `timeoutMs` also covers reading the
+response body, same as Gemini TTS. The free tier allows 3 requests per
+minute; beyond that, the 429 is a `CharivoProviderError` for the caller to
+handle.
 
 `createSession` mints a single-use Gemini Live ephemeral token and returns a
 websocket bootstrap (`{ adapter, transport: "websocket", url, token }`) for
@@ -146,7 +162,7 @@ is unaffected. Verified against OpenClaw 2026.6.11.
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
 - `@charivo/server/openclaw`: `createOpenClawLLMProvider`
-- `@charivo/server/gemini`: `createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiRealtimeProvider`
+- `@charivo/server/gemini`: `createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiSTTProvider`, `createGeminiRealtimeProvider`
 
 The LLM/TTS/STT providers are re-exported from `@charivo/llm`, `@charivo/tts`,
 and `@charivo/stt` (the `openai`/`openclaw`/`gemini` subpaths implement them). Only the
@@ -157,24 +173,27 @@ realtime providers, `createOpenAIRealtimeProvider` and
 
 Every provider in this package (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
 `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`,
-`createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiRealtimeProvider`,
-`createOpenClawLLMProvider`)
+`createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiSTTProvider`,
+`createGeminiRealtimeProvider`, `createOpenClawLLMProvider`)
 throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
-  The LLM/TTS/STT providers wrap the SDK's own error: its message is preserved and
-  the original error is kept on `cause`. The two realtime providers'
-  HTTP-status errors (non-2xx responses, an invalid client secret or token
-  response) are built from the response body text, so they carry the API's
-  message but no `cause`; their network/connection failures and response
-  body/JSON parsing failures are wrapped with the original error kept on `cause`.
+  The SDK-backed providers (OpenAI LLM/TTS/STT, Gemini LLM, and OpenClaw LLM)
+  wrap the SDK's own error: its message is preserved and the original error is
+  kept on `cause`. The Gemini TTS and STT providers (raw `fetch`, no SDK) build
+  HTTP-status errors from the response body text the same way the two realtime
+  providers do (non-2xx responses, an invalid client secret or token
+  response), so they carry the API's message but no `cause`; their network/
+  connection failures and response body/JSON parsing failures are wrapped with
+  the original error kept on `cause`.
 - Request timeouts throw `CharivoTimeoutError` (`code: "CHARIVO_TIMEOUT_ERROR"`):
-  30s for the OpenAI providers and Gemini LLM/Realtime, and for Gemini TTS the
-  configured `timeoutMs` (90s default; set it below 30s behind
-  `@charivo/tts/remote`), whose timer also covers reading the body and spans
-  its single retry. For the two realtime providers the timer covers the
-  request up to the response headers; reading the body afterwards is not
-  timed.
+  30s for the OpenAI providers and Gemini LLM/Realtime; Gemini STT defaults its
+  configurable `timeoutMs` to the same 30s, and like Gemini TTS its timer also
+  covers reading the body. Gemini TTS itself defaults that `timeoutMs` to 90s
+  (set it below 30s behind `@charivo/tts/remote`), and its timer also spans
+  its single retry.
+  For the two realtime providers the timer covers the request up to the
+  response headers; reading the body afterwards is not timed.
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`
   throws `CharivoStateError` (`code: "CHARIVO_STATE_ERROR"`).
   The realtime providers also throw `CharivoStateError` for invalid session

@@ -242,7 +242,7 @@ Use the remote/server-mediated path by default:
 
 - LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai`, `@charivo/server/openclaw`, or `@charivo/server/gemini`
 - TTS: `@charivo/tts/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
-- STT: `@charivo/stt/remote` + `@charivo/server/openai`
+- STT: `@charivo/stt/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 - Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/gemini`
 
 Direct browser packages are for local development, demos, and testing only:
@@ -255,18 +255,20 @@ Direct browser packages are for local development, demos, and testing only:
 - `@charivo/tts/openai`
 - `@charivo/tts/gemini`
 - `@charivo/stt/openai`
+- `@charivo/stt/gemini`
 
 `@charivo/realtime/openai` is server-mediated despite being a direct transport —
 it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
-or transcriber factory on each of these six subpaths
+or transcriber factory on each of these seven subpaths
 (`createOpenAILLMClient`, `createOpenClawLLMClient`, `createGeminiLLMClient`,
-`createOpenAITTSPlayer`, `createGeminiTTSPlayer`, `createOpenAISTTTranscriber`).
+`createOpenAITTSPlayer`, `createGeminiTTSPlayer`, `createOpenAISTTTranscriber`,
+`createGeminiSTTTranscriber`).
 The same subpaths also export the server-side provider (`createOpenAILLMProvider`,
 `createOpenClawLLMProvider`, `createGeminiLLMProvider`, `createOpenAITTSProvider`,
-`createGeminiTTSProvider`, `createOpenAISTTProvider`), which refuses to run in a
-browser unless you pass `dangerouslyAllowBrowser: true`.
+`createGeminiTTSProvider`, `createOpenAISTTProvider`, `createGeminiSTTProvider`),
+which refuses to run in a browser unless you pass `dangerouslyAllowBrowser: true`.
 
 Browser-native packages are useful when you explicitly want no server dependency:
 
@@ -339,9 +341,13 @@ STT:
 - `@charivo/stt/remote`: browser transcriber for server STT routes
 - `@charivo/stt/openai`: direct OpenAI browser transcriber (dev/testing only)
   and the `createOpenAISTTProvider` server-side provider
+- `@charivo/stt/gemini`: direct Gemini browser transcriber (dev/testing only)
+  and the `createGeminiSTTProvider` server-side provider
 - `@charivo/stt/web`: Web Speech API transcriber
 - `@charivo/server/openai`: re-exports `createOpenAISTTProvider(...)` from
   `@charivo/stt/openai`
+- `@charivo/server/gemini`: re-exports `createGeminiSTTProvider(...)` from
+  `@charivo/stt/gemini`
 
 Realtime:
 
