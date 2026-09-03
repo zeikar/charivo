@@ -2,16 +2,16 @@
  * Cost boundaries for the public demo deployment.
  *
  * Every route under `src/app/api/` is an unauthenticated proxy. The OpenAI-backed
- * routes spend `OPENAI_API_KEY`; `/api/chat-gemini` spends only `GEMINI_API_KEY`;
- * `/api/realtime` spends `GEMINI_API_KEY` when the Gemini provider is selected
- * and `OPENAI_API_KEY` otherwise; `/api/chat-openclaw` — which forwards to
- * `OPENCLAW_BASE_URL` with `OPENCLAW_TOKEN` — spends neither. There is no auth,
- * no per-IP quota, and no rate limiting — read the README's "Deploying this
- * demo" section before copying any of it.
+ * routes spend `OPENAI_API_KEY`; `/api/chat-gemini` and `/api/tts-gemini` spend
+ * only `GEMINI_API_KEY`; `/api/realtime` spends `GEMINI_API_KEY` when the Gemini
+ * provider is selected and `OPENAI_API_KEY` otherwise; `/api/chat-openclaw` —
+ * which forwards to `OPENCLAW_BASE_URL` with `OPENCLAW_TOKEN` — spends neither.
+ * There is no auth, no per-IP quota, and no rate limiting — read the README's
+ * "Deploying this demo" section before copying any of it.
  *
  * The limits below cover the OpenAI- and Gemini-backed routes, including
- * `/api/chat-gemini`; `/api/chat-openclaw` shares only the `chat-request`
- * payload bounds.
+ * `/api/chat-gemini` and `/api/tts-gemini`; `/api/chat-openclaw` shares only the
+ * `chat-request` payload bounds.
  *
  * The defence here is shape, not volume: pin every cost-bearing parameter
  * server-side and bound the size of a single request, so a caller cannot
@@ -92,14 +92,49 @@ export const TTS_FALLBACK_VOICE = "sage";
  * Derived from the characters the demo actually ships, so adding a character
  * cannot leave this list stale.
  */
-export const TTS_ALLOWED_VOICES: ReadonlySet<string> = new Set(
-  [
-    TTS_FALLBACK_VOICE,
-    ...Object.values(CHARACTER_CONFIGS).map(
-      (config) => config.character.voice?.voiceId,
-    ),
-  ].filter((voiceId): voiceId is string => typeof voiceId === "string"),
-);
+export const TTS_ALLOWED_VOICES: ReadonlySet<string> = new Set([
+  TTS_FALLBACK_VOICE,
+  ...Object.values(CHARACTER_CONFIGS).map((config) => config.voices.openai),
+]);
+
+/**
+ * Pinned here so the route picks the model it pays for instead of inheriting
+ * `@charivo/server/gemini`'s default.
+ */
+export const TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
+
+/**
+ * The provider's `timeoutMs`, set below `@charivo/tts/remote`'s fixed 30s
+ * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first and
+ * never keeps generating — and billing — for a request the browser already
+ * abandoned. The provider's single retry shares this budget.
+ */
+export const TTS_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
+
+/**
+ * Latency-bound, not cost-bound: the non-streaming endpoint answers in
+ * roughly 0.55–0.7x the audio's length (measured 300 chars ≈ 14s, 600 ≈ 20s),
+ * so 400 characters lands around 15s — one synthesis, or a 5xx/text-only
+ * first answer plus its retry, inside `TTS_GEMINI_ROUTE_TIMEOUT_MS`; anything
+ * longer fails fast rather than overrunning the client.
+ */
+export const TTS_GEMINI_MAX_TEXT_CHARS = 400;
+
+/**
+ * Only used when a request carries no voice at all — a character's own
+ * `voices.gemini` always wins. Deliberately a voice no shipped character
+ * uses; it is also the provider default.
+ */
+export const TTS_GEMINI_FALLBACK_VOICE = "Kore";
+
+/**
+ * Derived from the characters the demo actually ships, so adding a character
+ * cannot leave this list stale.
+ */
+export const TTS_GEMINI_ALLOWED_VOICES: ReadonlySet<string> = new Set([
+  TTS_GEMINI_FALLBACK_VOICE,
+  ...Object.values(CHARACTER_CONFIGS).map((config) => config.voices.gemini),
+]);
 
 /**
  * STT is billed per audio *minute*, which bytes bound only loosely: a low-bitrate
