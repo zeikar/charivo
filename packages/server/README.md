@@ -34,6 +34,7 @@ const llm = createOpenAILLMProvider({
 ```ts
 import {
   createGeminiLLMProvider,
+  createGeminiTTSProvider,
   createGeminiRealtimeProvider,
 } from "@charivo/server/gemini";
 
@@ -41,6 +42,15 @@ const llm = createGeminiLLMProvider({
   apiKey: process.env.GEMINI_API_KEY!,
   // Optional: defaults to "gemini-3.5-flash-lite".
   model: "gemini-3.5-flash-lite",
+});
+
+const tts = createGeminiTTSProvider({
+  apiKey: process.env.GEMINI_API_KEY!,
+  // Optional: defaults to "gemini-3.1-flash-tts-preview" / "Kore".
+  defaultModel: "gemini-3.1-flash-tts-preview",
+  defaultVoice: "Kore",
+  // `@charivo/tts/remote` gives up at 30s, so the server must give up first.
+  timeoutMs: 25_000,
 });
 
 const realtime = createGeminiRealtimeProvider({
@@ -53,6 +63,17 @@ OpenAI-compatible endpoint. Tool-call history is resent with Gemini's
 documented `skip_thought_signature_validator` placeholder because
 `LLMToolCall` carries no thought signature, so reasoning continuity across
 tool rounds is lost.
+
+`createGeminiTTSProvider` (implemented in `@charivo/tts/gemini`) wraps
+Gemini's raw PCM response as a 16-bit WAV file; `rate` and `pitch` are
+ignored, since the API has no speed or pitch control. The text is sent
+behind a fixed synthesis preamble, and a 5xx or a text-only answer is
+retried once within the same `timeoutMs`, per Google's documented
+mitigations. Its 90s default `timeoutMs` is only for callers that own their
+own deadline — a route behind `@charivo/tts/remote` must set it below that
+player's fixed 30s, as above — and the text cap is the real latency control
+on top of that deadline (the demo caps at 400 characters via
+`TTS_GEMINI_MAX_TEXT_CHARS`).
 
 `createSession` mints a single-use Gemini Live ephemeral token and returns a
 websocket bootstrap (`{ adapter, transport: "websocket", url, token }`) for
@@ -125,7 +146,7 @@ is unaffected. Verified against OpenClaw 2026.6.11.
 
 - `@charivo/server/openai`: `createOpenAILLMProvider`, `createOpenAITTSProvider`, `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`
 - `@charivo/server/openclaw`: `createOpenClawLLMProvider`
-- `@charivo/server/gemini`: `createGeminiLLMProvider`, `createGeminiRealtimeProvider`
+- `@charivo/server/gemini`: `createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiRealtimeProvider`
 
 The LLM/TTS/STT providers are re-exported from `@charivo/llm`, `@charivo/tts`,
 and `@charivo/stt` (the `openai`/`openclaw`/`gemini` subpaths implement them). Only the
@@ -136,7 +157,8 @@ realtime providers, `createOpenAIRealtimeProvider` and
 
 Every provider in this package (`createOpenAILLMProvider`, `createOpenAITTSProvider`,
 `createOpenAISTTProvider`, `createOpenAIRealtimeProvider`,
-`createGeminiLLMProvider`, `createGeminiRealtimeProvider`, `createOpenClawLLMProvider`)
+`createGeminiLLMProvider`, `createGeminiTTSProvider`, `createGeminiRealtimeProvider`,
+`createOpenClawLLMProvider`)
 throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
 
 - SDK/API failures throw `CharivoProviderError` (`code: "CHARIVO_PROVIDER_ERROR"`).
@@ -146,10 +168,13 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
   response) are built from the response body text, so they carry the API's
   message but no `cause`; their network/connection failures and response
   body/JSON parsing failures are wrapped with the original error kept on `cause`.
-- Request timeouts (OpenAI LLM/TTS/STT/Realtime and Gemini LLM/Realtime, 30s) throw
-  `CharivoTimeoutError` (`code: "CHARIVO_TIMEOUT_ERROR"`). For the two realtime
-  providers the timer covers the request up to the response headers; reading
-  the body afterwards is not timed.
+- Request timeouts throw `CharivoTimeoutError` (`code: "CHARIVO_TIMEOUT_ERROR"`):
+  30s for the OpenAI providers and Gemini LLM/Realtime, and for Gemini TTS the
+  configured `timeoutMs` (90s default; set it below 30s behind
+  `@charivo/tts/remote`), whose timer also covers reading the body and spans
+  its single retry. For the two realtime providers the timer covers the
+  request up to the response headers; reading the body afterwards is not
+  timed.
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`
   throws `CharivoStateError` (`code: "CHARIVO_STATE_ERROR"`).
   The realtime providers also throw `CharivoStateError` for invalid session

@@ -241,7 +241,7 @@ for realtime voice with cross-session memory.
 Use the remote/server-mediated path by default:
 
 - LLM: `@charivo/llm/remote` + a server route using a provider package such as `@charivo/server/openai`, `@charivo/server/openclaw`, or `@charivo/server/gemini`
-- TTS: `@charivo/tts/remote` + `@charivo/server/openai`
+- TTS: `@charivo/tts/remote` + `@charivo/server/openai` or `@charivo/server/gemini`
 - STT: `@charivo/stt/remote` + `@charivo/server/openai`
 - Realtime: `@charivo/realtime/remote` + a server route using a provider package such as `@charivo/server/openai` or `@charivo/server/gemini`
 
@@ -253,19 +253,20 @@ Direct browser packages are for local development, demos, and testing only:
 - `@charivo/realtime/openai-agents` (dev `apiKey` mints the client secret in-browser)
 - `@charivo/realtime/gemini` (dev `apiKey` mints the ephemeral token in-browser)
 - `@charivo/tts/openai`
+- `@charivo/tts/gemini`
 - `@charivo/stt/openai`
 
 `@charivo/realtime/openai` is server-mediated despite being a direct transport —
 it accepts only `apiEndpoint` or `sessionBootstrap` and never takes a key.
 
 The dev/testing-only classification above applies to the browser client, player,
-or transcriber factory on each of these five subpaths
+or transcriber factory on each of these six subpaths
 (`createOpenAILLMClient`, `createOpenClawLLMClient`, `createGeminiLLMClient`,
-`createOpenAITTSPlayer`, `createOpenAISTTTranscriber`). The same subpaths also
-export the server-side provider (`createOpenAILLMProvider`,
+`createOpenAITTSPlayer`, `createGeminiTTSPlayer`, `createOpenAISTTTranscriber`).
+The same subpaths also export the server-side provider (`createOpenAILLMProvider`,
 `createOpenClawLLMProvider`, `createGeminiLLMProvider`, `createOpenAITTSProvider`,
-`createOpenAISTTProvider`), which refuses to run in a browser unless you pass
-`dangerouslyAllowBrowser: true`.
+`createGeminiTTSProvider`, `createOpenAISTTProvider`), which refuses to run in a
+browser unless you pass `dangerouslyAllowBrowser: true`.
 
 Browser-native packages are useful when you explicitly want no server dependency:
 
@@ -324,9 +325,13 @@ TTS:
 - `@charivo/tts/remote`: browser player for server TTS routes
 - `@charivo/tts/openai`: direct OpenAI browser player (dev/testing only) and
   the `createOpenAITTSProvider` server-side provider
+- `@charivo/tts/gemini`: direct Gemini browser player (dev/testing only) and
+  the `createGeminiTTSProvider` server-side provider
 - `@charivo/tts/web`: Web Speech API player
 - `@charivo/server/openai`: re-exports `createOpenAITTSProvider(...)` from
   `@charivo/tts/openai`
+- `@charivo/server/gemini`: re-exports `createGeminiTTSProvider(...)` from
+  `@charivo/tts/gemini`
 
 STT:
 
