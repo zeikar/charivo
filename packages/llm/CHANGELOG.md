@@ -1,5 +1,25 @@
 # @charivo/llm
 
+## 0.11.1
+
+### Patch Changes
+
+- cc9f3b9: Surface the reason a remote route rejected a request. The STT and TTS remote
+  clients reported only the HTTP status line, so a provider rate limit or outage
+  reached the caller as "Internal Server Error" with the route's own explanation
+  discarded. All three remote clients now read the error body through a new
+  `readResponseErrorMessage` helper in `@charivo/core`, which prefers a route's
+  `details` field, falls back to `error`, then to the status line — and still
+  propagates an abort or timeout that lands mid-body instead of flattening it
+  into a message. This replaces the one-off copy that lived in the LLM client.
+- 630e538: Abort the in-flight OpenAI LLM request when its 30s timeout fires. The timeout
+  previously only raced the wrapper promise, so the SDK kept waiting and kept
+  retrying after the caller had already been rejected. It now passes an
+  `AbortController` signal to `chat.completions.create`, matching the Gemini
+  provider.
+- Updated dependencies [cc9f3b9]
+  - @charivo/core@0.34.0
+
 ## 0.11.0
 
 ### Minor Changes

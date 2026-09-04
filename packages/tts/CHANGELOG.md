@@ -1,5 +1,27 @@
 # @charivo/tts
 
+## 0.8.1
+
+### Patch Changes
+
+- cc9f3b9: Surface the reason a remote route rejected a request. The STT and TTS remote
+  clients reported only the HTTP status line, so a provider rate limit or outage
+  reached the caller as "Internal Server Error" with the route's own explanation
+  discarded. All three remote clients now read the error body through a new
+  `readResponseErrorMessage` helper in `@charivo/core`, which prefers a route's
+  `details` field, falls back to `error`, then to the status line — and still
+  propagates an abort or timeout that lands mid-body instead of flattening it
+  into a message. This replaces the one-off copy that lived in the LLM client.
+- 5633d4d: Stop mislabeling OpenAI TTS audio as WAV. The OpenAI player now declares
+  `audio/mpeg`, which is what the API actually returns — `OpenAITTSProvider`
+  sends `format: "wav"`, which is not the parameter the API reads (that is
+  `response_format`), so it is ignored and the mp3 default came back under a WAV
+  label. The remote player no longer hardcodes a container either: it adopts the
+  `Content-Type` its endpoint reports, so a server backed by OpenAI (MPEG) and
+  one backed by Gemini (WAV) are both labeled correctly.
+- Updated dependencies [cc9f3b9]
+  - @charivo/core@0.34.0
+
 ## 0.8.0
 
 ### Minor Changes
