@@ -126,6 +126,14 @@ export function useRealtimeMode() {
       });
       charivo.attachRealtime(realtimeManager);
 
+      // One character decides the whole session. The store is what the
+      // character sync in `useCharivoChat` resolves from, while
+      // `charivo.getCurrentCharacter()` only catches up after that sync's
+      // awaited model load -- reading the two separately lets a session started
+      // mid-switch pair one character's persona with another's voice, and the
+      // voice half of that pairing is unrevisable (see below).
+      const characterConfig = getCharacterConfig(selectedCharacter);
+
       const sessionConfig: RealtimeSessionConfig = {
         provider: selectedRealtimeProvider,
         // Transport is explicit because the remote client defaults it to
@@ -138,7 +146,7 @@ export function useRealtimeMode() {
           ? { transport: "websocket", model: REALTIME_GEMINI_MODEL }
           : { transport: "webrtc", model: REALTIME_OPENAI_MODEL }),
         instructions: buildDemoRealtimeInstructions(
-          charivo.getCurrentCharacter(),
+          characterConfig.character,
           avatarCatalog,
         ),
         // The character `charivo` holds carries the TTS player's voice, and the
@@ -148,10 +156,7 @@ export function useRealtimeMode() {
         // over `character.voice.voiceId`, and `updateSession` merges patches
         // over this base config, so the voice named here also outlives the
         // character sync's `updateSession({ instructions })`.
-        voice:
-          getCharacterConfig(selectedCharacter).voices[
-            selectedRealtimeProvider
-          ],
+        voice: characterConfig.voices[selectedRealtimeProvider],
       };
 
       // Both calls must land on the same adapter, which they do by carrying

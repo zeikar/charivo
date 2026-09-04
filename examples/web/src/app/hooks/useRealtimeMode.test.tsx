@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Charivo, RealtimeSessionConfig } from "@charivo/core";
+import type { Character, Charivo, RealtimeSessionConfig } from "@charivo/core";
 import { clickElement, renderComponent } from "../test-utils/render-component";
 import { useChatStore } from "../stores/useChatStore";
 import { useCharacterStore } from "../stores/useCharacterStore";
@@ -42,9 +42,11 @@ vi.mock("@charivo/realtime/remote", () => ({
 
 const initialStoreState = useChatStore.getState();
 
+let heldCharacter: Character | null = null;
+
 const charivo = {
   attachRealtime: () => {},
-  getCurrentCharacter: () => null,
+  getCurrentCharacter: () => heldCharacter,
 } as unknown as Charivo;
 
 function RealtimeModeProbe() {
@@ -90,6 +92,7 @@ beforeEach(() => {
   // The voice under test belongs to a character, so name one instead of
   // leaning on whatever the store happens to default to.
   useCharacterStore.setState({ selectedCharacter: "Haru" });
+  heldCharacter = CHARACTER_CONFIGS.Haru.character;
   prepareAudio.mockClear();
   startSession.mockClear();
 });
@@ -155,6 +158,32 @@ describe.each(PROVIDER_CASES)(
 
       expect(sessionConfigFrom(prepareAudio).voice).toBe(voice);
       expect(sessionConfigFrom(startSession).voice).toBe(voice);
+    });
+
+    /**
+     * Selecting a character updates the store immediately, while the character
+     * sync in `useCharivoChat` only reaches `charivo.setCharacter` after an
+     * awaited model load. Starting a session inside that window must not take
+     * the persona from one character and the voice from the other -- the voice
+     * is named once here and the sync's later `updateSession` cannot revise it,
+     * so a mixed session stays mixed for its whole life.
+     */
+    it("takes persona and voice from the same character mid-switch", async () => {
+      useCharacterStore.setState({ selectedCharacter: "Mao" });
+      // The sync has not run yet, so the instance still holds the old one.
+      heldCharacter = CHARACTER_CONFIGS.Haru.character;
+
+      await toggleRealtimeModeOn();
+
+      const config = sessionConfigFrom(startSession);
+
+      expect(config.voice).toBe(CHARACTER_CONFIGS.Mao.voices[provider]);
+      expect(config.instructions).toContain(
+        CHARACTER_CONFIGS.Mao.character.name,
+      );
+      expect(config.instructions).not.toContain(
+        CHARACTER_CONFIGS.Haru.character.name,
+      );
     });
   },
 );
