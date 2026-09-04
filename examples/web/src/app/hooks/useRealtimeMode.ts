@@ -149,9 +149,9 @@ export function useRealtimeMode() {
           characterConfig.character,
           avatarCatalog,
         ),
-        // The character `charivo` holds carries the TTS player's voice, and the
-        // two providers name their voices differently -- so the realtime voice
-        // is chosen here instead. `buildRealtimeSessionConfig`
+        // A character config's own `voice.voiceId` is a TTS voice, and the two
+        // realtime providers name their voices differently -- so the realtime
+        // voice is picked from `voices` here instead. `buildRealtimeSessionConfig`
         // (`packages/realtime/src/instructions.ts`) prefers an explicit `voice`
         // over `character.voice.voiceId`, and `updateSession` merges patches
         // over this base config, so the voice named here also outlives the
