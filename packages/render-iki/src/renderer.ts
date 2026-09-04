@@ -83,7 +83,11 @@ export class IkiRenderer implements Renderer, MouseTrackable {
         : err;
     }
 
-    this.player.load(model);
+    // Must be awaited: `load()` decodes the model's textures before it swaps in
+    // the new ParameterStore, so reading parameters early yields the EMPTY
+    // store from before the load — every `paramIds` check below would miss and
+    // the idle loop would drive nothing.
+    await this.player.load(model);
 
     // Rebuild the set of available parameter IDs from the loaded model.
     this.paramIds = new Set(this.player.getParameters().map((p) => p.id));
