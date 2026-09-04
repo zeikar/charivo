@@ -5,9 +5,7 @@
     "baseUrl": ".",
     "paths": {
       "@charivo/core": ["../core/dist/index.d.ts"],
-      "@charivo/render": ["../render/dist/index.d.ts"],
-      "@iki/engine": ["../../../iki/packages/engine/dist/index.d.ts"],
-      "@iki/format": ["../../../iki/packages/format/dist/index.d.ts"]
+      "@charivo/render": ["../render/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"],

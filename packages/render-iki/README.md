@@ -5,49 +5,29 @@ Iki-engine rendering adapter for Charivo. Implements the charivo `Renderer`
 [Iki](https://github.com/zeikar/iki) engine — a from-scratch, open Live2D
 alternative.
 
-## Local dogfood — not published, not in CI
+## Private dogfood adapter — not published
 
-This package is **`private`** and is **not published to npm**. It consumes the
-**unpublished** sibling packages `@iki/engine` and `@iki/format` via TypeScript
-`paths` and a tsup esbuild `alias` pointing at the sibling's **built** output —
-the Iki bundle is inlined into this package's `dist`, so the build output is
-self-contained.
+This package is **`private`** and is **not published to npm**. It exists to
+dogfood the Iki engine against a real charivo integration.
 
-**Prerequisite — clone and build Iki next to charivo.** The adapter resolves
-the engine at `../iki` relative to the charivo repo root (i.e. `iki` and
-`charivo` share a parent directory):
+It consumes [`@ikijs/engine`](https://www.npmjs.com/package/@ikijs/engine) and
+[`@ikijs/format`](https://www.npmjs.com/package/@ikijs/format) as ordinary npm
+dependencies — no sibling checkout, no path aliases, and the engine stays
+external in the bundle rather than being inlined into `dist`.
 
-```
-<parent>/
-├── charivo/
-└── iki/
-```
+Being private does not keep it out of the root passes: it has plain
+`build` / `typecheck` / `dev` scripts like every other package, so `pnpm verify`
+and CI compile it against the published engine. That is the point — a breaking
+change in Iki should fail charivo's build, not surface later by hand.
 
-This package also resolves `@charivo/core` and `@charivo/render` via their
-**built** `dist` declarations (not source). Both must be built before
-`build:local` can succeed.
+It resolves `@charivo/core` and `@charivo/render` via their **built** `dist`
+declarations (not source), so both must be built first — which the root
+`pnpm build` already does in workspace-dependency order.
 
 ```bash
-# 1. in the iki repo, build the engine + format packages
 pnpm install
-pnpm build            # or: pnpm --filter @iki/engine build && pnpm --filter @iki/format build
-
-# 2. in the charivo repo, build the workspace deps that this adapter consumes
-#    (run from the charivo repo root)
-pnpm build            # or: pnpm --filter @charivo/core build && pnpm --filter @charivo/render build
-
-# 3. then build this adapter
-pnpm --filter @charivo/render-iki build:local
+pnpm build            # @charivo/core → @charivo/render → this adapter
 ```
-
-This package's scripts are intentionally named **`build:local`**,
-**`typecheck:local`**, and **`dev:local`** (NOT `build`/`typecheck`/`dev`). The
-root `pnpm verify` / `pnpm dev` aggregators run `pnpm -r` over packages that
-have a `build`/`typecheck`/`dev` script, so the `:local` naming keeps this
-package out of those root passes — that is what lets `pnpm verify` and
-`pnpm dev` succeed when the `../iki` sibling is absent (e.g. in CI). **Do not
-rename these scripts** to the plain forms, or the root aggregators will try to
-build this package and fail without the sibling present.
 
 ## Usage
 
@@ -68,15 +48,15 @@ await renderManager.initialize();
 await renderManager.loadModel?.("/iki/hiyori.iki.json");
 ```
 
-(The package-name import resolves to `dist/` only after
-`pnpm --filter @charivo/render-iki build:local` has run with the sibling built.)
+(The package-name import resolves to `dist/`, so run
+`pnpm --filter @charivo/render-iki build` first.)
 
 ## Try it
 
 A runnable local harness lives in [`examples/iki-test`](../../examples/iki-test) —
 it drives a sample `.iki` model through charivo's `RenderManager` + this adapter
-(idle breath/blink, mouse-follow gaze, simulated lip-sync). With the `../iki`
-sibling present, run `pnpm --filter @charivo/iki-test dev` and open the Vite URL.
+(idle breath/blink, mouse-follow gaze, simulated lip-sync). Run
+`pnpm --filter @charivo/iki-test dev` and open the Vite URL.
 
 ## Public surface
 

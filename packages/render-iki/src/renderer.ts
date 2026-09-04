@@ -1,9 +1,8 @@
 /**
- * Local dogfood adapter consuming the UNPUBLISHED sibling @iki/* via
- * tsconfig/tsup aliases against ../iki/.../dist.  This package is private,
- * kept out of root build/typecheck/dev aggregators (scripts are
- * build:local/typecheck:local/dev:local), and requires the iki repo cloned at
- * ../iki and built.
+ * Dogfood adapter driving an `.iki` puppet through the Iki engine. The package
+ * is private (never published to npm), but @ikijs/engine and @ikijs/format are
+ * ordinary npm dependencies, so it builds and typechecks like any other
+ * workspace package.
  */
 
 import type {
@@ -13,8 +12,8 @@ import type {
   Renderer,
 } from "@charivo/core";
 import type { MouseCoordinates, MouseTrackable } from "@charivo/render";
-import { IkiPlayer } from "@iki/engine";
-import { IkiFormatError, loadIkiModel, StandardParameter } from "@iki/format";
+import { IkiPlayer } from "@ikijs/engine";
+import { IkiFormatError, loadIkiModel, StandardParameter } from "@ikijs/format";
 
 // ── Tuning constants ─────────────────────────────────────────────────────────
 

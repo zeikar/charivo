@@ -1,7 +1,7 @@
 {
   "name": "@charivo/render-iki",
   "version": "0.0.20",
-  "description": "Iki-engine rendering adapter for Charivo (local dogfood; consumes the unpublished @iki engine)",
+  "description": "Iki-engine rendering adapter for Charivo (private dogfood adapter; consumes @ikijs/engine from npm)",
   "private": true,
   "type": "module",
   "main": "dist/renderer.js",
@@ -18,13 +18,15 @@
     "dist"
   ],
   "scripts": {
-    "build:local": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
-    "typecheck:local": "tsc --noEmit",
-    "dev:local": "tsup --watch"
+    "build": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsup --watch"
   },
   "dependencies": {
     "@charivo/core": "workspace:^",
-    "@charivo/render": "workspace:^"
+    "@charivo/render": "workspace:^",
+    "@ikijs/engine": "^0.1.0",
+    "@ikijs/format": "^0.1.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
