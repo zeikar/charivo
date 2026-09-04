@@ -27,14 +27,16 @@ const WAV_PATH = fileURLToPath(
 const WAV_PRESENT = existsSync(WAV_PATH);
 
 const LIVE_ENABLED = process.env.RUN_LIVE_CASCADE === "1";
-// CASCADE_STT=gemini, CASCADE_LLM=gemini, and CASCADE_TTS=gemini each move
-// their own leg (transcription, chat, or speech) to the Gemini provider,
-// independently of one another (see vite.config.ts). OPENAI_API_KEY is
-// required when any leg still runs on OpenAI; GEMINI_API_KEY is required
-// when any leg runs on Gemini.
-const CASCADE_STT = process.env.CASCADE_STT ?? "openai";
-const CASCADE_LLM = process.env.CASCADE_LLM ?? "openai";
-const CASCADE_TTS = process.env.CASCADE_TTS ?? "openai";
+// CASCADE_PROVIDER=gemini moves all three legs; CASCADE_STT=gemini,
+// CASCADE_LLM=gemini, and CASCADE_TTS=gemini each move their own leg
+// (transcription, chat, or speech) independently and override it (see
+// vite.config.ts). OPENAI_API_KEY is required when any leg still runs on
+// OpenAI; GEMINI_API_KEY is required when any leg runs on Gemini -- so an
+// all-Gemini run needs no OpenAI key, and costs nothing on the free tier.
+const CASCADE_PROVIDER = process.env.CASCADE_PROVIDER ?? "openai";
+const CASCADE_STT = process.env.CASCADE_STT ?? CASCADE_PROVIDER;
+const CASCADE_LLM = process.env.CASCADE_LLM ?? CASCADE_PROVIDER;
+const CASCADE_TTS = process.env.CASCADE_TTS ?? CASCADE_PROVIDER;
 const CASCADE_LEGS = [CASCADE_STT, CASCADE_LLM, CASCADE_TTS];
 const HAS_API_KEYS =
   (!CASCADE_LEGS.includes("openai") || Boolean(process.env.OPENAI_API_KEY)) &&

@@ -4,6 +4,7 @@ import {
   CharivoTransportError,
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
+  readResponseErrorMessage,
 } from "@charivo/core";
 
 const originalFetch = globalThis.fetch;
@@ -378,5 +379,71 @@ describe("fetchWithTimeout", () => {
       "abort",
       expect.any(Function),
     );
+  });
+});
+
+describe("readResponseErrorMessage", () => {
+  it("prefers the vendor detail a route passes through", async () => {
+    // The whole point: a provider rate limit or outage reaches the browser as
+    // the route's `details`, and losing it leaves only a bare status line.
+    const response = new Response(
+      JSON.stringify({
+        error: "Failed to generate speech",
+        details: "Gemini TTS Error: quota exceeded, limit: 10",
+      }),
+      { status: 500, statusText: "Internal Server Error" },
+    );
+
+    await expect(readResponseErrorMessage(response)).resolves.toBe(
+      "Gemini TTS Error: quota exceeded, limit: 10",
+    );
+  });
+
+  it("falls back to the route's summary when there is no detail", async () => {
+    const response = new Response(
+      JSON.stringify({ error: "Unsupported voice" }),
+      {
+        status: 400,
+        statusText: "Bad Request",
+      },
+    );
+
+    await expect(readResponseErrorMessage(response)).resolves.toBe(
+      "Unsupported voice",
+    );
+  });
+
+  it("falls back to the status line when the body is not JSON", async () => {
+    const response = new Response("<html>gateway</html>", {
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+
+    await expect(readResponseErrorMessage(response)).resolves.toBe(
+      "Bad Gateway",
+    );
+  });
+
+  it("ignores non-string error fields rather than rendering them", async () => {
+    const response = new Response(JSON.stringify({ error: { code: 42 } }), {
+      status: 500,
+      statusText: "Internal Server Error",
+    });
+
+    await expect(readResponseErrorMessage(response)).resolves.toBe(
+      "Internal Server Error",
+    );
+  });
+
+  it("propagates a read failure that is not a parse failure", async () => {
+    // An abort or timeout part-way through the body must reach
+    // fetchWithTimeout's classifier instead of being flattened into a message.
+    const aborted = createAbortError();
+    const response = {
+      json: () => Promise.reject(aborted),
+      statusText: "Internal Server Error",
+    } as unknown as Response;
+
+    await expect(readResponseErrorMessage(response)).rejects.toBe(aborted);
   });
 });

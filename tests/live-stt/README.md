@@ -12,7 +12,14 @@ RUN_LIVE_STT_TESTS=1 OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:l
 ```
 
 Each provider's block skips on its own when its key is missing, so either key
-alone runs half the suite. The fixture-based cases also skip when
+alone runs half the suite. That is also how you keep a run off a paid account —
+naming only `GEMINI_API_KEY` exercises Gemini and never calls OpenAI:
+
+```bash
+RUN_LIVE_STT_TESTS=1 GEMINI_API_KEY=your-key pnpm test:live-stt
+```
+
+The fixture-based cases also skip when
 `tests/webrtc-smoke/fixtures/voice-smoke-input.wav` is missing from the
 checkout — see [its README](../webrtc-smoke/fixtures/README.md) to regenerate
 it.

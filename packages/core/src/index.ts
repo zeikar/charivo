@@ -51,6 +51,7 @@ export {
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
   type FetchWithTimeoutOptions,
+  readResponseErrorMessage,
 } from "./fetch-with-timeout";
 
 /**

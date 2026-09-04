@@ -12,7 +12,12 @@ RUN_LIVE_LLM_TESTS=1 OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:l
 ```
 
 Each provider's block skips on its own when its key is missing, so either key
-alone runs half the suite.
+alone runs half the suite. That is also how you keep a run off a paid account —
+naming only `GEMINI_API_KEY` exercises Gemini and never calls OpenAI:
+
+```bash
+RUN_LIVE_LLM_TESTS=1 GEMINI_API_KEY=your-key pnpm test:live-llm
+```
 
 What this suite validates, per provider (`@charivo/llm/openai`,
 `@charivo/llm/gemini`):

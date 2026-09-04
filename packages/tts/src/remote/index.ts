@@ -3,6 +3,7 @@ import {
   CharivoTransportError,
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
+  readResponseErrorMessage,
   type TTSPlayer,
   TTSOptions,
 } from "@charivo/core";
@@ -61,7 +62,9 @@ class RemoteTTSPlayer implements TTSPlayer {
     );
 
     if (!response.ok) {
-      throw new CharivoProviderError(`TTS API failed: ${response.statusText}`);
+      throw new CharivoProviderError(
+        `TTS API failed: ${await readResponseErrorMessage(response)}`,
+      );
     }
 
     const contentType = response.headers.get("content-type");

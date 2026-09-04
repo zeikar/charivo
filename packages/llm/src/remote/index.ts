@@ -2,6 +2,7 @@ import {
   CharivoProviderError,
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
+  readResponseErrorMessage,
   type LLMCallOptions,
   type LLMClient,
   type LLMMessage,
@@ -121,20 +122,8 @@ async function postChatRequest(
     // during a slow/streaming response body still cancels the request.
     async (response) => {
       if (!response.ok) {
-        let errorData: { error?: string } = { error: "Unknown error" };
-        try {
-          errorData = await response.json();
-        } catch (parseError) {
-          // Only a malformed/non-JSON error body falls back to the default
-          // message. Anything else (e.g. an abort or timeout mid-read)
-          // propagates as-is so fetchWithTimeout classifies it, instead of
-          // masking it behind a generic provider error.
-          if (!(parseError instanceof SyntaxError)) {
-            throw parseError;
-          }
-        }
         throw new CharivoProviderError(
-          `API call failed: ${errorData.error || response.statusText}`,
+          `API call failed: ${await readResponseErrorMessage(response)}`,
         );
       }
 

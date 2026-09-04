@@ -2,6 +2,7 @@ import {
   CharivoProviderError,
   DEFAULT_FETCH_TIMEOUT_MS,
   fetchWithTimeout,
+  readResponseErrorMessage,
   type STTTranscriber,
   STTOptions,
 } from "@charivo/core";
@@ -61,7 +62,9 @@ class RemoteSTTTranscriber implements STTTranscriber {
     );
 
     if (!response.ok) {
-      throw new CharivoProviderError(`STT API failed: ${response.statusText}`);
+      throw new CharivoProviderError(
+        `STT API failed: ${await readResponseErrorMessage(response)}`,
+      );
     }
 
     const data = await response.json();

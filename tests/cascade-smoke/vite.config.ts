@@ -20,7 +20,8 @@ const harnessRoot = __dirname;
 // These routes are intentionally local to the cascade harness so the smoke
 // test can validate the STT → LLM → TTS chain without depending on
 // examples/web. They mirror the examples/web /api/stt, /api/chat, /api/tts
-// route contracts, backed by @charivo/server/openai. CASCADE_STT=gemini,
+// route contracts, backed by @charivo/server/openai. CASCADE_PROVIDER=gemini
+// moves every leg at once; CASCADE_STT=gemini,
 // CASCADE_LLM=gemini, and CASCADE_TTS=gemini each swap only their own leg to
 // @charivo/server/gemini, independently of one another, so the same specs can
 // drive any mix of providers end to end.
@@ -92,12 +93,8 @@ function requireApiKey(
 
 type CascadeProvider = "openai" | "gemini";
 
-// Resolved once at config load so a typo fails the run up front instead of
-// silently testing the default provider.
-function resolveCascadeSwitch(
-  name: "CASCADE_STT" | "CASCADE_LLM" | "CASCADE_TTS",
-): CascadeProvider {
-  const value = process.env[name] ?? "openai";
+function readCascadeProvider(name: string, fallback: string): CascadeProvider {
+  const value = process.env[name] ?? fallback;
   if (value !== "openai" && value !== "gemini") {
     throw new Error(
       `${name} must be "openai" or "gemini", received "${value}"`,
@@ -105,6 +102,18 @@ function resolveCascadeSwitch(
   }
 
   return value;
+}
+
+// Moves every leg at once, so a Gemini-only run needs no OpenAI key and spends
+// nothing. The per-leg switches below still win where they are set.
+const CASCADE_PROVIDER = readCascadeProvider("CASCADE_PROVIDER", "openai");
+
+// Resolved once at config load so a typo fails the run up front instead of
+// silently testing the default provider.
+function resolveCascadeSwitch(
+  name: "CASCADE_STT" | "CASCADE_LLM" | "CASCADE_TTS",
+): CascadeProvider {
+  return readCascadeProvider(name, CASCADE_PROVIDER);
 }
 const CASCADE_STT = resolveCascadeSwitch("CASCADE_STT");
 const CASCADE_LLM = resolveCascadeSwitch("CASCADE_LLM");

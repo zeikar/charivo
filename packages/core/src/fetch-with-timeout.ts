@@ -156,3 +156,37 @@ export function fetchWithTimeout<T = Response>(
     },
   );
 }
+
+/**
+ * Reads the most specific failure message a non-ok response carries.
+ *
+ * Remote clients talk to a caller-supplied route, and a route that took the
+ * trouble to explain itself is the only place the real cause lives -- a
+ * provider rate limit or an upstream outage reaches the browser as a bare
+ * status line otherwise. Routes in this repo answer with `{ error, details? }`,
+ * where `details` carries the vendor's own text; both are read here, most
+ * specific first, falling back to the status line.
+ *
+ * A body that is not JSON is not an error in itself, so it falls back. Any
+ * other read failure -- an abort or timeout part-way through the body --
+ * propagates, so `fetchWithTimeout` can classify it instead of it being masked
+ * as a provider error.
+ */
+export async function readResponseErrorMessage(
+  response: Response,
+): Promise<string> {
+  let body: { error?: unknown; details?: unknown } = {};
+
+  try {
+    body = (await response.json()) as typeof body;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error;
+    }
+  }
+
+  const detail = typeof body.details === "string" ? body.details : undefined;
+  const summary = typeof body.error === "string" ? body.error : undefined;
+
+  return detail ?? summary ?? response.statusText;
+}

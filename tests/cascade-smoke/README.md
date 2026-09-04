@@ -28,8 +28,13 @@ RUN_LIVE_CASCADE=1 CASCADE_LLM=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=you
 # Same specs, with the TTS leg on the Gemini provider (STT and LLM stay on OpenAI):
 RUN_LIVE_CASCADE=1 CASCADE_TTS=gemini OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 
-# All three legs on Gemini (only GEMINI_API_KEY needed):
-RUN_LIVE_CASCADE=1 CASCADE_STT=gemini CASCADE_LLM=gemini CASCADE_TTS=gemini GEMINI_API_KEY=your-key pnpm test:cascade
+# All three legs on Gemini (only GEMINI_API_KEY needed, so the run costs
+# nothing on the free tier). CASCADE_PROVIDER sets every leg at once; the
+# per-leg switches above still override it.
+RUN_LIVE_CASCADE=1 GEMINI_API_KEY=your-key pnpm test:cascade:gemini
+
+# The same thing spelled out, if you want to override one leg back:
+RUN_LIVE_CASCADE=1 CASCADE_PROVIDER=gemini CASCADE_TTS=openai OPENAI_API_KEY=your-key GEMINI_API_KEY=your-key pnpm test:cascade
 ```
 
 It reuses the realtime voice fixture
