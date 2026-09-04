@@ -8,8 +8,10 @@ import { createGeminiTTSProvider } from "@charivo/tts/gemini";
 // tests cannot -- that the request shape each provider builds is one the vendor
 // accepts, and that the bytes coming back are a container a player can open.
 // The container is the point: `TTSManager` plays through `new Audio(blobUrl)`,
-// so a provider returning something other than what its player labels the blob
-// is a silent playback failure the mocked tests cannot see.
+// and the mocked unit tests cannot see what a vendor actually returns. Note
+// that OpenAI's container is currently NOT what its player and the demo route
+// label it -- see this suite's README; the assertion pins the real bytes so
+// that either half of the mismatch moving becomes visible.
 //
 // Budget: 1 request per provider per run.
 

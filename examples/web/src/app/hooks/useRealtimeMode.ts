@@ -127,11 +127,13 @@ export function useRealtimeMode() {
       charivo.attachRealtime(realtimeManager);
 
       // One character decides the whole session. The store is what the
-      // character sync in `useCharivoChat` resolves from, while
-      // `charivo.getCurrentCharacter()` only catches up after that sync's
-      // awaited model load -- reading the two separately lets a session started
-      // mid-switch pair one character's persona with another's voice, and the
-      // voice half of that pairing is unrevisable (see below).
+      // character sync in `useCharivoChat` resolves from; the instance is only
+      // updated by that sync, which runs after the store already changed and
+      // early-returns entirely while the render manager is missing. So the two
+      // can disagree, and reading them separately lets a session started in
+      // that window pair one character's persona with another's voice -- a
+      // pairing the sync cannot undo, because it re-sends instructions and
+      // never the voice (see below).
       const characterConfig = getCharacterConfig(selectedCharacter);
 
       const sessionConfig: RealtimeSessionConfig = {

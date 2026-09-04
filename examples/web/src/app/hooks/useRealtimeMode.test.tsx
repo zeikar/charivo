@@ -161,12 +161,13 @@ describe.each(PROVIDER_CASES)(
     });
 
     /**
-     * Selecting a character updates the store immediately, while the character
-     * sync in `useCharivoChat` only reaches `charivo.setCharacter` after an
-     * awaited model load. Starting a session inside that window must not take
-     * the persona from one character and the voice from the other -- the voice
-     * is named once here and the sync's later `updateSession` cannot revise it,
-     * so a mixed session stays mixed for its whole life.
+     * Selecting a character updates the store immediately; the instance only
+     * follows when the character sync in `useCharivoChat` runs, and that sync
+     * early-returns while the render manager is missing. Starting a session
+     * while the two disagree must not take the persona from one character and
+     * the voice from the other -- the voice is named once here and the sync's
+     * later `updateSession` re-sends only the instructions, so a mixed session
+     * stays mixed for its whole life.
      */
     it("takes persona and voice from the same character mid-switch", async () => {
       useCharacterStore.setState({ selectedCharacter: "Mao" });
