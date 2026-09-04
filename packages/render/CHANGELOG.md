@@ -1,5 +1,12 @@
 # @charivo/render
 
+## 0.11.3
+
+### Patch Changes
+
+- Updated dependencies [cc9f3b9]
+  - @charivo/core@0.34.0
+
 ## 0.11.2
 
 ### Patch Changes
