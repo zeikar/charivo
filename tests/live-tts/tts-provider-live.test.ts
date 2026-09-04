@@ -13,7 +13,10 @@ import { createGeminiTTSProvider } from "@charivo/tts/gemini";
 // label it -- see this suite's README; the assertion pins the real bytes so
 // that either half of the mismatch moving becomes visible.
 //
-// Budget: 1 request per provider per run.
+// Budget: one `generateSpeech` per provider per run. That is one API request
+// for OpenAI, and up to two for Gemini, which retries a 5xx once while sharing
+// the original deadline -- so a busy model surfaces either as the vendor's own
+// 503 or as CharivoTimeoutError, depending on whether budget remained.
 
 const RUN_LIVE_TTS_TESTS = process.env.RUN_LIVE_TTS_TESTS === "1";
 
@@ -78,6 +81,9 @@ liveOpenAIDescribe("openai TTS provider (live)", () => {
       expect(head[0]).toBe(0xff);
       // Frame sync is 11 set bits: 0xff then the top 3 bits of the next byte.
       expect(head[1]! & 0xe0).toBe(0xe0);
+      // Sync alone would also admit AAC in an ADTS container, which carries
+      // 0x00 in these two layer bits. Layer III is what makes this mp3.
+      expect((head[1]! & 0x06) >> 1).toBe(0b01);
     },
     SINGLE_CALL_TEST_TIMEOUT_MS,
   );

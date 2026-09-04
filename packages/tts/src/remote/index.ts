@@ -20,7 +20,13 @@ export interface RemoteTTSConfig {
  */
 class RemoteTTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
-  readonly audioMimeType = "audio/wav";
+  /**
+   * Follows what the server said it sent, because the endpoint decides the
+   * container: the demo's OpenAI route answers with MPEG and its Gemini one
+   * with WAV. Naming either here would mislabel the other. Until a response
+   * has been seen this is WAV, matching the manager's own fallback.
+   */
+  audioMimeType = "audio/wav";
   private apiEndpoint: string;
   private defaultVoice: string;
 
@@ -58,6 +64,11 @@ class RemoteTTSPlayer implements TTSPlayer {
       throw new CharivoProviderError(`TTS API failed: ${response.statusText}`);
     }
 
+    const contentType = response.headers.get("content-type");
+    if (contentType) {
+      this.audioMimeType = contentType.split(";")[0]!.trim();
+    }
+
     return response.arrayBuffer();
   }
 
@@ -67,7 +78,7 @@ class RemoteTTSPlayer implements TTSPlayer {
   async speak(text: string, options?: TTSOptions): Promise<void> {
     // Perform simple playback only (no lip-sync)
     const audioBuffer = await this.generateAudio(text, options);
-    const blob = new Blob([audioBuffer], { type: "audio/wav" });
+    const blob = new Blob([audioBuffer], { type: this.audioMimeType });
     const audioUrl = URL.createObjectURL(blob);
 
     return new Promise((resolve, reject) => {

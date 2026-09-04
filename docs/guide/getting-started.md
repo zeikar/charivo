@@ -199,7 +199,9 @@ export async function POST(request: NextRequest) {
   try {
     const audio = await provider.generateSpeech(text, { voice, rate: speed });
     return new NextResponse(audio, {
-      headers: { "Content-Type": "audio/wav" },
+      // OpenAI answers with mp3. A Gemini-backed route sends "audio/wav"
+      // instead -- `@charivo/tts/remote` labels playback from this header.
+      headers: { "Content-Type": "audio/mpeg" },
     });
   } catch (error) {
     console.error("TTS Provider Error:", error);

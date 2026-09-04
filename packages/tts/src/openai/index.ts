@@ -24,7 +24,10 @@ export type OpenAITTSPlayerConfig = OpenAITTSConfig;
  */
 class OpenAITTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
-  readonly audioMimeType = "audio/wav";
+  // The API answers with its mp3 default: `OpenAITTSProvider` sends
+  // `format: "wav"`, but the SDK parameter is `response_format`, so that
+  // field never reaches the request. `tests/live-tts` pins the container.
+  readonly audioMimeType = "audio/mpeg";
   private provider: OpenAITTSProvider;
 
   constructor(config: OpenAITTSPlayerConfig) {
@@ -52,7 +55,7 @@ class OpenAITTSPlayer implements TTSPlayer {
   async speak(text: string, options?: TTSOptions): Promise<void> {
     // Perform simple playback only (no lip-sync)
     const audioBuffer = await this.generateAudio(text, options);
-    const blob = new Blob([audioBuffer], { type: "audio/mp3" });
+    const blob = new Blob([audioBuffer], { type: this.audioMimeType });
     const audioUrl = URL.createObjectURL(blob);
 
     return new Promise((resolve, reject) => {

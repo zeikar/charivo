@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TTSPlayer } from "@charivo/core";
 import { createRemoteTTSPlayer } from "@charivo/tts/remote";
 
 const originalFetch = globalThis.fetch;
@@ -11,6 +12,19 @@ const createAbortError = () => {
 
 const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+/**
+ * `TTSPlayer.generateAudio` is optional, and the factory returns the interface.
+ * Narrow by throwing rather than by `?.`, so a player that stopped implementing
+ * it fails the test instead of quietly skipping the call.
+ */
+function generateAudio(player: TTSPlayer, text: string): Promise<ArrayBuffer> {
+  if (!player.generateAudio) {
+    throw new Error("RemoteTTSPlayer must implement generateAudio");
+  }
+
+  return player.generateAudio(text);
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
   globalThis.Audio = originalAudio;
@@ -19,6 +33,41 @@ afterEach(() => {
 });
 
 describe("RemoteTTSPlayer", () => {
+  it("adopts the container the server reports", async () => {
+    // The endpoint decides the format: the demo's OpenAI route answers with
+    // MPEG and its Gemini one with WAV. The manager labels the playback Blob
+    // from `audioMimeType`, so a hardcoded value mislabels one of them.
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(new ArrayBuffer(4), {
+          status: 200,
+          headers: { "Content-Type": "audio/mpeg" },
+        }),
+    ) as typeof fetch;
+
+    const player = createRemoteTTSPlayer({ apiEndpoint: "/api/tts" });
+    expect(player.audioMimeType).toBe("audio/wav");
+
+    await generateAudio(player, "hello");
+
+    expect(player.audioMimeType).toBe("audio/mpeg");
+  });
+
+  it("keeps the reported container free of its parameters", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(new ArrayBuffer(4), {
+          status: 200,
+          headers: { "Content-Type": "audio/wav; codecs=1" },
+        }),
+    ) as typeof fetch;
+
+    const player = createRemoteTTSPlayer({ apiEndpoint: "/api/tts" });
+    await generateAudio(player, "hello");
+
+    expect(player.audioMimeType).toBe("audio/wav");
+  });
+
   it("fetches audio and plays it", async () => {
     const buffer = new ArrayBuffer(4);
     const fetchMock = vi.fn(

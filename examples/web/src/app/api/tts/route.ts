@@ -64,7 +64,8 @@ export async function POST(request: NextRequest) {
 
     return new NextResponse(audioBuffer, {
       headers: {
-        "Content-Type": "audio/wav",
+        // OpenAI answers with mp3; see packages/tts/src/openai/index.ts.
+        "Content-Type": "audio/mpeg",
         "Content-Length": audioBuffer.byteLength.toString(),
       },
     });
