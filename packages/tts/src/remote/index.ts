@@ -43,7 +43,7 @@ class RemoteTTSPlayer implements TTSPlayer {
     text: string,
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
-    const response = await fetchWithTimeout(
+    return fetchWithTimeout(
       this.apiEndpoint,
       {
         method: "POST",
@@ -59,20 +59,24 @@ class RemoteTTSPlayer implements TTSPlayer {
         timeoutMessage: `TTS request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
         failureMessage: "TTS request failed",
       },
+      // Consume the body while cancellation is still wired up, so a route that
+      // sends headers and then stalls -- on the error path too, where the
+      // message is read off the body -- still hits the deadline.
+      async (response) => {
+        if (!response.ok) {
+          throw new CharivoProviderError(
+            `TTS API failed: ${await readResponseErrorMessage(response)}`,
+          );
+        }
+
+        const contentType = response.headers.get("content-type");
+        if (contentType) {
+          this.audioMimeType = contentType.split(";")[0]!.trim();
+        }
+
+        return response.arrayBuffer();
+      },
     );
-
-    if (!response.ok) {
-      throw new CharivoProviderError(
-        `TTS API failed: ${await readResponseErrorMessage(response)}`,
-      );
-    }
-
-    const contentType = response.headers.get("content-type");
-    if (contentType) {
-      this.audioMimeType = contentType.split(";")[0]!.trim();
-    }
-
-    return response.arrayBuffer();
   }
 
   /**

@@ -175,18 +175,26 @@ export function fetchWithTimeout<T = Response>(
 export async function readResponseErrorMessage(
   response: Response,
 ): Promise<string> {
-  let body: { error?: unknown; details?: unknown } = {};
+  let body: unknown;
 
   try {
-    body = (await response.json()) as typeof body;
+    body = await response.json();
   } catch (error) {
     if (!(error instanceof SyntaxError)) {
       throw error;
     }
   }
 
-  const detail = typeof body.details === "string" ? body.details : undefined;
-  const summary = typeof body.error === "string" ? body.error : undefined;
+  // `null`, an array, or a bare string all parse cleanly, so the guard above
+  // never fires for them -- only an object can carry the fields.
+  const fields =
+    typeof body === "object" && body !== null
+      ? (body as { error?: unknown; details?: unknown })
+      : {};
+
+  const detail =
+    typeof fields.details === "string" ? fields.details : undefined;
+  const summary = typeof fields.error === "string" ? fields.error : undefined;
 
   return detail ?? summary ?? response.statusText;
 }

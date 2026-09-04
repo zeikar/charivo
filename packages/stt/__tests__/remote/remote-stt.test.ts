@@ -55,6 +55,37 @@ describe("RemoteSTTTranscriber", () => {
     );
   });
 
+  it("times out when the error body itself stalls", async () => {
+    // The failure message is read off the body, so that read has to happen
+    // while the deadline is still armed -- otherwise a route that returns
+    // headers and then hangs leaves the caller waiting forever.
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener("abort", () => {
+                controller.error(createAbortError());
+              });
+            },
+          }),
+          { status: 500, statusText: "Internal Server Error" },
+        ),
+    ) as unknown as typeof fetch;
+
+    const transcriber = createRemoteSTTTranscriber({ apiEndpoint: "/api/stt" });
+    await transcriber.startRecording();
+    const request = transcriber.stopRecording();
+    const expectation = expect(request).rejects.toThrow(
+      "STT request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+  });
+
   it("throws a timeout-specific error after recording completes", async () => {
     vi.useFakeTimers();
     globalThis.fetch = vi.fn(

@@ -156,6 +156,36 @@ describe("RemoteTTSPlayer", () => {
     await expectation;
   });
 
+  it("times out when the error body itself stalls", async () => {
+    // The failure message is read off the body, so that read has to happen
+    // while the deadline is still armed -- otherwise a route that returns
+    // headers and then hangs leaves the caller waiting forever.
+    vi.useFakeTimers();
+    globalThis.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener("abort", () => {
+                controller.error(createAbortError());
+              });
+            },
+          }),
+          { status: 500, statusText: "Internal Server Error" },
+        ),
+    ) as unknown as typeof fetch;
+
+    const player = createRemoteTTSPlayer();
+    const request = generateAudio(player, "hello");
+    const expectation = expect(request).rejects.toThrow(
+      "TTS request timed out after 30000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
+  });
+
   it("revokes object URLs when playback fails", async () => {
     const buffer = new ArrayBuffer(4);
     globalThis.fetch = vi.fn(async () => new Response(buffer)) as typeof fetch;

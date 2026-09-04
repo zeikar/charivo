@@ -49,7 +49,7 @@ class RemoteSTTTranscriber implements STTTranscriber {
       formData.append("language", this.recordingOptions.language);
     }
 
-    const response = await fetchWithTimeout(
+    const transcription = await fetchWithTimeout(
       this.apiEndpoint,
       {
         method: "POST",
@@ -59,17 +59,23 @@ class RemoteSTTTranscriber implements STTTranscriber {
         timeoutMessage: `STT request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
         failureMessage: "STT request failed",
       },
+      // Consume the body while cancellation is still wired up, so a route that
+      // sends headers and then stalls -- on the error path too, where the
+      // message is read off the body -- still hits the deadline.
+      async (response) => {
+        if (!response.ok) {
+          throw new CharivoProviderError(
+            `STT API failed: ${await readResponseErrorMessage(response)}`,
+          );
+        }
+
+        const data = (await response.json()) as { transcription: string };
+        return data.transcription;
+      },
     );
 
-    if (!response.ok) {
-      throw new CharivoProviderError(
-        `STT API failed: ${await readResponseErrorMessage(response)}`,
-      );
-    }
-
-    const data = await response.json();
     this.recordingOptions = undefined;
-    return data.transcription;
+    return transcription;
   }
 
   /**

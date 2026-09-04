@@ -435,6 +435,19 @@ describe("readResponseErrorMessage", () => {
     );
   });
 
+  it("falls back when the body is valid JSON but not an object", async () => {
+    // `null` parses fine, so the parse guard never fires; reading a field off
+    // it would throw a raw TypeError out of a helper that promises a message.
+    const response = new Response("null", {
+      status: 500,
+      statusText: "Internal Server Error",
+    });
+
+    await expect(readResponseErrorMessage(response)).resolves.toBe(
+      "Internal Server Error",
+    );
+  });
+
   it("propagates a read failure that is not a parse failure", async () => {
     // An abort or timeout part-way through the body must reach
     // fetchWithTimeout's classifier instead of being flattened into a message.
