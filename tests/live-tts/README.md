@@ -36,6 +36,10 @@ What it does not validate:
   was confirmed by ear and is recorded in the demo docs
 
 Cost note: 1 live call per provider per run, on a deliberately short line.
+Gemini's free tier allows 10 requests per minute on the TTS model (measured
+2026-09-04 — not the 3 per minute that `gemini-3.5-transcribe` allows), so
+this suite is cheap enough to follow a cascade run; repeated back-to-back
+runs will still exhaust it and surface as a 429.
 
 Gemini's block pins `timeoutMs: 25_000`, the same deadline `/api/tts-gemini`
 ships. The provider retries once on a 5xx *inside* that budget, so when the
