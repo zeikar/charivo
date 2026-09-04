@@ -57,12 +57,16 @@ export class OpenAILLMProvider implements LLMProvider {
       }));
 
       const completion = await withTimeout(
-        this.openai.chat.completions.create({
-          model: this.model,
-          messages: openAIMessages,
-          temperature: this.temperature,
-          max_tokens: this.maxTokens,
-        }),
+        (signal) =>
+          this.openai.chat.completions.create(
+            {
+              model: this.model,
+              messages: openAIMessages,
+              temperature: this.temperature,
+              max_tokens: this.maxTokens,
+            },
+            { signal },
+          ),
         `OpenAI LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
       );
 
@@ -80,13 +84,17 @@ export class OpenAILLMProvider implements LLMProvider {
       const openAITools = toOpenAITools(tools);
 
       const completion = await withTimeout(
-        this.openai.chat.completions.create({
-          model: this.model,
-          messages: toOpenAIChatMessages(messages),
-          temperature: this.temperature,
-          max_tokens: this.maxTokens,
-          ...(openAITools ? { tools: openAITools } : {}),
-        }),
+        (signal) =>
+          this.openai.chat.completions.create(
+            {
+              model: this.model,
+              messages: toOpenAIChatMessages(messages),
+              temperature: this.temperature,
+              max_tokens: this.maxTokens,
+              ...(openAITools ? { tools: openAITools } : {}),
+            },
+            { signal },
+          ),
         `OpenAI LLM request timed out after ${REQUEST_TIMEOUT_MS}ms`,
       );
 
@@ -103,21 +111,28 @@ export function createOpenAILLMProvider(
   return new OpenAILLMProvider(config);
 }
 
+/**
+ * Aborts the underlying SDK request on timeout instead of only abandoning the
+ * wrapper promise: the SDK stops waiting and stops retrying, and the aborted
+ * request becomes a cancellation request to the server. Work OpenAI already
+ * accepted before the abort may still be billed.
+ */
 async function withTimeout<T>(
-  promise: Promise<T>,
+  makeRequest: (signal: AbortSignal) => Promise<T>,
   timeoutMessage: string,
 ): Promise<T> {
+  const controller = new AbortController();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new CharivoTimeoutError(timeoutMessage)),
-      REQUEST_TIMEOUT_MS,
-    );
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new CharivoTimeoutError(timeoutMessage));
+    }, REQUEST_TIMEOUT_MS);
   });
 
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([makeRequest(controller.signal), timeoutPromise]);
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);

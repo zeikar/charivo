@@ -50,6 +50,12 @@ export interface OpenClawLLMConfig {
   dangerouslyAllowBrowser?: boolean;
 }
 
+/**
+ * Deliberately has no request timeout, unlike the OpenAI and Gemini providers.
+ * The gateway fronts an agent harness whose runs legitimately take minutes, so
+ * any cap short enough to be useful against a hang would also cut off ordinary
+ * work. Cancellation belongs to the caller here, not to a fixed deadline.
+ */
 export class OpenClawLLMProvider implements LLMProvider {
   private openai: OpenAI;
   private model: string;
