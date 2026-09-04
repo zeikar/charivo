@@ -55,9 +55,11 @@ const text = await sttManager.stop();
   unlike the OpenAI path's SDP answer that token is itself a credential: the
   browser holds it for the life of one recording. `url` must be the Live
   API's `BidiGenerateContentConstrained` websocket endpoint (the
-  ephemeral-token one) with no query string of its own, because the
-  transcriber appends `?access_token=<token>` to it. Pinning manual VAD in
-  the token is a requirement rather than a detail: its
+  ephemeral-token one), with scheme `ws:` or `wss:` (the transcriber rejects
+  any other scheme) and no fragment (the native `WebSocket` constructor
+  rejects one); the transcriber parses `url` and adds `access_token` as a
+  query parameter, so an existing query string on it survives. Pinning manual
+  VAD in the token is a requirement rather than a detail: its
   `bidiGenerateContentSetup` replaces the setup frame the transcriber sends
   rather than merging with it, so a bootstrap that leaves manual VAD out
   silently loses the recording — server VAD cuts the audio at every pause,

@@ -133,7 +133,6 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
   // last saw.
   private snapshot = "";
   private lastEmitted = "";
-  private activityStarted = false;
   private activityEnded = false;
   private audioSent = false;
   private partialSubscribers: Array<(transcription: string) => void> = [];
@@ -156,7 +155,6 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
     this.pendingStop = null;
     this.snapshot = "";
     this.lastEmitted = "";
-    this.activityStarted = false;
     this.activityEnded = false;
     this.audioSent = false;
     const gen = ++this.generation;
@@ -186,6 +184,17 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
         () => {},
       );
       const stream = await Promise.race([micPromise, setupFailure]);
+      // This race's non-setupFailure arm can win even after a cancellation,
+      // if it had already settled before cancelConnecting() ran — the same
+      // late-release case the .then() above exists for, but reached through
+      // the race instead of after it. Re-check before writing `this.mediaStream`
+      // so a stale continuation cannot clobber a retry's stream.
+      if (gen !== this.generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new CharivoStateError(
+          "start canceled because stop was called while connecting",
+        );
+      }
       this.mediaStream = stream;
 
       const { url, token } = resolveBootstrap(
@@ -202,6 +211,14 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
 
       this.openSocket(url, token, gen);
       await Promise.race([this.waitForSetupComplete(gen), setupFailure]);
+      // Same one-step-past case as above: without this check, a stale
+      // continuation would send activityStart on `this.binding`, which by
+      // now may belong to a retry's session.
+      if (gen !== this.generation) {
+        throw new CharivoStateError(
+          "start canceled because stop was called while connecting",
+        );
+      }
 
       // Manual VAD: the server detects no boundary of its own, so this frame is
       // what opens the one activity the whole recording belongs to. A send
@@ -210,7 +227,6 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
       this.binding!.socket.send(
         JSON.stringify({ realtimeInput: { activityStart: {} } }),
       );
-      this.activityStarted = true;
 
       const capturePromise = createCapturePipeline({
         stream,
@@ -235,7 +251,16 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
         },
         () => {},
       );
-      this.capture = await Promise.race([capturePromise, setupFailure]);
+      const capture = await Promise.race([capturePromise, setupFailure]);
+      // Same one-step-past case again: without this check, a stale
+      // continuation would write `this.capture`, clobbering a retry's pipeline.
+      if (gen !== this.generation) {
+        capture.stop();
+        throw new CharivoStateError(
+          "start canceled because stop was called while connecting",
+        );
+      }
+      this.capture = capture;
 
       if (typeof window !== "undefined") {
         window.addEventListener("pagehide", this.handlePageHide);
@@ -243,14 +268,35 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
 
       this.recording = true;
     } catch (error) {
-      const failure = this.setupError ?? error;
-      this.cleanup();
-      this.terminalError = null;
-      this.setupError = null;
+      // Read under the same gate as the cleanup below: a canceled start's
+      // setupError is only trustworthy for THIS generation. Once a retry has
+      // reset it (or set its own), reading it unconditionally would reject
+      // this attempt with the retry's failure instead of its own cancel
+      // message — the type contract holds either way, but the message would
+      // be wrong.
+      const failure =
+        (gen === this.generation ? this.setupError : null) ?? error;
+      // A cancellation (cancelConnecting()) already cleaned this generation up
+      // and may have let a retry begin before this catch runs: touching
+      // cleanup() or the shared fields below unconditionally would tear the
+      // retry's socket/mic down and clobber its connecting/setupReject state.
+      // This attempt still has to reject with its own failure regardless.
+      if (gen === this.generation) {
+        this.cleanup();
+        this.terminalError = null;
+        this.setupError = null;
+      }
       throw failure;
     } finally {
-      this.connecting = false;
-      this.setupReject = null;
+      // cleanup() (just above, or from an earlier cancellation) already owns
+      // `connecting` and `setupReject` on every failure path — it bumps the
+      // generation, so `gen === this.generation` is false by the time this
+      // runs whenever cleanup() ran for THIS attempt. This only ever fires on
+      // the success path, to clear them once the session finishes connecting.
+      if (gen === this.generation) {
+        this.connecting = false;
+        this.setupReject = null;
+      }
     }
   }
 
@@ -340,23 +386,23 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
    * belongs to no turn at all, so a frame that misses the window is discarded
    * rather than sent.
    *
-   * That window check is defensive on both halves, and deliberately so: no
-   * live pipeline exists outside it. `activityStarted` is set before the
-   * capture pipeline is built, and finalizeStop() and cleanup() both stop the
-   * pipeline — which nulls `port.onmessage` — before they touch either flag.
-   * Nothing tests either half in isolation: a test that reached one would have
-   * to call a handler the platform has already detached. Keep them anyway: they
-   * cost two comparisons, and the alternative to dropping a frame that somehow
-   * arrives late is sending audio into a turn that is not open.
+   * The `activityEnded` check is defensive, and deliberately so: it encodes a
+   * wire-protocol invariant the SERVER would observe being violated — audio
+   * arriving inside an activity the client already closed — rather than
+   * merely an internal state assertion, and the field exists regardless (the
+   * pump captures it at frame arrival for `maybeResolveStop`'s eligibility
+   * rule). It is unreachable under the current ordering: finalizeStop() and
+   * cleanup() both stop the capture pipeline — which nulls `port.onmessage` —
+   * before either one sets the flag, so no frame this method sees can ever
+   * find it true. Nothing tests it in isolation for the same reason: a test
+   * that reached it would have to call a handler the platform has already
+   * detached. Keep it anyway: it costs one comparison, and the alternative to
+   * dropping a frame that somehow arrives late is sending audio into a turn
+   * that is not open.
    */
   private sendAudioFrame(frame: Uint8Array): void {
     const socket = this.binding?.socket;
-    if (
-      !socket ||
-      socket.readyState !== WebSocket.OPEN ||
-      !this.activityStarted ||
-      this.activityEnded
-    ) {
+    if (!socket || socket.readyState !== WebSocket.OPEN || this.activityEnded) {
       return;
     }
 
@@ -405,17 +451,48 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
   }
 
   private openSocket(url: string, token: string, gen: number): void {
+    // Parsed rather than concatenated so a bootstrap url that already carries
+    // a query string still gets the token appended correctly, and validated
+    // before the token is attached: a bootstrap misconfiguration should read
+    // as one, not as the network fault the scrubbed message below is
+    // reserved for. Neither failure here can carry the token, since it is
+    // not attached yet.
+    let endpoint: URL;
+    try {
+      endpoint = new URL(url);
+    } catch {
+      throw new CharivoProviderError(
+        "bootstrap url is not a valid websocket URL",
+      );
+    }
+    if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:") {
+      throw new CharivoProviderError("bootstrap url must use ws: or wss:");
+    }
+
     let socket: WebSocket;
     try {
-      // The endpoint accepts the ephemeral token only as a query parameter, so
-      // the built URL is a credential: a constructor failure is re-thrown as a
-      // bare message because the native one quotes the URL.
-      socket = new WebSocket(
-        `${url}?access_token=${encodeURIComponent(token)}`,
-      );
+      // The endpoint accepts the ephemeral token only as a query parameter,
+      // so the built URL is a credential from here on: a constructor failure
+      // is re-thrown as a bare message because the native one quotes the URL.
+      endpoint.searchParams.set("access_token", token);
+      socket = new WebSocket(endpoint.toString());
     } catch {
       throw new CharivoProviderError(
         "failed to open the Gemini Live websocket",
+      );
+    }
+
+    // startRecording() can advance exactly one step past a cancellation: the
+    // step whose non-failure race arm had already settled before
+    // cancelConnecting() ran. If that step was this one, the socket above is
+    // real and already carries the token, so it needs the same late-release
+    // the mic and capture pipeline already have for what they acquire after
+    // theirs — closed here, before `this.binding` is touched, so a retry
+    // already in flight is never clobbered.
+    if (gen !== this.generation) {
+      socket.close();
+      throw new CharivoStateError(
+        "start canceled because stop was called while connecting",
       );
     }
 
@@ -672,17 +749,26 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
   }
 
   // Cancels the in-flight startRecording(). Runs cleanup() synchronously so a
-  // caller awaiting stopRecording() sees every acquired resource (mic, socket,
-  // capture, timers, pagehide listener) already released by the time it
-  // returns, then rejects whichever setup step startRecording() is currently
-  // awaiting so ITS promise settles too, instead of hanging or going live.
+  // caller awaiting stopRecording() sees every resource acquired so far (mic,
+  // socket, capture, timers, pagehide listener) already released by the time
+  // it returns. Every step in startRecording()'s try block re-checks the
+  // generation before touching `this` again, so the setup step it is
+  // currently awaiting rejects with this cancel message instead of resuming
+  // and acquiring or writing one more thing. The open gate is rejected with
+  // the cancel reason FIRST, before cleanup() reaches for its own generic
+  // "recording ended": cleanup()'s `if (this.openGate && !this.openGate.settled)`
+  // is then a no-op, since rejectOpenGate() already settled and cleared it.
+  // setupReject is captured before cleanup() runs because cleanup() nulls it
+  // as part of tearing this generation down.
   private cancelConnecting(): void {
     const error = new CharivoStateError(
       "start canceled because stop was called while connecting",
     );
     this.setupError ??= error;
+    const reject = this.setupReject;
+    this.rejectOpenGate(error);
     this.cleanup();
-    this.setupReject?.(error);
+    reject?.(error);
   }
 
   /**
@@ -796,8 +882,8 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
       this.mediaStream = null;
       this.recording = false;
       this.connecting = false;
+      this.setupReject = null;
       this.stopPending = false;
-      this.activityStarted = false;
       this.activityEnded = false;
       this.audioSent = false;
       this.snapshot = "";

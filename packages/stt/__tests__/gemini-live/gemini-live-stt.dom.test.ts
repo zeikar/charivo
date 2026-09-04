@@ -19,9 +19,17 @@ import {
 } from "../../src/gemini-live/capture";
 
 const SOCKET_URL = "wss://generativelanguage.example/ws";
-// Every reserved character the query parameter has to survive.
+// Every reserved character the query parameter has to survive. Built via
+// `URL.searchParams`, so the space form-encodes as `+` rather than `%20` —
+// one of six characters (space, `!`, `'`, `(`, `)`, `~`) where form-encoding
+// differs from `encodeURIComponent`. They agree on everything an
+// `auth_tokens/<id>` token can hold: alphanumerics, `/` (both `%2F`), and
+// `.`, `-`, `_` unencoded in both. Security-relevant: form-encoding's
+// unreserved set `{alnum, * - . _}` is a strict subset of
+// `encodeURIComponent`'s `{alnum, - _ . ! ~ * ' ( )}`, so `URLSearchParams`
+// never under-encodes relative to the old path.
 const TOKEN = "tok en/+&";
-const ENCODED_TOKEN = "tok%20en%2F%2B%26";
+const ENCODED_TOKEN = "tok+en%2F%2B%26";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -596,6 +604,67 @@ describe("GeminiLiveSTTTranscriber", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("scrubs the token when the bootstrap url fails to parse", async () => {
+    bootstrap.mockResolvedValue({ url: "not a valid url", token: TOKEN });
+
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    const state = trackSettlement(started);
+
+    await expectRejectsWith(
+      started,
+      CharivoProviderError,
+      "bootstrap url is not a valid websocket URL",
+    );
+    const message = ((state.outcome?.value as Error) ?? new Error("")).message;
+    expect(message, "the raw token reached app code").not.toContain(TOKEN);
+    expect(message, "the encoded token reached app code").not.toContain(
+      ENCODED_TOKEN,
+    );
+    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(tracks[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(transcriber.isRecording()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects a bootstrap url whose scheme is not ws: or wss:, without leaking the token", async () => {
+    bootstrap.mockResolvedValue({
+      url: "https://generativelanguage.example/ws",
+      token: TOKEN,
+    });
+
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    const state = trackSettlement(started);
+
+    await expectRejectsWith(
+      started,
+      CharivoProviderError,
+      "bootstrap url must use ws: or wss:",
+    );
+    const message = ((state.outcome?.value as Error) ?? new Error("")).message;
+    expect(message, "the raw token reached app code").not.toContain(TOKEN);
+    expect(message, "the encoded token reached app code").not.toContain(
+      ENCODED_TOKEN,
+    );
+    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(transcriber.isRecording()).toBe(false);
+  });
+
+  it("appends the token without corrupting a bootstrap url that already carries a query string", async () => {
+    bootstrap.mockResolvedValue({
+      url: `${SOCKET_URL}?session=abc`,
+      token: TOKEN,
+    });
+
+    const transcriber = createTranscriber();
+    await startAndOpen(transcriber);
+
+    const built = new URL(latestSocket().url);
+    expect(built.searchParams.get("session")).toBe("abc");
+    expect(built.searchParams.get("access_token")).toBe(TOKEN);
+  });
+
   it("rejects the start when the socket errors before setupComplete", async () => {
     const transcriber = createTranscriber();
     const started = transcriber.startRecording();
@@ -656,6 +725,88 @@ describe("GeminiLiveSTTTranscriber", () => {
     expect(transcriber.isRecording()).toBe(true);
   });
 
+  it("rejects a canceled start with the cancel message, not cleanup()'s generic one", async () => {
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    await flush();
+    // Parked awaiting setupComplete — the widest window in the whole start,
+    // and the likeliest moment a real stop() lands. cleanup() would otherwise
+    // reject the open gate with its own generic "recording ended" and win the
+    // race; cancelConnecting() settles the gate with the cancel reason first,
+    // and this pins that.
+
+    await expect(transcriber.stopRecording()).resolves.toBe("");
+
+    await expectRejectsWith(
+      started,
+      CharivoStateError,
+      "start canceled because stop was called while connecting",
+    );
+  });
+
+  it("does not let a canceled start's late continuation corrupt an immediate retry", async () => {
+    const transcriber = createTranscriber();
+    const started = transcriber.startRecording();
+    const startedState = trackSettlement(started);
+    await flush();
+    const canceledSocket = latestSocket();
+
+    // Cancel while connecting, but do not await `started`'s rejection yet:
+    // the retry below has to begin before the canceled start's catch/finally
+    // runs, which is exactly the interleaving the existing test above avoids
+    // by awaiting `started` before retrying. A bare `await` (rather than
+    // `expect(...).resolves`) keeps the hop count to the minimum the
+    // interleaving needs, since the matcher's extra internal hops would let
+    // the stale continuation finish before the retry begins.
+    expect(await transcriber.stopRecording()).toBe("");
+
+    // Pins the interleaving itself, not just its consequences: if a future
+    // change adds a microtask hop to the cancel path, the stale continuation
+    // would already have settled `started` here, every assertion below would
+    // pass trivially against an unrelated code path, and this test would go
+    // vacuous without ever failing.
+    expect(
+      startedState.outcome,
+      "the stale continuation already ran; this test no longer covers the interleaving",
+    ).toBeNull();
+
+    const retryStarted = transcriber.startRecording();
+    const retryState = trackSettlement(retryStarted);
+    await flush();
+
+    const retrySocket = latestSocket();
+    expect(retrySocket, "the retry never opened its own socket").not.toBe(
+      canceledSocket,
+    );
+    expect(
+      retrySocket.close,
+      "the stale start's cleanup closed the retry's socket",
+    ).not.toHaveBeenCalled();
+
+    retrySocket.open();
+    deliverSetupComplete();
+    await flush();
+
+    expect(retryState.outcome, "the retry never reached recording").toEqual({
+      status: "resolved",
+      value: undefined,
+    });
+    expect(transcriber.isRecording()).toBe(true);
+
+    // Pins that the retry's `connecting` was cleared rather than left stuck:
+    // by this point the retry is recording, so `connecting` is false and
+    // `openGate` is null, and this close reaches stopRecording() through the
+    // terminalError branch, not setupReject. A stuck `connecting` would
+    // instead route this through the cancelConnecting() branch, which
+    // resolves "" rather than rejecting.
+    retrySocket.serverClose(1006);
+    await expect(transcriber.stopRecording()).rejects.toBeInstanceOf(
+      CharivoProviderError,
+    );
+
+    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+  });
+
   it("releases a microphone that resolves after the start was canceled", async () => {
     let resolveGetUserMedia!: (stream: MediaStream) => void;
     getUserMedia.mockImplementation(
@@ -670,7 +821,11 @@ describe("GeminiLiveSTTTranscriber", () => {
     await flush();
 
     await expect(transcriber.stopRecording()).resolves.toBe("");
-    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+    await expectRejectsWith(
+      started,
+      CharivoStateError,
+      "start canceled because stop was called while connecting",
+    );
     expect(MockWebSocket.instances).toHaveLength(0);
     expect(tracks[0]!.stop).not.toHaveBeenCalled();
 
@@ -696,7 +851,11 @@ describe("GeminiLiveSTTTranscriber", () => {
     // The pipeline build is in flight when the cancellation lands.
     expect(MockAudioContext.instances).toHaveLength(1);
     await expect(transcriber.stopRecording()).resolves.toBe("");
-    await expect(started).rejects.toBeInstanceOf(CharivoStateError);
+    await expectRejectsWith(
+      started,
+      CharivoStateError,
+      "start canceled because stop was called while connecting",
+    );
 
     pendingModule.release();
     await flush();
