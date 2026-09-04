@@ -11,6 +11,7 @@ export default defineConfig({
       "tests/live-realtime/**/*.test.ts",
       "tests/live-llm/**/*.test.ts",
       "tests/live-stt/**/*.test.ts",
+      "tests/live-tts/**/*.test.ts",
     ],
     testTimeout: 30_000,
   },

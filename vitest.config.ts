@@ -12,6 +12,7 @@ export default defineConfig({
       "tests/live-realtime/**",
       "tests/live-llm/**",
       "tests/live-stt/**",
+      "tests/live-tts/**",
       "tests/webrtc-smoke/**",
       "tests/gemini-live-smoke/**",
       "tests/cascade-smoke/**",
