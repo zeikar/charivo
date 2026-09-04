@@ -61,7 +61,7 @@ const text = await charivo.getSTTManager()?.stop();
 **Limitations:**
 
 - the `language` hint is optional and only a soft nudge — a wrong hint does not override what the model actually hears
-- one request per utterance, with no streaming — the live transcription model is a separate transport this package does not cover
+- one request per utterance, with no streaming — the live transcription model (`gemini-3.5-transcribe-live`) is WebSocket-only, `generateContent` rejects it with a 400, and it is served by `@charivo/stt/gemini-live` instead, so `defaultModel` must not point at it
 - Gemini's free-tier rate limit surfaces as a 429 wrapped in a provider error
 
 ### Browser-Native
@@ -71,7 +71,7 @@ const text = await charivo.getSTTManager()?.stop();
 - useful for prototypes and zero-server flows
 - browser support varies
 
-### Streaming (live)
+### Streaming (OpenAI Realtime)
 
 - `@charivo/stt/openai-realtime`
 - WebRTC transcriber backed by an OpenAI Realtime transcription session (`gpt-realtime-whisper`)
@@ -85,10 +85,31 @@ const text = await charivo.getSTTManager()?.stop();
 - no server VAD — press-to-start / press-to-stop only
 - language auto-detects unless `STTOptions.language` is set
 - calling `stop()` before connect finishes cancels the pending start and resolves with an empty transcript, releasing the microphone and any partially-opened connection; the pending `start()` call itself rejects
-- a mid-session failure does not push an event on its own — it surfaces the next time the app calls `stop()`, which rejects and emits `stt:error`
 - a stop that times out also rejects `stop()` and emits `stt:error` — a partial draft is never returned as a successful `stt:stop`
 - a small RTP-vs-data-channel tail race means the last fraction of a second of audio may rarely be truncated
 - packaged Electron apps behind UDP-blocking proxies may fail to establish the WebRTC connection
+
+### Streaming (Gemini Live)
+
+- `@charivo/stt/gemini-live`
+- WebSocket transcriber backed by a Gemini Live API session (`gemini-3.5-transcribe-live`)
+- no key-bearing helper ships: the app supplies a `bootstrap(request) => Promise<{ url, token }>` function that owns the credentials and mints the single-use ephemeral token whose setup pins the model, the `TEXT` response modality, and manual VAD. Unlike the WebRTC path's SDP answer, that token is itself a credential — the browser holds it for the life of one recording
+- `url` must be the Live API's `BidiGenerateContentConstrained` websocket endpoint (the ephemeral-token one) and carry no query string of its own, because the transcriber appends `?access_token=<token>` to it before connecting
+- the microphone is decimated to 16 kHz mono PCM in an `AudioWorklet`
+- manual VAD: the client brackets one activity per recording with `activityStart`/`activityEnd`, so the server never segments it and the whole recording is transcribed as one turn
+- the token is what makes that stick, so pinning manual VAD in it is a requirement rather than a detail: its `bidiGenerateContentSetup` *replaces* the setup frame the transcriber sends rather than merging with it, and a bootstrap that leaves manual VAD out silently loses the recording — server VAD cuts the audio at every pause, each transcription replaces the running snapshot instead of extending it, and `stop()` then resolves with the last segment alone or times out waiting for a final that arrived after `activityEnd`
+- each `stt:partial` is the whole recording so far rather than a delta, emitted only when it changes
+- on `stop()` the tail buffered in the capture worklet is drained, `activityEnd` goes out, and the single final resolves the transcript (measured at +253 ms after `activityEnd`)
+
+**Limitations:**
+
+- no server VAD — press-to-start / press-to-stop only
+- a partial may be *revised*, not only extended, so a UI must replace its draft rather than append to it; the strict prefix monotonicity `@charivo/stt/openai-realtime` gives does not hold here
+- `STTOptions.language` is handed to your `bootstrap` function rather than sent over the socket, so pinning it is the minting route's job (the demo route puts it in `inputAudioTranscription.languageCodes`)
+- a `stop()` with no final within 5 seconds rejects and emits `stt:error` — a partial draft is never returned as a successful `stt:stop`. A recording the server heard no speech in is that case: it produces no transcript frame at all (measured), so silence ends in a rejected `stop()` rather than an empty transcript
+- calling `stop()` before connect finishes cancels the pending start and resolves with an empty transcript, releasing the microphone and any partially-opened connection; the pending `start()` call itself rejects
+- nothing is banked mid-recording, so losing the connection loses the whole utterance — parity with `@charivo/stt/openai-realtime`, which likewise finalizes with exactly one commit at stop
+- Google documents a Live API *connection* lifetime of around 10 minutes (shorter than the 15-minute audio-only *session* limit). Not measured here. This transcriber opens one connection per recording and does not resume sessions — it reads no `sessionResumptionUpdate` — so that connection lifetime is what bounds a single recording
 
 ## What `@charivo/stt` Owns
 
@@ -96,6 +117,7 @@ const text = await charivo.getSTTManager()?.stop();
 - interaction with the transcriber implementation
 - STT lifecycle and error events back into core
 - relaying interim transcript drafts (`stt:partial`) from streaming transcribers
+- surfacing a transcriber's mid-session failure: no event is pushed when it happens — the failure reaches the app the next time it calls `stop()`, which rejects and emits `stt:error`
 
 `STTManager` intentionally uses `setEventEmitter(...)` rather than the full
 event bus.

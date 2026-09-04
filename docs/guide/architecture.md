@@ -130,6 +130,8 @@ when you explicitly want local development shortcuts or zero-server behavior.
 - `@charivo/stt/web`
 - `@charivo/stt/openai-realtime` — streaming transcriber; the app supplies the
   bootstrap function that owns credentials
+- `@charivo/stt/gemini-live` — streaming transcriber over the Gemini Live
+  websocket; the app supplies the bootstrap function that owns credentials
 
 ### Realtime
 

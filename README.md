@@ -344,6 +344,10 @@ STT:
 - `@charivo/stt/gemini`: direct Gemini browser transcriber (dev/testing only)
   and the `createGeminiSTTProvider` server-side provider
 - `@charivo/stt/web`: Web Speech API transcriber
+- `@charivo/stt/openai-realtime`: streaming WebRTC transcriber for an OpenAI
+  Realtime transcription session, bootstrapped by an app-supplied function
+- `@charivo/stt/gemini-live`: streaming WebSocket transcriber for a Gemini
+  Live transcription session, bootstrapped by an app-supplied function
 - `@charivo/server/openai`: re-exports `createOpenAISTTProvider(...)` from
   `@charivo/stt/openai`
 - `@charivo/server/gemini`: re-exports `createGeminiSTTProvider(...)` from

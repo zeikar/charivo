@@ -44,6 +44,11 @@ Examples:
 - `@charivo/stt/openai-realtime` — streaming transcription over WebRTC; it holds
   no credential itself and calls an app-supplied bootstrap that runs on your
   server (see [STT](./stt.md) for its press-to-start/stop constraints)
+- `@charivo/stt/gemini-live` — streaming transcription over the Gemini Live
+  websocket; it ships no key-bearing helper either and calls an app-supplied
+  bootstrap that mints the session token on your server, but the browser then
+  holds that short-lived token for the life of one recording (see
+  [STT](./stt.md) for that and its press-to-start/stop constraints)
 - `@charivo/realtime/remote`
 
 Choose this path when:

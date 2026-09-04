@@ -9,7 +9,7 @@ current architecture as it is actually shipped:
 - TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
   direct) players
 - STT through remote, browser-native, direct OpenAI, Gemini (remote and
-  direct), and streaming OpenAI Realtime transcribers
+  direct), and streaming OpenAI Realtime and Gemini Live transcribers
 - Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over either the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket
   adapter, chosen in the settings menu
@@ -23,9 +23,9 @@ current architecture as it is actually shipped:
 
 Every route under `src/app/api/` is an unauthenticated proxy that anyone can
 POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/chat-gemini`,
-`/api/tts-gemini`, and `/api/stt-gemini` spend `GEMINI_API_KEY` instead. So
-does `/api/realtime`, whenever the caller asks for the Gemini provider — the
-demo UI's default.
+`/api/tts-gemini`, `/api/stt-gemini`, and `/api/stt-gemini-live` spend
+`GEMINI_API_KEY` instead. So does `/api/realtime`, whenever the caller asks for
+the Gemini provider — the demo UI's default.
 `/api/chat-openclaw` spends neither: it forwards to whatever
 `OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
 credential and that backend. That is fine for `pnpm dev:web` on your own
@@ -38,7 +38,9 @@ What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
   config instead of forwarding the caller's and pins its own model for whichever
   provider it dispatched to, so nobody can repoint either key at an expensive
   model or raise `maxTokens`. Same for the transcription model on
-  `/api/realtime-transcription`.
+  `/api/realtime-transcription`, and for the model and manual VAD baked into the
+  ephemeral token `/api/stt-gemini-live` mints — that token's setup replaces the
+  browser's rather than validating it.
 - **Single requests are bounded.** Caps on chat message count, length, and
   serialized tool payloads; TTS input characters; STT upload size; realtime
   instruction and tool size.
@@ -82,7 +84,7 @@ cp examples/web/.env.example examples/web/.env.local
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Needed for realtime voice (defaults to Gemini Live), /api/chat-gemini, /api/tts-gemini, and /api/stt-gemini
+# Needed for realtime voice (defaults to Gemini Live), /api/chat-gemini, /api/tts-gemini, /api/stt-gemini, and /api/stt-gemini-live
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # Optional OpenClaw proxy settings
@@ -93,16 +95,17 @@ OPENCLAW_AGENT_ID=main
 
 Realtime voice defaults to Gemini Live, which is the cheaper of the two APIs, so
 `GEMINI_API_KEY` is what an out-of-the-box realtime call spends;
-`/api/chat-gemini`, `/api/tts-gemini`, and `/api/stt-gemini` spend the same key
-whenever you pick the Gemini Remote LLM, TTS, or STT option. The settings menu
-lists both realtime providers whatever you configure, because the browser has
-no way to ask which keys a deployment set. So a missing key surfaces only once
-you use it: a realtime call fails at connect time, the reason arrives above the
-chat input (`RealtimeErrorNotice`), and switching to OpenAI Realtime in the
-menu is one click away. The Gemini Remote chat, TTS, and STT options have no
-such fallback — they simply fail until the key is set. All three Gemini Direct
-(Dev) options need no server key at all; each prompts for its own in the
-browser.
+`/api/chat-gemini`, `/api/tts-gemini`, `/api/stt-gemini`, and
+`/api/stt-gemini-live` spend the same key whenever you pick the Gemini Remote
+LLM, TTS, or STT option, or the Gemini Live (Streaming) STT option. The
+settings menu lists both realtime providers whatever you configure, because the
+browser has no way to ask which keys a deployment set. So a missing key surfaces
+only once you use it: a realtime call fails at connect time, the reason arrives
+above the chat input (`RealtimeErrorNotice`), and switching to OpenAI Realtime in
+the menu is one click away. The Gemini Remote chat, TTS, and STT options and the
+Gemini Live (Streaming) STT option have no such fallback — they simply fail until
+the key is set. All three Gemini Direct (Dev) options need no server key at all;
+each prompts for its own in the browser.
 
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
@@ -193,6 +196,17 @@ The demo ships these routes:
   Accepts `{ sdpOffer, session: { model?, language? } }` and returns
   `{ answerSdp }`. `model` is accepted for wire compatibility but ignored — the
   route pins the transcription model itself
+- `POST /api/stt-gemini-live`
+  Mints a single-use ephemeral Live API token for `@charivo/stt/gemini-live`
+  Accepts `{ session: { model?, language? } }` and returns `{ url, token }`.
+  `model` is accepted for wire compatibility but ignored — the token's own
+  `bidiGenerateContentSetup` pins the transcription model and manual VAD, and it
+  replaces the browser's setup frame rather than validating it. Unlike
+  `/api/stt-gemini` there is no requests-per-minute ceiling on this model on the
+  demo's AI Studio key; its tokens-per-minute limit is consumed by audio
+  duration instead, and only the browser-side recording cap bounds that — a
+  client-side timer on an unauthenticated route, so it bounds an ordinary
+  visitor, not a determined caller
 
 There is no `GET /api/tts` route in the current demo.
 
@@ -207,8 +221,9 @@ compare the tradeoffs:
   mirror the LLM split with their own Gemini Remote and Gemini Direct (Dev)
   options.
 - Browser TTS/STT options use Web Speech APIs and depend on browser support.
-- The streaming STT option keeps the key on the server and writes interim
-  transcripts into the message box while you hold the mic.
+- The streaming STT options — OpenAI Realtime over WebRTC and Gemini Live over
+  a websocket — keep the key on the server and write interim transcripts into
+  the message box while you hold the mic.
 - The realtime provider selector chooses OpenAI Realtime or Gemini Live for the
   next call, and starts on Gemini Live. It locks while a call is connecting or
   up — the manager is built
@@ -229,6 +244,7 @@ examples/web/src/app
     realtime-transcription/route.ts
     stt/route.ts
     stt-gemini/route.ts
+    stt-gemini-live/route.ts
     tts/route.ts
     tts-gemini/route.ts
   components/

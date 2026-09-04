@@ -20,7 +20,8 @@ The app exercises the current package stack:
 - TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
   direct) players
 - STT through remote, browser-native, direct OpenAI, Gemini (remote and
-  direct), and streaming (`@charivo/stt/openai-realtime`) transcribers
+  direct), and streaming (`@charivo/stt/openai-realtime` and
+  `@charivo/stt/gemini-live`) transcribers
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket adapter,
   chosen in the settings menu (Gemini Live by default)
@@ -67,8 +68,12 @@ The current reference app ships:
   requests per minute on this model, so a fourth within a minute fails with
   the route's generic 500 — the demo does not throttle
 - `POST /api/realtime-transcription`
-  Exchanges the streaming transcriber's SDP offer with OpenAI so the browser
-  never holds a key
+  Exchanges the OpenAI streaming transcriber's SDP offer with OpenAI so the
+  browser never holds a key
+- `POST /api/stt-gemini-live`
+  Mints a single-use ephemeral Gemini Live token for `@charivo/stt/gemini-live`,
+  pinning the transcription model and manual VAD in the token's own setup, and
+  returns it with the websocket url
 - `POST /api/realtime`
   Uses `@charivo/server/openai` or `@charivo/server/gemini`, as
   `session.provider` selects, to create a realtime session bootstrap; either
@@ -85,7 +90,7 @@ instructions/tools are size-capped, voices come from a per-provider allowlist,
 and a client-side timer caps a production realtime session at 90 seconds (15
 minutes in development) because the browser talks to the provider directly once
 bootstrapped and the server can no longer hang up. A separate timer with the
-same limit arms on STT recording, where the streaming transcriber holds an
+same limit arms on STT recording, where either streaming transcriber holds an
 equally wall-clock-billed session for as long as it records.
 
 ## Runtime Modes
@@ -99,7 +104,8 @@ place:
   on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS and STT mirror the
   LLM split with their own Gemini Remote and Gemini Direct (Dev) options
 - browser-native TTS and STT paths for zero-server speech experiments
-- a streaming STT path backed by `/api/realtime-transcription`
+- two streaming STT paths, backed by `/api/realtime-transcription` and
+  `/api/stt-gemini-live`
 - a realtime provider selector, OpenAI Realtime or Gemini Live, that starts on
   Gemini Live and locks while a call is connecting or up
 - stub LLM mode for deterministic UI work

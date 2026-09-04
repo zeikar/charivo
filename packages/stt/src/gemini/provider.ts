@@ -39,8 +39,10 @@ export interface GeminiSTTConfig {
  * `STTOptions.language` is optional and only a soft hint — the model
  * transcribes what it hears even when the hint is wrong.
  *
- * One request per utterance, with no streaming; the live transcription model is
- * a separate transport. Measured latency is 1.5-3.4s on a 4s clip.
+ * One request per utterance, with no streaming: the live transcription model
+ * (`gemini-3.5-transcribe-live`) is WebSocket-only, `generateContent` rejects
+ * it with a 400, and it is served by `@charivo/stt/gemini-live`. Measured
+ * latency is 1.5-3.4s on a 4s clip.
  *
  * The free tier allows 3 requests per minute; beyond that the 429 surfaces as a
  * CharivoProviderError carrying Google's retry hint.
