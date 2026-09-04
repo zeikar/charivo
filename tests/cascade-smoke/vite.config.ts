@@ -314,7 +314,14 @@ export default defineConfig({
                     });
 
               response.statusCode = 200;
-              response.setHeader("Content-Type", "audio/wav");
+              // Mirrors the demo routes: Gemini's provider hands back a WAV it
+              // wrapped itself, while OpenAI answers with mp3. The remote
+              // player labels playback from this header, so naming one
+              // container for both legs would mislabel one of them.
+              response.setHeader(
+                "Content-Type",
+                CASCADE_TTS === "gemini" ? "audio/wav" : "audio/mpeg",
+              );
               response.setHeader(
                 "Content-Length",
                 String(audioBuffer.byteLength),
