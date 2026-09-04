@@ -28,6 +28,7 @@
   },
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r --filter './packages/*' build",
@@ -80,7 +81,7 @@
     "vitest": "^2.1.9"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=22.13.0",
+    "pnpm": ">=11.0.0"
   }
 }

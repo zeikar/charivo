@@ -9,3 +9,11 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   core-js: false
+
+# pnpm 11 refuses to install any package published within the last 24h. @ikijs/*
+# is first-party — same author, published from the iki repo's own release
+# pipeline — so it is exempt. Without this, every Iki release would red-line
+# charivo's CI install for a day. Narrow to exact versions if that trust ever
+# stops holding.
+minimumReleaseAgeExclude:
+  - "@ikijs/*"

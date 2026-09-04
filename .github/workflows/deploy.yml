@@ -23,9 +23,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # No `version:` — action-setup reads the root packageManager pin, so a
+      # bump there moves local and CI together.
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10
 
       - uses: actions/setup-node@v6
         with:
