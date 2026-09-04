@@ -65,6 +65,10 @@ export const workspaceAliases = [
     replacement: resolvePackage("packages/stt/src/gemini/index.ts"),
   },
   {
+    find: "@charivo/stt/gemini-live",
+    replacement: resolvePackage("packages/stt/src/gemini-live/index.ts"),
+  },
+  {
     find: "@charivo/stt/openai-realtime",
     replacement: resolvePackage("packages/stt/src/openai-realtime/index.ts"),
   },

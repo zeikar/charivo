@@ -27,6 +27,31 @@ export async function startRecording(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Wait until capture is live, so a fixed record window measures audio rather
+ * than session bring-up. See `StreamingSTTStatus` in the harness types.
+ */
+export async function waitForCapturing(
+  page: Page,
+  timeout = 15_000,
+): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const harness = (window as StreamingSTTWindow).__charivoStreamingStt;
+      const snapshot = harness?.getSnapshot();
+      if (snapshot?.status === "error") {
+        // A session that already failed will never capture; report why now
+        // instead of spending the whole timeout on it.
+        throw new Error(`session failed before capture: ${snapshot.error}`);
+      }
+
+      return snapshot?.status === "recording";
+    },
+    undefined,
+    { timeout },
+  );
+}
+
 export async function stopRecording(page: Page): Promise<void> {
   await page.evaluate(() => {
     const harness = (window as StreamingSTTWindow).__charivoStreamingStt;

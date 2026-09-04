@@ -11,6 +11,11 @@ const baseURL = "http://127.0.0.1:4176";
 // server VAD needs the trailing silence, and stop is driven by our own single
 // commit. Looping keeps speech available whenever session setup finishes, which
 // removes the setup-vs-speech race instead of merely narrowing it.
+//
+// The Gemini leg runs the same way for the same reason: under manual VAD the
+// client declares the only activity, so a looped fixture is one recording whose
+// transcript repeats the sentence. Its assertions compare the partials to the
+// final and never inspect what was said.
 const wavPath = fileURLToPath(
   new URL("tests/webrtc-smoke/fixtures/voice-smoke-input.wav", import.meta.url),
 );
@@ -50,7 +55,10 @@ export default defineConfig({
     command:
       "pnpm exec vite --config tests/streaming-stt-smoke/vite.config.ts --host 127.0.0.1 --port 4176 --strictPort",
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse: the mint routes read OPENAI_API_KEY / GEMINI_API_KEY from
+    // the server process, so a leftover server started without the key of the
+    // leg under test would fail every bootstrap.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

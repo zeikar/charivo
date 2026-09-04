@@ -60,6 +60,7 @@
     "test:cascade": "playwright test -c playwright.cascade.config.ts",
     "test:cascade:gemini": "CASCADE_PROVIDER=gemini playwright test -c playwright.cascade.config.ts",
     "test:streaming-stt": "playwright test -c playwright.streaming-stt.config.ts",
+    "test:streaming-stt:gemini": "STREAMING_STT=gemini playwright test -c playwright.streaming-stt.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "clean": "pnpm -r exec rm -rf dist && pnpm -r exec rm -rf .turbo",

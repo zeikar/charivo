@@ -1,6 +1,10 @@
 import { Charivo } from "@charivo/core";
 import { createSTTManager } from "@charivo/stt";
 import {
+  createGeminiLiveSTTTranscriber,
+  type GeminiLiveTranscriptionBootstrapFn,
+} from "@charivo/stt/gemini-live";
+import {
   createOpenAIRealtimeSTTTranscriber,
   type OpenAIRealtimeTranscriptionBootstrapFn,
 } from "@charivo/stt/openai-realtime";
@@ -10,17 +14,19 @@ import type {
   StreamingSTTStatus,
 } from "../streaming-stt-harness-types";
 
-// Package-level browser harness for the live streaming STT transcriber.
+// Package-level browser harness for the live streaming STT transcribers.
 // This page is test infrastructure, not product UI. It drives the public path:
-// @charivo/stt/openai-realtime → STTManager → Charivo events, so the spec
-// observes `stt:partial` / `stt:stop` / `stt:error` rather than the
-// transcriber's own callbacks.
+// @charivo/stt/openai-realtime or @charivo/stt/gemini-live → STTManager →
+// Charivo events, so the spec observes `stt:partial` / `stt:stop` /
+// `stt:error` rather than the transcriber's own callbacks. The `provider`
+// query parameter picks the transcriber; everything below it is shared.
 
 type StreamingSTTWindow = Window & {
   __charivoStreamingStt?: StreamingSTTHarnessApi;
 };
 
-const BOOTSTRAP_ENDPOINT = "/api/realtime-transcription";
+const OPENAI_BOOTSTRAP_ENDPOINT = "/api/realtime-transcription";
+const GEMINI_BOOTSTRAP_ENDPOINT = "/api/stt-gemini-live";
 
 let status: StreamingSTTStatus = "idle";
 let partials: string[] = [];
@@ -28,17 +34,20 @@ let partialsBeforeStop = 0;
 let final: string | null = null;
 let error: string | null = null;
 
-// The app owns credentials and the SDP exchange; the transcriber never sees a
-// key. The Vite middleware in vite.config.ts backs this endpoint.
-const bootstrap: OpenAIRealtimeTranscriptionBootstrapFn = async (request) => {
-  const response = await fetch(BOOTSTRAP_ENDPOINT, {
+// The app owns credentials; neither transcriber ever sees a key. The Vite
+// middlewares in vite.config.ts back both endpoints.
+async function postBootstrap(
+  endpoint: string,
+  request: unknown,
+): Promise<{ payload: Record<string, unknown>; rawBody: string }> {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
 
   const rawBody = await response.text();
-  let payload: { answerSdp?: unknown; error?: unknown } = {};
+  let payload: Record<string, unknown> = {};
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -53,6 +62,17 @@ const bootstrap: OpenAIRealtimeTranscriptionBootstrapFn = async (request) => {
     );
   }
 
+  return { payload, rawBody };
+}
+
+const openAIBootstrap: OpenAIRealtimeTranscriptionBootstrapFn = async (
+  request,
+) => {
+  const { payload, rawBody } = await postBootstrap(
+    OPENAI_BOOTSTRAP_ENDPOINT,
+    request,
+  );
+
   if (typeof payload.answerSdp !== "string") {
     throw new Error(
       `bootstrap returned no answerSdp: ${rawBody.slice(0, 400)}`,
@@ -62,8 +82,23 @@ const bootstrap: OpenAIRealtimeTranscriptionBootstrapFn = async (request) => {
   return { answerSdp: payload.answerSdp };
 };
 
+const geminiBootstrap: GeminiLiveTranscriptionBootstrapFn = async (request) => {
+  const { payload } = await postBootstrap(GEMINI_BOOTSTRAP_ENDPOINT, request);
+
+  if (typeof payload.url !== "string" || typeof payload.token !== "string") {
+    // The body is never quoted here, unlike the OpenAI branch above: a 2xx
+    // from this route carries the ephemeral token.
+    throw new Error("bootstrap returned no websocket url or token");
+  }
+
+  return { url: payload.url, token: payload.token };
+};
+
+const provider = new URLSearchParams(window.location.search).get("provider");
 const sttManager = createSTTManager(
-  createOpenAIRealtimeSTTTranscriber({ bootstrap }),
+  provider === "gemini"
+    ? createGeminiLiveSTTTranscriber({ bootstrap: geminiBootstrap })
+    : createOpenAIRealtimeSTTTranscriber({ bootstrap: openAIBootstrap }),
 );
 const charivo = new Charivo();
 charivo.attachSTT(sttManager);
@@ -84,13 +119,18 @@ function fail(cause: unknown): void {
 }
 
 function start(): void {
-  status = "recording";
+  status = "starting";
   partials = [];
   partialsBeforeStop = 0;
   final = null;
   error = null;
 
-  void sttManager.start().catch(fail);
+  // Reaching `recording` is what tells the spec its record window can begin:
+  // start() resolves only after the transcriber has gone live, so bootstrap,
+  // handshake, and worklet load fall outside the window rather than eating it.
+  void sttManager.start().then(() => {
+    status = "recording";
+  }, fail);
 }
 
 function stop(): void {

@@ -8,13 +8,20 @@ const harnessRoot = __dirname;
 
 const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 const CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+const AUTH_TOKENS_URL =
+  "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
+const GEMINI_LIVE_WEBSOCKET_URL =
+  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
+const GEMINI_TRANSCRIPTION_MODEL = "gemini-3.5-transcribe-live";
 
-// This route is intentionally local to the streaming STT harness. No
-// key-bearing helper ships with @charivo/stt/openai-realtime — the app owns the
-// credentials and the SDP exchange — so the harness implements the consumer
-// side of `bootstrap` exactly as the package docs describe it: mint an
-// ephemeral secret for a `type: "transcription"` session, then trade the
-// browser's SDP offer for an answer.
+// Both routes are intentionally local to the streaming STT harness. No
+// key-bearing helper ships with @charivo/stt/openai-realtime or
+// @charivo/stt/gemini-live — the app owns the credentials — so the harness
+// implements the consumer side of each `bootstrap` exactly as the package docs
+// describe it: for OpenAI, mint an ephemeral secret for a
+// `type: "transcription"` session and then trade the browser's SDP offer for an
+// answer; for Gemini, mint a single-use ephemeral token and hand back the
+// websocket url it is good for.
 
 function sendJson(
   response: ServerResponse,
@@ -137,6 +144,68 @@ async function exchangeSdp(
   return body;
 }
 
+/**
+ * Mint a single-use ephemeral token for a transcription-only Live API session.
+ *
+ * The token's `bidiGenerateContentSetup` REPLACES the browser's setup frame
+ * rather than validating it, so the whole session — model included — is built
+ * here, never forwarded from the caller, for the reason `toMintBody` in
+ * `packages/server/src/gemini/realtime/index.ts` records: an unconstrained
+ * token lets its holder pick any model on the key owner's bill. Manual VAD is
+ * part of that: pinned only in the client's setup frame it would be replaced
+ * away, and the server would segment the recording on its own.
+ */
+async function mintLiveTranscriptionToken(
+  apiKey: string,
+  language: string | undefined,
+): Promise<string> {
+  const inputAudioTranscription: JsonRecord = { mode: "VERBATIM" };
+  if (language) {
+    inputAudioTranscription.languageCodes = [language];
+  }
+
+  const response = await fetch(AUTH_TOKENS_URL, {
+    method: "POST",
+    headers: {
+      // Never in the URL: proxies and request logs capture query strings.
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uses: 1,
+      bidiGenerateContentSetup: {
+        model: `models/${GEMINI_TRANSCRIPTION_MODEL}`,
+        generationConfig: { responseModalities: ["TEXT"] },
+        inputAudioTranscription,
+        realtimeInputConfig: {
+          automaticActivityDetection: { disabled: true },
+        },
+      },
+    }),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `[auth_tokens] mint failed with ${response.status}: ${body}`,
+    );
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    throw new Error(`[auth_tokens] response was not JSON: ${body}`);
+  }
+
+  const token = (payload as { name?: unknown }).name;
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("[auth_tokens] response had no ephemeral token `name`");
+  }
+
+  return token;
+}
+
 export default defineConfig({
   root: harnessRoot,
   resolve: {
@@ -194,6 +263,50 @@ export default defineConfig({
                   error instanceof Error
                     ? error.message
                     : "Failed to bootstrap the transcription session",
+              });
+            }
+          },
+        );
+
+        // Bootstrap: { session: { model?, language? } } → { url, token }.
+        // `model` is accepted for wire compatibility and ignored: the route
+        // pins the model the key owner pays for.
+        server.middlewares.use(
+          "/api/stt-gemini-live",
+          async (request: IncomingMessage, response: ServerResponse, next) => {
+            if (request.method !== "POST") {
+              next();
+              return;
+            }
+
+            const apiKey = process.env.GEMINI_API_KEY;
+            if (!apiKey) {
+              sendJson(response, 500, {
+                error: "GEMINI_API_KEY not configured",
+              });
+              return;
+            }
+
+            try {
+              const payload = await readJsonBody(request);
+              const session = payload.session as JsonRecord | undefined;
+              const language = session?.language;
+
+              const token = await mintLiveTranscriptionToken(
+                apiKey,
+                typeof language === "string" ? language : undefined,
+              );
+
+              sendJson(response, 200, {
+                url: GEMINI_LIVE_WEBSOCKET_URL,
+                token,
+              });
+            } catch (error) {
+              sendJson(response, 500, {
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to mint the transcription token",
               });
             }
           },

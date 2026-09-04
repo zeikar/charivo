@@ -29,6 +29,7 @@
       "@charivo/stt": ["packages/stt/src/index.ts"],
       "@charivo/stt/openai": ["packages/stt/src/openai/index.ts"],
       "@charivo/stt/gemini": ["packages/stt/src/gemini/index.ts"],
+      "@charivo/stt/gemini-live": ["packages/stt/src/gemini-live/index.ts"],
       "@charivo/stt/openai-realtime": [
         "packages/stt/src/openai-realtime/index.ts"
       ],

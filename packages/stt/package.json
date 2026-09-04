@@ -26,6 +26,11 @@
       "import": "./dist/gemini/index.mjs",
       "require": "./dist/gemini/index.js"
     },
+    "./gemini-live": {
+      "types": "./dist/gemini-live/index.d.ts",
+      "import": "./dist/gemini-live/index.mjs",
+      "require": "./dist/gemini-live/index.js"
+    },
     "./openai-realtime": {
       "types": "./dist/openai-realtime/index.d.ts",
       "import": "./dist/openai-realtime/index.mjs",
