@@ -22,18 +22,16 @@ What this suite validates, per provider (`@charivo/tts/openai`,
   unit tests cannot observe:
   - Gemini answers with headerless `audio/l16` PCM that the provider wraps in a
     44-byte RIFF header, so the buffer must open with `RIFF`/`WAVE`
-  - OpenAI answers with **MPEG audio** (asserted on the frame sync, measured
-    `ff f3 ...` on 2026-09-04), not WAV — the provider's `format: "wav"` is
-    inert because the SDK parameter is `response_format`
+  - OpenAI answers with **MPEG audio**, asserted on the frame sync plus the
+    Layer III bits so an AAC container cannot pass in its place
 
-That OpenAI result is a known, unfixed mismatch rather than the expected state,
-and this suite pins it rather than failing on it. `packages/tts/src/openai/index.ts`
-declares `audioMimeType = "audio/wav"`, `@charivo/tts/remote` wraps the bytes as
-`audio/wav`, and `examples/web/src/app/api/tts/route.ts` serves them as
-`Content-Type: audio/wav`; only the direct OpenAI player's own `audio/mp3` blob
-matches what arrives. Playback survives because browsers sniff the container.
-Deciding between asking for real WAV (larger payloads) and correcting the three
-labels is open — the assertion here is what makes either change visible.
+The OpenAI result is the reason `@charivo/tts` labels that player's audio
+`audio/mpeg`: the provider sends `format: "wav"`, but the SDK parameter is
+`response_format`, so the field never reaches the request and the API answers
+with its mp3 default. That was measured here on 2026-09-04 (head `ff f3 ...`)
+and the labels were corrected to match, rather than the request being changed
+to ask for real WAV. This assertion is what keeps the two in agreement: if it
+ever fails, the container moved and every label has to move with it.
 
 What it does not validate:
 

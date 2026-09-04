@@ -8,10 +8,9 @@ import { createGeminiTTSProvider } from "@charivo/tts/gemini";
 // tests cannot -- that the request shape each provider builds is one the vendor
 // accepts, and that the bytes coming back are a container a player can open.
 // The container is the point: `TTSManager` plays through `new Audio(blobUrl)`,
-// and the mocked unit tests cannot see what a vendor actually returns. Note
-// that OpenAI's container is currently NOT what its player and the demo route
-// label it -- see this suite's README; the assertion pins the real bytes so
-// that either half of the mismatch moving becomes visible.
+// and the mocked unit tests cannot see what a vendor actually returns. Each
+// player's `audioMimeType` is derived from these measurements, so the
+// assertions here are what keep the labels honest.
 //
 // Budget: one `generateSpeech` per provider per run. That is one API request
 // for OpenAI, and up to two for Gemini, which retries a 5xx once while sharing
@@ -22,10 +21,8 @@ const RUN_LIVE_TTS_TESTS = process.env.RUN_LIVE_TTS_TESTS === "1";
 
 // The OpenAI provider maps a request to CharivoTimeoutError at a fixed 30 s.
 // Gemini is pinned to the same 25 s the demo route uses, so this exercises the
-// deadline the demo actually ships. Note that the Gemini provider retries once
-// on a 5xx *inside* that budget, so a vendor 503 spends the whole 25 s and
-// surfaces as a timeout rather than the 503 -- that is vendor capacity, not a
-// regression.
+// deadline the demo actually ships. See the budget note above for how a busy
+// model surfaces.
 const GEMINI_TIMEOUT_MS = 25_000;
 const SINGLE_CALL_TEST_TIMEOUT_MS = 40_000;
 

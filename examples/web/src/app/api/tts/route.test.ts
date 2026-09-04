@@ -43,6 +43,17 @@ describe("examples/web /api/tts route", () => {
     });
   });
 
+  it("serves the MPEG container OpenAI actually returns", async () => {
+    // The provider's `format: "wav"` never reaches the API (the SDK parameter
+    // is `response_format`), so these bytes are mp3. `@charivo/tts/remote`
+    // labels playback from this header, and the Gemini route asserts its own
+    // WAV header for the same reason.
+    const response = await POST(postRequest({ text: "Hello" }) as never);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+  });
+
   it("falls back only when the request names no voice", async () => {
     await POST(postRequest({ text: "Hello" }) as never);
 

@@ -271,7 +271,7 @@ export default defineConfig({
           },
         );
 
-        // TTS: { text, voice, speed } → audio/wav buffer
+        // TTS: { text, voice, speed } → audio buffer in the provider's container
         server.middlewares.use(
           "/api/tts",
           async (request: IncomingMessage, response: ServerResponse, next) => {
