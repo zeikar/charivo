@@ -39,6 +39,7 @@ describe("demo limits", () => {
       "REALTIME_MAX_OUTPUT_TOKENS",
       "TTS_MAX_TEXT_CHARS",
       "STT_MAX_AUDIO_BYTES",
+      "STT_GEMINI_LIVE_MODEL",
       "CHAT_MAX_MESSAGES",
       "CHAT_MAX_TOTAL_CHARS",
     ] as const) {
