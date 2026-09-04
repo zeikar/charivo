@@ -30,6 +30,7 @@ export type STTTranscriberType =
   | "web"
   | "openai"
   | "openai-realtime"
+  | "gemini-live"
   | "gemini-remote"
   | "gemini"
   | "none";

@@ -25,6 +25,7 @@ import {
 import { createSTTManager } from "@charivo/stt";
 import { REALTIME_SESSION_MAX_MS } from "../api/demo-limits";
 import { createSessionCap } from "./session-cap";
+import type { GeminiLiveTranscriptionBootstrapFn } from "@charivo/stt/gemini-live";
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import type { Live2DRenderer } from "@charivo/render-live2d";
@@ -68,6 +69,7 @@ const GEMINI_TESTING_PROMPT =
 const OPENCLAW_TESTING_PROMPT =
   "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
 const REALTIME_TRANSCRIPTION_ENDPOINT = "/api/realtime-transcription";
+const GEMINI_LIVE_TRANSCRIPTION_ENDPOINT = "/api/stt-gemini-live";
 const REALTIME_UI_DEBUG = process.env.NODE_ENV !== "production";
 
 function logRealtimeUi(...args: unknown[]): void {
@@ -128,38 +130,76 @@ function promptForSecret(message: string, missingMessage: string): string {
   return value;
 }
 
-// The streaming STT transcriber never sees a credential: it hands us its SDP
-// offer, and /api/realtime-transcription mints the ephemeral secret server-side
-// and returns the answer SDP.
-const bootstrapRealtimeTranscription: OpenAIRealtimeTranscriptionBootstrapFn =
-  async (sessionRequest) => {
-    const response = await fetch(REALTIME_TRANSCRIPTION_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sessionRequest),
-    });
+/**
+ * The one fetch/parse/error path behind both streaming transcribers. Neither
+ * ever sees the API key: each hands its session request to a server route that
+ * spends the key and answers with what that transport needs to connect -- which
+ * on the WebSocket path is itself a short-lived credential, see below. They
+ * differ only in the route and in which fields carry that answer, so `pick`
+ * reads those and returns null when the payload lacks them -- the same failure
+ * as a response that was not ok.
+ */
+async function bootstrapTranscription<T>(
+  endpoint: string,
+  sessionRequest: unknown,
+  pick: (payload: Record<string, unknown>) => T | null,
+): Promise<T> {
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionRequest),
+  });
 
-    const rawBody = await response.text();
-    let payload: { answerSdp?: unknown; error?: unknown; details?: unknown } =
-      {};
-    try {
-      payload = JSON.parse(rawBody);
-    } catch {
-      // Leave payload empty; the raw body goes into the error below.
-    }
+  const rawBody = await response.text();
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    // Leave payload empty; the raw body goes into the error below.
+  }
 
-    if (!response.ok || typeof payload.answerSdp !== "string") {
-      const message = [payload.error, payload.details]
-        .filter((part): part is string => typeof part === "string")
-        .join(": ");
-      throw new Error(
-        message ||
-          `Transcription bootstrap failed with ${response.status}: ${rawBody}`,
-      );
-    }
+  // Identity, not truthiness: `pick` is generic, so a future picker returning
+  // an empty string or a zero would otherwise read as a failed bootstrap.
+  const bootstrap = response.ok ? pick(payload) : null;
+  if (bootstrap === null) {
+    const message = [payload.error, payload.details]
+      .filter((part): part is string => typeof part === "string")
+      .join(": ");
+    throw new Error(
+      message ||
+        `Transcription bootstrap failed with ${response.status}: ${rawBody}`,
+    );
+  }
 
-    return { answerSdp: payload.answerSdp };
-  };
+  return bootstrap;
+}
+
+// WebRTC: the transcriber hands us its offer SDP and the route answers with the
+// SDP of the session it minted.
+const bootstrapRealtimeTranscription: OpenAIRealtimeTranscriptionBootstrapFn = (
+  sessionRequest,
+) =>
+  bootstrapTranscription(
+    REALTIME_TRANSCRIPTION_ENDPOINT,
+    sessionRequest,
+    ({ answerSdp }) => (typeof answerSdp === "string" ? { answerSdp } : null),
+  );
+
+// WebSocket: the transcriber names the model and language it wants, and the
+// route answers with a single-use ephemeral token and the url it is good for,
+// which the transcriber then opens itself. That token is a credential the
+// browser holds, unlike the WebRTC path's answer.
+const bootstrapGeminiLiveTranscription: GeminiLiveTranscriptionBootstrapFn = (
+  sessionRequest,
+) =>
+  bootstrapTranscription(
+    GEMINI_LIVE_TRANSCRIPTION_ENDPOINT,
+    sessionRequest,
+    ({ url, token }) =>
+      typeof url === "string" && typeof token === "string"
+        ? { url, token }
+        : null,
+  );
 
 async function stopRealtime(instance: Charivo | null): Promise<void> {
   const realtimeManager = instance?.getRealtimeManager();
@@ -441,6 +481,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             );
             return createOpenAIRealtimeSTTTranscriber({
               bootstrap: bootstrapRealtimeTranscription,
+            });
+          }
+          case "gemini-live": {
+            const { createGeminiLiveSTTTranscriber } = await import(
+              "@charivo/stt/gemini-live"
+            );
+            return createGeminiLiveSTTTranscriber({
+              bootstrap: bootstrapGeminiLiveTranscription,
             });
           }
           case "none":
@@ -1158,10 +1206,18 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setCapNotice(null);
       await sttManagerRef.current.start();
 
-      // The streaming transcriber holds an open, wall-clock-billed realtime
-      // session for as long as it records, so an abandoned tab bills until the
-      // browser is closed. Same courtesy cap as a realtime voice session; on
-      // the batch and browser-native paths it simply bounds the clip.
+      // Either streaming transcriber holds an open, wall-clock-billed session
+      // for as long as it records, so an abandoned tab bills until the browser
+      // is closed. Same courtesy cap as a realtime voice session; on the batch
+      // and browser-native paths it simply bounds the clip. One gap, left as is
+      // because only the 15-minute development value can reach it: Google
+      // documents a Live API *connection* lifetime of "around 10 minutes",
+      // which is shorter than the 15-minute audio-only *session* limit and is
+      // easy to conflate with it precisely because that one matches our
+      // development cap exactly. This transcriber deliberately does not resume
+      // sessions, so a development recording still running past ten minutes
+      // ends with the server closing the socket and the stop rejecting. Not
+      // measured here.
       recordingCap.arm(REALTIME_SESSION_MAX_MS);
     } catch (error) {
       setSttError(error instanceof Error ? error.message : "Recording failed");

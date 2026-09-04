@@ -188,6 +188,13 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     Icon: SignalIcon,
   },
   {
+    label: "Gemini Live (Streaming)",
+    value: "gemini-live",
+    description:
+      "Live streaming transcription over WebSocket. Needs GEMINI_API_KEY.",
+    Icon: SignalIcon,
+  },
+  {
     label: "Disabled",
     value: "none",
     description: "No speech recognition",
