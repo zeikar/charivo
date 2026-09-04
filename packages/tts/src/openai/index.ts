@@ -25,8 +25,9 @@ export type OpenAITTSPlayerConfig = OpenAITTSConfig;
 class OpenAITTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
   // The API answers with its mp3 default: `OpenAITTSProvider` sends
-  // `format: "wav"`, but the SDK parameter is `response_format`, so that
-  // field never reaches the request. `tests/live-tts` pins the container.
+  // `format: "wav"`, which is not the parameter the API reads -- that is
+  // `response_format` -- so it is carried in the body and ignored.
+  // `tests/live-tts` pins the container this actually yields.
   readonly audioMimeType = "audio/mpeg";
   private provider: OpenAITTSProvider;
 

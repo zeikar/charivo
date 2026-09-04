@@ -26,9 +26,9 @@ What this suite validates, per provider (`@charivo/tts/openai`,
     Layer III bits so an AAC container cannot pass in its place
 
 The OpenAI result is the reason `@charivo/tts` labels that player's audio
-`audio/mpeg`: the provider sends `format: "wav"`, but the SDK parameter is
-`response_format`, so the field never reaches the request and the API answers
-with its mp3 default. That was measured here on 2026-09-04 (head `ff f3 ...`)
+`audio/mpeg`: the provider sends `format: "wav"`, which is not the parameter the
+API reads — that is `response_format` — so it rides along in the body, is
+ignored, and the mp3 default stands. That was measured here on 2026-09-04 (head `ff f3 ...`)
 and the labels were corrected to match, rather than the request being changed
 to ask for real WAV. This assertion is what keeps the two in agreement: if it
 ever fails, the container moved and every label has to move with it.

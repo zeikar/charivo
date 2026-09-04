@@ -73,9 +73,9 @@ describe("OpenAITTSPlayer", () => {
   });
 
   it("declares the MPEG container the API actually answers with", () => {
-    // The provider asks for `format: "wav"`, but the SDK parameter is
-    // `response_format`, so the request never carries it and OpenAI answers
-    // with its mp3 default -- confirmed against the live API in
+    // The provider asks for `format: "wav"`, which is not the parameter the
+    // API reads -- that is `response_format` -- so it is ignored and OpenAI
+    // answers with its mp3 default, confirmed against the live API in
     // `tests/live-tts`. The manager wraps the buffer in a Blob using this
     // value, so naming WAV here mislabels every clip it plays.
     const player = createOpenAITTSPlayer({ apiKey: "key" });

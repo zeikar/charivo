@@ -66,14 +66,12 @@ liveOpenAIDescribe("openai TTS provider (live)", () => {
       );
       expect(audio.byteLength).toBeGreaterThan(0);
 
-      // MPEG, not WAV, and deliberately asserted as measured (2026-09-04:
-      // `ff f3 c4 c4 ...`). `packages/tts/src/openai/provider.ts` asks for
-      // `format: "wav"`, but the SDK parameter is `response_format`, so that
-      // field is inert and the API answers with its mp3 default -- which is
-      // what `packages/tts/src/openai/index.ts` labels the blob (`audio/mp3`),
-      // and what the sibling `audioMimeType = "audio/wav"` on that same client
-      // contradicts. If this assertion ever fails, the request format changed;
-      // fix the labels with it rather than loosening the check.
+      // MPEG, not WAV, as measured on 2026-09-04 (`ff f3 c4 c4 ...`).
+      // `packages/tts/src/openai/provider.ts` sends `format: "wav"`, which the
+      // API does not read -- the parameter is `response_format` -- so the mp3
+      // default stands, and `audioMimeType` names it. If this assertion ever
+      // fails the container moved; move the labels with it rather than
+      // loosening the check.
       const head = new Uint8Array(audio);
       expect(head[0]).toBe(0xff);
       // Frame sync is 11 set bits: 0xff then the top 3 bits of the next byte.
