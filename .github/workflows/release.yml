@@ -36,8 +36,14 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing (OIDC) needs npm 11.5.1+; the runner's Node 22 ships
-      # npm 10. Every @charivo package on npm trusts this workflow, so no token
-      # is passed below — NPM_TOKEN stays in the repo secrets only as a fallback.
+      # npm 10. Every @charivo package is registered as trusting this workflow
+      # (`npm trust list <pkg>`), so releases publish over OIDC and carry SLSA
+      # provenance — check with `npm view <pkg> dist.attestations`.
+      #
+      # NODE_AUTH_TOKEN IS still passed below, and the two coexist: npm prefers
+      # OIDC for any package that has a trust config and falls back to the token
+      # only for one that does not — a package being published for the first
+      # time, before anyone has run `npm trust` against it.
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@11
 
