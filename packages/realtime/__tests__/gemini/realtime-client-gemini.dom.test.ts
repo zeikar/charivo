@@ -153,9 +153,13 @@ class MockMediaTrack {
 }
 
 const SOCKET_URL = "wss://generativelanguage.example/ws";
-// Every reserved character the query parameter has to survive.
+// Every reserved character the query parameter has to survive. Built through
+// `URL.searchParams`, which form-encodes, so the space becomes `+` rather than
+// `%20` — one of six characters (space, `!`, `'`, `(`, `)`, `~`) where that
+// differs from `encodeURIComponent`, and none of them can appear in an
+// `auth_tokens/<id>` token.
 const TOKEN = "tok en/+&";
-const ENCODED_TOKEN = "tok%20en%2F%2B%26";
+const ENCODED_TOKEN = "tok+en%2F%2B%26";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -457,12 +461,87 @@ describe("GeminiLiveClient connect lifecycle", () => {
     });
   });
 
-  it("carries the ephemeral token as a percent-encoded query parameter", async () => {
+  it("carries the ephemeral token as an encoded query parameter", async () => {
     const session = await startSession();
 
     expect(session.socket.url).toBe(
       `${SOCKET_URL}?access_token=${ENCODED_TOKEN}`,
     );
+  });
+
+  it("appends the token to a bootstrap url that already carries a query string", async () => {
+    const { client, bootstrap } = createClient();
+    bootstrap.mockResolvedValue({
+      adapter: GEMINI_LIVE_ADAPTER,
+      transport: "websocket",
+      url: `${SOCKET_URL}?session=abc`,
+      token: TOKEN,
+    });
+
+    const connected = client.connect();
+    const socket = await nextSocket(0);
+    socket.open();
+    socket.deliver(JSON.stringify({ setupComplete: {} }));
+    await connected;
+
+    const built = new URL(socket.url);
+    expect(built.searchParams.get("session")).toBe("abc");
+    expect(built.searchParams.get("access_token")).toBe(TOKEN);
+  });
+
+  // MockWebSocket takes any string, so this and the scheme case below only
+  // prove the client refuses the url itself — nothing here exercises what a
+  // browser would do with one.
+  it("rejects a bootstrap url that does not parse, before opening a socket", async () => {
+    const { client, bootstrap } = createClient();
+    bootstrap.mockResolvedValue({
+      adapter: GEMINI_LIVE_ADAPTER,
+      transport: "websocket",
+      url: "not a valid url",
+      token: TOKEN,
+    });
+
+    await expect(client.connect()).rejects.toThrow(
+      "Bootstrap url is not a valid websocket URL",
+    );
+    expect(MockWebSocket.instances).toHaveLength(0);
+  });
+
+  it("rejects a bootstrap url whose scheme is not ws: or wss:, before opening a socket", async () => {
+    const { client, bootstrap } = createClient();
+    bootstrap.mockResolvedValue({
+      adapter: GEMINI_LIVE_ADAPTER,
+      transport: "websocket",
+      url: "https://generativelanguage.example/ws",
+      token: TOKEN,
+    });
+
+    await expect(client.connect()).rejects.toThrow(
+      "Bootstrap url must use ws: or wss:",
+    );
+    expect(MockWebSocket.instances).toHaveLength(0);
+  });
+
+  it("scrubs the token from a websocket the browser refuses to construct", async () => {
+    // The built URL is a credential, and the native constructor error quotes
+    // it. This is the one path where that string could reach app code.
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: class {
+        constructor(url: string) {
+          throw new Error(`Failed to construct 'WebSocket': ${url} is invalid`);
+        }
+      },
+      configurable: true,
+    });
+
+    const { client } = createClient();
+    const failure = await client
+      .connect()
+      .catch((error: unknown) => (error as Error).message);
+
+    expect(failure).toBe("Failed to open the Gemini Live websocket");
+    expect(failure).not.toContain(TOKEN);
+    expect(failure).not.toContain(ENCODED_TOKEN);
   });
 
   it("sends nothing but the setup frame, and starts the session only at setupComplete", async () => {

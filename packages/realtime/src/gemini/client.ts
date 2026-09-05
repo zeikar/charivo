@@ -548,15 +548,32 @@ export class GeminiLiveClient implements RealtimeTransportClient {
     model?: string,
   ): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      // Parsed rather than concatenated, so a bootstrap url that already
+      // carries a query string still gets the token as its own parameter.
+      // Both checks run before the token is attached, so neither can leak it,
+      // and both can name the bootstrap field at fault instead of reading as
+      // the network fault the scrubbed message below is reserved for.
+      let endpoint: URL;
+      try {
+        endpoint = new URL(url);
+      } catch {
+        reject(new Error("Bootstrap url is not a valid websocket URL"));
+        return;
+      }
+      if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:") {
+        reject(new Error("Bootstrap url must use ws: or wss:"));
+        return;
+      }
+
       let socket: WebSocket;
       try {
         // The endpoint accepts the ephemeral token only as a query parameter,
-        // so the built URL is a credential: it never reaches log(), an error
-        // message, or an event payload. A constructor failure is re-thrown as
-        // a bare message for the same reason — the native one quotes the URL.
-        socket = new WebSocket(
-          `${url}?access_token=${encodeURIComponent(token)}`,
-        );
+        // so the built URL is a credential from here on: it never reaches
+        // log(), an error message, or an event payload. A constructor failure
+        // is re-thrown as a bare message for the same reason — the native one
+        // quotes the URL.
+        endpoint.searchParams.set("access_token", token);
+        socket = new WebSocket(endpoint.toString());
       } catch {
         reject(new Error("Failed to open the Gemini Live websocket"));
         return;
