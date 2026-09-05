@@ -381,28 +381,13 @@ class GeminiLiveSTTTranscriber implements STTTranscriber {
   }
 
   /**
-   * Hand one capture frame to the server, or drop it. Audio outside the open
-   * activity is not late data the server can place — under manual VAD it
-   * belongs to no turn at all, so a frame that misses the window is discarded
-   * rather than sent.
-   *
-   * The `activityEnded` check is defensive, and deliberately so: it encodes a
-   * wire-protocol invariant the SERVER would observe being violated — audio
-   * arriving inside an activity the client already closed — rather than
-   * merely an internal state assertion, and the field exists regardless (the
-   * pump captures it at frame arrival for `maybeResolveStop`'s eligibility
-   * rule). It is unreachable under the current ordering: finalizeStop() and
-   * cleanup() both stop the capture pipeline — which nulls `port.onmessage` —
-   * before either one sets the flag, so no frame this method sees can ever
-   * find it true. Nothing tests it in isolation for the same reason: a test
-   * that reached it would have to call a handler the platform has already
-   * detached. Keep it anyway: it costs one comparison, and the alternative to
-   * dropping a frame that somehow arrives late is sending audio into a turn
-   * that is not open.
+   * Hand one capture frame to the server, or drop it. The capture pipeline is
+   * stopped before the socket is torn down, so a frame can only arrive here
+   * while the socket is still open.
    */
   private sendAudioFrame(frame: Uint8Array): void {
     const socket = this.binding?.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN || this.activityEnded) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
 

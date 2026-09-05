@@ -28,6 +28,7 @@ import { createSessionCap } from "./session-cap";
 import type { GeminiLiveTranscriptionBootstrapFn } from "@charivo/stt/gemini-live";
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
+import { bootstrapTranscription } from "./bootstrap-transcription";
 import type { Live2DRenderer } from "@charivo/render-live2d";
 import {
   buildAvatarControlInstructions,
@@ -128,50 +129,6 @@ function promptForSecret(message: string, missingMessage: string): string {
     throw new Error(missingMessage);
   }
   return value;
-}
-
-/**
- * The one fetch/parse/error path behind both streaming transcribers. Neither
- * ever sees the API key: each hands its session request to a server route that
- * spends the key and answers with what that transport needs to connect -- which
- * on the WebSocket path is itself a short-lived credential, see below. They
- * differ only in the route and in which fields carry that answer, so `pick`
- * reads those and returns null when the payload lacks them -- the same failure
- * as a response that was not ok.
- */
-async function bootstrapTranscription<T>(
-  endpoint: string,
-  sessionRequest: unknown,
-  pick: (payload: Record<string, unknown>) => T | null,
-): Promise<T> {
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sessionRequest),
-  });
-
-  const rawBody = await response.text();
-  let payload: Record<string, unknown> = {};
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    // Leave payload empty; the raw body goes into the error below.
-  }
-
-  // Identity, not truthiness: `pick` is generic, so a future picker returning
-  // an empty string or a zero would otherwise read as a failed bootstrap.
-  const bootstrap = response.ok ? pick(payload) : null;
-  if (bootstrap === null) {
-    const message = [payload.error, payload.details]
-      .filter((part): part is string => typeof part === "string")
-      .join(": ");
-    throw new Error(
-      message ||
-        `Transcription bootstrap failed with ${response.status}: ${rawBody}`,
-    );
-  }
-
-  return bootstrap;
 }
 
 // WebRTC: the transcriber hands us its offer SDP and the route answers with the
