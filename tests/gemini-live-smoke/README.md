@@ -19,8 +19,10 @@ existed. It now drives the real chain instead, but the answers stayed:
 way it is, and most of it contradicts what the API reference implies. Read it
 before changing the design back toward the documentation.
 
-Background: `.hyperclaude/research/20260829-0612-gemini-live-api-charivo-realtime.md`
-and its `-claude.md` pair.
+Background: the Gemini Live API research that preceded this harness, a Codex and
+a Claude report written before the transport existed. Those notes are not in the
+repo — everything from them that had to survive is in "The measured record"
+below.
 
 ## Run it
 
