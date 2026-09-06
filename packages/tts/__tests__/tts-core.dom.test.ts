@@ -58,6 +58,34 @@ class MockAudioContext {
     (_audio: HTMLAudioElement) =>
       this.elementSource as unknown as MediaElementAudioSourceNode,
   );
+  // The Web Audio nodes streamed playback builds; the blob path uses none of
+  // them, and the streaming acceptance test below needs them to reach audio.
+  currentTime = 0;
+  tap = { stream: {} as MediaStream };
+  createMediaStreamSource = vi.fn((_stream: MediaStream) => ({
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+  createGain = vi.fn(() => ({
+    gain: { value: 1 },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+  createMediaStreamDestination = vi.fn(() => this.tap);
+  createBuffer = vi.fn(
+    (_channels: number, length: number, sampleRate: number) => ({
+      length,
+      duration: length / sampleRate,
+      getChannelData: () => new Float32Array(length),
+    }),
+  );
+  createBufferSource = vi.fn(() => ({
+    buffer: null,
+    onended: null,
+    connect: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+  }));
   resume = vi.fn(async () => undefined);
   close = vi.fn(async () => undefined);
 
@@ -91,8 +119,15 @@ class RemotePlayerWithAudioStream {
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
   isSupported = vi.fn(() => true);
+  // Delivers one 24 kHz chunk and then stays open: enough to drive the
+  // manager to its first audio event, which is what proves a player with no
+  // generateAudio() is usable rather than merely constructible.
   generateAudioStream = vi.fn(async () => ({
-    body: new ReadableStream<Uint8Array>(),
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(1920));
+      },
+    }),
     format: { encoding: "pcm-s16le" as const, sampleRate: 24000, channels: 1 },
   }));
 }
@@ -410,8 +445,29 @@ describe("TTSManagerImpl", () => {
 
   it("rejects audio-mode players that cannot generate audio", () => {
     expect(() => createTTSManager(new RemotePlayerWithoutAudio())).toThrow(
-      /generateAudio/,
+      /generateAudio\(\) or generateAudioStream\(\)/,
     );
+  });
+
+  it("accepts an audio-mode player that can only stream, and plays through it", async () => {
+    const player = new RemotePlayerWithAudioStream();
+    const emitter = { emit: vi.fn() };
+    const manager = createTTSManager(player);
+
+    manager.setEventEmitter(emitter);
+
+    const speaking = manager.speak("streamed");
+    await vi.waitFor(() =>
+      expect(emitter.emit).toHaveBeenCalledWith("tts:audio:start", {}),
+    );
+
+    expect(player.generateAudioStream).toHaveBeenCalledTimes(1);
+    expect(MockAudio.instances).toHaveLength(0);
+
+    await manager.stop();
+    await speaking;
+
+    expect(emitter.emit).toHaveBeenCalledWith("tts:audio:end", {});
   });
 
   it("uses the web speech path and still emits audio lifecycle events", async () => {

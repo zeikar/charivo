@@ -12,9 +12,15 @@ import {
 } from "@charivo/core";
 import { WebSpeechLipSyncSimulator } from "./web-speech-lipsync-simulator";
 import {
+  createPcmPlaybackGraph,
+  PcmPlaybackScheduler,
+  type PcmPlaybackGraph,
+} from "./pcm-playback";
+import {
   getTTSAudioMimeType,
   getTTSPlaybackMode,
   supportsGenerateAudio,
+  supportsGenerateAudioStream,
 } from "./tts-utils";
 
 /** Returned by raceStartup() when the speak() it belongs to was cancelled. */
@@ -34,11 +40,24 @@ interface SpeakStartup {
 }
 
 /**
+ * Join a carried-over byte to the chunk that completes it. `carry` is at most
+ * one byte, so this only runs on a chunk that ended mid-sample.
+ */
+function joinChunks(carry: Uint8Array, chunk: Uint8Array): Uint8Array {
+  const joined = new Uint8Array(carry.byteLength + chunk.byteLength);
+  joined.set(carry);
+  joined.set(chunk, carry.byteLength);
+  return joined;
+}
+
+/**
  * TTS Manager - Class responsible for managing the state of a TTS session
  *
  * Responsibilities:
  * - TTS Player management and wrapping
- * - Audio playback and control
+ * - Audio playback and control, over either audio path: a generateAudio()
+ *   buffer played through an <audio> element, or a generateAudioStream() PCM
+ *   stream scheduled into Web Audio as it arrives
  * - Lip-sync handling (Web Speech simulation; audio playback is analyzed by the manager itself)
  * - Event emission (tts:audio:start, tts:lipsync:update, tts:audio:end)
  * - Session state management
@@ -51,12 +70,14 @@ export class TTSManagerImpl implements TTSManager {
   private playbackMode: TTSPlaybackMode;
   private isAudioSessionActive = false;
   private teardownBrowserLifecycle?: () => void;
-  // Settles the stateless-audio Promise that handleStatelessAudio() is
-  // currently awaiting, if any. stop() clears currentAudio's onended/onerror
-  // handlers so they can never fire on their own; without this, stopping a
-  // still-playing stateless-audio utterance would strand that speak() call's
-  // promise forever.
-  private pendingStatelessStop: (() => void) | null = null;
+  // Settles the Promise whichever audio path is currently awaiting -- the
+  // buffered one in handleStatelessAudio(), or the streamed one in
+  // handleStreamingAudio(). Neither can settle itself once stop() has torn its
+  // playback down: stop() clears currentAudio's onended/onerror handlers so
+  // they can never fire, and it flushes the scheduler so no source's onended
+  // is left to report a drain. Without this nudge, stopping a still-playing
+  // utterance would strand that speak() call's promise forever.
+  private pendingAudioStop: (() => void) | null = null;
   // Settles the web-speech Promise handleWebSpeech() is currently awaiting,
   // if any. Unlike the stateless path, the manager can't sever the
   // TTSPlayer's own onend/onerror handlers directly -- its completion is
@@ -90,6 +111,20 @@ export class TTSManagerImpl implements TTSManager {
   // requests share one player stop and one cleanup, and no new utterance can
   // dispatch until it has fully settled.
   private pendingStopPlayback: Promise<void> | null = null;
+  // The Web Audio side, built only for streamed playback -- the buffered path
+  // plays through an <audio> element and never touches these. Both outlive a
+  // single utterance: one context per manager, one graph per context.
+  private playbackContext: AudioContext | null = null;
+  private playbackGraph: PcmPlaybackGraph | null = null;
+  // The streamed utterance in flight, if any: the three handles needed to
+  // reach it -- the queue to discard, the request to abort, and the body to
+  // cancel through (never through the body itself, which is locked to this
+  // reader).
+  private currentStream: {
+    scheduler: PcmPlaybackScheduler;
+    abort: AbortController;
+    reader: ReadableStreamDefaultReader<Uint8Array>;
+  } | null = null;
 
   // Only the Web Speech lip-sync simulation is needed
   private webSimulator: WebSpeechLipSyncSimulator;
@@ -105,9 +140,13 @@ export class TTSManagerImpl implements TTSManager {
     this.ttsPlayer = ttsPlayer;
     this.playbackMode = getTTSPlaybackMode(ttsPlayer);
 
-    if (this.playbackMode === "audio" && !supportsGenerateAudio(ttsPlayer)) {
+    if (
+      this.playbackMode === "audio" &&
+      !supportsGenerateAudio(ttsPlayer) &&
+      !supportsGenerateAudioStream(ttsPlayer)
+    ) {
       throw new CharivoStateError(
-        'TTS playback mode "audio" requires the player to implement generateAudio() so the manager can create and analyze playback for lip-sync. Implement generateAudio() or set playbackMode: "web-speech".',
+        'TTS playback mode "audio" requires the player to implement generateAudio() or generateAudioStream() so the manager can create and analyze playback for lip-sync. Implement one of them or set playbackMode: "web-speech".',
       );
     }
 
@@ -130,10 +169,16 @@ export class TTSManagerImpl implements TTSManager {
    *
    * Resolves when the utterance finishes -- or silently, without speaking, if
    * stop() or a newer speak() lands while this call is still starting up (the
-   * pre-speech stop, or synthesis). A cancelled call never begins playback,
-   * whether or not it had already opened an audio session (a reentrant stop
-   * from the tts:audio:start listener still sees the session close), so a
-   * resolved speak() is not proof audio played.
+   * pre-speech stop, or synthesis), so a resolved speak() is not proof audio
+   * played.
+   *
+   * On the buffered path a cancelled call never begins playback, whether or
+   * not it had already opened an audio session: a reentrant stop from the
+   * tts:audio:start listener still sees the session close before anything is
+   * handed to the speakers. Streamed playback cannot promise that much,
+   * because there tts:audio:start follows the first scheduled sample -- a stop
+   * from that listener can land after a few milliseconds of sound. It still
+   * settles the call and emits exactly one tts:audio:end.
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
     // Claim this utterance's identity synchronously, before the first await:
@@ -163,6 +208,8 @@ export class TTSManagerImpl implements TTSManager {
 
       if (this.playbackMode === "web-speech") {
         return await this.handleWebSpeech(text, options, startup);
+      } else if (supportsGenerateAudioStream(this.ttsPlayer)) {
+        return await this.handleStreamingAudio(text, options, startup);
       } else {
         return await this.handleStatelessAudio(text, options, startup);
       }
@@ -239,17 +286,27 @@ export class TTSManagerImpl implements TTSManager {
         this.currentAudioUrl = null;
       }
 
+      // A streamed utterance has no element to pause: discard what is queued,
+      // stop the route synthesizing, and throw the body away. This runs before
+      // the settlement below, which clears currentStream.
+      const streaming = this.currentStream;
+      if (streaming) {
+        streaming.scheduler.flush();
+        this.abandonStream(streaming.abort, streaming.reader);
+      }
+
       this.lipSync.stop();
       this.endAudioSession();
 
       // Deterministically settle whichever playback path is still pending.
-      // Stateless-audio's onended/onerror were just cleared above and can
-      // never fire now; web-speech's completion is owned by the player and
-      // may arrive late (or never) after cancellation. Both need an
-      // explicit nudge here so an interrupted turn can't stay pending
-      // forever. A deliberate stop is a cancellation, not a failure, so
-      // both resolve rather than reject.
-      this.pendingStatelessStop?.();
+      // Buffered audio's onended/onerror were just cleared above and can never
+      // fire now; a streamed utterance's sources were just flushed, so no
+      // drain is coming either; web-speech's completion is owned by the player
+      // and may arrive late (or never) after cancellation. All three need an
+      // explicit nudge here so an interrupted turn can't stay pending forever.
+      // A deliberate stop is a cancellation, not a failure, so they resolve
+      // rather than reject.
+      this.pendingAudioStop?.();
 
       const settleWebSpeech = this.pendingWebSpeechStop;
       this.pendingWebSpeechStop = null;
@@ -507,7 +564,7 @@ export class TTSManagerImpl implements TTSManager {
       const finalize = (next: () => void) => {
         if (isFinalized) return;
         isFinalized = true;
-        this.pendingStatelessStop = null;
+        this.pendingAudioStop = null;
 
         if (this.currentAudioUrl) {
           URL.revokeObjectURL(this.currentAudioUrl);
@@ -530,8 +587,8 @@ export class TTSManagerImpl implements TTSManager {
 
       const dispatch = this.beginUtterance(() => {
         // Lets stop() settle this promise deterministically if it interrupts
-        // this playback (see the pendingStatelessStop field comment above).
-        this.pendingStatelessStop = () => finalize(resolve);
+        // this playback (see the pendingAudioStop field comment above).
+        this.pendingAudioStop = () => finalize(resolve);
       }, startup);
 
       // A stop() -- or a newer speak() -- already owns this utterance's
@@ -551,6 +608,251 @@ export class TTSManagerImpl implements TTSManager {
         );
       });
     });
+  }
+
+  /**
+   * Streamed audio handling: PCM is scheduled into Web Audio as it arrives,
+   * instead of waiting for one finished buffer.
+   */
+  private async handleStreamingAudio(
+    text: string,
+    options: TTSOptions | undefined,
+    startup: SpeakStartup,
+  ): Promise<void> {
+    // Created before anything is awaited, and that ordering is the point: the
+    // >=1s wait for generateAudioStream below is what absorbs the asynchronous
+    // "suspended" -> "running" transition a freshly created, permitted context
+    // goes through on browsers that do not report "running" synchronously. A
+    // context still not running once the first chunk lands really is blocked.
+    const context = this.ensurePlaybackContext();
+    const abort = new AbortController();
+
+    // Non-null: speak() only routes here when the player has the method.
+    const opening = this.ttsPlayer.generateAudioStream!(
+      text,
+      options,
+      abort.signal,
+    ).catch((error) =>
+      Promise.reject(
+        toCharivoError("provider", error, "Failed to generate TTS audio"),
+      ),
+    );
+
+    const stream = await this.raceStartup(
+      opening,
+      startup.cancelled,
+      startup.isCancelled,
+    );
+
+    // A stop() -- or a newer speak() -- landed while the stream was opening.
+    // This call's own claim is what says so: the error a cancelled request
+    // raises is never the discriminator (an abort can reach the caller as a
+    // provider error carrying no trace of the abort at all, and sniffing for
+    // one would misread a real synthesis failure as a user stop).
+    if (stream === STARTUP_CANCELLED) {
+      abort.abort();
+      // The abort usually pre-empts the request, but a body already on its way
+      // still arrives with nobody to read it; cancel that one instead of
+      // leaving the route synthesizing. Safe as body.cancel() only because no
+      // reader has been taken yet -- past getReader() the body is locked.
+      void opening.then((late) => void late.body.cancel().catch(noop), noop);
+      return;
+    }
+
+    const graph = this.ensurePlaybackGraph(context);
+    graph.output.gain.value =
+      options?.volume !== undefined
+        ? Math.max(0, Math.min(1, options.volume))
+        : 1;
+
+    this.ensureLifecycleBound();
+    // The graph's tap, not a media element source: the scheduled sources are
+    // already audible through the graph, so lip-sync only listens in.
+    this.lipSync.attachMediaStream(graph.lipSyncStream);
+
+    const reader = stream.body.getReader();
+
+    return new Promise<void>((resolve, reject) => {
+      let bodyEnded = false;
+      let isFinalized = false;
+
+      // Built before finalize, which flushes it: the callbacks below reach
+      // finalize the other way round, but only ever run once both exist.
+      const scheduler = new PcmPlaybackScheduler(
+        context,
+        graph.output,
+        stream.format,
+        {
+          onDrain: () => {
+            // A drain says the queue emptied, never that the utterance ended:
+            // an opening chunk regularly finishes before its successor arrives
+            // (see PcmPlaybackSchedulerCallbacks.onDrain). Only a drain that
+            // follows the end of the body is the end of the utterance.
+            if (bodyEnded) {
+              finalize(resolve);
+            }
+          },
+          onPlayingChange: (playing) => {
+            // The session opens on the first sample the scheduler starts, not
+            // at dispatch: until then nothing has reached the speakers.
+            if (playing) {
+              this.startAudioSession();
+            }
+          },
+        },
+      );
+
+      const finalize = (next: () => void) => {
+        if (isFinalized) return;
+        isFinalized = true;
+        this.pendingAudioStop = null;
+        this.currentStream = null;
+
+        // Releasing belongs here, not in whichever caller remembers it -- the
+        // blob path's twin revokes its object URL on every exit for the same
+        // reason. A failed read would otherwise leave the queue sounding and
+        // the route synthesizing while the handles that could reach them are
+        // being cleared on the lines above. Harmless where teardown already
+        // happened: on the two completion paths nothing is queued, so flush()
+        // fires no callback, and a stop has already done both.
+        scheduler.flush();
+        this.abandonStream(abort, reader);
+
+        this.lipSync.stop();
+        this.endAudioSession();
+        next();
+      };
+
+      this.currentStream = { scheduler, abort, reader };
+      // Registered before the pump can schedule anything, because the audio
+      // session opens from the scheduler above and a listener may stop()
+      // re-entrantly from that event -- which must settle this call
+      // deterministically (see the pendingAudioStop field comment).
+      //
+      // Deliberately not routed through beginUtterance(): that helper couples
+      // the registration to publishing the session, and here the session is
+      // published later, by the scheduler, when the first sample actually
+      // starts.
+      this.pendingAudioStop = () => finalize(resolve);
+
+      // A stop() -- or a newer speak() -- landed while this utterance was
+      // being wired up, so it could not see the stream to cancel it. finalize
+      // is what stops the route.
+      if (startup.isCancelled()) {
+        finalize(resolve);
+        return;
+      }
+
+      // Read eagerly rather than on demand: the scheduler queues chunks
+      // against the audio clock, so holding one back would only move those
+      // bytes into the route's own response queue.
+      const pump = async (): Promise<void> => {
+        // A chunk can end mid-sample. That byte waits here for the read that
+        // completes it, because the scheduler floors to whole samples and
+        // would drop it.
+        let carry: Uint8Array | null = null;
+
+        for (;;) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            bodyEnded = true;
+            // Whatever was queued may have drained while the body was still
+            // open, in which case no further onDrain is coming and this read
+            // is the completion fact that arrived last.
+            if (scheduler.isIdle()) {
+              finalize(resolve);
+            }
+            return;
+          }
+
+          // Settled while this read was in flight (a stop, say). Scheduling
+          // now would restart audio that nothing is waiting for.
+          if (isFinalized) {
+            return;
+          }
+
+          const chunk: Uint8Array = carry ? joinChunks(carry, value) : value;
+          const whole = chunk.byteLength - (chunk.byteLength % 2);
+          // Copied, not a subarray: the carry outlives this chunk.
+          carry = whole < chunk.byteLength ? chunk.slice(whole) : null;
+
+          if (whole > 0) {
+            scheduler.enqueue(chunk.subarray(0, whole));
+          }
+        }
+      };
+
+      void pump().catch((error) => {
+        // A read that rejects after the utterance was settled -- a cancelled
+        // body reporting the abort that settled it -- has nothing left to
+        // report to.
+        if (isFinalized) {
+          return;
+        }
+
+        finalize(() => reject(error));
+      });
+    });
+  }
+
+  /**
+   * Stop the route synthesizing and throw the body away.
+   *
+   * Through the reader, never the body: past getReader() the body is locked
+   * and cancelling it throws. An aborted stream errors, so its own cancel()
+   * rejects with the reason raised here -- ours, and already handled.
+   */
+  private abandonStream(
+    abort: AbortController,
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): void {
+    abort.abort();
+    void reader.cancel().catch(noop);
+  }
+
+  /**
+   * The AudioContext streamed PCM is scheduled into, created on first use and
+   * then only nudged back towards running: a context created inside a user
+   * gesture is the one browsers let play, so a replacement built later would
+   * be refused. It does not promise a running context on return.
+   */
+  private ensurePlaybackContext(): AudioContext {
+    const existing = this.playbackContext;
+
+    if (existing) {
+      // Deliberately not awaited. On a document that has never been
+      // interacted with, resume() parks its promise rather than settling it
+      // -- the spec appends it to [[pending resume promises]] and aborts --
+      // which would hang speak() at a point where no deadline is armed. A
+      // context that stays suspended only delays audio; a speak() that never
+      // settles wedges the turn.
+      //
+      // Anything other than "running" is retried because WebKit also has a
+      // non-standard "interrupted" state, which a "suspended" check alone
+      // would leave stopped for good.
+      if (existing.state !== "running") {
+        void existing
+          .resume()
+          .catch((error) =>
+            console.error(
+              "TTS Manager: failed to resume the playback audio context:",
+              error,
+            ),
+          );
+      }
+
+      return existing;
+    }
+
+    const context = new AudioContext();
+    this.playbackContext = context;
+    return context;
+  }
+
+  private ensurePlaybackGraph(context: AudioContext): PcmPlaybackGraph {
+    this.playbackGraph ??= createPcmPlaybackGraph(context);
+    return this.playbackGraph;
   }
 
   /**

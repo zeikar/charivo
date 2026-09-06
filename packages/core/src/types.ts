@@ -463,15 +463,19 @@ export interface TTSPlayer {
   setVoice(voice: string): void;
   isSupported(): boolean;
   /**
-   * Stateless audio generation. Required for the `"audio"` playback mode: the
-   * manager creates the audio element itself so it can analyze playback for
-   * lip-sync. Players that can only `speak()` must use `"web-speech"` mode.
+   * Stateless audio generation. The `"audio"` playback mode requires this or
+   * `generateAudioStream`: the manager plays the finished buffer through an
+   * audio element it creates itself, so it can analyze playback for lip-sync.
+   * Players that can only `speak()` must use `"web-speech"` mode.
    */
   generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
   /**
    * Streaming counterpart to `generateAudio`, for players that can deliver PCM
-   * as it is synthesized instead of one finished buffer. Aborting `signal`, or
-   * cancelling the returned stream's `body`, must cancel the upstream request.
+   * as it is synthesized instead of one finished buffer; the manager schedules
+   * it into Web Audio as it arrives. Takes precedence: the manager streams
+   * whenever this method exists, so a player implementing both never has
+   * `generateAudio` called. Aborting `signal`, or cancelling the returned
+   * stream's `body`, must cancel the upstream request.
    */
   generateAudioStream?(
     text: string,
