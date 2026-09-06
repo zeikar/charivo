@@ -121,10 +121,10 @@ export const TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
 export const TTS_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
 
 /**
- * The buffered path is latency-bound: it answers in a fixed startup cost plus
- * roughly 0.75x the audio's length (measured 278 chars ≈ 13.5s, 300 ≈ 14s,
- * 600 ≈ 20s), so 400 characters lands around 15s — one synthesis, or a
- * 5xx/text-only first answer plus its retry, inside
+ * The buffered path is latency-bound: it answers in roughly one second of
+ * fixed startup cost plus about 0.7x the audio's length (measured 278 chars
+ * ≈ 13.5s, 300 ≈ 14s, 600 ≈ 20s), so 400 characters lands around 15s — one
+ * synthesis, or a 5xx/text-only first answer plus its retry, inside
  * `TTS_GEMINI_ROUTE_TIMEOUT_MS`; anything longer fails fast rather than
  * overrunning the client. Unflagged clients still take this path, so this
  * bound still matters.

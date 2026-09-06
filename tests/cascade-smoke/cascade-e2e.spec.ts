@@ -138,6 +138,13 @@ test.describe("cascade stt → llm → tts e2e", () => {
         ttsContentType,
         `CASCADE_TTS=gemini but /api/tts answered "${ttsContentType}" instead of audio/pcm`,
       ).toContain("audio/pcm");
+      // Content-Type alone only proves the route streamed, not that the
+      // player played incrementally -- it would also pass if the manager
+      // buffered the whole body before scheduling it. First audio measured
+      // 3.2s at 56 characters and 13.5s at 278 on the buffered path, so 5s
+      // discriminates the streaming path without being timing-flaky.
+      expect(snapshot.timings.ttsFirstAudioMs).not.toBeNull();
+      expect(snapshot.timings.ttsFirstAudioMs).toBeLessThan(5_000);
     } else {
       expect(ttsContentType).toContain("audio/mpeg");
     }

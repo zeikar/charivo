@@ -51,6 +51,8 @@ const tts = createGeminiTTSProvider({
   defaultModel: "gemini-3.1-flash-tts-preview",
   defaultVoice: "Kore",
   // `@charivo/tts/remote` gives up at 30s, so the server must give up first.
+  // On the streaming path this same 25s also caps the streamed body itself,
+  // at roughly 80s of audio (Gemini delivers ~3.5x realtime).
   timeoutMs: 25_000,
 });
 
@@ -80,7 +82,11 @@ mitigations. Its 90s default `timeoutMs` is only for callers that own their
 own deadline — a route behind `@charivo/tts/remote` must set it below that
 player's fixed 30s, as above — and the text cap is the real latency control
 on top of that deadline (the demo caps at 400 characters via
-`TTS_GEMINI_MAX_TEXT_CHARS`).
+`TTS_GEMINI_MAX_TEXT_CHARS`). `generateSpeechStream` returns a `TTSPcmStream`
+of `pcm-s16le` audio instead of a finished buffer, delivering its first audio
+in roughly 1.1-1.4s regardless of text length; the same `timeoutMs` bounds
+that whole streamed body, not just the connect-and-headers phase, so a reply
+that outlasts it errors mid-utterance rather than merely failing to start.
 
 `createGeminiSTTProvider` (implemented in `@charivo/stt/gemini`) posts the
 recording inline as base64 to `models/{model}:generateContent`; the default

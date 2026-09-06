@@ -251,6 +251,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   const renderManagerRef = useRef<RenderManager | null>(null);
   const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
+  const ttsManagerRef = useRef<TTSManager | null>(null);
   const recordingCapRef = useRef(createSessionCap());
   const currentCharacterRef = useRef(resolvedCharacter);
   const syncedCharacterIdRef = useRef<string | null>(null);
@@ -507,6 +508,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         sttManagerRef.current = null;
       }
 
+      if (ttsManagerRef.current === ttsManager) {
+        ttsManagerRef.current = null;
+      }
+
       if (ttsManager) {
         try {
           await ttsManager.stop();
@@ -615,6 +620,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         if (nextTtsPlayer) {
           ttsManager = createTTSManager(nextTtsPlayer);
           instance.attachTTS(ttsManager);
+          ttsManagerRef.current = ttsManager;
         }
 
         const nextSttTranscriber = await createSTTTranscriber(
@@ -1084,6 +1090,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     setInput("");
     setIsLoading(true);
 
+    // Fired from this click/submit gesture so a streaming player's playback
+    // context warms under sticky activation -- skipping this is what makes a
+    // streaming speak() reject with CharivoStateError on Safari (see
+    // docs/guide/tts.md). Best-effort only: a real failure surfaces from
+    // speak() itself once charivo.userSay() gets there.
+    ttsManagerRef.current?.prepareAudio?.().catch(() => {});
+
     try {
       await charivo.userSay(userMessage);
     } catch (error) {
@@ -1164,6 +1177,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       setSttError(null);
       // Starting another recording answers the previous cap notice.
       setCapNotice(null);
+      // Same gesture-time warmup as handleSend -- a voice-only turn never
+      // clicks send, so this is the only gesture before the reply speaks.
+      ttsManagerRef.current?.prepareAudio?.().catch(() => {});
       await sttManagerRef.current.start();
 
       // Either streaming transcriber holds an open, wall-clock-billed session

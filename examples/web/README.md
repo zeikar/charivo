@@ -270,6 +270,14 @@ connect click, before `startSession(...)`. Both calls must be given the same
 the Gemini path needs `transport: "websocket"` in both. Keep that user-gesture
 path intact on iOS or the first realtime lipsync pass may stay silent.
 
+`useCharivoChat` calls `ttsManager.prepareAudio?.()` the same way, from the
+send button and the mic-start button — whichever gesture happens first for a
+given turn. A player that streams (the Gemini Remote TTS option) needs its
+playback context warmed under sticky activation, or `speak()` rejects with
+`CharivoStateError` on browsers without it (Safari); the call is best-effort
+and its rejection is swallowed, since a real failure surfaces from `speak()`
+itself once the turn actually runs.
+
 That split keeps renderer lifecycle separate from conversation/session lifecycle.
 
 ## Credits

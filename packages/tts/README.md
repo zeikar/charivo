@@ -71,20 +71,22 @@ await ttsManager.speak("Hello", { voice: "marin" });
   `timeoutMs`, per Google's documented mitigations. It calls
   `models/{model}:generateContent` because that is the shape measured working
   and the simpler one-shot request for one utterance per call, even though
-  Google now labels it legacy (still fully supported). `generateSpeech`'s
-  `timeoutMs` defaults to 90s, since synthesis takes a fixed startup cost plus
-  roughly 0.75x the audio's length; that default suits the direct player and
-  callers that own their own deadline. A route behind `@charivo/tts/remote`
-  must pass a `timeoutMs` under that player's fixed 30s (the demo's
-  `TTS_GEMINI_ROUTE_TIMEOUT_MS` is 25,000) and cap its text as the real
-  latency control (the demo's
-  `TTS_GEMINI_MAX_TEXT_CHARS` is 400). `generateSpeechStream` calls the
-  `:streamGenerateContent?alt=sse` sibling of the same endpoint and returns a
-  `TTSPcmStream` instead, delivering its first audio in roughly 1.1-1.4s
-  regardless of text length; it is not retried once its first chunk has
-  reached the caller, since a retry would replay speech already played, and it
-  shares the same text cap because a long enough stream can end on a spurious
-  `SAFETY` finish reason instead of completing.
+  Google now labels it legacy (still fully supported). Its `timeoutMs`
+  defaults to 90s, since synthesis takes roughly one second of fixed startup
+  cost plus about 0.7x the audio's length; that default suits the direct
+  player and callers that own their own deadline. A route behind
+  `@charivo/tts/remote` must pass a `timeoutMs` under that player's fixed 30s
+  (the demo's `TTS_GEMINI_ROUTE_TIMEOUT_MS` is 25,000) and cap its text as the
+  real latency control (the demo's `TTS_GEMINI_MAX_TEXT_CHARS` is 400).
+  `generateSpeechStream` calls the `:streamGenerateContent?alt=sse` sibling of
+  the same endpoint and returns a `TTSPcmStream` instead, delivering its first
+  audio in roughly 1.1-1.4s regardless of text length; the same `timeoutMs`
+  bounds its whole streamed body, not just the connect-and-headers phase, so a
+  reply that runs past it errors mid-utterance rather than merely failing to
+  start. It is not retried once its first chunk has reached the caller, since
+  a retry would replay speech already played, and it shares the same text cap
+  because a long enough stream can end on a spurious `SAFETY` finish reason
+  instead of completing.
 
 ## Event Bridge
 

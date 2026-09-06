@@ -28,9 +28,10 @@ const GEMINI_TIMEOUT_MS = 25_000;
 const SINGLE_CALL_TEST_TIMEOUT_MS = 40_000;
 
 // Short on purpose: OpenAI does not stream here, and Gemini's buffered call
-// runs at ~0.55-0.7x the audio duration, so a longer line only buys wall
-// clock either way. It also doubles as the streaming case's input below --
-// well under the length where a stream gets truncated.
+// costs roughly one second of fixed startup plus about 0.7x the audio
+// duration, so a longer line only buys wall clock either way. It also
+// doubles as the streaming case's input below -- well under the length
+// where a stream gets truncated.
 const TEXT = "Hi there.";
 
 /** The first bytes of a container, for identifying what came back. */
@@ -141,9 +142,13 @@ liveGeminiDescribe("gemini TTS provider (live)", () => {
       }
       const totalMs = Date.now() - started;
 
-      // Time-to-first-chunk vs. total is the measured contract (~1.1-1.4s
-      // start cost, then ~3.5x realtime delivery) -- logged for a human to
-      // read, not asserted, since it is network-timing dependent.
+      // Time-to-first-chunk is the measured contract (~1.1-1.4s start cost,
+      // then ~3.5x realtime delivery). Logged here for a human to read;
+      // asserted below against an absolute bound rather than a fraction of
+      // totalMs -- TEXT is short enough that the whole body can land right
+      // behind the first chunk (measured: first chunk 1,336ms, total
+      // 1,391ms), which would fail a relative check on exactly the streaming
+      // behavior it is meant to confirm.
       console.log(
         `[live-tts] gemini stream: first chunk ${firstChunkMs}ms, total ${totalMs}ms, ${totalBytes} bytes, ${chunkCount} chunks`,
       );
@@ -153,10 +158,18 @@ liveGeminiDescribe("gemini TTS provider (live)", () => {
       // frame.
       expect(totalBytes % 2).toBe(0);
       // The provider enqueues one chunk per SSE audio event (measured: every
-      // event is exactly 1,920 bytes), so more than one chunk is what a
-      // buffered response could never produce -- this is what actually pins
-      // incremental delivery, unlike the byte-layout checks above.
+      // event is exactly 1,920 bytes), so more than one chunk shows the
+      // response arrived as multiple events -- necessary for incremental
+      // delivery but not sufficient, since a fully buffered response emitted
+      // as a handful of events at the end would also pass this.
       expect(chunkCount).toBeGreaterThan(1);
+      // What shows the first of those events actually arrived early, rather
+      // than the whole body landing at once: an absolute bound, with margin
+      // on both sides of the measured gap for this text length -- buffered
+      // `generateSpeech` took 3,157ms to produce its only chunk, streaming
+      // took 1,336ms to its first.
+      expect(firstChunkMs).not.toBeNull();
+      expect(firstChunkMs!).toBeLessThan(2_500);
     },
     SINGLE_CALL_TEST_TIMEOUT_MS,
   );

@@ -13,11 +13,14 @@ streamed method when a player has it, scheduling PCM into Web Audio as it
 arrives instead of waiting for one finished buffer, with the same lip-sync
 analysis, `stop()`, and `tts:audio:start`/`tts:audio:end` lifecycle as the
 buffered path; a player without `generateAudioStream` is unaffected and keeps
-using `generateAudio`. `createRemoteTTSPlayer` takes a new opt-in `streaming`
-option that requests `audio/pcm` and rejects any answer that is not mono PCM;
-the underlying fetch enforces a connect-and-headers deadline and a 10s
-inactivity deadline, deliberately with no total deadline so a long reply is
-never cut for being long. `GeminiTTSProvider` (from `@charivo/tts/gemini`,
+using `generateAudio`. Both shipped players that can stream gate it behind
+their own opt-in `streaming` option, so neither changes for an existing
+caller: `createRemoteTTSPlayer({ streaming: true })` requests `audio/pcm` and
+rejects any answer that is not mono PCM, with the underlying fetch enforcing
+a connect-and-headers deadline and a 10s inactivity deadline, deliberately
+with no total deadline so a long reply is never cut for being long;
+`createGeminiTTSPlayer({ streaming: true })` routes to the provider's new
+`generateSpeechStream` instead. `GeminiTTSProvider` (from `@charivo/tts/gemini`,
 re-exported by `@charivo/server/gemini`) adds `generateSpeechStream` over
 Gemini's `streamGenerateContent` endpoint, delivering first audio in roughly
 1.1-1.4s regardless of text length; `generateSpeech` is unchanged. OpenAI's

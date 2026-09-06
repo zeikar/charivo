@@ -147,9 +147,12 @@ the player as an error on the stream itself.
 
 The remote player enforces two deadlines on a streaming response: the usual
 connect-and-headers deadline, and a separate inactivity deadline (10s) armed
-per upstream read once the body starts arriving. There is deliberately no
-total deadline on the streamed body — one would silently become a cap on how
-long a reply is allowed to be.
+per upstream read once the body starts arriving. The remote player itself sets
+deliberately no total deadline on the streamed body — one would silently
+become a cap on how long a reply is allowed to be. The provider behind the
+route is a different story: its own `timeoutMs` does bound the whole streamed
+body, headers through last byte (see below), so a long enough reply still
+ends in `CharivoTimeoutError` there.
 
 `tts:audio:start` fires once the first samples actually reach the speakers —
 when the scheduler starts the first scheduled buffer — not when the stream
@@ -183,6 +186,8 @@ const audio = await provider.generateSpeech(text, {
 const geminiProvider = createGeminiTTSProvider({
   apiKey: process.env.GEMINI_API_KEY!,
   // `@charivo/tts/remote` gives up at 30s, so the server must give up first.
+  // On the streaming path this same 25s also caps the streamed body itself,
+  // at roughly 80s of audio (Gemini delivers ~3.5x realtime).
   timeoutMs: 25_000,
 });
 
@@ -209,11 +214,14 @@ non-streaming `generateSpeech`.
 - voices are Google's prebuilt names, not OpenAI-style voice IDs
 - the text is sent behind a fixed synthesis preamble, and a 5xx or a
   text-only answer is retried once within the configured `timeoutMs`
-- `generateSpeech` latency is a fixed startup cost plus roughly 0.75x the
-  audio length, so short replies do not get proportionally cheaper: measured
-  3.2s for 3.0s of audio (56 characters) against 13.5s for 18.0s (278
-  characters); `generateSpeechStream` instead delivers its first audio in
-  roughly 1.1-1.4s regardless of text length
+- `generateSpeech` latency is roughly one second of fixed startup cost plus
+  about 0.7x the audio length, so short replies do not get proportionally
+  cheaper: measured 3.2s for 3.0s of audio (56 characters) against 13.5s for
+  18.0s (278 characters); `generateSpeechStream` instead delivers its first
+  audio in roughly 1.1-1.4s regardless of text length, and the same
+  `timeoutMs` bounds its whole streamed body rather than just the
+  connect-and-headers phase, so a reply that outlasts it errors mid-utterance
+  instead of merely failing to start
 
 ## Alternatives
 

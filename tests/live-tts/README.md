@@ -32,12 +32,17 @@ What this suite validates, per provider (`@charivo/tts/openai`,
 - Gemini's `generateSpeechStream` delivers a `pcm-s16le` stream: the format is
   asserted (`{ encoding: "pcm-s16le", sampleRate: 24000, channels: 1 }`), the
   body is read to the end to check total bytes are non-zero and even, and the
-  chunk count is asserted greater than 1 -- the provider enqueues one chunk per
-  SSE audio event, so this is what a buffered response could never satisfy,
-  and is what actually pins incremental delivery. Time-to-first-chunk vs.
-  total is logged, not asserted, since that part is network-timing dependent;
-  the log is what a human reads to confirm the ~1.1-1.4s start cost measured
-  earlier.
+  chunk count is asserted greater than 1, showing the response arrived as
+  multiple SSE events rather than one -- necessary for incremental delivery
+  but not sufficient, since a fully buffered response emitted as a handful of
+  events at the end would also pass this. A second assertion, that the first
+  chunk arrives under an absolute 2,500ms bound, is what shows that first
+  event actually arrived early rather than the whole body landing at once:
+  buffered `generateSpeech` measured 3,157ms to produce its only chunk for
+  the same text, streaming measured 1,336ms to its first, so 2,500ms
+  separates the two paths with margin on both sides regardless of total
+  reply length. The exact timings (~1.1-1.4s start cost measured earlier,
+  then ~3.5x realtime delivery) are logged for a human to read.
 
 The OpenAI result is the reason `@charivo/tts` labels that player's audio
 `audio/mpeg`: the provider sends `format: "wav"`, which is not the parameter the
