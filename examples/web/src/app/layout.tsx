@@ -14,22 +14,28 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Required for the opengraph-image file convention: without it Next resolves
+  // the social image against localhost. Same origin the sitemap already uses.
+  metadataBase: new URL("https://charivo.vercel.app"),
   title: "Charivo Live2D Demo | Interactive AI Character Framework",
   description:
-    "Experience Charivo - a modular Live2D + LLM framework for interactive character experiences. Chat with Haru featuring real-time 2D animations, AI conversations, and voice synthesis using OpenAI GPT and Remote TTS API.",
+    "Talk to Live2D characters by voice or text. The AI drives expression, motion, gaze, and lip-sync — built on Charivo, a modular TypeScript framework.",
   keywords: [
     "Live2D",
     "LLM",
     "AI",
     "Character",
     "Chatbot",
-    "Remote TTS",
+    "TTS",
+    "STT",
     "Animation",
     "TypeScript",
     "Framework",
     "Interactive",
     "OpenAI",
-    "Voice",
+    "Gemini",
+    "Realtime Voice",
+    "Lip Sync",
   ],
   authors: [{ name: "Zeikar", url: "https://github.com/zeikar" }],
   creator: "Charivo Framework",
@@ -38,25 +44,16 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Charivo Live2D Demo | Interactive AI Character Framework",
     description:
-      "Experience the power of modular Live2D + LLM framework. Build interactive AI characters with animations, voice synthesis, and natural language conversations.",
+      "Build interactive AI characters with expression, motion, gaze, and lip-sync — over Gemini or OpenAI for chat, speech, and realtime voice.",
     type: "website",
     locale: "en_US",
     siteName: "Charivo Framework",
-    images: [
-      {
-        url: "https://dogimg.vercel.app/api/og?url=https://charivo.vercel.app",
-        width: 1200,
-        height: 630,
-        alt: "Charivo Live2D Demo - Interactive AI Character Framework",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Charivo Live2D Demo | Interactive AI Character Framework",
     description:
-      "Modular Live2D + LLM framework for interactive character experiences with animations and voice",
-    images: ["https://dogimg.vercel.app/api/og?url=https://charivo.vercel.app"],
+      "Live2D AI characters that talk, react, and look at you — a modular TypeScript framework",
     creator: "@zeikar_dev",
   },
   manifest: "/manifest.json", // PWA manifest (optional)

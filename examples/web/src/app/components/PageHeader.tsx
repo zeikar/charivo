@@ -3,17 +3,18 @@ const FEATURES = [
     icon: "🎭",
     title: "Avatar Control",
     description:
-      "Expression, motion, and gaze driven by AI tools — expression meanings guide the AI's reactions",
+      "Expression, motion, and gaze driven by AI tool calls — expression meanings guide what it picks",
   },
   {
     icon: "💋",
     title: "Auto Lip-Sync",
-    description: "Natural mouth movements synced to voice in real time",
+    description: "Mouth movements synced to the voice stream as it plays",
   },
   {
-    icon: "🌐",
-    title: "WebRTC Voice",
-    description: "Low-latency conversations powered by the OpenAI Realtime API",
+    icon: "🎙️",
+    title: "Realtime Voice",
+    description:
+      "Speech-to-speech over Gemini Live or OpenAI Realtime — switch in Settings",
   },
 ];
 
@@ -25,13 +26,13 @@ export function PageHeader() {
         Charivo
       </h1>
       <p className="mt-0.5 md:mt-1.5 text-[11px] md:text-base text-gray-700 dark:text-gray-300 font-medium">
-        Live2D AI Characters That Come Alive
+        Live2D AI characters that talk, react, and look at you
       </p>
 
       {/* Hero tagline — desktop only */}
       <p className="hidden md:block mt-5 text-[13px] leading-relaxed text-gray-600 dark:text-gray-400">
-        Real-time voice conversations with Live2D characters — AI controls
-        expression, motion, gaze, and lip-sync so the character{" "}
+        Speak or type — the AI answers out loud while it drives expression,
+        motion, gaze, and lip-sync, so the character{" "}
         <span className="font-semibold text-blue-600 dark:text-blue-400">
           feels alive
         </span>
