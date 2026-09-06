@@ -1,7 +1,12 @@
 /**
  * TTS Player Capability Utilities
  */
-import type { TTSOptions, TTSPlaybackMode, TTSPlayer } from "@charivo/core";
+import type {
+  TTSOptions,
+  TTSPcmStream,
+  TTSPlaybackMode,
+  TTSPlayer,
+} from "@charivo/core";
 
 /**
  * Resolve the playback mode used by the manager. Concrete players should
@@ -27,4 +32,19 @@ export function supportsGenerateAudio(
   generateAudio(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
 } {
   return typeof player.generateAudio === "function";
+}
+
+/**
+ * Check whether the TTS Player supports the generateAudioStream method
+ */
+export function supportsGenerateAudioStream(
+  player: TTSPlayer,
+): player is TTSPlayer & {
+  generateAudioStream(
+    text: string,
+    options?: TTSOptions,
+    signal?: AbortSignal,
+  ): Promise<TTSPcmStream>;
+} {
+  return typeof player.generateAudioStream === "function";
 }

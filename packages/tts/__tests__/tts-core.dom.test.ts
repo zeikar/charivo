@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTTSManager } from "../src";
 import { WebSpeechLipSyncSimulator } from "../src/web-speech-lipsync-simulator";
-import { getTTSAudioMimeType, getTTSPlaybackMode } from "../src/tts-utils";
+import {
+  getTTSAudioMimeType,
+  getTTSPlaybackMode,
+  supportsGenerateAudioStream,
+} from "../src/tts-utils";
 
 class MockAudio {
   static instances: MockAudio[] = [];
@@ -79,6 +83,18 @@ class RemotePlayerWithoutAudio {
   stop = vi.fn(async () => undefined);
   setVoice = vi.fn((_voice: string) => undefined);
   isSupported = vi.fn(() => true);
+}
+
+class RemotePlayerWithAudioStream {
+  playbackMode = "audio" as const;
+  speak = vi.fn(async (_text: string, _options?: unknown) => undefined);
+  stop = vi.fn(async () => undefined);
+  setVoice = vi.fn((_voice: string) => undefined);
+  isSupported = vi.fn(() => true);
+  generateAudioStream = vi.fn(async () => ({
+    body: new ReadableStream<Uint8Array>(),
+    format: { encoding: "pcm-s16le" as const, sampleRate: 24000, channels: 1 },
+  }));
 }
 
 class WebPlayer {
@@ -1041,6 +1057,15 @@ describe("tts capabilities", () => {
     );
     expect(getTTSAudioMimeType(new RemotePlayerWithoutAudio())).toBe(
       "audio/wav",
+    );
+  });
+
+  it("checks whether a player supports generateAudioStream", () => {
+    expect(supportsGenerateAudioStream(new RemotePlayerWithAudioStream())).toBe(
+      true,
+    );
+    expect(supportsGenerateAudioStream(new RemotePlayerWithAudio())).toBe(
+      false,
     );
   });
 });

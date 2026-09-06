@@ -426,6 +426,27 @@ export interface TTSOptions {
 
 export type TTSPlaybackMode = "audio" | "web-speech";
 
+/**
+ * Raw PCM carries no container, so the sample layout can't be sniffed from
+ * the bytes the way a WAV/MP3 buffer can — it has to ride along with the
+ * stream itself.
+ */
+export interface TTSPcmFormat {
+  encoding: "pcm-s16le";
+  sampleRate: number;
+  channels: number;
+}
+
+/**
+ * A streamed TTS result. `format` always describes `pcm-s16le`, regardless
+ * of any vendor label on the request, since every streaming provider decodes
+ * to that layout before handing the stream back.
+ */
+export interface TTSPcmStream {
+  body: ReadableStream<Uint8Array>;
+  format: TTSPcmFormat;
+}
+
 // TTS player (plays audio in the browser)
 export interface TTSPlayer {
   /**
@@ -447,12 +468,28 @@ export interface TTSPlayer {
    * lip-sync. Players that can only `speak()` must use `"web-speech"` mode.
    */
   generateAudio?(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
+  /**
+   * Streaming counterpart to `generateAudio`, for players that can deliver PCM
+   * as it is synthesized instead of one finished buffer. Aborting `signal`, or
+   * cancelling the returned stream's `body`, must cancel the upstream request.
+   */
+  generateAudioStream?(
+    text: string,
+    options?: TTSOptions,
+    signal?: AbortSignal,
+  ): Promise<TTSPcmStream>;
 }
 
 // TTS provider (generates audio data)
 export interface TTSProvider {
   generateSpeech(text: string, options?: TTSOptions): Promise<ArrayBuffer>;
   setVoice(voice: string): void;
+  /** Streaming counterpart to `generateSpeech`, called by a route handler (or a player delegating to it); `generateSpeech` remains for callers that want a whole buffer. Aborting `signal`, or cancelling the returned stream's `body`, must cancel the upstream request. */
+  generateSpeechStream?(
+    text: string,
+    options?: TTSOptions,
+    signal?: AbortSignal,
+  ): Promise<TTSPcmStream>;
 }
 
 // TTS Manager - interface responsible for managing the state of a TTS session
