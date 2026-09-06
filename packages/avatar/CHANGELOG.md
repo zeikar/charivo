@@ -1,5 +1,12 @@
 # @charivo/avatar
 
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [26a0818]
+  - @charivo/core@0.35.0
+
 ## 0.4.3
 
 ### Patch Changes

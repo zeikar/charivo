@@ -1,5 +1,44 @@
 # @charivo/server
 
+## 0.11.0
+
+### Minor Changes
+
+- 26a0818: Add an optional streaming path alongside buffered TTS. `@charivo/core` adds
+  `TTSPcmStream` (a `ReadableStream<Uint8Array>` body plus a `pcm-s16le` format)
+  and optional `generateAudioStream` / `generateSpeechStream` methods to
+  `TTSPlayer` and `TTSProvider`; a player implementing `generateAudioStream`
+  still satisfies `"audio"` playback mode. `@charivo/tts`'s manager prefers the
+  streamed method when a player has it, scheduling PCM into Web Audio as it
+  arrives instead of waiting for one finished buffer, with the same lip-sync
+  analysis, `stop()`, and `tts:audio:start`/`tts:audio:end` lifecycle as the
+  buffered path; a player without `generateAudioStream` is unaffected and keeps
+  using `generateAudio`. Both shipped players that can stream gate it behind
+  their own opt-in `streaming` option, so neither changes for an existing
+  caller: `createRemoteTTSPlayer({ streaming: true })` requests `audio/pcm` and
+  rejects any answer that is not mono PCM, with the underlying fetch enforcing
+  a connect-and-headers deadline and a 10s inactivity deadline, deliberately
+  with no total deadline so a long reply is never cut for being long;
+  `createGeminiTTSPlayer({ streaming: true })` routes to the provider's new
+  `generateSpeechStream` instead. `GeminiTTSProvider` (from `@charivo/tts/gemini`,
+  re-exported by `@charivo/server/gemini`) adds `generateSpeechStream` over
+  Gemini's `streamGenerateContent` endpoint, delivering first audio in roughly
+  1.1-1.4s regardless of text length; `generateSpeech` is unchanged. OpenAI's
+  provider stays buffered this release.
+
+  One type-level narrowing: `GeminiTTSPlayerConfig` no longer accepts
+  `dangerouslyAllowBrowser`. The player has always forced it on, so behaviour is
+  unchanged and passing it never did anything — but code that passed it now fails
+  to compile, and the fix is to delete the field.
+
+### Patch Changes
+
+- Updated dependencies [26a0818]
+  - @charivo/core@0.35.0
+  - @charivo/tts@0.9.0
+  - @charivo/llm@0.11.2
+  - @charivo/stt@0.10.1
+
 ## 0.10.2
 
 ### Patch Changes
