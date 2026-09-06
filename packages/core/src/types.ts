@@ -502,7 +502,14 @@ export interface TTSManager {
   stop(): Promise<void>;
   setVoice(voice: string): void;
   isSupported(): boolean;
-  /** Creates the audio analysis context up front; call from a user gesture handler so browsers allow playback later. */
+  /**
+   * Creates the audio analysis context up front, and, for a player that
+   * streams, warms the streamed playback context too; call from a user
+   * gesture handler so browsers allow playback later. On a browser without
+   * sticky activation (e.g. Safari), skipping this before a streaming
+   * `speak()` fails that call with `CharivoStateError` rather than merely
+   * degrading lip-sync.
+   */
   prepareAudio?(): Promise<void>;
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
   /** Final resource release; call stop() first - dispose() does not stop playback. */

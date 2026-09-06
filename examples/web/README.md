@@ -173,9 +173,15 @@ The demo ships these routes:
   Uses `@charivo/server/gemini` with model `gemini-3.1-flash-tts-preview`. The
   voice comes from the request (restricted to a Gemini-specific allowlist); a
   character's own Gemini voice always wins, and `TTS_GEMINI_FALLBACK_VOICE`
-  applies only when none is sent. Text is capped at 400 characters, sized to
-  the route's 25s deadline, which is kept under the remote player's 30s
-  timeout, and `speed` is accepted but ignored
+  applies only when none is sent. The route streams PCM when the request
+  carries `Accept: audio/pcm` (which the Gemini Remote TTS option sends) and
+  answers WAV otherwise. Text is capped at 400 characters: on the buffered
+  path that keeps one synthesis, or a failed answer plus its retry, inside
+  the route's 25s deadline (kept under the remote player's fixed 30s
+  timeout); on the streaming path the same cap avoids a length past which a
+  stream can end on a spurious `SAFETY` finish reason instead of completing
+  (measured: 2,358 characters streamed 96.60s of audio before `SAFETY`, 1,182
+  completed with `STOP`). `speed` is accepted but ignored
 - `POST /api/stt`
   Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
