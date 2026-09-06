@@ -54,6 +54,94 @@ function stubHangingFetch() {
   );
 }
 
+/** One SSE frame carrying audio, in the shape the streaming endpoint sends. */
+function audioEvent(bytes = PCM, mimeType = PCM_MIME): string {
+  return `data: ${JSON.stringify({
+    candidates: [
+      {
+        content: {
+          parts: [{ inlineData: { mimeType, data: toBase64(bytes) } }],
+        },
+      },
+    ],
+  })}\n\n`;
+}
+
+/** A healthy stream ends with a text part carrying the finish reason. */
+function terminalEvent(finishReason = "STOP"): string {
+  return `data: ${JSON.stringify({
+    candidates: [{ content: { parts: [{ text: "" }] }, finishReason }],
+  })}\n\n`;
+}
+
+/**
+ * A 200 whose SSE body the test pushes frames into. Like stubHangingFetch it
+ * models a real aborted request: the body errors once the request's signal
+ * aborts, so a test can prove the upstream request was really cancelled.
+ */
+function controllableSseResponse(init?: RequestInit) {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let observedAbort = false;
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      controller = streamController;
+    },
+  });
+
+  init?.signal?.addEventListener("abort", () => {
+    observedAbort = true;
+    controller.error(new DOMException("aborted", "AbortError"));
+  });
+
+  return {
+    response: new Response(body, { status: 200 }),
+    signal: init?.signal,
+    /** True once the fake upstream body has seen the request aborted. */
+    get aborted() {
+      return observedAbort;
+    },
+    push: (frame: string) => controller.enqueue(encoder.encode(frame)),
+    /** EOF, with whatever was pushed and nothing more. */
+    close: () => controller.close(),
+  };
+}
+
+/** Answers every fetch with a fresh controllable SSE body, in call order. */
+function stubSseFetch() {
+  const streams: ReturnType<typeof controllableSseResponse>[] = [];
+  const fetchMock = stubFetch(async (_input, init) => {
+    const sse = controllableSseResponse(init);
+    streams.push(sse);
+
+    return sse.response;
+  });
+
+  return { fetchMock, streams };
+}
+
+async function readAll(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array[]> {
+  const chunks: Uint8Array[] = [];
+  const reader = stream.getReader();
+
+  for (;;) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      return chunks;
+    }
+
+    chunks.push(value);
+  }
+}
+
+/** Lets the provider's pump drain what the test just pushed. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function readWavHeader(wav: ArrayBuffer) {
   const view = new DataView(wav);
   const decoder = new TextDecoder();
@@ -569,5 +657,490 @@ describe("GeminiTTSProvider", () => {
           dangerouslyAllowBrowser: true,
         }),
     ).not.toThrow();
+  });
+  describe("generateSpeechStream", () => {
+    it("posts the streaming endpoint with the same headers and body", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello", {
+        rate: 1.5,
+        pitch: 1.2,
+      });
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+
+      const [input, init] = fetchMock.mock.calls[0];
+      // Never in the URL: proxies and request logs capture query strings.
+      // Exact equality pins that `alt=sse` is the only query parameter.
+      expect(String(input)).toBe(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:streamGenerateContent?alt=sse",
+      );
+      expect(init?.headers).toEqual({
+        "x-goog-api-key": "secret-key",
+        "Content-Type": "application/json",
+      });
+      // The same body the buffered path sends, rate and pitch included in the
+      // call and absent from the wire.
+      expect(JSON.parse(String(init?.body))).toEqual({
+        contents: [{ parts: [{ text: "TTS the following text:\nhello" }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } },
+          },
+        },
+      });
+
+      await stream.body.cancel();
+    });
+
+    it("builds the streaming endpoint from baseUrl and setModel", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({
+        apiKey: "secret-key",
+        baseUrl: "https://proxy.example/",
+        defaultModel: "custom-tts",
+      });
+
+      const first = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      await (await first).body.cancel();
+
+      provider.setModel("other-tts");
+      const second = provider.generateSpeechStream("hello");
+      await flush();
+      streams[1].push(audioEvent());
+      await (await second).body.cancel();
+
+      expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+        "https://proxy.example/v1beta/models/custom-tts:streamGenerateContent?alt=sse",
+        "https://proxy.example/v1beta/models/other-tts:streamGenerateContent?alt=sse",
+      ]);
+    });
+
+    it("yields each event's audio in order and closes on STOP", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent(new Uint8Array([1, 2])));
+      const stream = await pending;
+      streams[0].push(audioEvent(new Uint8Array([3, 4])));
+      streams[0].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([
+        new Uint8Array([1, 2]),
+        new Uint8Array([3, 4]),
+      ]);
+      expect(stream.format).toEqual({
+        encoding: "pcm-s16le",
+        sampleRate: 24000,
+        channels: 1,
+      });
+    });
+
+    it("takes the format from the first event's MIME type", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent(PCM, "audio/l16; rate=16000; channels=1"));
+      const stream = await pending;
+
+      expect(stream.format).toEqual({
+        encoding: "pcm-s16le",
+        sampleRate: 16000,
+        channels: 1,
+      });
+
+      await stream.body.cancel();
+    });
+
+    it("reassembles an event split across two body chunks", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+      const event = audioEvent();
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(event.slice(0, 20));
+      await flush();
+      streams[0].push(event.slice(20));
+      const stream = await pending;
+      streams[0].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+    });
+
+    it("parses frames separated by CRLF", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent().replace(/\n/g, "\r\n"));
+      const stream = await pending;
+      streams[0].push(terminalEvent().replace(/\n/g, "\r\n"));
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+    });
+
+    it("settles on the first audio event, before the stream terminates", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      let settled = false;
+      const pending = provider.generateSpeechStream("hello").then((stream) => {
+        settled = true;
+
+        return stream;
+      });
+
+      await flush();
+      expect(settled).toBe(false);
+
+      streams[0].push(audioEvent());
+      await flush();
+      // Resolved on the first chunk, with the terminal event still to come.
+      expect(settled).toBe(true);
+
+      streams[0].push(terminalEvent());
+      await (await pending).body.cancel();
+    });
+
+    it("errors the body when the stream ends with a reason other than STOP", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      const expectation = expect(readAll(stream.body)).rejects.toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        message: expect.stringContaining("SAFETY"),
+      });
+
+      streams[0].push(terminalEvent("SAFETY"));
+      await expectation;
+
+      // Audio was already handed out, so this is a failed stream, not a retry.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(streams[0].signal?.aborted).toBe(true);
+    });
+
+    it("errors the body when the stream ends without a terminal event", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      const expectation = expect(readAll(stream.body)).rejects.toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        message: "Gemini TTS Error: stream ended without a finish reason",
+      });
+
+      streams[0].close();
+      await expectation;
+    });
+
+    it("errors the body when a later event changes the audio format", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      const expectation = expect(readAll(stream.body)).rejects.toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        message:
+          'Gemini TTS Error: audio format changed to "audio/l16; rate=16000; channels=1" mid-stream',
+      });
+
+      streams[0].push(audioEvent(PCM, "audio/l16; rate=16000; channels=1"));
+      await expectation;
+    });
+
+    it("wraps a mid-stream failure that is not already a Charivo error", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      const expectation = expect(readAll(stream.body)).rejects.toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        cause: expect.any(SyntaxError),
+      });
+
+      streams[0].push("data: {not json}\n\n");
+      await expectation;
+
+      // The failed attempt stops the upstream request too, or Gemini keeps
+      // synthesizing an utterance nobody can receive.
+      expect(streams[0].signal?.aborted).toBe(true);
+    });
+
+    it("rejects a failed streaming request without leaking the API key", async () => {
+      const fetchMock = stubFetch(
+        async () => new Response("bad request", { status: 400 }),
+      );
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      let caught: unknown;
+      try {
+        await provider.generateSpeechStream("hello");
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        message: "Gemini TTS Error: bad request",
+      });
+      expect((caught as Error).message).not.toContain("secret-key");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries once after a 5xx and returns the second stream", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      fetchMock.mockResolvedValueOnce(
+        new Response("overloaded", { status: 500 }),
+      );
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      streams[0].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries once when the response carries no body", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      streams[0].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries once when the stream terminates without any audio", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(terminalEvent());
+      await flush();
+      streams[1].push(audioEvent());
+      const stream = await pending;
+      streams[1].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives up after a second stream without any audio", async () => {
+      const { fetchMock, streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      const expectation = expect(pending).rejects.toMatchObject({
+        name: "CharivoProviderError",
+        code: "CHARIVO_PROVIDER_ERROR",
+        message: "Gemini TTS Error: response contained no audio",
+      });
+
+      await flush();
+      streams[0].push(terminalEvent());
+      await flush();
+      streams[1].push(terminalEvent());
+      await expectation;
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives the streaming retry only the time left on the original deadline", async () => {
+      vi.useFakeTimers();
+      const { fetchMock } = stubSseFetch();
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(
+              () => resolve(new Response("overloaded", { status: 500 })),
+              4_000,
+            );
+          }),
+      );
+      const provider = new GeminiTTSProvider({
+        apiKey: "secret-key",
+        timeoutMs: 10_000,
+      });
+
+      const pending = provider.generateSpeechStream("hello");
+      const expectation = expect(pending).rejects.toMatchObject({
+        name: "CharivoTimeoutError",
+        code: "CHARIVO_TIMEOUT_ERROR",
+        message: "Gemini TTS request timed out after 10000ms",
+      });
+
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      // 10s total, not 14: the retry inherited the remaining 6s, not a fresh
+      // budget. The second stream never sends a frame.
+      await vi.advanceTimersByTimeAsync(6_000);
+      await expectation;
+    });
+
+    it("keeps the first streaming failure as the cause when the deadline leaves no retry", async () => {
+      vi.useFakeTimers();
+      const { fetchMock } = stubSseFetch();
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(
+              () => resolve(new Response("overloaded", { status: 500 })),
+              4_000,
+            );
+          }),
+      );
+      const provider = new GeminiTTSProvider({
+        apiKey: "secret-key",
+        timeoutMs: 4_000,
+      });
+
+      const pending = provider.generateSpeechStream("hello");
+      const expectation = expect(pending).rejects.toMatchObject({
+        name: "CharivoTimeoutError",
+        code: "CHARIVO_TIMEOUT_ERROR",
+        message: "Gemini TTS request timed out after 4000ms",
+        cause: expect.objectContaining({
+          name: "CharivoProviderError",
+          message: "Gemini TTS Error: overloaded",
+        }),
+      });
+
+      await vi.advanceTimersByTimeAsync(4_000);
+      await expectation;
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("errors the body when the stream stalls past the deadline", async () => {
+      vi.useFakeTimers();
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({
+        apiKey: "secret-key",
+        timeoutMs: 5_000,
+      });
+
+      const pending = provider.generateSpeechStream("hello");
+      await vi.advanceTimersByTimeAsync(0);
+      streams[0].push(audioEvent());
+      await vi.advanceTimersByTimeAsync(0);
+      const stream = await pending;
+      const expectation = expect(readAll(stream.body)).rejects.toMatchObject({
+        name: "CharivoTimeoutError",
+        code: "CHARIVO_TIMEOUT_ERROR",
+        message: "Gemini TTS request timed out after 5000ms",
+      });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expectation;
+
+      expect(streams[0].signal?.aborted).toBe(true);
+    });
+
+    it("aborts the upstream request when the returned body is cancelled", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+
+      await stream.body.cancel();
+      await flush();
+
+      expect(streams[0].signal?.aborted).toBe(true);
+      expect(streams[0].aborted).toBe(true);
+    });
+
+    it("re-throws the caller's abort from before the first chunk", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+      const caller = new AbortController();
+
+      const pending = provider.generateSpeechStream(
+        "hello",
+        undefined,
+        caller.signal,
+      );
+      const failure = pending.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await flush();
+
+      caller.abort();
+      const caught = await failure;
+
+      // Unclassified in both windows: a stop() reads the same whether or not
+      // the first chunk had landed.
+      expect((caught as Error | null)?.name).toBe("AbortError");
+      expect(streams[0].signal?.aborted).toBe(true);
+    });
+
+    it("aborts the upstream request when the caller's signal aborts", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+      const caller = new AbortController();
+
+      const pending = provider.generateSpeechStream(
+        "hello",
+        undefined,
+        caller.signal,
+      );
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      const failure = readAll(stream.body).then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      caller.abort();
+      const caught = await failure;
+
+      expect((caught as Error | null)?.name).toBe("AbortError");
+      expect(streams[0].signal?.aborted).toBe(true);
+      expect(streams[0].aborted).toBe(true);
+    });
   });
 });
