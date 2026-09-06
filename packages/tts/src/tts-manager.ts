@@ -287,8 +287,16 @@ export class TTSManagerImpl implements TTSManager {
       }
 
       // A streamed utterance has no element to pause: discard what is queued,
-      // stop the route synthesizing, and throw the body away. This runs before
-      // the settlement below, which clears currentStream.
+      // stop the route synthesizing, and throw the body away. It has to run
+      // before the settlement below, which clears currentStream.
+      //
+      // Not redundant with that settlement, which reaches the same teardown
+      // through finalize -- but only if it is reached at all. The two calls in
+      // between both emit, and an emitter whose emit throws escapes this
+      // finally first: setEventEmitter() accepts any CharivoEventEmitter, and
+      // only the in-repo EventBus catches per listener. Measured without this
+      // block, that stop leaves the queue sounding, the request un-aborted, a
+      // further chunk scheduled after the stop, and speak() stranded.
       const streaming = this.currentStream;
       if (streaming) {
         streaming.scheduler.flush();
@@ -329,11 +337,21 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * Create the audio analysis context up front, typically from a user gesture
+   * Create the audio contexts up front -- the analyzer's, plus a playback
+   * context for a player that streams -- typically from a user gesture
    * handler so browsers allow playback later. Throws on unsupported browsers.
    */
   async prepareAudio(): Promise<void> {
     this.ensureLifecycleBound();
+    // Only for the streamed path: buffered playback goes out through an
+    // <audio> element and never touches this context. The condition mirrors
+    // speak()'s own routing.
+    if (
+      this.playbackMode !== "web-speech" &&
+      supportsGenerateAudioStream(this.ttsPlayer)
+    ) {
+      this.ensurePlaybackContext();
+    }
     await this.lipSync.prepare();
   }
 
@@ -346,8 +364,16 @@ export class TTSManagerImpl implements TTSManager {
     this.teardownBrowserLifecycle?.();
     this.teardownBrowserLifecycle = undefined;
 
+    // Cleared before the close settles, so a prepareAudio() racing it builds a
+    // fresh context instead of reusing the closing one. The graph goes with
+    // it: its nodes belong to the context being closed.
+    const playbackContext = this.playbackContext;
+    this.playbackContext = null;
+    this.playbackGraph = null;
+
     try {
-      await this.lipSync.cleanup();
+      // Both, whichever fails: one failing to release must not strand the other.
+      await Promise.all([this.lipSync.cleanup(), playbackContext?.close()]);
     } catch (error) {
       throw toCharivoError(
         "dispose",
@@ -751,6 +777,13 @@ export class TTSManagerImpl implements TTSManager {
         // completes it, because the scheduler floors to whole samples and
         // would drop it.
         let carry: Uint8Array | null = null;
+        // Whether anything has reached the scheduler yet. Only the first
+        // sample is gated on the context: one that is not running by then was
+        // never permitted and will not clear on its own, while one that stops
+        // later -- a backgrounded tab, a WebKit interruption -- recovers by
+        // itself, and rejecting there would kill an utterance that would have
+        // gone on playing.
+        let hasScheduled = false;
 
         for (;;) {
           const { done, value } = await reader.read();
@@ -778,6 +811,29 @@ export class TTSManagerImpl implements TTSManager {
           carry = whole < chunk.byteLength ? chunk.slice(whole) : null;
 
           if (whole > 0) {
+            // A context still not running when the first sample arrives is
+            // blocked, and scheduling into it is worse than failing: its
+            // sources never end, so this call would stay pending with
+            // tts:audio:start already announced over silence and the mouth
+            // open. Not a false positive on a freshly created one -- the
+            // context is created before generateAudioStream is awaited above,
+            // so that wait has already absorbed the asynchronous "suspended"
+            // -> "running" transition a permitted context goes through on
+            // browsers that do not report "running" synchronously. finalize
+            // aborts the request and cancels the body. This is the streamed
+            // twin of the buffered path's NotAllowedError from audio.play().
+            if (!hasScheduled && context.state !== "running") {
+              finalize(() =>
+                reject(
+                  new CharivoStateError(
+                    "The TTS playback audio context is blocked, so streamed audio cannot start. Call prepareAudio() from a user gesture handler before speak().",
+                  ),
+                ),
+              );
+              return;
+            }
+
+            hasScheduled = true;
             scheduler.enqueue(chunk.subarray(0, whole));
           }
         }
@@ -785,12 +841,8 @@ export class TTSManagerImpl implements TTSManager {
 
       void pump().catch((error) => {
         // A read that rejects after the utterance was settled -- a cancelled
-        // body reporting the abort that settled it -- has nothing left to
-        // report to.
-        if (isFinalized) {
-          return;
-        }
-
+        // body reporting the abort that settled it -- is discarded here by
+        // finalize's own idempotence: there is nothing left to report to.
         finalize(() => reject(error));
       });
     });
@@ -845,7 +897,26 @@ export class TTSManagerImpl implements TTSManager {
       return existing;
     }
 
-    const context = new AudioContext();
+    // The same fallback the lip-sync analyzer applies, and for the same
+    // browsers. prepareAudio() reaches this before lipSync.prepare(), so a
+    // bare `new AudioContext()` would throw here and cost that browser its
+    // lip-sync preparation as well as its playback.
+    //
+    // Deliberately without the analyzer's `typeof window` guard: the path
+    // around this already reaches window, new Audio() and URL.createObjectURL
+    // unguarded, and a single check here would read as an SSR-safety claim
+    // this file cannot make.
+    const constructor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!constructor) {
+      throw new CharivoStateError(
+        "AudioContext is not supported in this browser, so streamed TTS audio cannot be played.",
+      );
+    }
+
+    const context = new constructor();
     this.playbackContext = context;
     return context;
   }

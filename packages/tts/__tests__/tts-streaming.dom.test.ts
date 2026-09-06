@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CharivoError, CharivoStateError } from "@charivo/core";
 import type { TTSOptions, TTSPcmFormat, TTSPcmStream } from "@charivo/core";
 import { createTTSManager } from "../src";
 
@@ -186,6 +187,8 @@ class StreamingPlayer {
   readonly streams: ControllableStream[] = [];
   /** The signals the manager handed over, so cancellation can be asserted. */
   readonly signals: Array<AbortSignal | undefined> = [];
+  /** Awaited before each stream is handed over; replace it to hold one open. */
+  opening: Promise<void> = Promise.resolve();
 
   speak = vi.fn(async (_text: string, _options?: TTSOptions) => undefined);
   stop = vi.fn(async () => undefined);
@@ -199,6 +202,7 @@ class StreamingPlayer {
       signal?: AbortSignal,
     ): Promise<TTSPcmStream> => {
       this.signals.push(signal);
+      await this.opening;
       const stream = createControllableStream();
       this.streams.push(stream);
       return { body: stream.body, format: this.format };
@@ -280,6 +284,10 @@ function restoreAudioMocks(): void {
     value: originalAudioContext,
     configurable: true,
   });
+  // Cleared unconditionally: only one test installs the prefixed constructor,
+  // and a failure there must not leak it into the next.
+  delete (window as Window & { webkitAudioContext?: typeof AudioContext })
+    .webkitAudioContext;
   vi.restoreAllMocks();
 }
 
@@ -539,14 +547,379 @@ describe("TTSManagerImpl streamed playback", () => {
     player.stream.push(silence(960));
     await nextTask();
 
-    player.stream.error(new Error("connection dropped"));
+    const dropped = new Error("connection dropped");
+    player.stream.error(dropped);
 
-    await expect(speaking.promise).rejects.toThrow(/connection dropped/);
+    const failure = await speaking.promise.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    // Wrapped for the caller, with the provider's own failure kept as the cause.
+    expect(failure).toBeInstanceOf(CharivoError);
+    expect((failure as Error).message).toMatch(/connection dropped/);
+    expect((failure as Error).cause).toBe(dropped);
     // Rejecting is not enough: what was queued must stop sounding and the
     // route must stop synthesizing, because finalize has just dropped the
     // handles a later stop() would have reached them through.
     expect(playbackContext().sources[0]!.stop).toHaveBeenCalledTimes(1);
     expect(player.signals[0]!.aborted).toBe(true);
     expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+  });
+
+  it("stops a streamed utterance that is still receiving chunks", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    const context = playbackContext();
+    expect(context.sources).toHaveLength(1);
+
+    await manager.stop();
+    await speaking.promise;
+
+    // Everything the utterance was holding: the queue, the request, the body.
+    expect(context.sources[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(player.signals[0]!.aborted).toBe(true);
+    expect(player.stream.cancel).toHaveBeenCalledTimes(1);
+
+    expect(emitter.emit).toHaveBeenCalledWith("tts:lipsync:update", { rms: 0 });
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+    expect(speaking.state).toBe("resolved");
+  });
+
+  it("cancels a body that arrives after the stop, and never queues it", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    let openStream!: () => void;
+    player.opening = new Promise<void>((resolve) => {
+      openStream = resolve;
+    });
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+
+    // Still synthesizing: there is a request to abort, but no body yet.
+    expect(player.streams).toHaveLength(0);
+
+    await manager.stop();
+    await speaking.promise;
+
+    expect(player.signals[0]!.aborted).toBe(true);
+    expect(speaking.state).toBe("resolved");
+
+    // The abort lost the race and the body arrives anyway, with nobody left
+    // to read it.
+    openStream();
+    await nextTask();
+
+    expect(player.stream.cancel).toHaveBeenCalledTimes(1);
+    expect(countEvents(emitter, "tts:audio:start")).toBe(0);
+    expect(
+      FakeAudioContext.instances.flatMap((instance) => instance.sources),
+    ).toHaveLength(0);
+  });
+
+  it("settles a streamed utterance stopped from its own tts:audio:start listener", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    let stopping: Promise<void> | undefined;
+    emitter.emit.mockImplementation((eventName: string) => {
+      if (eventName === "tts:audio:start") {
+        stopping = manager.stop();
+      }
+    });
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+    await stopping;
+    await speaking.promise;
+
+    // Streamed playback publishes the session only after a sample was handed
+    // over, so a stop from that listener cannot un-hear what already sounded.
+    // What it must still guarantee is settlement: the call resolves, and one
+    // end event closes the session it opened.
+    const context = playbackContext();
+    expect(context.sources[0]!.start).toHaveBeenCalledTimes(1);
+    expect(context.sources[0]!.stop).toHaveBeenCalledTimes(1);
+    expect(player.stream.cancel).toHaveBeenCalledTimes(1);
+    expect(speaking.state).toBe("resolved");
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+  });
+
+  it("resolves the call when the stop's own abort errors the body", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    // What an aborted route does: it errors the stream, so the read in flight
+    // rejects with the abort instead of ending cleanly. The rejection lands
+    // after the stop has already settled this call, so what it exercises is
+    // the pump's rejection path being discarded by finalize's idempotence --
+    // it cannot tell a discarded rejection from one that never arrived.
+    const stream = player.stream;
+    player.signals[0]!.addEventListener("abort", () => {
+      stream.error(new Error("The operation was aborted."));
+    });
+
+    await manager.stop();
+    await speaking.promise;
+    await nextTask();
+
+    expect(speaking.state).toBe("resolved");
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+  });
+
+  it("fails fast when the playback context is still blocked at the first sample", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    let openStream!: () => void;
+    player.opening = new Promise<void>((resolve) => {
+      openStream = resolve;
+    });
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+
+    // The context this utterance will play through exists before its stream
+    // does; blocking that instance is what makes this a blocked context rather
+    // than one that simply has not finished starting. "interrupted" is
+    // WebKit's own non-standard state, so the guard is pinned to "not running"
+    // rather than to "suspended".
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    const context = FakeAudioContext.instances[0]!;
+    context.state = "interrupted" as AudioContextState;
+
+    openStream();
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    const failure = await speaking.promise.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(CharivoStateError);
+    expect((failure as Error).message).toMatch(/prepareAudio\(\)/);
+    expect(playbackContext()).toBe(context);
+    // Nothing was scheduled, so nothing announced audio that never sounded.
+    expect(context.sources).toHaveLength(0);
+    expect(countEvents(emitter, "tts:audio:start")).toBe(0);
+    expect(countEvents(emitter, "tts:audio:end")).toBe(0);
+    expect(player.stream.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps playing when the context is suspended after the first sample", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    // A tab going to the background suspends the context mid-utterance. That
+    // recovers on its own, so the utterance must survive it -- only a context
+    // that was never permitted is fatal.
+    const context = playbackContext();
+    context.state = "suspended";
+    player.stream.push(silence(960));
+    await nextTask();
+
+    expect(context.sources).toHaveLength(2);
+    expect(speaking.state).toBe("pending");
+
+    player.stream.close();
+    await nextTask();
+    context.sources.forEach((source) => source.end());
+    await speaking.promise;
+
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+  });
+
+  it("schedules nothing more once a stop has settled the utterance", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    const context = playbackContext();
+
+    // An unawaited stop with the route still delivering: the teardown lands
+    // while a read whose value already resolved is still queued, so the pump
+    // resumes after finalize. Scheduling that chunk would start a source after
+    // the stop and re-open the session with nothing left to close it.
+    void manager.stop();
+    player.stream.push(silence(960));
+    player.stream.push(silence(960));
+    await nextTask();
+
+    expect(context.sources).toHaveLength(1);
+    expect(countEvents(emitter, "tts:audio:start")).toBe(1);
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
+    await speaking.promise;
+  });
+
+  it("warms the streamed playback context from prepareAudio and reuses it", async () => {
+    const player = new StreamingPlayer();
+    const manager = trackManager(player);
+
+    await manager.prepareAudio();
+
+    // The manager's playback context, plus the analyzer's own.
+    expect(FakeAudioContext.instances).toHaveLength(2);
+
+    // A gesture-warmed context can still report itself suspended; preparing
+    // again nudges it instead of building a replacement it would be refused.
+    for (const instance of FakeAudioContext.instances) {
+      instance.state = "suspended";
+    }
+    await manager.prepareAudio();
+
+    expect(FakeAudioContext.instances).toHaveLength(2);
+
+    for (const instance of FakeAudioContext.instances) {
+      instance.state = "running";
+    }
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    // The warmed context is the one the utterance plays through -- warming a
+    // context playback never reaches would buy nothing.
+    expect(playbackContext().resume).toHaveBeenCalledTimes(1);
+    expect(FakeAudioContext.instances).toHaveLength(2);
+
+    player.stream.close();
+    await nextTask();
+    playbackContext().sources[0]!.end();
+    await speaking.promise;
+  });
+
+  it("builds no playback context for a buffered player", async () => {
+    const player = new BufferedPlayer();
+    const manager = trackManager(player);
+
+    await manager.prepareAudio();
+    await manager.speak("hello");
+
+    // Only the analyzer's: the blob path plays through an <audio> element.
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(analyzerContext()).toBe(FakeAudioContext.instances[0]);
+  });
+
+  it("closes the playback context on dispose", async () => {
+    const player = new StreamingPlayer();
+    const manager = trackManager(player);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+    player.stream.close();
+    await nextTask();
+    playbackContext().sources[0]!.end();
+    await speaking.promise;
+
+    const context = playbackContext();
+    await manager.dispose();
+
+    expect(context.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to webkitAudioContext, and still prepares lip sync", async () => {
+    // A browser shipping only the prefixed constructor -- the case the
+    // analyzer's own fallback already covers.
+    class WebkitAudioContext extends FakeAudioContext {}
+    Object.defineProperty(window, "AudioContext", {
+      value: undefined,
+      configurable: true,
+    });
+    Object.defineProperty(window, "webkitAudioContext", {
+      value: WebkitAudioContext,
+      configurable: true,
+    });
+
+    const player = new StreamingPlayer();
+    const manager = trackManager(player);
+
+    await manager.prepareAudio();
+
+    // Two contexts, both built through the prefixed constructor: the manager's
+    // playback context and the analyzer's. The count is the fix -- a bare
+    // `new AudioContext()` threw here before lipSync.prepare() was ever
+    // reached, costing such a browser its lip-sync preparation as well.
+    expect(FakeAudioContext.instances).toHaveLength(2);
+    for (const instance of FakeAudioContext.instances) {
+      expect(instance).toBeInstanceOf(WebkitAudioContext);
+    }
+  });
+
+  it("builds a fresh context and graph for a speak after dispose", async () => {
+    const player = new StreamingPlayer();
+    const manager = trackManager(player);
+
+    const first = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    const closed = playbackContext();
+    player.stream.close();
+    await nextTask();
+    closed.sources[0]!.end();
+    await first.promise;
+
+    await manager.dispose();
+
+    const second = track(manager.speak("again"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    // The graph is released with the context it was built from: keeping it
+    // would route the second utterance's samples through nodes belonging to a
+    // closed context.
+    const built = FakeAudioContext.instances.filter(
+      (instance) => instance.createGain.mock.calls.length > 0,
+    );
+    expect(built).toHaveLength(2);
+    expect(built[1]).not.toBe(closed);
+    expect(built[1]!.sources).toHaveLength(1);
+
+    player.stream.close();
+    await nextTask();
+    built[1]!.sources[0]!.end();
+    await second.promise;
   });
 });
