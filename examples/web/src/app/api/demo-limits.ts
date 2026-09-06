@@ -116,11 +116,12 @@ export const TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
 export const TTS_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
 
 /**
- * Latency-bound, not cost-bound: the non-streaming endpoint answers in
- * roughly 0.55–0.7x the audio's length (measured 300 chars ≈ 14s, 600 ≈ 20s),
- * so 400 characters lands around 15s — one synthesis, or a 5xx/text-only
- * first answer plus its retry, inside `TTS_GEMINI_ROUTE_TIMEOUT_MS`; anything
- * longer fails fast rather than overrunning the client.
+ * Latency-bound, not cost-bound: the non-streaming endpoint answers in a fixed
+ * startup cost plus roughly 0.75x the audio's length (measured 278 chars
+ * ≈ 13.5s, 300 ≈ 14s, 600 ≈ 20s), so 400 characters lands around 15s — one
+ * synthesis, or a 5xx/text-only first answer plus its retry, inside
+ * `TTS_GEMINI_ROUTE_TIMEOUT_MS`; anything longer fails fast rather than
+ * overrunning the client.
  */
 export const TTS_GEMINI_MAX_TEXT_CHARS = 400;
 

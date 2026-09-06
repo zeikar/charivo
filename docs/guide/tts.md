@@ -144,7 +144,9 @@ own deadline.
 - voices are Google's prebuilt names, not OpenAI-style voice IDs
 - the text is sent behind a fixed synthesis preamble, and a 5xx or a
   text-only answer is retried once within the configured `timeoutMs`
-- latency runs roughly 0.55–0.7x the audio length, so keep replies short
+- latency is a fixed startup cost plus roughly 0.75x the audio length, so
+  short replies do not get proportionally cheaper: measured 3.2s for 3.0s of
+  audio (56 characters) against 13.5s for 18.0s (278 characters)
 
 ## Alternatives
 

@@ -53,12 +53,14 @@ type AttemptResult = { audio: ArrayBuffer } | { retry: CharivoProviderError };
  * A 5xx or a text-only answer is retried once inside the same `timeoutMs`, not
  * a fresh one.
  *
- * Synthesis is not streamed: measured latency is ~0.55-0.7x the audio duration
- * (120 chars ~ 6s, 600 ~ 20s, 1,800 ~ 68s), which is why the default budget is
- * 90s. That default suits the direct player and callers that own their own
- * deadline; a route behind `@charivo/tts/remote` must pass a `timeoutMs` under
- * that player's fixed 30s (e.g. 25_000) so the server gives up first, and cap
- * its text length on top of that as the real latency control.
+ * Synthesis is not streamed: measured latency is a fixed startup cost plus
+ * ~0.75x the audio duration (56 chars ~ 3s, 120 ~ 6s, 600 ~ 20s, 1,800 ~ 68s),
+ * so a short reply does not get proportionally cheaper. The long end is why
+ * the default budget is 90s. That default suits the direct player and callers
+ * that own their own deadline; a route behind `@charivo/tts/remote` must pass
+ * a `timeoutMs` under that player's fixed 30s (e.g. 25_000) so the server
+ * gives up first, and cap its text length on top of that as the real latency
+ * control.
  */
 export class GeminiTTSProvider implements TTSProvider {
   private apiKey: string;
