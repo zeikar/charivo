@@ -360,7 +360,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             const { createRemoteTTSPlayer } = await import(
               "@charivo/tts/remote"
             );
-            return createRemoteTTSPlayer({ apiEndpoint: "/api/tts-gemini" });
+            return createRemoteTTSPlayer({
+              apiEndpoint: "/api/tts-gemini",
+              streaming: true,
+            });
           }
           case "gemini": {
             const apiKey = promptForSecret(

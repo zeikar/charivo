@@ -107,21 +107,35 @@ export const TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
 
 /**
  * The provider's `timeoutMs`, set below `@charivo/tts/remote`'s fixed 30s
- * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first: the
- * deadline bounds how long the route waits and aborts the transport (a
- * cancellation request), so the browser is never left holding a request the
- * server already gave up on. Work Gemini has already accepted may still be
- * billed. The provider's single retry shares this budget.
+ * (`DEFAULT_FETCH_TIMEOUT_MS`, no override) so the server gives up first:
+ * work Gemini has already accepted may still be billed. The provider's
+ * single retry shares this budget.
+ *
+ * On the streaming branch, that player's own `DEFAULT_FETCH_TIMEOUT_MS`
+ * covers connecting and the headers only (see its `requestAudioStream`), so
+ * this route's deadline is what actually bounds the eager upstream read past
+ * that point: Gemini delivers audio ~3.5x faster than realtime, so 25s of
+ * upstream transfer covers ~80s of resulting audio, well past what
+ * `TTS_GEMINI_MAX_TEXT_CHARS` can produce.
  */
 export const TTS_GEMINI_ROUTE_TIMEOUT_MS = 25_000;
 
 /**
- * Latency-bound, not cost-bound: the non-streaming endpoint answers in a fixed
- * startup cost plus roughly 0.75x the audio's length (measured 278 chars
- * ≈ 13.5s, 300 ≈ 14s, 600 ≈ 20s), so 400 characters lands around 15s — one
- * synthesis, or a 5xx/text-only first answer plus its retry, inside
+ * The buffered path is latency-bound: it answers in a fixed startup cost plus
+ * roughly 0.75x the audio's length (measured 278 chars ≈ 13.5s, 300 ≈ 14s,
+ * 600 ≈ 20s), so 400 characters lands around 15s — one synthesis, or a
+ * 5xx/text-only first answer plus its retry, inside
  * `TTS_GEMINI_ROUTE_TIMEOUT_MS`; anything longer fails fast rather than
- * overrunning the client.
+ * overrunning the client. Unflagged clients still take this path, so this
+ * bound still matters.
+ *
+ * The streaming path is not latency-bound the same way, but the cap stays for
+ * it too: a 2,358-character text streamed 96.60s of audio and ended on a
+ * spurious `finishReason: "SAFETY"` under HTTP 200 (reproduced twice), while
+ * 1,182 characters streamed complete with `STOP` (measured 2026-09-06) — past
+ * some length, Gemini silently truncates a "successful" stream instead of
+ * erroring it, and there is no known safe length short of retesting every
+ * increase.
  */
 export const TTS_GEMINI_MAX_TEXT_CHARS = 400;
 

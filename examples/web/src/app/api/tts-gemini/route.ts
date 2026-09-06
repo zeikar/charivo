@@ -60,6 +60,32 @@ export async function POST(request: NextRequest) {
     }
     // Not clamped or forwarded: the Gemini TTS provider ignores `rate`.
 
+    // Opt-in wire contract with `@charivo/tts/remote`'s streaming path (see
+    // its `RemoteTTSConfig.streaming`): that player sends this header
+    // precisely so an unflagged caller keeps getting today's buffered
+    // container. `request.signal` is forwarded so a browser disconnect
+    // cancels the still-running Gemini request instead of leaving it
+    // synthesizing. A `generateSpeechStream` rejection here still lands in
+    // the catch below as an ordinary JSON 500, same as `generateSpeech` — the
+    // headers only actually commit once it resolves and `NextResponse` is
+    // constructed. Past that point a failure while the body is being read can
+    // no longer become a JSON error; it surfaces to the player as an error on
+    // the stream itself.
+    if ((request.headers.get("Accept") ?? "").includes("audio/pcm")) {
+      const stream = await ttsProvider.generateSpeechStream(
+        text,
+        { voice },
+        request.signal,
+      );
+
+      return new NextResponse(stream.body, {
+        headers: {
+          "Content-Type": `audio/pcm; rate=${stream.format.sampleRate}; channels=${stream.format.channels}`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
     // TTS generation
     const audioBuffer = await ttsProvider.generateSpeech(text, { voice });
 
