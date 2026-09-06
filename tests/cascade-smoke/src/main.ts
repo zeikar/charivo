@@ -74,12 +74,17 @@ let lipsyncRmsUpdates = 0;
 let maxRms = 0;
 let lastError: string | null = null;
 let rendererReady = false;
+// Set on tts:start, consumed (and left set) on tts:audio:start; reset() clears
+// it so a turn with no tts:audio:start leaves ttsFirstAudioMs null rather than
+// a stale value from the previous turn.
+let ttsStartedAt: number | null = null;
 const avatarEvents: CascadeAvatarEvent[] = [];
 const timings: CascadeTimings = {
   recordMs: null,
   sttMs: null,
   turnMs: null,
   totalMs: null,
+  ttsFirstAudioMs: null,
 };
 const events: CascadeEvent[] = [];
 
@@ -96,10 +101,12 @@ function reset(): void {
   lipsyncRmsUpdates = 0;
   maxRms = 0;
   lastError = null;
+  ttsStartedAt = null;
   timings.recordMs = null;
   timings.sttMs = null;
   timings.turnMs = null;
   timings.totalMs = null;
+  timings.ttsFirstAudioMs = null;
   events.length = 0;
   avatarEvents.length = 0;
 }
@@ -132,7 +139,13 @@ charivo.attachLLM(
   }),
 );
 const ttsManager = createTTSManager(
-  createRemoteTTSPlayer({ apiEndpoint: "/api/tts" }),
+  createRemoteTTSPlayer({
+    apiEndpoint: "/api/tts",
+    // Only the Gemini leg's route answers the streaming wire contract (see
+    // vite.config.ts); flagging this for the OpenAI leg would make the
+    // player reject its buffered mp3 response as a misconfiguration.
+    streaming: __CASCADE_TTS__ === "gemini",
+  }),
 );
 charivo.attachTTS(ttsManager);
 const sttManager = createSTTManager(
@@ -163,9 +176,15 @@ charivo.on("avatar:gaze", (data) => {
   avatarEvents.push({ type: "gaze", x: data.x, y: data.y });
   record("avatar:gaze", data);
 });
-charivo.on("tts:start", (data) => record("tts:start", data));
+charivo.on("tts:start", (data) => {
+  ttsStartedAt = performance.now();
+  record("tts:start", data);
+});
 charivo.on("tts:audio:start", () => {
   ttsAudioStarted = true;
+  if (ttsStartedAt !== null) {
+    timings.ttsFirstAudioMs = Math.round(performance.now() - ttsStartedAt);
+  }
   record("tts:audio:start", {});
 });
 charivo.on("tts:audio:end", () => {

@@ -10,7 +10,10 @@ Covered chain (the recommended remote-client + server-provider path):
 - `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano),
   or `@charivo/server/gemini` (gemini-3.5-flash-lite) with `CASCADE_LLM=gemini`
 - `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts),
-  or `@charivo/server/gemini` (gemini-3.1-flash-tts-preview) with `CASCADE_TTS=gemini`
+  buffered mp3; or `@charivo/server/gemini` (gemini-3.1-flash-tts-preview) with
+  `CASCADE_TTS=gemini`, which streams PCM through
+  `createRemoteTTSPlayer({ streaming: true })` and the route's
+  `Accept: audio/pcm` branch instead
 - `@charivo/core` (`Charivo.userSay`) + `@charivo/render` (`RenderManager` lip-sync)
 
 Run it explicitly:
@@ -50,11 +53,18 @@ What it proves:
 - `RemoteSTTTranscriber` records the fake mic, posts it, and gets a transcript
 - `Charivo.userSay` runs the transcript through the LLM and produces a reply
 - the TTS manager synthesizes audio and plays it through its full lifecycle
-  (`tts:audio:start` → `tts:audio:end`)
+  (`tts:audio:start` → `tts:audio:end`) — on the Gemini leg this is the
+  streaming path: PCM chunks scheduled into Web Audio as they arrive, not one
+  finished blob played through an `<audio>` element. The logged
+  `ttsFirstAudioMs` (`tts:start` → `tts:audio:start`) is what shows the
+  streaming branch actually fired — small if it did, close to the full
+  synthesis time if the route silently fell back to the buffered path
 - the browser audio→lip-sync loop — the TTS manager analyzes its playing audio
   with the shared core `LipSyncAnalyzer` and emits `tts:lipsync:update`,
   which `RenderManager` consumes to drive the renderer with RMS updates during
-  playback — the path that node-level tests cannot reproduce
+  playback — the path that node-level tests cannot reproduce, now exercised
+  against streamed Web Audio playback on the Gemini leg, not only a finished
+  blob
 - the LLM avatar-tool loop — the LLM manager is wired with `@charivo/avatar`'s
   tools and result projector, so the reply to the canned "smile for me"
   utterance drives a real `setExpression` tool call and an `avatar:expression`

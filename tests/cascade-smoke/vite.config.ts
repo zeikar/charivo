@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import {
   createOpenAILLMProvider,
   createOpenAISTTProvider,
@@ -146,6 +148,15 @@ function createLLMProvider(apiKey: string) {
 const TTS_API_KEY_ENV: ApiKeyEnv =
   CASCADE_TTS === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY";
 
+// Shared by createTTSProvider's buffered branch and the streaming branch in
+// the /api/tts middleware below, so both call the same model.
+const CASCADE_TTS_GEMINI_MODEL = "gemini-3.1-flash-tts-preview";
+// The harness character has no voice, and the remote player's default voice
+// ("marin") is an OpenAI name, so the Gemini leg pins its own voice instead
+// of forwarding payload.voice - CASCADE_TTS ignores rate entirely. Shared by
+// both /api/tts branches below for the same reason.
+const CASCADE_TTS_GEMINI_VOICE = "Kore";
+
 function createTTSProvider(apiKey: string) {
   return CASCADE_TTS === "gemini"
     ? // timeoutMs below @charivo/tts/remote's fixed 30s so the harness route
@@ -153,7 +164,7 @@ function createTTSProvider(apiKey: string) {
       // TTS_GEMINI_ROUTE_TIMEOUT_MS.
       createGeminiTTSProvider({
         apiKey,
-        defaultModel: "gemini-3.1-flash-tts-preview",
+        defaultModel: CASCADE_TTS_GEMINI_MODEL,
         timeoutMs: 25_000,
       })
     : createOpenAITTSProvider({
@@ -167,6 +178,12 @@ export default defineConfig({
   root: harnessRoot,
   resolve: {
     alias: workspaceAliases,
+  },
+  // The only compile-time value the client needs: which TTS leg is live, so
+  // src/main.ts can flag `createRemoteTTSPlayer({ streaming })` only for the
+  // Gemini leg without re-deriving the switch from an env var of its own.
+  define: {
+    __CASCADE_TTS__: JSON.stringify(CASCADE_TTS),
   },
   plugins: [
     {
@@ -305,14 +322,76 @@ export default defineConfig({
                 return;
               }
 
+              // Opt-in wire contract with `@charivo/tts/remote`'s streaming
+              // path (see its `RemoteTTSConfig.streaming`): that player only
+              // sends this header when flagged, so an unflagged caller keeps
+              // getting the buffered branch below untouched.
+              // `createTTSProvider`'s return type is a union of both
+              // providers' interfaces, which does not typecheck a
+              // `generateSpeechStream` call, so this branch constructs the
+              // Gemini provider directly instead of narrowing it.
+              const acceptHeader = request.headers["accept"];
+              if (
+                CASCADE_TTS === "gemini" &&
+                typeof acceptHeader === "string" &&
+                acceptHeader.includes("audio/pcm")
+              ) {
+                const ttsProvider = createGeminiTTSProvider({
+                  apiKey,
+                  defaultModel: CASCADE_TTS_GEMINI_MODEL,
+                  timeoutMs: 25_000,
+                });
+
+                const stream = await ttsProvider.generateSpeechStream(text, {
+                  voice: CASCADE_TTS_GEMINI_VOICE,
+                });
+
+                response.statusCode = 200;
+                response.setHeader(
+                  "Content-Type",
+                  `audio/pcm; rate=${stream.format.sampleRate}; channels=${stream.format.channels}`,
+                );
+
+                const readable = Readable.fromWeb(
+                  stream.body as NodeWebReadableStream<Uint8Array>,
+                );
+
+                // A browser disconnect (barge-in, navigation, refresh) must
+                // stop Gemini still synthesizing and billing -- the same
+                // failure examples/web's sibling route prevents by
+                // forwarding `request.signal`. This Connect middleware has
+                // no such signal, so destroying the readable is what cancels
+                // it: Readable.fromWeb wires destroy() to the source web
+                // stream's cancel(), which is generateSpeechStream's
+                // documented cancellation contract. Fires after a normal
+                // finish too, where destroy() on an already-ended stream is
+                // a no-op.
+                response.on("close", () => {
+                  readable.destroy();
+                });
+                // Unhandled 'error' on a stream throws, and headers may
+                // already be sent by the time one arrives, so this can only
+                // tear the connection down -- the player surfaces it as a
+                // stream error, same as any other mid-body failure.
+                readable.on("error", (streamError) => {
+                  console.error("Cascade TTS stream error:", streamError);
+                  response.destroy(
+                    streamError instanceof Error
+                      ? streamError
+                      : new Error(String(streamError)),
+                  );
+                });
+
+                readable.pipe(response);
+                return;
+              }
+
               const provider = createTTSProvider(apiKey);
-              // The harness character has no voice, and the remote player's
-              // default voice ("marin") is an OpenAI name, so on the Gemini
-              // leg the route pins a Gemini voice itself instead of forwarding
-              // payload.voice/speed - CASCADE_TTS ignores rate entirely.
               const audioBuffer =
                 CASCADE_TTS === "gemini"
-                  ? await provider.generateSpeech(text, { voice: "Kore" })
+                  ? await provider.generateSpeech(text, {
+                      voice: CASCADE_TTS_GEMINI_VOICE,
+                    })
                   : await provider.generateSpeech(text, {
                       voice:
                         typeof payload.voice === "string"

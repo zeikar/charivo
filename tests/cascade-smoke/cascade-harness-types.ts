@@ -17,6 +17,13 @@ export type CascadeTimings = {
   sttMs: number | null;
   turnMs: number | null;
   totalMs: number | null;
+  /**
+   * `tts:start` to `tts:audio:start`. Small on the Gemini leg's streaming
+   * path (first chunk scheduled into Web Audio), close to the full synthesis
+   * time on the buffered path (nothing plays until the whole reply arrives)
+   * -- the number that shows whether the streaming branch actually fired.
+   */
+  ttsFirstAudioMs: number | null;
 };
 
 export type CascadeAvatarEvent =
@@ -58,3 +65,12 @@ export type CascadeHarnessApi = {
   getSnapshot: () => CascadeSnapshot;
   reset: () => void;
 };
+
+// Vite's `define` in vite.config.ts replaces this with the resolved
+// CASCADE_TTS switch as a string literal at compile time. This file is a
+// module (it has top-level `export`s), so a bare `declare const` here would
+// be scoped to it and invisible to src/main.ts; `declare global` is what
+// makes it visible program-wide.
+declare global {
+  const __CASCADE_TTS__: "openai" | "gemini";
+}

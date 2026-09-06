@@ -77,10 +77,19 @@ test.describe("cascade stt → llm → tts e2e", () => {
     await page.goto("/");
     await waitForHarnessReady(page);
 
+    // Registered before the turn starts so it catches the request regardless
+    // of timing; startTurn() fires the turn without awaiting it, and the
+    // /api/tts call happens partway through, well before waitForTurnSettled
+    // resolves below.
+    const ttsResponsePromise = page.waitForResponse((response) =>
+      response.url().includes("/api/tts"),
+    );
+
     await startTurn(page);
     await waitForTurnSettled(page);
 
     const snapshot = await getSnapshot(page);
+    const ttsResponse = await ttsResponsePromise;
 
     console.log(`[cascade] transcript: ${JSON.stringify(snapshot.transcript)}`);
     console.log(
@@ -91,6 +100,13 @@ test.describe("cascade stt → llm → tts e2e", () => {
         `lip-sync RMS updates: ${snapshot.lipsyncRmsUpdates}, maxRms: ${snapshot.maxRms.toFixed(4)}`,
     );
     console.log(`[cascade] timings(ms): ${JSON.stringify(snapshot.timings)}`);
+    // Separated from the line above so it stands out: this is what shows
+    // whether the Gemini leg's streaming branch actually fired (small) versus
+    // silently falling back to the buffered path (close to the full
+    // synthesis time).
+    console.log(
+      `[cascade] tts first audio: ${snapshot.timings.ttsFirstAudioMs ?? "n/a"}ms`,
+    );
     console.log(
       `[cascade] avatar events: ${JSON.stringify(snapshot.avatarEvents)}`,
     );
@@ -110,6 +126,21 @@ test.describe("cascade stt → llm → tts e2e", () => {
     expect(snapshot.ttsAudioEnded).toBe(true);
     // The browser audio→lip-sync loop drove the renderer during playback.
     expect(snapshot.lipsyncRmsUpdates).toBeGreaterThan(0);
+
+    // Proves which /api/tts branch actually answered. ttsAudioStarted,
+    // ttsAudioEnded and lipsyncRmsUpdates above all pass on either branch, so
+    // without this a CASCADE_TTS=gemini run whose streaming branch silently
+    // stopped firing (and quietly fell back to the buffered one) would still
+    // go green.
+    const ttsContentType = ttsResponse.headers()["content-type"] ?? "";
+    if (CASCADE_TTS === "gemini") {
+      expect(
+        ttsContentType,
+        `CASCADE_TTS=gemini but /api/tts answered "${ttsContentType}" instead of audio/pcm`,
+      ).toContain("audio/pcm");
+    } else {
+      expect(ttsContentType).toContain("audio/mpeg");
+    }
 
     // The LLM tool loop called setExpression: the canned utterance asks the
     // character to smile, and the avatar tool instructions push proactive
