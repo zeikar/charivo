@@ -8,7 +8,7 @@
   <defs>
     <linearGradient id="charivoBg" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#8B5CF6"/>
-      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
       <stop offset="1" stop-color="#14B8A6"/>
     </linearGradient>
   </defs>
@@ -16,36 +16,25 @@
   <!-- Rounded square base -->
   <rect width="64" height="64" rx="15" fill="url(#charivoBg)"/>
 
-  <!-- Soft top highlight -->
-  <path d="M 15 0 H 49 A 15 15 0 0 1 64 15 V 24 Q 32 14 0 24 V 15 A 15 15 0 0 1 15 0 Z" fill="#FFFFFF" fill-opacity="0.1"/>
+  <!-- Ears. Drawn before the head so their bases tuck under it, and stroked in
+       their own fill colour so the tips round off -- a bare triangle reads as a
+       horn once the icon is down at 16px. -->
+  <path d="M 17.5 14 L 14.5 25 L 29.5 20.5 Z" fill="#FFF7ED" stroke="#FFF7ED" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M 46.5 14 L 49.5 25 L 34.5 20.5 Z" fill="#FFF7ED" stroke="#FFF7ED" stroke-width="2.8" stroke-linejoin="round"/>
+  <path d="M 19.5 17.5 L 17.6 23.8 L 26.5 21 Z" fill="#FBCFB4" stroke="#FBCFB4" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M 44.5 17.5 L 46.4 23.8 L 37.5 21 Z" fill="#FBCFB4" stroke="#FBCFB4" stroke-width="1.5" stroke-linejoin="round"/>
 
-  <!-- Cat ears (base tucked inside face circle so no gap after face draws on top) -->
-  <path d="M 23 30 L 23 12 L 31 24 Z" fill="#FFF7ED"/>
-  <path d="M 41 30 L 41 12 L 33 24 Z" fill="#FFF7ED"/>
-  <!-- Inner ear pink -->
-  <path d="M 24.5 26 L 24.5 16 L 29.5 22 Z" fill="#F9A8D4"/>
-  <path d="M 39.5 26 L 39.5 16 L 34.5 22 Z" fill="#F9A8D4"/>
+  <!-- Speech-bubble tail. This is the whole idea: the head is a chat bubble, so
+       the mark says "character that talks" in one silhouette. -->
+  <path d="M 23 43.5 L 19 52 L 30.5 46 Z" fill="#FFF7ED" stroke="#FFF7ED" stroke-width="2.2" stroke-linejoin="round"/>
 
-  <!-- Round face -->
-  <circle cx="32" cy="36" r="14" fill="#FFF7ED"/>
+  <!-- Head / bubble body -->
+  <rect x="11.5" y="18" width="41" height="29" rx="13" fill="#FFF7ED"/>
 
-  <!-- Blush -->
-  <ellipse cx="22" cy="40" rx="2.2" ry="1.2" fill="#F9A8D4" fill-opacity="0.75"/>
-  <ellipse cx="42" cy="40" rx="2.2" ry="1.2" fill="#F9A8D4" fill-opacity="0.75"/>
-
-  <!-- Big cute eyes with sparkle -->
-  <ellipse cx="26" cy="36" rx="2.4" ry="3.4" fill="#1E293B"/>
-  <ellipse cx="38" cy="36" rx="2.4" ry="3.4" fill="#1E293B"/>
-  <circle cx="25.2" cy="34.8" r="1" fill="#FFFFFF"/>
-  <circle cx="37.2" cy="34.8" r="1" fill="#FFFFFF"/>
-  <circle cx="26.8" cy="37.4" r="0.55" fill="#FFFFFF"/>
-  <circle cx="38.8" cy="37.4" r="0.55" fill="#FFFFFF"/>
-
-  <!-- Cute smile -->
-  <path d="M 29.5 41.5 Q 32 43.5 34.5 41.5" stroke="#1E293B" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-
-  <!-- Sparkle accent (kawaii + AI magic) -->
-  <path d="M 51 10 L 52 14.5 L 56.5 15.5 L 52 16.5 L 51 21 L 50 16.5 L 45.5 15.5 L 50 14.5 Z" fill="#FDE047"/>
-  <circle cx="9" cy="12" r="1" fill="#FFFFFF" fill-opacity="0.85"/>
-  <circle cx="54" cy="26" r="0.9" fill="#FFFFFF" fill-opacity="0.7"/>
+  <!-- Eyes carry the whole face. There is deliberately no mouth, blush or
+       sparkle: every extra shape is the first thing to turn to mush at 16px. -->
+  <circle cx="25" cy="32.5" r="4" fill="#1E293B"/>
+  <circle cx="39" cy="32.5" r="4" fill="#1E293B"/>
+  <circle cx="23.6" cy="30.8" r="1.55" fill="#FFFFFF"/>
+  <circle cx="37.6" cy="30.8" r="1.55" fill="#FFFFFF"/>
 </svg>
