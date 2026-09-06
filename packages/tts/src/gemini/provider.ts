@@ -446,6 +446,12 @@ export class GeminiTTSProvider implements TTSProvider {
               }
 
               if (finishReason) {
+                // The terminator ends this attempt without the body being read
+                // to EOF, so the reader is still holding it -- and with it the
+                // connection. fail() below releases it through its own abort;
+                // the two returns have nothing else that would.
+                void reader.cancel().catch(() => undefined);
+
                 if (!open) {
                   return noAudio();
                 }

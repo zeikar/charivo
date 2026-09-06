@@ -82,10 +82,14 @@ function terminalEvent(finishReason = "STOP"): string {
 function controllableSseResponse(init?: RequestInit) {
   let controller!: ReadableStreamDefaultController<Uint8Array>;
   let observedAbort = false;
+  let cancelled = false;
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(streamController) {
       controller = streamController;
+    },
+    cancel() {
+      cancelled = true;
     },
   });
 
@@ -100,6 +104,10 @@ function controllableSseResponse(init?: RequestInit) {
     /** True once the fake upstream body has seen the request aborted. */
     get aborted() {
       return observedAbort;
+    },
+    /** True once the reader let go of the upstream body. */
+    get cancelled() {
+      return cancelled;
     },
     push: (frame: string) => controller.enqueue(encoder.encode(frame)),
     /** EOF, with whatever was pushed and nothing more. */
@@ -741,6 +749,24 @@ describe("GeminiTTSProvider", () => {
         sampleRate: 24000,
         channels: 1,
       });
+    });
+
+    it("releases the upstream body once the terminator arrives", async () => {
+      const { streams } = stubSseFetch();
+      const provider = new GeminiTTSProvider({ apiKey: "secret-key" });
+
+      const pending = provider.generateSpeechStream("hello");
+      await flush();
+      streams[0].push(audioEvent());
+      const stream = await pending;
+      streams[0].push(terminalEvent());
+
+      expect(await readAll(stream.body)).toEqual([PCM]);
+
+      // The terminator is where this attempt stops reading, not EOF, so
+      // nothing else lets go of the response: a reader still holding it keeps
+      // the connection checked out.
+      expect(streams[0].cancelled).toBe(true);
     });
 
     it("takes the format from the first event's MIME type", async () => {

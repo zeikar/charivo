@@ -11,8 +11,27 @@ export {
   type GeminiTTSConfig,
 } from "./provider";
 
-// Use GeminiTTSConfig directly (nothing to extend)
-export type GeminiTTSPlayerConfig = GeminiTTSConfig;
+/**
+ * The provider's config without `dangerouslyAllowBrowser`, which this player
+ * forces on: accepting it would offer a switch the constructor ignores, and a
+ * caller passing `false` would read it as keeping credentials out of the
+ * browser. A type error says so while they can still act on it.
+ */
+export type GeminiTTSPlayerConfig = Omit<
+  GeminiTTSConfig,
+  "dangerouslyAllowBrowser"
+> & {
+  /**
+   * Opt in to `generateAudioStream`. Off by default: the manager streams
+   * whenever the method exists, and streaming is not a free upgrade here.
+   * This player caps no text, and the streaming endpoint truncates a long one
+   * with a non-`STOP` finish reason -- which fails the utterance mid-sentence
+   * where the buffered path completes it -- while streamed playback also needs
+   * a running `AudioContext`, so `speak()` starts requiring a `prepareAudio()`
+   * from a user gesture.
+   */
+  streaming?: boolean;
+};
 
 /**
  * Gemini TTS Player - Stateless TTS Player that wraps the Gemini provider
@@ -25,15 +44,30 @@ export type GeminiTTSPlayerConfig = GeminiTTSConfig;
 class GeminiTTSPlayer implements TTSPlayer {
   readonly playbackMode = "audio" as const;
   readonly audioMimeType = "audio/wav";
+  /**
+   * Present only on a streaming player: the manager selects the streaming
+   * path with `typeof player.generateAudioStream === "function"`, so an
+   * unflagged player must not carry the method at all.
+   */
+  generateAudioStream?: (
+    text: string,
+    options?: TTSOptions,
+    signal?: AbortSignal,
+  ) => Promise<TTSPcmStream>;
   private provider: GeminiTTSProvider;
 
-  constructor(config: GeminiTTSPlayerConfig) {
+  constructor({ streaming, ...config }: GeminiTTSPlayerConfig) {
     // Intentional dev/test escape hatch: this direct browser player exposes
     // credentials. For production, see docs/guide/choosing-packages.md#remote.
     this.provider = createGeminiTTSProvider({
       ...config,
       dangerouslyAllowBrowser: true,
     });
+
+    if (streaming) {
+      this.generateAudioStream = (text, options, signal) =>
+        this.provider.generateSpeechStream(text, options, signal);
+    }
   }
 
   /**
@@ -44,17 +78,6 @@ class GeminiTTSPlayer implements TTSPlayer {
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
     return this.provider.generateSpeech(text, options);
-  }
-
-  /**
-   * Streaming counterpart to generateAudio (used by the TTS Manager)
-   */
-  async generateAudioStream(
-    text: string,
-    options?: TTSOptions,
-    signal?: AbortSignal,
-  ): Promise<TTSPcmStream> {
-    return this.provider.generateSpeechStream(text, options, signal);
   }
 
   /**

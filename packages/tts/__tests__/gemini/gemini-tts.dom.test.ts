@@ -50,11 +50,26 @@ describe("GeminiTTSPlayer", () => {
   });
 
   it("constructs the provider with dangerouslyAllowBrowser enabled", () => {
-    createGeminiTTSPlayer({ apiKey: "key" });
+    createGeminiTTSPlayer({ apiKey: "key", streaming: true });
+    // `streaming` is this player's own switch, not a provider option: the
+    // provider always exposes both methods.
     expect(providerMocks.createGeminiTTSProvider).toHaveBeenCalledWith({
       apiKey: "key",
       dangerouslyAllowBrowser: true,
     });
+  });
+
+  it("exposes generateAudioStream only when streaming is enabled", () => {
+    // The manager streams whenever the method exists, so an unflagged player
+    // must not carry it at all. Opting in is a behavior change, not a free
+    // upgrade: this player caps no text, and the streaming path fails a long
+    // one mid-utterance on Gemini's non-STOP truncation, where the buffered
+    // path completes it.
+    const buffered = createGeminiTTSPlayer({ apiKey: "key" });
+    expect(buffered.generateAudioStream).toBeUndefined();
+
+    const streaming = createGeminiTTSPlayer({ apiKey: "key", streaming: true });
+    expect(streaming.generateAudioStream).toBeTypeOf("function");
   });
 
   it("delegates generateAudio to the provider", async () => {
@@ -71,7 +86,7 @@ describe("GeminiTTSPlayer", () => {
   });
 
   it("delegates generateAudioStream to the provider, forwarding the signal", async () => {
-    const player = createGeminiTTSPlayer({ apiKey: "key" });
+    const player = createGeminiTTSPlayer({ apiKey: "key", streaming: true });
     if (!player.generateAudioStream) {
       throw new Error(
         "expected GeminiTTSPlayer to implement generateAudioStream",

@@ -536,6 +536,86 @@ describe("TTSManagerImpl streamed playback", () => {
     await second.promise;
   });
 
+  it("rejects speak() when the stream never opens, and speaks again after", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    let failOpening!: (error: unknown) => void;
+    player.opening = new Promise<void>((_, reject) => {
+      failOpening = reject;
+    });
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+
+    // What a 4xx, a 5xx or a spent quota looks like from here: the request
+    // fails before any stream exists, so there is no body to cancel and no
+    // queue to discard -- only a call to reject.
+    const refused = new Error("route refused the request");
+    failOpening(refused);
+
+    const failure = await speaking.promise.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(CharivoError);
+    expect((failure as Error).cause).toBe(refused);
+    // Nothing sounded, so nothing was announced.
+    expect(countEvents(emitter, "tts:audio:start")).toBe(0);
+    expect(
+      FakeAudioContext.instances.flatMap((instance) => instance.sources),
+    ).toHaveLength(0);
+
+    // The failure must not wedge the manager: the next utterance still reaches
+    // the speakers.
+    player.opening = Promise.resolve();
+    const second = track(manager.speak("again"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+
+    expect(countEvents(emitter, "tts:audio:start")).toBe(1);
+
+    player.stream.close();
+    await nextTask();
+    playbackContext().sources[0]!.end();
+    await second.promise;
+  });
+
+  it("rejects a stream that declares anything but mono", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    // The scheduler builds one-channel buffers and never reads
+    // `format.channels`, so a stereo stream would sound at half speed with the
+    // channels interleaved into the signal. Rejected by the manager, which is
+    // the layer that owns playback -- a player-side guard covers only the
+    // players that have one.
+    player.format = { encoding: "pcm-s16le", sampleRate: 24000, channels: 2 };
+
+    const speaking = track(manager.speak("hello"));
+    const failure = await speaking.promise.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await nextTask();
+
+    expect(failure).toBeInstanceOf(CharivoStateError);
+    expect((failure as Error).message).toMatch(/mono/);
+    // Nothing sounded and nothing was announced, and the route is not left
+    // synthesizing an utterance nobody will play.
+    expect(
+      FakeAudioContext.instances.flatMap((instance) => instance.sources),
+    ).toHaveLength(0);
+    expect(countEvents(emitter, "tts:audio:start")).toBe(0);
+    expect(player.stream.cancel).toHaveBeenCalledTimes(1);
+    expect(player.signals[0]!.aborted).toBe(true);
+  });
+
   it("stops the queue and the route when the body fails mid-utterance", async () => {
     const player = new StreamingPlayer();
     const emitter = { emit: vi.fn() };
@@ -836,6 +916,32 @@ describe("TTSManagerImpl streamed playback", () => {
     // Only the analyzer's: the blob path plays through an <audio> element.
     expect(FakeAudioContext.instances).toHaveLength(1);
     expect(analyzerContext()).toBe(FakeAudioContext.instances[0]);
+  });
+
+  it("settles a live streamed utterance when the manager is disposed", async () => {
+    const player = new StreamingPlayer();
+    const emitter = { emit: vi.fn() };
+    const manager = trackManager(player);
+    manager.setEventEmitter(emitter);
+
+    const speaking = track(manager.speak("hello"));
+    await nextTask();
+    player.stream.push(silence(960));
+    await nextTask();
+    player.stream.close();
+    await nextTask();
+
+    // The body has ended with a source still sounding, so the drain is the
+    // only thing left that could settle this call -- and closing the context
+    // silences that source without firing `ended`, so the drain never comes.
+    expect(speaking.state).toBe("pending");
+
+    await manager.dispose();
+    await speaking.promise;
+
+    expect(speaking.state).toBe("resolved");
+    expect(player.signals[0]!.aborted).toBe(true);
+    expect(countEvents(emitter, "tts:audio:end")).toBe(1);
   });
 
   it("closes the playback context on dispose", async () => {

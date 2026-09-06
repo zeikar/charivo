@@ -205,21 +205,6 @@ describe("PcmPlaybackScheduler", () => {
       expect(context.createBuffer).toHaveBeenCalledWith(1, 480, sampleRate);
     },
   );
-
-  // The one contract this fork introduces that the origin has none of: the
-  // channel count is deliberately not read, so a non-mono format must not
-  // reach `createBuffer` and silently halve the playback rate.
-  it("builds a mono buffer even when the format declares two channels", () => {
-    const { context, scheduler } = createScheduler({
-      encoding: "pcm-s16le",
-      sampleRate: 24000,
-      channels: 2,
-    });
-
-    scheduler.enqueue(pcm(480));
-
-    expect(context.createBuffer).toHaveBeenCalledWith(1, 480, 24000);
-  });
 });
 
 describe("createPcmPlaybackGraph", () => {

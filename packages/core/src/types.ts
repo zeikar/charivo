@@ -434,6 +434,7 @@ export type TTSPlaybackMode = "audio" | "web-speech";
 export interface TTSPcmFormat {
   encoding: "pcm-s16le";
   sampleRate: number;
+  /** Mono only — the TTS manager rejects a stream declaring any other count. */
   channels: number;
 }
 

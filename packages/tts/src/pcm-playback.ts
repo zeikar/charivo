@@ -85,19 +85,7 @@ export class PcmPlaybackScheduler {
   constructor(
     private readonly context: AudioContext,
     private readonly destination: AudioNode,
-    /**
-     * Trusted as given, and mono-only: `format.channels` is not read, so
-     * anything but 1 would be played back at the wrong speed with the channels
-     * interleaved into the signal.
-     *
-     * Nothing here enforces that, and only one of the two callers does. The
-     * remote player rejects a stream whose content type declares any other
-     * channel count before it ever reaches a scheduler
-     * (`packages/tts/src/remote/index.ts`). The direct `@charivo/tts/gemini`
-     * player has no such guard and relies on Gemini answering mono — measured,
-     * but not something the vendor guarantees. Do not read this as "a guard
-     * upstream covers it"; on that path there is none.
-     */
+    /** Mono only; the manager rejects anything else before constructing this. */
     private readonly format: TTSPcmFormat,
     private readonly callbacks: PcmPlaybackSchedulerCallbacks,
   ) {}

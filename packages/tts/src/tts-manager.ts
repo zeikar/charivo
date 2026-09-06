@@ -356,13 +356,25 @@ export class TTSManagerImpl implements TTSManager {
   }
 
   /**
-   * Release audio resources. Call stop() first: dispose() does not stop playback.
+   * Release audio resources. Call stop() first: dispose() does not stop
+   * buffered playback -- an <audio> element outlives this manager and settles
+   * its own speak() on its own onended. A streamed utterance cannot survive
+   * this call, so it is torn down here.
    */
   async dispose(): Promise<void> {
     this.webSimulator.dispose();
 
     this.teardownBrowserLifecycle?.();
     this.teardownBrowserLifecycle = undefined;
+
+    // A streamed utterance in flight cannot survive this call: closing the
+    // context below silences its sources without firing `ended`, so the drain
+    // that finalizes it never arrives -- its speak() would stay pending
+    // forever and its request would never be aborted. Settling it here runs
+    // that finalize, which is what discards the queue and stops the route.
+    if (this.currentStream) {
+      this.pendingAudioStop?.();
+    }
 
     // Cleared before the close settles, so a prepareAudio() racing it builds a
     // fresh context instead of reusing the closing one. The graph goes with
@@ -551,8 +563,9 @@ export class TTSManagerImpl implements TTSManager {
     options: TTSOptions | undefined,
     startup: SpeakStartup,
   ): Promise<void> {
-    // Non-null: the constructor guard rejects "audio" playback mode players
-    // that lack generateAudio(), so this path only runs when it exists.
+    // Non-null: speak() routes here only for a player that has no
+    // generateAudioStream, and the constructor guard rejects an "audio"
+    // playback mode player implementing neither.
     const audioData = await this.raceStartup(
       this.ttsPlayer.generateAudio!(text, options).catch((error) =>
         Promise.reject(
@@ -683,6 +696,25 @@ export class TTSManagerImpl implements TTSManager {
       // reader has been taken yet -- past getReader() the body is locked.
       void opening.then((late) => void late.body.cancel().catch(noop), noop);
       return;
+    }
+
+    // Mono only, enforced here because this is the layer that owns playback:
+    // the scheduler builds one-channel buffers and never reads
+    // `format.channels`, so anything else would sound at the wrong speed with
+    // the channels interleaved into the signal. Every player passes through
+    // here, including the direct ones that carry no guard of their own; the
+    // remote player still rejects earlier, where it saves a fetch.
+    if (stream.format.channels !== 1) {
+      // Cancelling the body is what stops the route synthesizing an utterance
+      // nobody will play, and no reader has been taken yet, so it can still be
+      // cancelled directly. The abort covers a player that only watches the
+      // signal.
+      void stream.body.cancel().catch(noop);
+      abort.abort();
+
+      throw new CharivoStateError(
+        `Streamed TTS audio must be mono, but the player answered ${stream.format.channels} channels.`,
+      );
     }
 
     const graph = this.ensurePlaybackGraph(context);
