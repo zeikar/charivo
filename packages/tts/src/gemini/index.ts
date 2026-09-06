@@ -1,4 +1,4 @@
-import { type TTSPlayer, TTSOptions } from "@charivo/core";
+import { type TTSPcmStream, type TTSPlayer, TTSOptions } from "@charivo/core";
 import {
   createGeminiTTSProvider,
   GeminiTTSConfig,
@@ -44,6 +44,17 @@ class GeminiTTSPlayer implements TTSPlayer {
     options?: TTSOptions,
   ): Promise<ArrayBuffer> {
     return this.provider.generateSpeech(text, options);
+  }
+
+  /**
+   * Streaming counterpart to generateAudio (used by the TTS Manager)
+   */
+  async generateAudioStream(
+    text: string,
+    options?: TTSOptions,
+    signal?: AbortSignal,
+  ): Promise<TTSPcmStream> {
+    return this.provider.generateSpeechStream(text, options, signal);
   }
 
   /**

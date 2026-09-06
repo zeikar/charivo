@@ -12,10 +12,11 @@ import { createGeminiTTSProvider } from "@charivo/tts/gemini";
 // player's `audioMimeType` is derived from these measurements, so the
 // assertions here are what keep the labels honest.
 //
-// Budget: one `generateSpeech` per provider per run. That is one API request
-// for OpenAI, and up to two for Gemini, which retries a 5xx once while sharing
-// the original deadline -- so a busy model surfaces either as the vendor's own
-// 503 or as CharivoTimeoutError, depending on whether budget remained.
+// Budget: one `generateSpeech` per run for OpenAI. Gemini spends two calls per
+// run -- `generateSpeech` and `generateSpeechStream` -- each of which retries a
+// 5xx once while sharing its own deadline, so a busy model surfaces either as
+// the vendor's own 503 or as CharivoTimeoutError, depending on whether budget
+// remained.
 
 const RUN_LIVE_TTS_TESTS = process.env.RUN_LIVE_TTS_TESTS === "1";
 
@@ -26,9 +27,10 @@ const RUN_LIVE_TTS_TESTS = process.env.RUN_LIVE_TTS_TESTS === "1";
 const GEMINI_TIMEOUT_MS = 25_000;
 const SINGLE_CALL_TEST_TIMEOUT_MS = 40_000;
 
-// Short on purpose: neither provider streams here, and Gemini's measured
-// latency is ~0.55-0.7x the audio duration, so a longer line only buys wall
-// clock.
+// Short on purpose: OpenAI does not stream here, and Gemini's buffered call
+// runs at ~0.55-0.7x the audio duration, so a longer line only buys wall
+// clock either way. It also doubles as the streaming case's input below --
+// well under the length where a stream gets truncated.
 const TEXT = "Hi there.";
 
 /** The first bytes of a container, for identifying what came back. */
@@ -110,6 +112,51 @@ liveGeminiDescribe("gemini TTS provider (live)", () => {
       expect(asciiAt(audio, 0, 4)).toBe("RIFF");
       expect(asciiAt(audio, 8, 4)).toBe("WAVE");
       expect(audio.byteLength).toBeGreaterThan(44);
+    },
+    SINGLE_CALL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "streams speech as pcm-s16le with first audio before the stream ends",
+    async () => {
+      const started = Date.now();
+      const stream = await provider.generateSpeechStream(TEXT);
+
+      expect(stream.format).toEqual({
+        encoding: "pcm-s16le",
+        sampleRate: 24_000,
+        channels: 1,
+      });
+
+      const reader = stream.body.getReader();
+      let totalBytes = 0;
+      let chunkCount = 0;
+      let firstChunkMs: number | null = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        firstChunkMs ??= Date.now() - started;
+        chunkCount += 1;
+        totalBytes += value.byteLength;
+      }
+      const totalMs = Date.now() - started;
+
+      // Time-to-first-chunk vs. total is the measured contract (~1.1-1.4s
+      // start cost, then ~3.5x realtime delivery) -- logged for a human to
+      // read, not asserted, since it is network-timing dependent.
+      console.log(
+        `[live-tts] gemini stream: first chunk ${firstChunkMs}ms, total ${totalMs}ms, ${totalBytes} bytes, ${chunkCount} chunks`,
+      );
+
+      expect(totalBytes).toBeGreaterThan(0);
+      // pcm-s16le is 2 bytes per sample; an odd count would mean a truncated
+      // frame.
+      expect(totalBytes % 2).toBe(0);
+      // The provider enqueues one chunk per SSE audio event (measured: every
+      // event is exactly 1,920 bytes), so more than one chunk is what a
+      // buffered response could never produce -- this is what actually pins
+      // incremental delivery, unlike the byte-layout checks above.
+      expect(chunkCount).toBeGreaterThan(1);
     },
     SINGLE_CALL_TEST_TIMEOUT_MS,
   );

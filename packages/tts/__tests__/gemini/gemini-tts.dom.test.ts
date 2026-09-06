@@ -2,12 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const providerMocks = vi.hoisted(() => {
   const generateSpeech = vi.fn(async () => new ArrayBuffer(8));
+  const generateSpeechStream = vi.fn(async () => ({
+    body: new ReadableStream<Uint8Array>(),
+    format: { encoding: "pcm-s16le" as const, sampleRate: 24_000, channels: 1 },
+  }));
   const setVoice = vi.fn();
   const createGeminiTTSProvider = vi.fn(() => ({
     generateSpeech,
+    generateSpeechStream,
     setVoice,
   }));
-  return { generateSpeech, setVoice, createGeminiTTSProvider };
+  return {
+    generateSpeech,
+    generateSpeechStream,
+    setVoice,
+    createGeminiTTSProvider,
+  };
 });
 
 vi.mock("../../src/gemini/provider", () => ({
@@ -22,6 +32,7 @@ const flushAsync = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
   providerMocks.generateSpeech.mockClear();
+  providerMocks.generateSpeechStream.mockClear();
   providerMocks.setVoice.mockClear();
   providerMocks.createGeminiTTSProvider.mockClear();
 });
@@ -57,6 +68,32 @@ describe("GeminiTTSPlayer", () => {
       voice: "Puck",
     });
     expect(buffer).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it("delegates generateAudioStream to the provider, forwarding the signal", async () => {
+    const player = createGeminiTTSPlayer({ apiKey: "key" });
+    if (!player.generateAudioStream) {
+      throw new Error(
+        "expected GeminiTTSPlayer to implement generateAudioStream",
+      );
+    }
+    const controller = new AbortController();
+    const stream = await player.generateAudioStream(
+      "hello",
+      { voice: "Puck" },
+      controller.signal,
+    );
+
+    expect(providerMocks.generateSpeechStream).toHaveBeenCalledWith(
+      "hello",
+      { voice: "Puck" },
+      controller.signal,
+    );
+    expect(stream.format).toEqual({
+      encoding: "pcm-s16le",
+      sampleRate: 24_000,
+      channels: 1,
+    });
   });
 
   it("fetches speech data and plays audio", async () => {

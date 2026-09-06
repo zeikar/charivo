@@ -29,6 +29,15 @@ What this suite validates, per provider (`@charivo/tts/openai`,
     44-byte RIFF header, so the buffer must open with `RIFF`/`WAVE`
   - OpenAI answers with **MPEG audio**, asserted on the frame sync plus the
     Layer III bits so an AAC container cannot pass in its place
+- Gemini's `generateSpeechStream` delivers a `pcm-s16le` stream: the format is
+  asserted (`{ encoding: "pcm-s16le", sampleRate: 24000, channels: 1 }`), the
+  body is read to the end to check total bytes are non-zero and even, and the
+  chunk count is asserted greater than 1 -- the provider enqueues one chunk per
+  SSE audio event, so this is what a buffered response could never satisfy,
+  and is what actually pins incremental delivery. Time-to-first-chunk vs.
+  total is logged, not asserted, since that part is network-timing dependent;
+  the log is what a human reads to confirm the ~1.1-1.4s start cost measured
+  earlier.
 
 The OpenAI result is the reason `@charivo/tts` labels that player's audio
 `audio/mpeg`: the provider sends `format: "wav"`, which is not the parameter the
@@ -45,16 +54,17 @@ What it does not validate:
 - voice selection, or that the fixed synthesis preamble stays unspoken — that
   was confirmed by ear and is recorded in the demo docs
 
-Cost note: 1 live call per provider per run, on a deliberately short line.
-Gemini's free tier allows 10 requests per minute on the TTS model (measured
-2026-09-04 — not the 3 per minute that `gemini-3.5-transcribe` allows), so
-this suite is cheap enough to follow a cascade run; repeated back-to-back
-runs will still exhaust it and surface as a 429.
+Cost note: 1 live call per run for OpenAI, 2 for Gemini (`generateSpeech` and
+`generateSpeechStream`), each on a deliberately short line. Gemini's free tier
+allows 10 requests per minute on the TTS model (measured 2026-09-04 — not the
+3 per minute that `gemini-3.5-transcribe` allows), so this suite is cheap
+enough to follow a cascade run; repeated back-to-back runs will still exhaust
+it and surface as a 429.
 
 Gemini's block pins `timeoutMs: 25_000`, the same deadline `/api/tts-gemini`
-ships. One `generateSpeech` call is up to two API requests: the provider retries
-a 5xx once, sharing the original deadline. So a capacity-constrained model
-surfaces either way — as the vendor's own 503 when the retry fails with budget
-left, or as `CharivoTimeoutError` when an attempt runs the deadline out. Both
-were seen on 2026-09-04. That is vendor load, not a regression — re-run later
-before investigating.
+ships. Each Gemini call is up to two API requests: the provider retries a 5xx
+once, sharing the original deadline. So a capacity-constrained model surfaces
+either way — as the vendor's own 503 when the retry fails with budget left, or
+as `CharivoTimeoutError` when an attempt runs the deadline out. Both were seen
+on 2026-09-04. That is vendor load, not a regression — re-run later before
+investigating.
