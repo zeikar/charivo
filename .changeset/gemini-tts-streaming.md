@@ -25,3 +25,8 @@ re-exported by `@charivo/server/gemini`) adds `generateSpeechStream` over
 Gemini's `streamGenerateContent` endpoint, delivering first audio in roughly
 1.1-1.4s regardless of text length; `generateSpeech` is unchanged. OpenAI's
 provider stays buffered this release.
+
+One type-level narrowing: `GeminiTTSPlayerConfig` no longer accepts
+`dangerouslyAllowBrowser`. The player has always forced it on, so behaviour is
+unchanged and passing it never did anything — but code that passed it now fails
+to compile, and the fix is to delete the field.
