@@ -11,6 +11,10 @@ It wraps an `LLMClient` implementation from another package.
 pnpm add @charivo/llm
 ```
 
+Requires Node.js 22 or newer. This package depends on the `openai` SDK v7,
+whose own `engines` field declares that floor, so it applies wherever
+`@charivo/llm` is installed — not only when you import `@charivo/llm/openai`.
+
 ## Usage
 
 ```ts

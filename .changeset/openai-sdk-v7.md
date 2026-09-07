@@ -16,7 +16,7 @@ before, and no charivo type signature moves.
 
 One behavior does change. `ChatCompletionMessageToolCall` is now a union of the
 function and custom tool-call shapes, and only the function arm maps onto
-`LLMToolCall`. A custom tool call is rejected with the same
-`CharivoProviderError` as a function call missing its name, and a non-string
-`function.arguments` is now reported as unparsable instead of being coerced by
-`JSON.parse` and reported as the wrong reason.
+`LLMToolCall`. A tool call whose `type` is not `"function"` is rejected as an
+unsupported tool type rather than misreported as missing `function.name`, and a
+non-string `function.arguments` is reported as unparsable instead of being
+coerced by `JSON.parse` and reported as the wrong reason.

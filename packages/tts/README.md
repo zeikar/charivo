@@ -32,6 +32,10 @@ Speech API) must use `"web-speech"` mode instead.
 pnpm add @charivo/tts
 ```
 
+Requires Node.js 22 or newer. This package depends on the `openai` SDK v7,
+whose own `engines` field declares that floor, so it applies wherever
+`@charivo/tts` is installed — not only when you import `@charivo/tts/openai`.
+
 ## Usage
 
 ```ts

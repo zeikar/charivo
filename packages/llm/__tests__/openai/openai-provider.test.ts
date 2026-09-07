@@ -377,16 +377,29 @@ describe("OpenAILLMProvider.generateResponseWithTools", () => {
       '"function.arguments"',
     ],
     [
-      // The SDK models a tool call as function-or-custom, and only the function
-      // arm maps onto the neutral contract. A custom tool call carries `custom`
-      // instead of `function`, so it is rejected like a nameless function call.
+      // The SDK models a tool call as function-or-custom and only the function
+      // arm maps onto the neutral contract. `type` is the union's
+      // discriminator, so a custom call is rejected for its type rather than
+      // for the `function` member it never carries.
       "a custom tool call rather than a function call",
       {
         id: "call_1",
         type: "custom",
         custom: { name: "get_weather", input: "{}" },
       },
-      '"function.name"',
+      'unsupported type "custom"',
+    ],
+    [
+      // Reaching the type check first also means a payload that claims to be
+      // custom while carrying a `function` is refused rather than quietly
+      // read as a function call.
+      "a custom type carrying a function payload anyway",
+      {
+        id: "call_1",
+        type: "custom",
+        function: { name: "get_weather", arguments: "{}" },
+      },
+      'unsupported type "custom"',
     ],
   ])("rejects a tool call with %s", async (_label, toolCall, field) => {
     respondWithToolCall(toolCall);
@@ -402,6 +415,26 @@ describe("OpenAILLMProvider.generateResponseWithTools", () => {
       code: "CHARIVO_PROVIDER_ERROR",
       message: expect.stringContaining(field),
     });
+  });
+
+  // A gateway that omits `type` is not rejected for it: the union's
+  // discriminator refuses only a type that names something other than a
+  // function, so this payload still resolves through the `function` checks.
+  it("accepts a tool call that omits its type", async () => {
+    respondWithToolCall({
+      id: "call_1",
+      function: { name: "get_weather", arguments: '{"city":"Seoul"}' },
+    });
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    const response = await provider.generateResponseWithTools(
+      [{ role: "user", content: "weather?" }],
+      [weatherTool],
+    );
+
+    expect(response.toolCalls).toEqual([
+      { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+    ]);
   });
 
   // `arguments` is typed as unknown off the union, so a non-string reaches the

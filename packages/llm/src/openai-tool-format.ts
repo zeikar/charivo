@@ -116,11 +116,23 @@ function toLLMToolCall(raw: OpenAI.ChatCompletionMessageToolCall): LLMToolCall {
     );
   }
 
-  // `ChatCompletionMessageToolCall` is a union whose custom-tool arm carries no
-  // `function` at all, so the member is read as untrusted data and the checks
-  // below stay authoritative - the same stance this function already takes
-  // toward a gateway that under-delivers. A custom tool call therefore fails
-  // here exactly as a malformed function call does.
+  // `ChatCompletionMessageToolCall` is a union of a function and a custom tool
+  // call, and `type` is its discriminator. Only function calls map onto
+  // `LLMToolCall`, so a custom call is rejected for what it is rather than for
+  // the `function` member it was never going to carry.
+  // A gateway that omits `type` altogether still reaches the `function` checks
+  // below, which is how this parser behaved before the union existed. Only a
+  // type that is present and names something else is refused.
+  const type = raw.type;
+  if (type !== undefined && type !== "function") {
+    throw new CharivoProviderError(
+      `LLM tool call "${id}" has unsupported type "${String(type)}"; only "function" tool calls are supported`,
+    );
+  }
+
+  // Past the discriminator the member is still read as untrusted data: this
+  // function's stance is that the SDK types promise more than a gateway
+  // delivers, so the checks below stay authoritative.
   const fn: Record<string, unknown> = isPlainObject(raw.function)
     ? raw.function
     : {};
