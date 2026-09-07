@@ -298,10 +298,7 @@ describe("Charivo", () => {
 
   class ResolvingClient implements LLMClient {
     constructor(private response: string) {}
-    call = vi.fn(
-      async (_messages: Array<{ role: string; content: string }>) =>
-        this.response,
-    );
+    call = vi.fn(async (_messages: LLMMessage[]) => this.response);
   }
 
   it("routes messages through renderer, llm, and tts", async () => {
@@ -1096,11 +1093,11 @@ class GateableLLMClient implements LLMClient {
    */
   responder: (lastContent: string) => string | null = (content) =>
     `reply-${content}`;
-  readonly prompts: Array<Array<{ role: string; content: string }>> = [];
+  readonly prompts: Array<LLMMessage[]> = [];
   private readonly gates: Array<Deferred<string> | undefined> = [];
   private readonly waiters = new Waiters();
 
-  call = vi.fn(async (messages: Array<{ role: string; content: string }>) => {
+  call = vi.fn(async (messages: LLMMessage[]) => {
     this.prompts.push(messages);
     const immediate = this.responder(lastContentOf(messages));
 
@@ -1125,7 +1122,7 @@ class GateableLLMClient implements LLMClient {
     return this.prompts.some((prompt) => lastContentOf(prompt) === content);
   }
 
-  promptFor(content: string): Array<{ role: string; content: string }> {
+  promptFor(content: string): LLMMessage[] {
     const prompt = this.prompts.find(
       (candidate) => lastContentOf(candidate) === content,
     );

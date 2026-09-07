@@ -5,6 +5,7 @@ import type {
   LLMCallOptions,
   LLMClient,
   LLMMessage,
+  LLMProvider,
   LLMToolCall,
   LLMToolResponse,
   Message,
@@ -31,7 +32,7 @@ const character: Character = {
 
 class MockClient implements LLMClient {
   call = vi.fn(
-    async (messages: Array<{ role: string; content: string }>) =>
+    async (messages: LLMMessage[]) =>
       messages[messages.length - 1]?.content.toUpperCase() ?? "",
   );
 }
@@ -224,11 +225,33 @@ describe("LLMClient contract", () => {
     // `tsc -p tsconfig.test.json` (the root `pnpm typecheck` includes
     // `typecheck:tests`), not by running this test.
     const oneArgClient: LLMClient = {
-      call: (_messages: Array<{ role: string; content: string }>) =>
-        Promise.resolve(""),
+      call: (_messages: LLMMessage[]) => Promise.resolve(""),
     };
 
     expect(oneArgClient).toBeDefined();
+  });
+
+  it("rejects the loose pre-LLMMessage array shape at compile time", () => {
+    // Compile-time regression guard for tightening `LLMClient.call` and
+    // `LLMProvider.generateResponse` from `Array<{ role: string; content: string }>`
+    // to `LLMMessage[]`: a loosely-typed array must no longer satisfy either
+    // interface. vitest transpiles without typechecking, so this guard is
+    // enforced by `tsc -p tsconfig.test.json` (the root `pnpm typecheck`
+    // includes `typecheck:tests`), not by running this test.
+    const loose: Array<{ role: string; content: string }> = [
+      { role: "user", content: "hi" },
+    ];
+    const client: LLMClient = new MockClient();
+    const provider: LLMProvider = {
+      generateResponse: (_messages: LLMMessage[]) => Promise.resolve(""),
+    };
+
+    // @ts-expect-error - `loose` lacks LLMMessage's role/content discrimination.
+    client.call(loose);
+    // @ts-expect-error - `loose` lacks LLMMessage's role/content discrimination.
+    provider.generateResponse(loose);
+
+    expect(client).toBeDefined();
   });
 });
 
@@ -776,7 +799,7 @@ describe("LLMManager tool loop", () => {
 
   const buildPlainClient = () => ({
     call: vi.fn(
-      async (messages: Array<{ role: string; content: string }>) =>
+      async (messages: LLMMessage[]) =>
         messages[messages.length - 1]?.content.toUpperCase() ?? "",
     ),
   });
@@ -792,7 +815,7 @@ describe("LLMManager tool loop", () => {
     const toolPayloads: ToolDefinition[][] = [];
 
     const call = vi.fn(
-      async (messages: Array<{ role: string; content: string }>) =>
+      async (messages: LLMMessage[]) =>
         messages[messages.length - 1]?.content.toUpperCase() ?? "",
     );
     const callWithTools = vi.fn(

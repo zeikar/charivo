@@ -246,9 +246,7 @@ export interface LLMToolResponse {
 
 // LLM provider (generates LLM responses server-side)
 export interface LLMProvider {
-  generateResponse(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<string>;
+  generateResponse(messages: LLMMessage[]): Promise<string>;
   /** Tool-calling variant; providers that support function calling implement this alongside generateResponse. */
   generateResponseWithTools?(
     messages: LLMMessage[],
@@ -266,10 +264,7 @@ export interface LLMCallOptions {
 
 // Simple LLM call client (stateless)
 export interface LLMClient {
-  call(
-    messages: Array<{ role: string; content: string }>,
-    options?: LLMCallOptions,
-  ): Promise<string>;
+  call(messages: LLMMessage[], options?: LLMCallOptions): Promise<string>;
   /** Tool-calling variant; clients that support function calling implement this alongside call. */
   callWithTools?(
     messages: LLMMessage[],
