@@ -84,12 +84,15 @@ export function parseChatRequest(
 /**
  * The terminal round of a tool loop sends `tools: []` while `messages` still
  * carries the tool-call history (assistant `toolCalls` turns and `role:
- * "tool"` results). Those turns are protocol-invalid for the plain
- * `{role, content}[]` `generateResponse` call, so any request that carries a
- * `tools` key at all (even empty) or a tool-ish turn in `messages` must use
- * `generateResponseWithTools` instead. Only a `tools`-less request built
- * entirely from plain `{role, content}` turns takes the `generateResponse`
- * path.
+ * "tool"` results). Both `generateResponse` and `generateResponseWithTools`
+ * take the same `LLMMessage[]` and forward those turns identically, so this
+ * routing is not about what each call can accept - it is about which reply
+ * shape the caller needs. Only `generateResponseWithTools` returns
+ * `toolCalls`, so any request that carries a `tools` key at all (even empty)
+ * or a tool-ish turn in `messages` - i.e. one already mid tool loop - must use
+ * it instead, to keep the reply shape a tool-looping client expects. Only a
+ * `tools`-less request built entirely from plain `{role, content}` turns
+ * takes the `generateResponse` path.
  */
 export function requiresToolCallingPath(parsed: ParsedChatRequest): boolean {
   return parsed.tools !== undefined || parsed.messages.some(isToolishMessage);

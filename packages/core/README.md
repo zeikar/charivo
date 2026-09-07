@@ -340,8 +340,11 @@ Execution helpers, shared so both managers run tools with the same guarantees:
 ### LLM Tool-Calling Contracts
 
 - `LLMMessage`: role-discriminated union (`system`/`user`, `assistant` with
-  optional `toolCalls`, or `tool` with a required `toolCallId`) so
-  protocol-invalid combinations are unrepresentable for typed callers
+  optional `toolCalls`, or `tool` with a required `toolCallId`); it is the
+  `messages` type of `LLMClient.call` / `callWithTools` and
+  `LLMProvider.generateResponse` / `generateResponseWithTools` alike, so
+  protocol-invalid combinations are unrepresentable for typed callers on
+  either path
 - `LLMToolCall`: `{ id, name, arguments }`
 - `LLMToolResponse`: `{ content, toolCalls? }`
 - `LLMProvider.generateResponseWithTools?(messages, tools)`: optional

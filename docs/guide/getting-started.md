@@ -142,11 +142,17 @@ Browser clients should call your own routes, not vendor APIs directly. The
 routes below are Next.js route handlers matching what `/api/chat` and
 `/api/tts` above expect.
 
-They show the protocol shape and nothing more: they trust `messages`, `text`,
-`voice`, and `speed` exactly as sent. Before one faces the internet, add
+They show the protocol shape and nothing more. The LLM route below parses
+`messages` into `LLMMessage[]` and answers 400 otherwise, because
+`generateResponse` takes that union and an unvalidated body is the only place
+a wrong shape can still enter; the TTS route still trusts `text`, `voice`, and
+`speed` exactly as sent. Before either route faces the internet, add
 authentication, rate limiting, and bounds on the inputs you pay for — the demo's
 [`chat-request.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/chat-request.ts)
-and [`demo-limits.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/demo-limits.ts)
+(also the reference implementation of the `parseChatRequest` validator the
+snippet below imports, which lives beside the route directories under
+`app/api/` — hence the `../` in the import) and
+[`demo-limits.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/demo-limits.ts)
 show what that adds up to.
 
 LLM route (`/api/chat`):
@@ -154,9 +160,20 @@ LLM route (`/api/chat`):
 ```ts
 import { NextRequest, NextResponse } from "next/server";
 import { createOpenAILLMProvider } from "@charivo/server/openai";
+import { parseChatRequest } from "../chat-request";
 
 export async function POST(request: NextRequest) {
-  const { messages } = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = parseChatRequest(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
 
   const provider = createOpenAILLMProvider({
     apiKey: process.env.OPENAI_API_KEY!,
@@ -164,7 +181,7 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const message = await provider.generateResponse(messages);
+    const message = await provider.generateResponse(parsed.value.messages);
     return NextResponse.json({ success: true, message });
   } catch (error) {
     console.error("LLM Provider Error:", error);
