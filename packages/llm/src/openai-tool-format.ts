@@ -116,7 +116,16 @@ function toLLMToolCall(raw: OpenAI.ChatCompletionMessageToolCall): LLMToolCall {
     );
   }
 
-  const name = raw.function?.name;
+  // `ChatCompletionMessageToolCall` is a union whose custom-tool arm carries no
+  // `function` at all, so the member is read as untrusted data and the checks
+  // below stay authoritative - the same stance this function already takes
+  // toward a gateway that under-delivers. A custom tool call therefore fails
+  // here exactly as a malformed function call does.
+  const fn: Record<string, unknown> = isPlainObject(raw.function)
+    ? raw.function
+    : {};
+
+  const name = fn.name;
   if (typeof name !== "string" || name.length === 0) {
     throw new CharivoProviderError(
       `LLM tool call "${id}" is missing a non-empty string "function.name"`,
@@ -126,14 +135,20 @@ function toLLMToolCall(raw: OpenAI.ChatCompletionMessageToolCall): LLMToolCall {
   return {
     id,
     name,
-    arguments: parseToolArguments(name, raw.function.arguments),
+    arguments: parseToolArguments(name, fn.arguments),
   };
 }
 
 function parseToolArguments(
   name: string,
-  rawArguments: string,
+  rawArguments: unknown,
 ): Record<string, unknown> {
+  if (typeof rawArguments !== "string") {
+    throw new CharivoProviderError(
+      `LLM tool call "${name}" has unparsable "function.arguments"`,
+    );
+  }
+
   let parsed: unknown;
 
   try {

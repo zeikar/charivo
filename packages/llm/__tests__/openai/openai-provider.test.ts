@@ -376,6 +376,18 @@ describe("OpenAILLMProvider.generateResponseWithTools", () => {
       },
       '"function.arguments"',
     ],
+    [
+      // The SDK models a tool call as function-or-custom, and only the function
+      // arm maps onto the neutral contract. A custom tool call carries `custom`
+      // instead of `function`, so it is rejected like a nameless function call.
+      "a custom tool call rather than a function call",
+      {
+        id: "call_1",
+        type: "custom",
+        custom: { name: "get_weather", input: "{}" },
+      },
+      '"function.name"',
+    ],
   ])("rejects a tool call with %s", async (_label, toolCall, field) => {
     respondWithToolCall(toolCall);
     const provider = new OpenAILLMProvider({ apiKey: "key" });
@@ -389,6 +401,29 @@ describe("OpenAILLMProvider.generateResponseWithTools", () => {
       name: "CharivoProviderError",
       code: "CHARIVO_PROVIDER_ERROR",
       message: expect.stringContaining(field),
+    });
+  });
+
+  // `arguments` is typed as unknown off the union, so a non-string reaches the
+  // parser. It must be reported as unparsable rather than coerced by
+  // `JSON.parse`, which would turn `42` into the number 42 and report the
+  // wrong reason.
+  it("rejects a tool call whose arguments are not a string", async () => {
+    respondWithToolCall({
+      id: "call_1",
+      type: "function",
+      function: { name: "get_weather", arguments: 42 },
+    });
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    await expect(
+      provider.generateResponseWithTools(
+        [{ role: "user", content: "weather?" }],
+        [weatherTool],
+      ),
+    ).rejects.toMatchObject({
+      name: "CharivoProviderError",
+      message: expect.stringContaining('unparsable "function.arguments"'),
     });
   });
 

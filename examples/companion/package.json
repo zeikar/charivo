@@ -34,7 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.3",
-    "openai": "^4.47.1",
+    "openai": "^7.10.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

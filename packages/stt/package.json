@@ -59,7 +59,7 @@
   ],
   "dependencies": {
     "@charivo/core": "workspace:^",
-    "openai": "^4.47.1"
+    "openai": "^7.10.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
