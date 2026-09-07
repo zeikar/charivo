@@ -196,7 +196,10 @@ throws `CharivoError` subclasses from `@charivo/core` instead of plain `Error`s:
   configurable `timeoutMs` to the same 30s, and like Gemini TTS its timer also
   covers reading the body. Gemini TTS itself defaults that `timeoutMs` to 90s
   (set it below 30s behind `@charivo/tts/remote`), and its timer also spans
-  its single retry.
+  its single retry — see the `@charivo/tts/gemini` entry in
+  [the TTS package README](https://github.com/zeikar/charivo/blob/main/packages/tts/README.md#exports)
+  for how the same deadline applies to a streamed body and when a stream stops
+  being retried.
   For the two realtime providers the timer covers the request up to the
   response headers; reading the body afterwards is not timed.
 - Constructing a provider in a browser without `dangerouslyAllowBrowser: true`

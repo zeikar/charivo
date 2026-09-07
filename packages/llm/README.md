@@ -11,9 +11,7 @@ It wraps an `LLMClient` implementation from another package.
 pnpm add @charivo/llm
 ```
 
-Requires Node.js 22 or newer. This package depends on the `openai` SDK v7,
-whose own `engines` field declares that floor, so it applies wherever
-`@charivo/llm` is installed — not only when you import `@charivo/llm/openai`.
+Requires Node.js 22 or newer, as declared in this package's `engines`.
 
 ## Usage
 
@@ -102,9 +100,16 @@ Tools are `ToolRegistration` values from `@charivo/core` — the same contract
 validated against each definition's schema, and results are timed out
 (`defaultToolTimeoutMs`, 10s default, overridable per tool via
 `timeoutMs`) and asserted to be plain objects before a projector runs. Any
-failure — unknown tool, invalid arguments, handler throw/timeout, non-object
-result — becomes a `{ success: false, error }` tool output so the reply
-always continues instead of throwing.
+failure in *executing* a tool — unknown tool, invalid arguments, handler
+throw/timeout, non-object result — becomes a `{ success: false, error }` tool
+output so the reply continues instead of throwing.
+
+A malformed tool call from the provider is a different matter: it never reaches
+a handler. The shipped OpenAI-format providers raise `CharivoProviderError`
+before the manager sees a tool when a call has no usable `id`, declares a
+`type` other than `"function"` (a call omitting `type` is still accepted),
+carries no `function.name`, or has `function.arguments` that are not a string
+parsing to a JSON object.
 
 ### Tool Events
 

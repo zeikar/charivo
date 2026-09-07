@@ -6,8 +6,9 @@ Use the `Event Wiring` section in [docs/guide/architecture.md](docs/guide/archit
 
 ## Prerequisites
 
-- Node `>=18.0.0`
-- pnpm `>=8.0.0`
+- Node `>=22.13.0`
+- pnpm `>=11.0.0` (the exact version is pinned by `packageManager` in the root
+  `package.json`, so Corepack installs the same one CI uses)
 
 ## Setup
 

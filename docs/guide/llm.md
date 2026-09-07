@@ -161,7 +161,7 @@ tool-result turn:
 
 ```ts
 const { messages, tools } = parsedBody;
-const needsTools = tools !== undefined || messages.some(isToolishMessage);
+const needsTools = requiresToolCallingPath(parsedBody);
 
 const result = needsTools
   ? await provider.generateResponseWithTools(messages, tools ?? [])
@@ -175,8 +175,8 @@ return NextResponse.json({
 ```
 
 See [`examples/web/src/app/api/chat-request.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/api/chat-request.ts)
-for the full request-parsing and validation this demo uses (`parseChatRequest`,
-`requiresToolCallingPath`, `isToolishMessage`).
+for the full request-parsing and validation this demo uses (`parseChatRequest`
+and `requiresToolCallingPath`).
 
 The tool loop runs at most 3 rounds before a final `tools: []` call forces a
 text-only reply, and only the final assistant text is added to

@@ -32,9 +32,7 @@ Speech API) must use `"web-speech"` mode instead.
 pnpm add @charivo/tts
 ```
 
-Requires Node.js 22 or newer. This package depends on the `openai` SDK v7,
-whose own `engines` field declares that floor, so it applies wherever
-`@charivo/tts` is installed — not only when you import `@charivo/tts/openai`.
+Requires Node.js 22 or newer, as declared in this package's `engines`.
 
 ## Usage
 
@@ -67,7 +65,12 @@ await ttsManager.speak("Hello", { voice: "marin" });
   `OpenAITTSProvider`, `type OpenAITTSConfig`
 - `@charivo/tts/gemini`: `createGeminiTTSPlayer(config)` (browser player,
   dev/testing only) and, for server-side use, `createGeminiTTSProvider(config)`,
-  `GeminiTTSProvider`, `type GeminiTTSConfig`. The provider wraps Gemini's raw
+  `GeminiTTSProvider`, `type GeminiTTSConfig`. The player's `config.streaming`
+  is opt-in and off by default: this player caps no text, so a long one is
+  truncated by the streaming endpoint with a non-`STOP` finish reason and fails
+  mid-sentence where the buffered path completes it, and streamed playback
+  needs a running `AudioContext`, so `speak()` starts requiring a
+  `prepareAudio()` call from a user gesture. The provider wraps Gemini's raw
   PCM (`audio/l16`) response as a 16-bit WAV file; `rate` and `pitch` are
   ignored, since the API has no speed or pitch control; voices are Google's
   prebuilt names (default `Kore`). The text is sent behind a fixed synthesis

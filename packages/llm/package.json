@@ -58,6 +58,9 @@
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "files": [
     "dist",
     "!dist/metafile-*.json"

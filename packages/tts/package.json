@@ -55,6 +55,9 @@
     "typescript": "^5.9.2"
   },
   "peerDependencies": {},
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "files": [
     "dist",
     "!dist/metafile-*.json"

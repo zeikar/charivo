@@ -81,9 +81,10 @@ interface OpenStream {
  * A 5xx or an answer carrying no audio is retried once inside the same
  * `timeoutMs`, not a fresh one.
  *
- * `generateSpeech` does not stream: measured latency is a fixed startup cost
- * plus ~0.75x the audio duration (56 chars ~ 3s, 120 ~ 6s, 600 ~ 20s, 1,800 ~
- * 68s), so a short reply does not get proportionally cheaper. The long end is
+ * `generateSpeech` does not stream: measured latency is roughly one second of
+ * fixed startup cost plus about 0.7x the audio duration (56 chars ~ 3s, 120 ~
+ * 6s, 600 ~ 20s, 1,800 ~ 68s), so a short reply does not get proportionally
+ * cheaper. The long end is
  * why the default budget is 90s. That default suits the direct player and
  * callers that own their own deadline; a route behind `@charivo/tts/remote`
  * must pass a `timeoutMs` under that player's fixed 30s (e.g. 25_000) so the

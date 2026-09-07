@@ -8,9 +8,7 @@ Stateful STT manager and recording helper for Charivo.
 pnpm add @charivo/stt
 ```
 
-Requires Node.js 22 or newer. This package depends on the `openai` SDK v7,
-whose own `engines` field declares that floor, so it applies wherever
-`@charivo/stt` is installed — not only when you import `@charivo/stt/openai`.
+Requires Node.js 22 or newer, as declared in this package's `engines`.
 
 ## Usage
 

@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
     "tts",
     "stt",
     "realtime",
+    "avatar",
     "examples-web",
     "examples-companion",
   ],

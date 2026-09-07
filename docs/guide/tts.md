@@ -145,6 +145,14 @@ Once such a response's headers have gone out, a failure while writing the
 body can no longer become a JSON error on your route; it has to surface to
 the player as an error on the stream itself.
 
+`createGeminiTTSPlayer({ streaming: true })` from `@charivo/tts/gemini` turns
+it on for the direct browser player, which is also off by default. Streaming is
+not a free upgrade there either: this player caps no text, and the streaming
+endpoint truncates a long one with a non-`STOP` finish reason, failing the
+utterance mid-sentence where the buffered path completes it. Streamed playback
+also needs a running `AudioContext`, so `speak()` starts requiring a
+`prepareAudio()` call from a user gesture.
+
 The remote player enforces two deadlines on a streaming response: the usual
 connect-and-headers deadline, and a separate inactivity deadline (10s) armed
 per upstream read once the body starts arriving. The remote player itself sets
@@ -159,10 +167,11 @@ when the scheduler starts the first scheduled buffer — not when the stream
 opens or the first bytes are read, the same "audio is actually playing"
 meaning the buffered path already gives that event.
 
-OpenAI's provider stays buffered this release: the `openai` SDK version
-`@charivo/tts` currently depends on has no `stream_format` option on its
-speech request, so `@charivo/tts/openai` and `/api/tts` are untouched by any
-of the above.
+OpenAI's provider stays buffered: `@charivo/tts/openai` implements neither
+`generateSpeechStream()` nor `generateAudioStream()`, so it and `/api/tts` are
+untouched by any of the above. The SDK does expose a `stream_format` option on
+its speech request, so this is an unimplemented path rather than a missing
+capability.
 
 ## Provider Route
 

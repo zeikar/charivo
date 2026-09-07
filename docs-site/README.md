@@ -2,16 +2,22 @@
 
 This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
 
+It renders the guide from `docs/guide`, so edit the Markdown there rather than
+copying pages into this directory.
+
 ## Installation
 
+This site is part of the pnpm workspace — install from the repository root, not
+from here:
+
 ```bash
-yarn
+pnpm install
 ```
 
 ## Local Development
 
 ```bash
-yarn start
+pnpm --filter ./docs-site start
 ```
 
 This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
@@ -19,23 +25,13 @@ This command starts a local development server and opens up a browser window. Mo
 ## Build
 
 ```bash
-yarn build
+pnpm --filter ./docs-site build
 ```
 
 This command generates static content into the `build` directory and can be served using any static contents hosting service.
 
 ## Deployment
 
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Deployment is automated: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
+builds this site and publishes it to GitHub Pages on every push to `main`. There
+is no manual deploy step to run.

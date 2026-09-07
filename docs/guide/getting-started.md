@@ -43,6 +43,10 @@ pnpm add \
   @charivo/server
 ```
 
+Requires Node.js 22 or newer: `@charivo/llm`, `@charivo/stt` and `@charivo/tts`
+declare that floor in their `engines`, and `@charivo/server` inherits it from
+all three.
+
 ## Quick Try (Dev Only)
 
 To see a character talk before writing any server code, the `openai` subpaths ship
