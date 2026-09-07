@@ -282,7 +282,7 @@ export default defineConfig({
               }
 
               const message = await provider.generateResponse(
-                messages as Array<{ role: string; content: string }>,
+                messages as LLMMessage[],
               );
 
               sendJson(response, 200, { success: true, message });

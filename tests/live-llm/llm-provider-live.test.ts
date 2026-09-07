@@ -37,9 +37,7 @@ const TOOL_LOOP_TEST_TIMEOUT_MS =
   MAX_TOOL_ROUNDS * PROVIDER_TIMEOUT_MS + 10_000;
 
 interface LiveProvider {
-  generateResponse(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<string>;
+  generateResponse(messages: LLMMessage[]): Promise<string>;
   generateResponseWithTools(
     messages: LLMMessage[],
     tools: ToolDefinition[],

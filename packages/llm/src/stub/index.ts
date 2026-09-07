@@ -1,4 +1,4 @@
-import type { LLMClient } from "@charivo/core";
+import type { LLMClient, LLMMessage } from "@charivo/core";
 
 /**
  * Stub LLM Client - Stateless client for testing
@@ -24,9 +24,7 @@ class StubLLMClient implements LLMClient {
 
   private responseIndex = 0;
 
-  async call(
-    _messages: Array<{ role: string; content: string }>,
-  ): Promise<string> {
+  async call(_messages: LLMMessage[]): Promise<string> {
     // Delay to simulate a real API call
     await new Promise((resolve) => setTimeout(resolve, 500));
 

@@ -7,8 +7,7 @@ import type {
 
 const providerMocks = vi.hoisted(() => {
   const generateResponse = vi.fn(
-    async (_messages: Array<{ role: string; content: string }>) =>
-      "openclaw message",
+    async (_messages: LLMMessage[]) => "openclaw message",
   );
   const generateResponseWithTools = vi.fn(
     async (

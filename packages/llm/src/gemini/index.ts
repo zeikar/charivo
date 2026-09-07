@@ -39,9 +39,7 @@ class GeminiLLMClient implements LLMClient {
     });
   }
 
-  async call(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<string> {
+  async call(messages: LLMMessage[]): Promise<string> {
     // Generate a response using the provider
     const assistantMessage = await this.provider.generateResponse(messages);
 

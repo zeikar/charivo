@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CharivoProviderError, type ToolDefinition } from "@charivo/core";
+import {
+  CharivoProviderError,
+  type LLMMessage,
+  type ToolDefinition,
+} from "@charivo/core";
 
 const openaiMocks = vi.hoisted(() => {
   const instances: { config: unknown }[] = [];
@@ -113,7 +117,7 @@ describe("OpenClawLLMProvider", () => {
       dangerouslyAllowBrowser: true,
     });
 
-    const history = [
+    const history: LLMMessage[] = [
       { role: "system", content: "You are Hiyori" },
       { role: "user", content: "first question" },
       { role: "assistant", content: "first answer" },
@@ -125,6 +129,43 @@ describe("OpenClawLLMProvider", () => {
     const payload = openaiMocks.createCompletion.mock.calls[0]![0];
     expect(payload.messages).toEqual(history);
     expect(payload.user).toBeUndefined();
+  });
+
+  it("maps tool turns onto the chat.completions payload when no session is pinned", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        toolCalls: [
+          { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+        ],
+      },
+      { role: "tool", content: '{"temp":21}', toolCallId: "call_1" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Seoul"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: '{"temp":21}' },
+    ]);
+    expect(payload).not.toHaveProperty("tools");
   });
 
   it("sends sessionKey as the user field to pin the gateway session", async () => {

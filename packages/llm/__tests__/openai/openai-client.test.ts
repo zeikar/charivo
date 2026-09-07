@@ -7,8 +7,7 @@ import type {
 
 const providerMocks = vi.hoisted(() => {
   const generateResponse = vi.fn(
-    async (_messages: Array<{ role: string; content: string }>) =>
-      "assistant message",
+    async (_messages: LLMMessage[]) => "assistant message",
   );
   const generateResponseWithTools = vi.fn(
     async (

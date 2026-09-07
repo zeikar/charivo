@@ -48,9 +48,7 @@ class OpenClawLLMClient implements LLMClient {
     });
   }
 
-  async call(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<string> {
+  async call(messages: LLMMessage[]): Promise<string> {
     return this.provider.generateResponse(messages);
   }
 

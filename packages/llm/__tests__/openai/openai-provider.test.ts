@@ -88,6 +88,40 @@ describe("OpenAILLMProvider", () => {
     );
   });
 
+  it("maps tool turns onto the chat.completions payload", async () => {
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    await provider.generateResponse([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        toolCalls: [
+          { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+        ],
+      },
+      { role: "tool", content: '{"temp":21}', toolCallId: "call_1" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Seoul"}' },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: '{"temp":21}' },
+    ]);
+    expect(payload).not.toHaveProperty("tools");
+  });
+
   it("wraps rate-limit errors as provider errors", async () => {
     const error = Object.assign(new Error("Rate limit exceeded"), {
       status: 429,

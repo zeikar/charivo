@@ -34,7 +34,7 @@ class RemoteLLMClient implements LLMClient {
   }
 
   async call(
-    messages: Array<{ role: string; content: string }>,
+    messages: LLMMessage[],
     options?: LLMCallOptions,
   ): Promise<string> {
     const data = await postChatRequest(

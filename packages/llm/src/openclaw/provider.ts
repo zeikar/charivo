@@ -86,18 +86,11 @@ export class OpenClawLLMProvider implements LLMProvider {
     this.sessionKey = config.sessionKey;
   }
 
-  async generateResponse(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<string> {
+  async generateResponse(messages: LLMMessage[]): Promise<string> {
     try {
-      const openAIMessages = this.selectMessages(messages).map((msg) => ({
-        role: msg.role as "system" | "user" | "assistant",
-        content: msg.content,
-      }));
-
       const completion = await this.openai.chat.completions.create({
         model: this.model,
-        messages: openAIMessages,
+        messages: toOpenAIChatMessages(this.selectMessages(messages)),
         temperature: this.temperature,
         max_tokens: this.maxTokens,
         ...(this.sessionKey ? { user: this.sessionKey } : {}),

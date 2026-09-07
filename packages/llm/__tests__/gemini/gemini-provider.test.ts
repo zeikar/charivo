@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CharivoProviderError, ToolDefinition } from "@charivo/core";
+import type {
+  CharivoProviderError,
+  LLMMessage,
+  ToolDefinition,
+} from "@charivo/core";
 
 const openaiMocks = vi.hoisted(() => {
   const instances: { config: unknown }[] = [];
@@ -149,7 +153,7 @@ describe("GeminiLLMProvider", () => {
       dangerouslyAllowBrowser: true,
     });
 
-    const history = [
+    const history: LLMMessage[] = [
       { role: "system", content: "You are Hiyori" },
       { role: "user", content: "hi" },
     ];
@@ -158,6 +162,46 @@ describe("GeminiLLMProvider", () => {
 
     const payload = openaiMocks.createCompletion.mock.calls[0]![0];
     expect(payload.messages).toEqual(history);
+  });
+
+  it("maps tool turns onto the chat.completions payload", async () => {
+    const provider = new GeminiLLMProvider({
+      apiKey: "key",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        toolCalls: [
+          { id: "call_1", name: "get_weather", arguments: { city: "Seoul" } },
+        ],
+      },
+      { role: "tool", content: '{"temp":21}', toolCallId: "call_1" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "user", content: "weather?" },
+      {
+        role: "assistant",
+        content: "checking",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Seoul"}' },
+            extra_content: {
+              google: { thought_signature: "skip_thought_signature_validator" },
+            },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: '{"temp":21}' },
+    ]);
+    expect(payload).not.toHaveProperty("tools");
   });
 
   it("wraps request failures as CharivoProviderError", async () => {
