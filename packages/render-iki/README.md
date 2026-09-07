@@ -45,7 +45,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/iki/hiyori.iki.json");
+await renderManager.loadModel?.("/hero.iki");
 ```
 
 (The package-name import resolves to `dist/`, so run
@@ -54,23 +54,50 @@ await renderManager.loadModel?.("/iki/hiyori.iki.json");
 ## Try it
 
 A runnable local harness lives in [`examples/iki-test`](../../examples/iki-test) —
-it drives a sample `.iki` model through charivo's `RenderManager` + this adapter
-(idle breath/blink, mouse-follow gaze, simulated lip-sync). Run
-`pnpm --filter @charivo/iki-test dev` and open the Vite URL.
+it drives the Iki hero model through charivo's `RenderManager` + this adapter
+(engine idle + hair physics, mouse-follow gaze blended over the sway, simulated
+lip-sync). Run `pnpm --filter @charivo/iki-test dev` and
+open the Vite URL.
 
 ## Public surface
 
 - `initialize()` — create the WebGL player (requires a canvas).
-- `loadModel(modelPath)` — fetch + parse an `.iki` model, start rendering, and
-  begin the idle loop (breath + blink).
+- `loadModel(modelPath)` — fetch + parse an `.iki` model, start rendering,
+  build the engine's `IkiMotion` for it and start the adapter's rAF loop that
+  steps it (the engine's own render loop draws).
 - `render(message, character?)` — stateless (the engine's RAF draws).
-- `destroy()` — stop the idle loop and free the player.
+- `destroy()` — stop that loop and free the player.
 - `setRealtimeLipSync(enabled)` / `updateRealtimeLipSyncRms(rms)` — drive the
   mouth aperture (`ParamMouthOpenY`) from lip-sync RMS.
-- `lookAt({ x, y })` — gaze (each `-1..1`, `y=1` up) → head angle + eyeballs.
+- `lookAt({ x, y })` — sets the gaze target; see "Motion" for how it meets the
+  idle drivers.
 - `updateViewWithMouse` / `handleMouseTap` — the `MouseTrackable` pair for
   cursor-follow. Both are present because `RenderManager` installs mouse
   tracking only when both exist; tap is a no-op today (Iki has no tap motions).
+
+## Motion
+
+Idle animation, hair-spring physics and chain secondary-motion are not this
+adapter's code — they come from `@ikijs/engine`'s `IkiMotion`, built fresh in
+`loadModel()` for the loaded model's rigs. The adapter only schedules it (one
+`update(now)` per rAF tick) and blends the host's gaze on top before writing
+the player, in `src/motion-blend.ts`.
+
+The blend is a fixed precedence table, keyed by parameter:
+
+| Parameter | Policy |
+| --- | --- |
+| `ParamAngleX`, `ParamAngleY` | host target (`HEAD_ANGLE_RANGE_DEG = 26` × gaze) **+** idle sway. 26° (not the store's full ±30°) leaves headroom so a parked, off-canvas pointer — the normal state under `mouseTracking: "document"` — still shows the full idle sway instead of rectifying into a one-sided twitch. |
+| `ParamAngleZ` | pass through — no host lean; the model's own `AngleX→rotate` binding already leans into a turn, and adding a host term would double it. |
+| `ParamEyeBallX/Y` | host wins outright while a gaze exists — additive would visibly wander off the cursor instead of reading as "looking at you". |
+| `ParamMouthOpenY` | host-owned: lip-sync writes it straight to the player, outside the blend; no idle driver touches it. |
+| everything else (blink, breath, hair-sway/chain outputs) | pass through — idle or physics own it; the host never writes it through the blend. |
+
+A gaze persists until the next one: `lookAt()` / `updateViewWithMouse()` only
+store the target, and there is no "gaze released" signal in the `Renderer`
+contract (`RenderManager` suspends mouse tracking; it never tells the renderer
+an AI gaze ended). Before the first gaze the character is fully idle — drift,
+sway, blink, breath, all from `IkiMotion`.
 
 **Not supported yet:** expressions and motions. Iki has no expression/motion
 concept, so this adapter omits `playExpression` / `playMotionByGroup` /

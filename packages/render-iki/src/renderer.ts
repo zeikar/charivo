@@ -2,7 +2,9 @@
  * Dogfood adapter driving an `.iki` puppet through the Iki engine. The package
  * is private (never published to npm), but @ikijs/engine and @ikijs/format are
  * ordinary npm dependencies, so it builds and typechecks like any other
- * workspace package.
+ * workspace package. Idle, physics and hair-chain motion come from the
+ * engine's own `IkiMotion`; this adapter only schedules it and blends the
+ * host's gaze on top (see `motion-blend.ts`).
  */
 
 import type {
@@ -12,28 +14,14 @@ import type {
   Renderer,
 } from "@charivo/core";
 import type { MouseCoordinates, MouseTrackable } from "@charivo/render";
-import { IkiPlayer } from "@ikijs/engine";
+import { IkiMotion, IkiPlayer } from "@ikijs/engine";
 import { IkiFormatError, loadIkiModel, StandardParameter } from "@ikijs/format";
+import { blendMotionWrite, type HostGaze } from "./motion-blend";
 
 // ── Tuning constants ─────────────────────────────────────────────────────────
 
 /** Amplify RMS→mouth-open so quiet speech still opens the mouth. */
 const MOUTH_GAIN = 1.8;
-
-/** Head angle range in degrees for gaze mapping (±1 → ±this). */
-const HEAD_ANGLE_RANGE_DEG = 30;
-
-/** Breathing oscillation frequency in Hz. */
-const BREATH_HZ = 0.25;
-
-/** Minimum milliseconds between blink starts. */
-const BLINK_MIN_MS = 2000;
-
-/** Maximum milliseconds between blink starts. */
-const BLINK_MAX_MS = 6000;
-
-/** Total duration of one blink (down + up), in milliseconds. */
-const BLINK_DURATION_MS = 120;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -45,11 +33,9 @@ export class IkiRenderer implements Renderer, MouseTrackable {
   private canvas?: HTMLCanvasElement;
   private player?: IkiPlayer;
   private lipSyncEnabled = false;
-  private idleRafId?: number;
-  private idleStartMs = 0;
-  private nextBlinkAtMs = 0;
-  private blinkUntilMs = 0;
-  private paramIds = new Set<string>();
+  private motion?: IkiMotion;
+  private motionRafId?: number;
+  private gaze?: HostGaze;
 
   constructor(options?: IkiRendererOptions) {
     this.canvas = options?.canvas;
@@ -60,7 +46,7 @@ export class IkiRenderer implements Renderer, MouseTrackable {
       throw new Error("Canvas element is required for Iki rendering");
     }
     this.player = new IkiPlayer(this.canvas);
-    // Do NOT call start() or begin idle loop here — wait for loadModel().
+    // Do NOT call start() or begin the motion loop here — wait for loadModel().
   }
 
   async loadModel(modelPath: string): Promise<void> {
@@ -83,90 +69,53 @@ export class IkiRenderer implements Renderer, MouseTrackable {
         : err;
     }
 
-    // Must be awaited: `load()` decodes the model's textures before it swaps in
-    // the new ParameterStore, so reading parameters early yields the EMPTY
-    // store from before the load — every `paramIds` check below would miss and
-    // the idle loop would drive nothing.
-    await this.player.load(model);
-
-    // Rebuild the set of available parameter IDs from the loaded model.
-    this.paramIds = new Set(this.player.getParameters().map((p) => p.id));
-
-    this.player.start();
-    this.startIdleLoop();
-  }
-
-  private startIdleLoop(): void {
-    // Idempotent — do nothing if the loop is already running.
-    if (this.idleRafId !== undefined) return;
-
-    const now = performance.now();
-    this.idleStartMs = now;
-    this.nextBlinkAtMs = now + randomBetween(BLINK_MIN_MS, BLINK_MAX_MS);
-
-    const tick = (): void => {
-      this.idleRafId = requestAnimationFrame(tick);
-      this.applyIdle();
-    };
-    this.idleRafId = requestAnimationFrame(tick);
-  }
-
-  private applyIdle(): void {
+    // destroy() may have run while the fetch above was in flight.
     if (!this.player) return;
 
-    const now = performance.now();
-
-    // Breathing — a gentle sinusoidal cycle mapped to [0, 1].
-    if (this.paramIds.has(StandardParameter.Breath)) {
-      const value =
-        (Math.sin(((now - this.idleStartMs) / 1000) * BREATH_HZ * 2 * Math.PI) +
-          1) /
-        2;
-      this.player.setParameter(StandardParameter.Breath, value);
+    // Must be awaited: `load()` decodes the model's textures before it swaps
+    // in the new ParameterStore, so building IkiMotion early would read
+    // (and physics would seed from) the empty pre-load store; destroy() may
+    // also have run during this await, so guard on `this.player` too.
+    const result = await this.player.load(model);
+    if (result.superseded || !this.player) return;
+    if (result.failedTextures.length > 0) {
+      console.warn("Iki: textures failed to load", result.failedTextures);
     }
 
-    // Blinking — trigger when nextBlinkAtMs is reached, drive a down-up curve.
-    const hasLeftEye = this.paramIds.has(StandardParameter.EyeOpenLeft);
-    const hasRightEye = this.paramIds.has(StandardParameter.EyeOpenRight);
-    if (hasLeftEye || hasRightEye) {
-      if (now >= this.nextBlinkAtMs && now >= this.blinkUntilMs) {
-        // Start a new blink.
-        this.blinkUntilMs = now + BLINK_DURATION_MS;
-      }
+    this.motion = new IkiMotion(
+      model,
+      (id) => this.player!.getParameter(id),
+      (id, value) =>
+        this.player!.setParameter(id, blendMotionWrite(id, value, this.gaze)),
+    );
 
-      let eyeOpen: number;
-      if (now < this.blinkUntilMs) {
-        // Quick down-up curve over [0, BLINK_DURATION_MS]: 0→closed at mid, 1 at ends.
-        const t =
-          (now - (this.blinkUntilMs - BLINK_DURATION_MS)) / BLINK_DURATION_MS;
-        eyeOpen = Math.abs(2 * t - 1); // 1 at t=0, 0 at t=0.5, 1 at t=1
-      } else {
-        eyeOpen = 1;
-        // Reschedule only after blink completes and was the active one.
-        if (this.nextBlinkAtMs < this.blinkUntilMs) {
-          this.nextBlinkAtMs = now + randomBetween(BLINK_MIN_MS, BLINK_MAX_MS);
-        }
-      }
+    // Motion first: rAF callbacks fire in request order, so starting the
+    // motion loop before the engine's own render loop means the pose is
+    // written before that frame is drawn, not one frame late.
+    this.startMotionLoop();
+    this.player.start();
+  }
 
-      if (hasLeftEye) {
-        this.player.setParameter(StandardParameter.EyeOpenLeft, eyeOpen);
-      }
-      if (hasRightEye) {
-        this.player.setParameter(StandardParameter.EyeOpenRight, eyeOpen);
-      }
-    }
+  private startMotionLoop(): void {
+    // Idempotent — do nothing if the loop is already running.
+    if (this.motionRafId !== undefined) return;
+
+    const tick = (now: number): void => {
+      this.motionRafId = requestAnimationFrame(tick);
+      this.motion?.update(now);
+    };
+    this.motionRafId = requestAnimationFrame(tick);
   }
 
   setRealtimeLipSync(enabled: boolean): void {
     this.lipSyncEnabled = enabled;
-    if (!enabled && this.paramIds.has(StandardParameter.MouthOpen)) {
+    if (!enabled) {
       this.player?.setParameter(StandardParameter.MouthOpen, 0);
     }
   }
 
   updateRealtimeLipSyncRms(rms: number): void {
-    if (!this.lipSyncEnabled || !this.paramIds.has(StandardParameter.MouthOpen))
-      return;
+    if (!this.lipSyncEnabled) return;
     this.player?.setParameter(
       StandardParameter.MouthOpen,
       clamp01(rms * MOUTH_GAIN),
@@ -174,30 +123,7 @@ export class IkiRenderer implements Renderer, MouseTrackable {
   }
 
   lookAt(coords: GazeCoordinates): void {
-    this.applyGaze(clamp(coords.x, -1, 1), clamp(coords.y, -1, 1));
-  }
-
-  private applyGaze(x: number, y: number): void {
-    if (!this.player) return;
-
-    if (this.paramIds.has(StandardParameter.AngleX)) {
-      this.player.setParameter(
-        StandardParameter.AngleX,
-        x * HEAD_ANGLE_RANGE_DEG,
-      );
-    }
-    if (this.paramIds.has(StandardParameter.AngleY)) {
-      this.player.setParameter(
-        StandardParameter.AngleY,
-        y * HEAD_ANGLE_RANGE_DEG,
-      );
-    }
-    if (this.paramIds.has(StandardParameter.EyeballX)) {
-      this.player.setParameter(StandardParameter.EyeballX, x);
-    }
-    if (this.paramIds.has(StandardParameter.EyeballY)) {
-      this.player.setParameter(StandardParameter.EyeballY, y);
-    }
+    this.gaze = { x: clamp(coords.x, -1, 1), y: clamp(coords.y, -1, 1) };
   }
 
   updateViewWithMouse(coords: MouseCoordinates): void {
@@ -208,7 +134,7 @@ export class IkiRenderer implements Renderer, MouseTrackable {
       (coords.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
     const y =
       -(coords.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
-    this.applyGaze(clamp(x, -1, 1), clamp(y, -1, 1));
+    this.gaze = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
   }
 
   // Required by the MouseTrackable duck-type contract; not a stub to flesh out —
@@ -216,17 +142,19 @@ export class IkiRenderer implements Renderer, MouseTrackable {
   handleMouseTap(_coords: MouseCoordinates): void {}
 
   async render(_message: Message, _character?: Character): Promise<void> {
-    // Stateless — all per-frame rendering is driven by the idle RAF loop.
+    // Stateless — the engine draws on its own loop; this adapter's rAF only
+    // steps IkiMotion.
   }
 
   async destroy(): Promise<void> {
-    if (this.idleRafId !== undefined) {
-      cancelAnimationFrame(this.idleRafId);
-      this.idleRafId = undefined;
+    if (this.motionRafId !== undefined) {
+      cancelAnimationFrame(this.motionRafId);
+      this.motionRafId = undefined;
     }
+    this.motion = undefined;
+    this.gaze = undefined;
     this.player?.destroy();
     this.player = undefined;
-    this.paramIds.clear();
   }
 
   /*
@@ -249,8 +177,4 @@ function clamp(v: number, min: number, max: number): number {
 
 function clamp01(v: number): number {
   return clamp(v, 0, 1);
-}
-
-function randomBetween(min: number, max: number): number {
-  return min + Math.random() * (max - min);
 }

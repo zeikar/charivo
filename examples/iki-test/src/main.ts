@@ -21,9 +21,9 @@ async function main(): Promise<void> {
   const charivo = createCharivo({ renderer: renderManager });
 
   await renderManager.initialize();
-  await renderManager.loadModel("/sample.iki.json");
+  await renderManager.loadModel("/hero.iki");
   setStatus(
-    "model loaded — idle breath + blink running. Move the mouse to gaze.",
+    "hero loaded — engine idle (blink, breath, sway, gaze drift) + hair physics running. Move the mouse to look; ◀/▶ slam the head to swing the hair.",
   );
 
   // Simulate TTS: enable lip-sync, stream a speech-like RMS envelope, then end.
