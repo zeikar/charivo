@@ -1,5 +1,12 @@
 # @charivo/tts
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [0758343]
+  - @charivo/core@0.36.0
+
 ## 0.9.0
 
 ### Minor Changes
