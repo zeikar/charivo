@@ -38,10 +38,10 @@ export function blendMotionWrite(
     case StandardParameter.EyeballY:
       return gaze.y;
     // Everything else (AngleZ, blink, breath, hair-sway outputs) passes
-    // through: no host lean term — the model's own AngleX→rotate binding
-    // already leans into a turn — and idle or physics owns the rest. The mouth
-    // never reaches this function: lip-sync writes it directly, and no driver
-    // writes it.
+    // through: no host lean term on AngleZ — a roll riding on the turn swung
+    // the crown ahead of the face, which is why the auto-rig dropped its own —
+    // and idle or physics owns the rest. The mouth never reaches this
+    // function: lip-sync writes it directly, and no driver writes it.
     default:
       return motionValue;
   }

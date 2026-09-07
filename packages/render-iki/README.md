@@ -88,7 +88,7 @@ The blend is a fixed precedence table, keyed by parameter:
 | Parameter | Policy |
 | --- | --- |
 | `ParamAngleX`, `ParamAngleY` | host target (`HEAD_ANGLE_RANGE_DEG = 26` × gaze) **+** idle sway. 26° (not the store's full ±30°) leaves headroom so a parked, off-canvas pointer — the normal state under `mouseTracking: "document"` — still shows the full idle sway instead of rectifying into a one-sided twitch. |
-| `ParamAngleZ` | pass through — no host lean; the model's own `AngleX→rotate` binding already leans into a turn, and adding a host term would double it. |
+| `ParamAngleZ` | pass through — no lean into the turn from the host (nor from the auto-rig any more): a roll riding on the turn swung the crown ahead of the face. Roll is idle's, or a future head-tracking host's, through `AngleZ` alone. |
 | `ParamEyeBallX/Y` | host wins outright while a gaze exists — additive would visibly wander off the cursor instead of reading as "looking at you". |
 | `ParamMouthOpenY` | host-owned: lip-sync writes it straight to the player, outside the blend; no idle driver touches it. |
 | everything else (blink, breath, hair-sway/chain outputs) | pass through — idle or physics own it; the host never writes it through the blend. |
