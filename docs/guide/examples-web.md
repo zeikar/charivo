@@ -104,7 +104,11 @@ equally wall-clock-billed session for as long as it records.
 The settings UI intentionally exposes several implementation styles in one
 place:
 
-- remote API paths for production-oriented flows
+- remote API paths for production-oriented flows, which is where every leg
+  starts: chat and TTS on Gemini Remote, transcription on Gemini Live rather
+  than the unary Gemini Remote route, whose request-per-minute allowance is the
+  tighter of the two (a silent recording then ends in a timeout rather than an
+  empty transcript)
 - browser-direct OpenAI, Gemini, and OpenClaw paths for development and testing
   (the OpenClaw options are hidden in production builds — they need a gateway
   on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS and STT mirror the

@@ -136,12 +136,24 @@ export const useChatStore = create<ChatStore>((set) => ({
   isTranscribing: false,
   setIsTranscribing: (isTranscribing) => set({ isTranscribing }),
 
-  // Client selections
-  selectedLLMClient: "remote",
+  // Client selections. Every cascade leg defaults to a Gemini route for the
+  // same reason the realtime provider does: this demo pays for every visitor,
+  // and the Gemini routes run on a free-tier key while the OpenAI ones bill.
+  selectedLLMClient: "gemini-remote",
   setSelectedLLMClient: (selectedLLMClient) => set({ selectedLLMClient }),
-  selectedTTSPlayer: "remote",
+  // `gemini-remote` streams (`streaming: true` where the player is built), so
+  // this default also picks up first-audio-in-about-a-second playback. That is
+  // latency, not quota: streaming and buffered synthesis are one request each
+  // against the same model.
+  selectedTTSPlayer: "gemini-remote",
   setSelectedTTSPlayer: (selectedTTSPlayer) => set({ selectedTTSPlayer }),
-  selectedSTTTranscriber: "remote",
+  // Gemini Live rather than the `gemini-remote` unary route, because the unary
+  // model's request-per-minute allowance is tight enough that a handful of
+  // recordings in a minute starts failing, while the live model is bounded by
+  // an audio-token quota instead. The tradeoff accepted here: a silent
+  // recording rejects with CharivoTimeoutError instead of resolving "", since
+  // the server sends no transcription at all for audio it heard no speech in.
+  selectedSTTTranscriber: "gemini-live",
   setSelectedSTTTranscriber: (selectedSTTTranscriber) =>
     set({ selectedSTTTranscriber }),
   // Gemini Live by default: it is the cheaper of the two realtime APIs, and

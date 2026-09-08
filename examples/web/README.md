@@ -25,7 +25,10 @@ Every route under `src/app/api/` is an unauthenticated proxy that anyone can
 POST to. Most of them spend your paid `OPENAI_API_KEY`. `/api/chat-gemini`,
 `/api/tts-gemini`, `/api/stt-gemini`, and `/api/stt-gemini-live` spend
 `GEMINI_API_KEY` instead. So does `/api/realtime`, whenever the caller asks for
-the Gemini provider — the demo UI's default.
+the Gemini provider. The UI starts every leg — chat, speech, transcription and
+realtime — on a Gemini route, so an untouched session spends only
+`GEMINI_API_KEY`; the OpenAI routes stay reachable and still bill whenever
+someone picks them, or posts to them directly.
 `/api/chat-openclaw` spends neither: it forwards to whatever
 `OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
 credential and that backend. That is fine for `pnpm dev:web` on your own
@@ -221,7 +224,15 @@ There is no `GET /api/tts` route in the current demo.
 The settings menu intentionally mixes several implementation styles so you can
 compare the tradeoffs:
 
-- Remote API options are the production-ready defaults.
+- Remote API options are the production-ready shape: the key stays on your
+  server and the browser talks only to your own route.
+- Every leg starts on a Gemini route, because this demo pays for whoever opens
+  it and the Gemini key is a free-tier one. Chat and TTS start on Gemini
+  Remote; speech recognition starts on Gemini Live rather than the unary Gemini
+  Remote route, whose request-per-minute allowance is tight enough that a few
+  recordings in quick succession begin to fail. The tradeoff is that a silent
+  recording ends in a timeout error there instead of quietly producing an empty
+  transcript.
 - Browser-direct OpenAI, Gemini, and OpenClaw options expose credentials to the
   browser. They are for local development and testing only. TTS and STT
   mirror the LLM split with their own Gemini Remote and Gemini Direct (Dev)
