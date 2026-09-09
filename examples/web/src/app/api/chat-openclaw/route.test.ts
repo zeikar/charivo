@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateResponse = vi.fn();
 const generateResponseWithTools = vi.fn();
@@ -50,5 +50,51 @@ describe("examples/web /api/chat-openclaw route", () => {
     const data = await response.json();
     expect(data.error).toEqual(expect.stringContaining("toolCallId"));
     expect(createOpenClawLLMProvider).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The gate is read once at module load, so each branch needs its own module
+ * instance — same approach as `demo-limits.test.ts`, which pins the other
+ * build-dependent constant in this directory.
+ */
+async function loadRoute(nodeEnv: string) {
+  vi.stubEnv("NODE_ENV", nodeEnv);
+  vi.resetModules();
+  return import("./route");
+}
+
+describe("examples/web /api/chat-openclaw route, per build", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("answers 404 in a production build without reaching the gateway", async () => {
+    const { POST: post } = await loadRoute("production");
+
+    const response = await post(
+      postRequest(
+        JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      ) as never,
+    );
+
+    // 404, not 400: a valid body must not be told the route merely disliked it.
+    expect(response.status).toBe(404);
+    expect(createOpenClawLLMProvider).not.toHaveBeenCalled();
+  });
+
+  it("serves the route outside production", async () => {
+    const { POST: post } = await loadRoute("development");
+    generateResponse.mockResolvedValue("hello");
+
+    const response = await post(
+      postRequest(
+        JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      ) as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(createOpenClawLLMProvider).toHaveBeenCalled();
   });
 });

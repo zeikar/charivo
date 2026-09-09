@@ -29,11 +29,12 @@ the Gemini provider. The UI starts every leg — chat, speech, transcription and
 realtime — on a Gemini route, so an untouched session spends only
 `GEMINI_API_KEY`; the OpenAI routes stay reachable and still bill whenever
 someone picks them, or posts to them directly.
-`/api/chat-openclaw` spends neither: it forwards to whatever
-`OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, so it exposes that
-credential and that backend. That is fine for `pnpm dev:web` on your own
-machine, and it is what the hosted demo accepts deliberately — it is not a
-production template, however much it looks like one.
+`/api/chat-openclaw` spends neither, and answers 404 in a production build: it
+forwards to whatever `OPENCLAW_BASE_URL` points at using `OPENCLAW_TOKEN`, which
+would expose that credential and that backend, and it defaults to the server's
+own localhost where a deployment has nothing listening. It is local-only for
+those two reasons together. Nothing here is a production template, however much
+it looks like one.
 
 What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
 
@@ -113,8 +114,10 @@ each prompts for its own in the browser.
 Both OpenClaw options are **dev-only**: they need a gateway on
 `OPENCLAW_BASE_URL`, which defaults to localhost, so a deployed build has nothing
 to reach and publishing that gateway would expose it. `ChatSettings` drops them
-from the menu when `NODE_ENV` is `production`, leaving them available under
-`pnpm dev:web`. The `/api/chat-openclaw` route still builds either way.
+from the menu when `NODE_ENV` is `production`, and `/api/chat-openclaw` answers
+404 on the same condition, leaving both available under `pnpm dev:web`. The two
+gates are separate code, so the route test pins each branch — a menu entry that
+is merely hidden would otherwise still have a live route behind it.
 
 If you use the OpenClaw route and want avatar expression/motion/gaze tool calling
 to work, the agent named by `OPENCLAW_AGENT_ID` must run on OpenClaw's own
@@ -173,7 +176,7 @@ The demo ships these routes:
 - `POST /api/chat-openai`
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
-  Uses `@charivo/server/openclaw`
+  Uses `@charivo/server/openclaw`. Local-only: answers 404 in a production build
 - `POST /api/chat-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
 - `POST /api/tts-openai`

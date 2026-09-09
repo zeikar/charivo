@@ -2,7 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { createOpenClawLLMProvider } from "@charivo/server/openclaw";
 import { parseChatRequest, requiresToolCallingPath } from "../chat-request";
 
+/**
+ * Local-only, matching the two menu entries this route serves: `ChatSettings`
+ * drops them from a production build, so a deployed demo cannot reach here
+ * through the UI, and `OPENCLAW_BASE_URL` defaults to the server's own
+ * localhost — where a deployment has nothing listening. Without this the route
+ * would still answer a direct POST, forwarding `OPENCLAW_TOKEN` to whatever
+ * that variable names.
+ *
+ * 404 rather than 403: a route that cannot serve anyone in this build should
+ * look absent, not forbidden. Next.js substitutes `NODE_ENV` with a literal at
+ * build time, so the branch is decided at compile time — the same mechanism the
+ * session caps in `api/demo-limits.ts` rely on, with no runtime switch to get
+ * wrong.
+ */
+const LOCAL_ONLY = process.env.NODE_ENV !== "production";
+
 export async function POST(request: NextRequest) {
+  if (!LOCAL_ONLY) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();

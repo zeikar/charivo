@@ -46,7 +46,10 @@ The current reference app ships:
 - `POST /api/chat-openai`
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
-  Uses `@charivo/server/openclaw`
+  Uses `@charivo/server/openclaw`. Local-only, matching the two menu entries it
+  serves: it answers 404 in a production build, where `OPENCLAW_BASE_URL`
+  defaults to the server's own localhost and forwarding `OPENCLAW_TOKEN` to a
+  published gateway would expose it
 - `POST /api/chat-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
 - `POST /api/tts-openai`
