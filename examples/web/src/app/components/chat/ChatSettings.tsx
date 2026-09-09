@@ -3,7 +3,6 @@
 import { Menu, MenuButton, MenuItems } from "@headlessui/react";
 import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import {
-  GlobeAltIcon,
   BoltIcon,
   FaceSmileIcon,
   SpeakerWaveIcon,
@@ -11,7 +10,6 @@ import {
   MicrophoneIcon,
   CpuChipIcon,
   ExclamationTriangleIcon,
-  SignalIcon,
   SparklesIcon,
   PhoneIcon,
 } from "@heroicons/react/24/solid";
@@ -76,19 +74,13 @@ const OPENCLAW_OPTIONS: Option<LLMClientType>[] =
         },
       ];
 
+/**
+ * Every list below is ordered vendor-first, starting with the vendor the store
+ * defaults to, and carries one icon per vendor rather than one per transport —
+ * the label already says Remote, Direct or Streaming, so the icon is free to
+ * answer "whose API is this?" at a glance down the column.
+ */
 const LLM_OPTIONS: Option<LLMClientType>[] = [
-  {
-    label: "Remote API",
-    value: "remote",
-    description: "Calls a server LLM route. Secure, production-ready default.",
-    Icon: GlobeAltIcon,
-  },
-  {
-    label: "OpenAI Direct (Dev)",
-    value: "openai",
-    description: "Direct browser key usage. Development/testing only.",
-    Icon: BoltIcon,
-  },
   {
     label: "Gemini Remote",
     value: "gemini-remote",
@@ -101,6 +93,18 @@ const LLM_OPTIONS: Option<LLMClientType>[] = [
     description: "Direct browser key usage. Development/testing only.",
     Icon: SparklesIcon,
   },
+  {
+    label: "OpenAI Remote",
+    value: "remote",
+    description: "Calls the server OpenAI route. Needs OPENAI_API_KEY.",
+    Icon: BoltIcon,
+  },
+  {
+    label: "OpenAI Direct (Dev)",
+    value: "openai",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: BoltIcon,
+  },
   ...OPENCLAW_OPTIONS,
   {
     label: "Test Stub",
@@ -112,16 +116,23 @@ const LLM_OPTIONS: Option<LLMClientType>[] = [
 
 const TTS_OPTIONS: Option<TTSPlayerType>[] = [
   {
-    label: "Remote API",
-    value: "remote",
-    description: "Calls a server TTS route. Secure, production-ready default.",
-    Icon: GlobeAltIcon,
+    label: "Gemini Remote",
+    value: "gemini-remote",
+    description:
+      "Calls the server Gemini TTS route, streamed. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
   },
   {
-    label: "Browser TTS",
-    value: "web",
-    description: "Uses browser's built-in TTS",
-    Icon: SpeakerWaveIcon,
+    label: "Gemini Direct (Dev)",
+    value: "gemini",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: SparklesIcon,
+  },
+  {
+    label: "OpenAI Remote",
+    value: "remote",
+    description: "Calls the server OpenAI TTS route. Needs OPENAI_API_KEY.",
+    Icon: BoltIcon,
   },
   {
     label: "OpenAI Direct (Dev)",
@@ -130,16 +141,10 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
     Icon: BoltIcon,
   },
   {
-    label: "Gemini Remote",
-    value: "gemini-remote",
-    description: "Calls the server Gemini TTS route. Needs GEMINI_API_KEY.",
-    Icon: SparklesIcon,
-  },
-  {
-    label: "Gemini Direct (Dev)",
-    value: "gemini",
-    description: "Direct browser key usage. Development/testing only.",
-    Icon: SparklesIcon,
+    label: "Browser TTS",
+    value: "web",
+    description: "Uses browser's built-in TTS",
+    Icon: SpeakerWaveIcon,
   },
   {
     label: "Disabled",
@@ -151,22 +156,11 @@ const TTS_OPTIONS: Option<TTSPlayerType>[] = [
 
 const STT_OPTIONS: Option<STTTranscriberType>[] = [
   {
-    label: "Remote API",
-    value: "remote",
-    description: "Calls a server STT route. Secure, production-ready default.",
-    Icon: GlobeAltIcon,
-  },
-  {
-    label: "Browser STT",
-    value: "web",
-    description: "Uses browser's built-in speech recognition",
-    Icon: MicrophoneIcon,
-  },
-  {
-    label: "OpenAI Direct (Dev)",
-    value: "openai",
-    description: "Direct browser key usage. Development/testing only.",
-    Icon: BoltIcon,
+    label: "Gemini Live (Streaming)",
+    value: "gemini-live",
+    description:
+      "Live streaming transcription over WebSocket. Needs GEMINI_API_KEY.",
+    Icon: SparklesIcon,
   },
   {
     label: "Gemini Remote",
@@ -185,14 +179,25 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
     value: "openai-realtime",
     description:
       "Live streaming transcription over WebRTC. Credentials stay on the server.",
-    Icon: SignalIcon,
+    Icon: BoltIcon,
   },
   {
-    label: "Gemini Live (Streaming)",
-    value: "gemini-live",
-    description:
-      "Live streaming transcription over WebSocket. Needs GEMINI_API_KEY.",
-    Icon: SignalIcon,
+    label: "OpenAI Remote",
+    value: "remote",
+    description: "Calls the server OpenAI STT route. Needs OPENAI_API_KEY.",
+    Icon: BoltIcon,
+  },
+  {
+    label: "OpenAI Direct (Dev)",
+    value: "openai",
+    description: "Direct browser key usage. Development/testing only.",
+    Icon: BoltIcon,
+  },
+  {
+    label: "Browser STT",
+    value: "web",
+    description: "Uses browser's built-in speech recognition",
+    Icon: MicrophoneIcon,
   },
   {
     label: "Disabled",
@@ -209,16 +214,16 @@ const STT_OPTIONS: Option<STTTranscriberType>[] = [
  */
 const REALTIME_OPTIONS: Option<RealtimeProviderType>[] = [
   {
-    label: "OpenAI Realtime",
-    value: "openai",
-    description: "Server-mediated WebRTC session. Needs OPENAI_API_KEY.",
-    Icon: SignalIcon,
-  },
-  {
     label: "Gemini Live",
     value: "gemini",
     description: "Server-mediated WebSocket session. Needs GEMINI_API_KEY.",
     Icon: SparklesIcon,
+  },
+  {
+    label: "OpenAI Realtime",
+    value: "openai",
+    description: "Server-mediated WebRTC session. Needs OPENAI_API_KEY.",
+    Icon: BoltIcon,
   },
 ];
 

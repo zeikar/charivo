@@ -15,13 +15,13 @@ example, not just a demo. The other is
 The app exercises the current package stack:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, Gemini (remote and direct), OpenClaw proxy
-  (dev builds only), and stub clients
-- TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
-  direct) players
-- STT through remote, browser-native, direct OpenAI, Gemini (remote and
-  direct), and streaming (`@charivo/stt/openai-realtime` and
-  `@charivo/stt/gemini-live`) transcribers
+- LLM chat through Gemini and OpenAI, each in a server-route and a
+  browser-direct form, plus an OpenClaw proxy (dev builds only) and a stub
+- TTS through Gemini and OpenAI, each in a server-route and a browser-direct
+  form, plus a browser-native player
+- STT through Gemini and OpenAI, each in a streaming
+  (`@charivo/stt/gemini-live`, `@charivo/stt/openai-realtime`), a server-route
+  and a browser-direct form, plus a browser-native transcriber
 - realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket adapter,
   chosen in the settings menu (Gemini Live by default)
@@ -43,20 +43,20 @@ from realtime session lifecycle.
 
 The current reference app ships:
 
-- `POST /api/chat`
+- `POST /api/chat-openai`
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
 - `POST /api/chat-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
-- `POST /api/tts`
+- `POST /api/tts-openai`
   Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The route resolves
   the voice itself and passes it explicitly, so the provider default is never
   consulted: a supplied voice must be on the allowlist or the request is
   rejected with 400, and the `sage` fallback applies only when none is sent
 - `POST /api/tts-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.1-flash-tts-preview`. Same
-  voice-resolution behavior as `/api/tts`, against a Gemini-specific allowlist
+  voice-resolution behavior as `/api/tts-openai`, against a Gemini-specific allowlist
   with a `Kore` fallback. The route streams PCM when the request carries
   `Accept: audio/pcm` (which the Gemini Remote TTS option sends) and answers
   WAV otherwise. Text is capped at 400 characters: on the buffered path that
@@ -66,14 +66,14 @@ The current reference app ships:
   a spurious `SAFETY` finish reason instead of completing (measured: 2,358
   characters streamed 96.60s of audio before `SAFETY`, 1,182 completed with
   `STOP`). `speed` is accepted but ignored
-- `POST /api/stt`
+- `POST /api/stt-openai`
   Uses `@charivo/server/openai` with model `whisper-1`
 - `POST /api/stt-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-transcribe`. Same
-  multipart contract and 1 MB cap as `/api/stt`. The free tier allows 3
+  multipart contract and 1 MB cap as `/api/stt-openai`. The free tier allows 3
   requests per minute on this model, so a fourth within a minute fails with
   the route's generic 500 — the demo does not throttle
-- `POST /api/realtime-transcription`
+- `POST /api/stt-openai-realtime`
   Exchanges the OpenAI streaming transcriber's SDP offer with OpenAI so the
   browser never holds a key
 - `POST /api/stt-gemini-live`
@@ -114,7 +114,7 @@ place:
   on `OPENCLAW_BASE_URL`, which defaults to localhost); TTS and STT mirror the
   LLM split with their own Gemini Remote and Gemini Direct (Dev) options
 - browser-native TTS and STT paths for zero-server speech experiments
-- two streaming STT paths, backed by `/api/realtime-transcription` and
+- two streaming STT paths, backed by `/api/stt-openai-realtime` and
   `/api/stt-gemini-live`
 - a realtime provider selector, OpenAI Realtime or Gemini Live, that starts on
   Gemini Live and locks while a call is connecting or up

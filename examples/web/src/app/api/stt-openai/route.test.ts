@@ -11,7 +11,7 @@ vi.mock("@charivo/server/openai", () => ({
 import { POST } from "./route";
 import { STT_MAX_AUDIO_BYTES } from "../demo-limits";
 
-describe("examples/web /api/stt route", () => {
+describe("examples/web /api/stt-openai route", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     transcribe.mockReset();
@@ -29,7 +29,7 @@ describe("examples/web /api/stt route", () => {
     );
     formData.append("language", "en");
 
-    const request = new Request("http://localhost/api/stt", {
+    const request = new Request("http://localhost/api/stt-openai", {
       method: "POST",
       body: formData,
     });
@@ -52,7 +52,7 @@ describe("examples/web /api/stt route", () => {
       }),
     );
 
-    const request = new Request("http://localhost/api/stt", {
+    const request = new Request("http://localhost/api/stt-openai", {
       method: "POST",
       body: formData,
     });

@@ -69,7 +69,7 @@ const GEMINI_TESTING_PROMPT =
   "Enter your Gemini API key. This direct browser client is for development/testing only.";
 const OPENCLAW_TESTING_PROMPT =
   "Enter your OpenClaw token. This direct browser client is for development/testing only and may be blocked by CORS.";
-const REALTIME_TRANSCRIPTION_ENDPOINT = "/api/realtime-transcription";
+const REALTIME_TRANSCRIPTION_ENDPOINT = "/api/stt-openai-realtime";
 const GEMINI_LIVE_TRANSCRIPTION_ENDPOINT = "/api/stt-gemini-live";
 const REALTIME_UI_DEBUG = process.env.NODE_ENV !== "production";
 
@@ -271,7 +271,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             const { createRemoteLLMClient } = await import(
               "@charivo/llm/remote"
             );
-            return createRemoteLLMClient({ apiEndpoint: "/api/chat" });
+            return createRemoteLLMClient({ apiEndpoint: "/api/chat-openai" });
           }
           case "openai": {
             const apiKey = promptForSecret(
@@ -341,7 +341,9 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             const { createRemoteTTSPlayer } = await import(
               "@charivo/tts/remote"
             );
-            return createRemoteTTSPlayer();
+            // Named explicitly: this demo runs one route per vendor, so it
+            // cannot use the package's single-route `/api/tts` default.
+            return createRemoteTTSPlayer({ apiEndpoint: "/api/tts-openai" });
           }
           case "web": {
             const { createWebTTSPlayer } = await import("@charivo/tts/web");
@@ -400,7 +402,11 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
             const { createRemoteSTTTranscriber } = await import(
               "@charivo/stt/remote"
             );
-            return createRemoteSTTTranscriber();
+            // Named explicitly, as for TTS above: one route per vendor here,
+            // so the package's `/api/stt` default does not apply.
+            return createRemoteSTTTranscriber({
+              apiEndpoint: "/api/stt-openai",
+            });
           }
           case "web": {
             const { createWebSTTTranscriber } = await import(

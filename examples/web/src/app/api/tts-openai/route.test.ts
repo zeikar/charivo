@@ -13,14 +13,14 @@ import { TTS_FALLBACK_VOICE, TTS_MAX_TEXT_CHARS } from "../demo-limits";
 import { CHARACTER_CONFIGS } from "../../config/characters";
 
 function postRequest(body: unknown): Request {
-  return new Request("http://localhost/api/tts", {
+  return new Request("http://localhost/api/tts-openai", {
     method: "POST",
     body: JSON.stringify(body),
     headers: { "Content-Type": "application/json" },
   });
 }
 
-describe("examples/web /api/tts route", () => {
+describe("examples/web /api/tts-openai route", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     generateSpeech.mockReset();

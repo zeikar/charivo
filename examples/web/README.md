@@ -4,12 +4,12 @@ This is the reference Next.js app for the Charivo workspace. It exercises the
 current architecture as it is actually shipped:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
-- LLM chat through remote, direct, Gemini (remote and direct), OpenClaw proxy
-  (dev builds only), and stub clients
-- TTS through remote, browser-native, direct OpenAI, and Gemini (remote and
-  direct) players
-- STT through remote, browser-native, direct OpenAI, Gemini (remote and
-  direct), and streaming OpenAI Realtime and Gemini Live transcribers
+- LLM chat through Gemini and OpenAI, each in a server-route and a
+  browser-direct form, plus an OpenClaw proxy (dev builds only) and a stub
+- TTS through Gemini and OpenAI, each in a server-route and a browser-direct
+  form, plus a browser-native player
+- STT through Gemini and OpenAI, each in a streaming, a server-route and a
+  browser-direct form, plus a browser-native transcriber
 - Realtime voice sessions through `@charivo/realtime/remote` and `/api/realtime`,
   over either the OpenAI Agents WebRTC adapter or the Gemini Live WebSocket
   adapter, chosen in the settings menu
@@ -41,7 +41,7 @@ What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
   config instead of forwarding the caller's and pins its own model for whichever
   provider it dispatched to, so nobody can repoint either key at an expensive
   model or raise `maxTokens`. Same for the transcription model on
-  `/api/realtime-transcription`, and for the model and manual VAD baked into the
+  `/api/stt-openai-realtime`, and for the model and manual VAD baked into the
   ephemeral token `/api/stt-gemini-live` mints — that token's setup replaces the
   browser's rather than validating it.
 - **Single requests are bounded.** Caps on chat message count, length, and
@@ -160,15 +160,23 @@ server. To run the steps yourself instead: `pnpm build` then
 
 ## API Routes
 
+Routes are named `<modality>-<vendor>[-<variant>]`, so the vendor a route spends
+against is visible in its path. That differs from the single-route convention the
+package READMEs teach (`/api/chat`, `/api/tts`, `/api/stt`, which is what
+`@charivo/*/remote` defaults to): an app serving one vendor wants the short
+names, while this demo serves several side by side and names each explicitly.
+`/api/realtime` is the exception — one route for both providers, since the caller
+selects one in the request body.
+
 The demo ships these routes:
 
-- `POST /api/chat`
+- `POST /api/chat-openai`
   Uses `@charivo/server/openai` with model `gpt-4.1-nano`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`
 - `POST /api/chat-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`
-- `POST /api/tts`
+- `POST /api/tts-openai`
   Uses `@charivo/server/openai` with model `gpt-4o-mini-tts`. The voice comes
   from the request (restricted to the shipped characters' voices); a character's
   own voice always wins, and `TTS_FALLBACK_VOICE` applies only when none is sent
@@ -185,12 +193,12 @@ The demo ships these routes:
   stream can end on a spurious `SAFETY` finish reason instead of completing
   (measured: 2,358 characters streamed 96.60s of audio before `SAFETY`, 1,182
   completed with `STOP`). `speed` is accepted but ignored
-- `POST /api/stt`
+- `POST /api/stt-openai`
   Uses `@charivo/server/openai` with model `whisper-1`
   Accepts multipart form data with `audio` and optional `language`
 - `POST /api/stt-gemini`
   Uses `@charivo/server/gemini` with model `gemini-3.5-transcribe`. Accepts
-  the same multipart contract and 1 MB cap as `/api/stt`. The free tier
+  the same multipart contract and 1 MB cap as `/api/stt-openai`. The free tier
   allows 3 requests per minute on this model, so a fourth within a minute
   fails with the route's generic 500 — the demo does not throttle
 - `POST /api/realtime`
@@ -199,7 +207,7 @@ The demo ships these routes:
   selects. Either branch rebuilds the session config server-side rather than
   forwarding the caller's; the Gemini branch additionally requires
   `transport: "websocket"` and forwards an allow-listed Gemini voice
-- `POST /api/realtime-transcription`
+- `POST /api/stt-openai-realtime`
   Mints an ephemeral transcription session secret and performs the SDP exchange
   for `@charivo/stt/openai-realtime`
   Accepts `{ sdpOffer, session: { model?, language? } }` and returns
@@ -217,7 +225,7 @@ The demo ships these routes:
   client-side timer on an unauthenticated route, so it bounds an ordinary
   visitor, not a determined caller
 
-There is no `GET /api/tts` route in the current demo.
+There is no `GET /api/tts-openai` route in the current demo.
 
 ## Runtime Modes
 
@@ -254,16 +262,16 @@ compare the tradeoffs:
 ```text
 examples/web/src/app
   api/
-    chat/route.ts
     chat-gemini/route.ts
+    chat-openai/route.ts
     chat-openclaw/route.ts
     realtime/route.ts
-    realtime-transcription/route.ts
-    stt/route.ts
     stt-gemini/route.ts
     stt-gemini-live/route.ts
-    tts/route.ts
+    stt-openai/route.ts
+    stt-openai-realtime/route.ts
     tts-gemini/route.ts
+    tts-openai/route.ts
   components/
   hooks/
   stores/

@@ -15,14 +15,14 @@ vi.mock("@charivo/server/openai", () => ({
 import { POST } from "./route";
 
 function postRequest(body: string) {
-  return new Request("http://localhost/api/chat", {
+  return new Request("http://localhost/api/chat-openai", {
     method: "POST",
     body,
     headers: { "Content-Type": "application/json" },
   });
 }
 
-describe("examples/web /api/chat route", () => {
+describe("examples/web /api/chat-openai route", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     createOpenAILLMProvider.mockClear();

@@ -11,7 +11,7 @@ const originalFetch = globalThis.fetch;
 const fetchMock = vi.fn();
 
 function bootstrapRequest(body: unknown): Request {
-  return new Request("http://localhost/api/realtime-transcription", {
+  return new Request("http://localhost/api/stt-openai-realtime", {
     method: "POST",
     body: JSON.stringify(body),
     headers: {
@@ -29,7 +29,7 @@ function headerOf(init: RequestInit, name: string): string | undefined {
   return (init.headers as Record<string, string>)[name];
 }
 
-describe("examples/web /api/realtime-transcription route", () => {
+describe("examples/web /api/stt-openai-realtime route", () => {
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     fetchMock.mockReset();
