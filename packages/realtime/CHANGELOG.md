@@ -1,5 +1,11 @@
 # @charivo/realtime
 
+## 0.20.5
+
+### Patch Changes
+
+- 7eda913: Strip trailing punctuation from a character's `personality` in linear time. The previous regex was quadratic on long runs of `.`, `!` or `?`.
+
 ## 0.20.4
 
 ### Patch Changes
