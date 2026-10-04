@@ -159,6 +159,22 @@ describe("realtime-core", () => {
     expect(defaultConfig.voice).toBeUndefined();
   });
 
+  it("strips trailing personality punctuation in linear time", () => {
+    const config = buildRealtimeSessionConfig({
+      character: { id: "char-1", name: "Hiyori", personality: "Cheerful!?." },
+    });
+    expect(config.instructions).toContain("Your personality is Cheerful.");
+
+    // Quadratic stripping takes seconds on this run; linear takes about 1ms.
+    const run = "!".repeat(100_000);
+    const startedAt = performance.now();
+    const pathological = buildRealtimeSessionConfig({
+      character: { id: "char-1", name: "Hiyori", personality: `${run}a` },
+    });
+    expect(performance.now() - startedAt).toBeLessThan(1000);
+    expect(pathological.instructions).toContain(`Your personality is ${run}a.`);
+  });
+
   it("exposes prepareAudio without narrowing, and forwards it to the client", async () => {
     const stub = createRealtimeClientStub();
     const prepareAudio = vi.fn(async () => undefined);

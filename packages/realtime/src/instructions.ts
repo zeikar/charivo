@@ -60,5 +60,11 @@ function ensureSentence(text: string): string {
 }
 
 function ensureSentenceFragment(text: string): string {
-  return text.trim().replace(/[.!?]+$/, "");
+  // Scan from the end: /[.!?]+$/ is quadratic on a long punctuation run.
+  const trimmed = text.trim();
+  let end = trimmed.length;
+  while (end > 0 && ".!?".includes(trimmed[end - 1])) {
+    end -= 1;
+  }
+  return trimmed.slice(0, end);
 }
