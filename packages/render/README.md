@@ -68,6 +68,8 @@ If it also exposes optional methods such as `loadModel`, `setRealtimeLipSync`,
 `updateRealtimeLipSyncRms`, `playExpression`, `stopExpression`,
 `playMotionByGroup`, `lookAt`, `getAvailableExpressions`, or
 `getAvailableMotionGroups`, the render manager will use them automatically.
+`getAvatarControlCatalog` is the exception: the manager never calls it — it
+hands the app the model's catalog for avatar tools.
 
 ## Event Wiring
 

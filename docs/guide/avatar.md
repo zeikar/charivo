@@ -54,12 +54,17 @@ manager packages rather than inside either one.
 ## Building The Catalog
 
 `expressions` and `motions` belong to the loaded model, so read them off the
-renderer instead of hand-maintaining a list:
+renderer instead of hand-maintaining a list. A renderer that implements
+`getAvatarControlCatalog()` hands over the whole catalog — names, counts and,
+where the model carries them, descriptions; prefer it when present.
+`@charivo/render-iki` implements it with the descriptions the `.iki` file
+declares for every expression and motion. Otherwise assemble the catalog from
+the two getters and descriptions you write:
 
 ```ts
 import type { AvatarControlCatalog } from "@charivo/core";
 
-const catalog: AvatarControlCatalog = {
+const catalog: AvatarControlCatalog = renderer.getAvatarControlCatalog?.() ?? {
   expressions: renderer.getAvailableExpressions?.() ?? [],
   motions: renderer.getAvailableMotionGroups?.() ?? {},
   expressionDescriptions,
@@ -75,10 +80,10 @@ therefore yields a gaze-only tool surface.
 
 Rebuild it when the model changes — `readAvatarCatalog` in
 [`examples/web/src/app/hooks/useCharivoChat.ts`](https://github.com/zeikar/charivo/blob/main/examples/web/src/app/hooks/useCharivoChat.ts)
-is this same function wired to a model switch.
+is the assembled form wired to a model switch.
 
-The descriptions are the part you write, and they decide whether the model picks
-a face or picks the right one.
+When the model carries no descriptions, they are the part you write, and they
+decide whether the model picks a face or picks the right one.
 
 ## Writing Descriptions
 

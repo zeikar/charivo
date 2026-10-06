@@ -88,8 +88,9 @@ Three qualifications:
   fade-in to complete and then fades, so an expression can remain visible
   beyond the nominal 8-second hold.
 - This applies when the renderer implements `stopExpression`.
-  `@charivo/render-live2d` does; a renderer that omits it keeps the expression
-  until something else replaces it.
+  `@charivo/render-live2d` does, and so does `@charivo/render-iki`, which fades
+  over the `.iki` expression's own `fadeOut`; a renderer that omits it keeps
+  the expression until something else replaces it.
 
 Idle motion, eye blink, and breath keep running throughout.
 
@@ -117,7 +118,9 @@ The usual flow is:
 
 If the renderer exposes optional methods such as `playExpression`,
 `stopExpression`, `playMotionByGroup`, `lookAt`, or model catalog getters,
-`@charivo/render` will use them automatically.
+`@charivo/render` will use them automatically. `getAvatarControlCatalog` is
+for the app, not the manager: it is where avatar tools read the catalog from
+— see [Building The Catalog](./avatar.md#building-the-catalog).
 
 ## Gaze Drivers
 
