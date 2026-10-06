@@ -25,8 +25,10 @@ export const GAZE_PARAMETER_IDS: readonly string[] = [
 /**
  * Decide the value actually written for `id`, blending the host's gaze target
  * with the value `IkiMotion` (idle, clips, expressions, physics) already
- * computed. Applied in the renderer's IkiMotion sink, BEFORE the player, so
- * PhysicsMotion (which reads back through the player) lags the blended pose.
+ * computed. Applied in the renderer's IkiMotion sink, which IkiMotion flushes
+ * before it steps physics, so PhysicsMotion reads this frame's blended head.
+ * Only the renderer's fallback gaze writes (ids no stage wrote this frame)
+ * land after physics and reach it a frame late.
  */
 export function blendMotionWrite(
   id: string,
