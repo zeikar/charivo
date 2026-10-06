@@ -393,6 +393,16 @@ export interface Renderer {
   lookAt?(coords: GazeCoordinates): void;
   getAvailableExpressions?(): string[];
   getAvailableMotionGroups?(): Record<string, number>;
+  /**
+   * The loaded model's avatar control catalog — the renderer is its single
+   * source: names, counts and descriptions. A renderer whose model carries
+   * descriptions (an `.iki` file declares one per expression and motion)
+   * returns them; others may return names and counts only. It reflects the
+   * model loaded at call time, so read it after `loadModel` resolves and again
+   * when the model changes. Apps should prefer it over assembling the catalog
+   * from `getAvailableExpressions` / `getAvailableMotionGroups` themselves.
+   */
+  getAvatarControlCatalog?(): AvatarControlCatalog;
 }
 
 // Render manager (session management, lip-sync, motion control)
