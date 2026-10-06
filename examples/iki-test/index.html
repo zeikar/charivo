@@ -53,6 +53,26 @@
         color: #e5e7eb;
         min-height: 1.2em;
       }
+      h2 {
+        font-size: 13px;
+        margin: 0;
+        font-weight: 600;
+      }
+      #catalog {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 12px;
+        max-width: 640px;
+        margin: 0;
+        font-size: 12px;
+      }
+      #catalog dt {
+        font-family: ui-monospace, monospace;
+      }
+      #catalog dd {
+        margin: 0;
+        color: #e5e7eb;
+      }
     </style>
   </head>
   <body>
@@ -65,7 +85,13 @@
       <button id="gazeR">Gaze right ▶</button>
       <button id="gazeUp">▲ Gaze up</button>
     </div>
+    <h2>Expressions (avatar:expression)</h2>
+    <div class="row" id="expressions"></div>
+    <h2>Motions (avatar:motion)</h2>
+    <div class="row" id="motions"></div>
     <div id="status">booting…</div>
+    <h2>Catalog from renderer.getAvatarControlCatalog()</h2>
+    <dl id="catalog"></dl>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

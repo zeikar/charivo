@@ -4,6 +4,9 @@ import { createIkiRenderer } from "@charivo/render-iki";
 
 const canvas = document.getElementById("avatar") as HTMLCanvasElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
+const expressionsEl = document.getElementById("expressions") as HTMLDivElement;
+const motionsEl = document.getElementById("motions") as HTMLDivElement;
+const catalogEl = document.getElementById("catalog") as HTMLDListElement;
 const setStatus = (m: string): void => {
   statusEl.textContent = m;
 };
@@ -21,28 +24,30 @@ async function main(): Promise<void> {
   const charivo = createCharivo({ renderer: renderManager });
 
   await renderManager.initialize();
-  await renderManager.loadModel("/sample.iki.json");
+  await renderManager.loadModel("/hero.iki");
   setStatus(
-    "model loaded — idle breath + blink running. Move the mouse to gaze.",
+    "model loaded — engine idle, blink, breath and hair physics running. Move the mouse to gaze.",
   );
 
   // Simulate TTS: enable lip-sync, stream a speech-like RMS envelope, then end.
-  let speaking = false;
+  let speechTimer: ReturnType<typeof setInterval> | undefined;
+  const endSpeech = (): void => {
+    clearInterval(speechTimer);
+    speechTimer = undefined;
+    charivo.emit("tts:lipsync:update", { rms: 0 });
+    charivo.emit("tts:audio:end", {});
+  };
   document.getElementById("speak")!.addEventListener("click", () => {
-    if (speaking) return;
-    speaking = true;
+    if (speechTimer) return;
     setStatus("speaking… (driving ParamMouthOpenY from simulated RMS)");
     charivo.emit("tts:audio:start", {});
     const start = performance.now();
     const DURATION_MS = 2600;
-    const timer = setInterval(() => {
+    speechTimer = setInterval(() => {
       const t = performance.now() - start;
       if (t >= DURATION_MS) {
-        clearInterval(timer);
-        charivo.emit("tts:lipsync:update", { rms: 0 });
-        charivo.emit("tts:audio:end", {});
-        speaking = false;
-        setStatus("done speaking — back to idle.");
+        endSpeech();
+        setStatus("done speaking — expression released, back to idle.");
         return;
       }
       // Syllable-ish envelope with jitter, in 0..1.
@@ -64,6 +69,78 @@ async function main(): Promise<void> {
     .getElementById("gazeUp")!
     .addEventListener("click", () => gaze(0, 1));
   document.getElementById("gazeC")!.addEventListener("click", () => gaze(0, 0));
+
+  // Expression and motion buttons come from the catalog the model file
+  // declares, and go through the bus so RenderManager's catalog filter,
+  // debounce and expression release all run.
+  const catalog = renderer.getAvatarControlCatalog();
+
+  for (const id of catalog.expressions) {
+    const description = catalog.expressionDescriptions?.[id] ?? "";
+    expressionsEl.append(
+      makeButton(id, description, () => {
+        charivo.emit("avatar:expression", { expressionId: id });
+        setStatus(
+          `avatar:expression → ${id} (released on tts:audio:end, or after ~8 s)`,
+        );
+      }),
+    );
+  }
+  // RenderManager has no stop event: it releases an expression when speech
+  // ends, so Stop sends the same tts:audio:end.
+  expressionsEl.append(
+    makeButton("■ Stop", "Release the expression via tts:audio:end", () => {
+      if (speechTimer) endSpeech();
+      else charivo.emit("tts:audio:end", {});
+      setStatus("tts:audio:end → expression released");
+    }),
+  );
+
+  for (const [group, count] of Object.entries(catalog.motions)) {
+    for (let index = 0; index < count; index++) {
+      const description = catalog.motionDescriptions?.[group]?.[index] ?? "";
+      const label = count > 1 ? `${group} ${index}` : group;
+      motionsEl.append(
+        makeButton(label, description, () => {
+          charivo.emit("avatar:motion", { group, index });
+          setStatus(`avatar:motion → ${group}[${index}]`);
+        }),
+      );
+    }
+  }
+
+  // Show the catalog an LLM would pick from.
+  for (const id of catalog.expressions) {
+    addCatalogEntry(id, catalog.expressionDescriptions?.[id]);
+  }
+  for (const [group, count] of Object.entries(catalog.motions)) {
+    for (let index = 0; index < count; index++) {
+      addCatalogEntry(
+        `${group}[${index}]`,
+        catalog.motionDescriptions?.[group]?.[index],
+      );
+    }
+  }
+}
+
+function makeButton(
+  label: string,
+  title: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.textContent = label;
+  el.title = title;
+  el.addEventListener("click", onClick);
+  return el;
+}
+
+function addCatalogEntry(name: string, description = "—"): void {
+  const dt = document.createElement("dt");
+  dt.textContent = name;
+  const dd = document.createElement("dd");
+  dd.textContent = description;
+  catalogEl.append(dt, dd);
 }
 
 main().catch((err) => {
