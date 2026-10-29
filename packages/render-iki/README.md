@@ -124,7 +124,7 @@ Each frame runs in this order, and a later write wins:
 
 | Step | Writes |
 | --- | --- |
-| 1. Idle (`IkiMotion`) | blink, breath, and the head sway and gaze drift — unless the model declares an `Idle` motion group, whose looping clips replace the sway and drift |
+| 1. Idle (`IkiMotion`) | blink, breath, the ambient sway that hair physics follows, and the head sway and gaze drift — unless the model declares an `Idle` motion group, whose looping clips replace the head sway and gaze drift |
 | 2. Clips (`IkiMotion`) | the `Idle` loop, then the one-shot from `playMotionByGroup` over it |
 | 3. Expressions (`IkiMotion`) | the active expression, or its fade back to base |
 | 4. Host gaze blend (the adapter's sink) | steps 1–3 reach the player through it; see the table below |
@@ -140,7 +140,7 @@ The gaze blend is a fixed table, keyed by parameter:
 | `ParamAngleZ` | pass through — idle roll or a tilt clip; no lean into the turn from the host (a roll riding on the turn swung the crown ahead of the face). |
 | `ParamEyeBallX/Y` | host wins outright while a gaze exists — additive would visibly wander off the cursor. An expression that moves the eyes loses them to the gaze. |
 | `ParamMouthOpenY` | pass through — an expression may open the mouth. Lip-sync, written after `IkiMotion`, overrides it while enabled; disabling lip-sync closes the mouth and hands it back to the expression or rest. |
-| everything else (blink, breath, brows, cheek, hair-sway/chain outputs) | pass through — `IkiMotion` owns it. |
+| everything else (blink, breath, ambient sway, brows, cheek, hair-sway/chain outputs) | pass through — `IkiMotion` owns it. |
 
 A gaze persists until the next one: `lookAt()` / `updateViewWithMouse()` only
 store the target, and there is no "gaze released" signal in the `Renderer`

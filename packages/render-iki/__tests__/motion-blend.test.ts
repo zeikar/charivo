@@ -48,6 +48,8 @@ describe("blendMotionWrite", () => {
       StandardParameter.Breath,
       StandardParameter.HairSwayX,
       StandardParameter.HairSwayZ,
+      StandardParameter.HairBackSway,
+      StandardParameter.AmbientSway,
       StandardParameter.MouthOpen,
       StandardParameter.MouthForm,
       StandardParameter.Cheek,
