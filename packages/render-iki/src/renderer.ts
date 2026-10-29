@@ -16,7 +16,7 @@ import type {
   Renderer,
 } from "@charivo/core";
 import type { MouseCoordinates, MouseTrackable } from "@charivo/render";
-import { IkiMotion, IkiPlayer } from "@ikijs/engine";
+import { IkiMotion, IkiPlayer, type IkiView } from "@ikijs/engine";
 import {
   IkiFormatError,
   loadIkiModel,
@@ -28,6 +28,8 @@ import {
   GAZE_PARAMETER_IDS,
   type HostGaze,
 } from "./motion-blend";
+
+export type { IkiView };
 
 // ── Tuning constants ─────────────────────────────────────────────────────────
 
@@ -43,6 +45,8 @@ export interface IkiRendererOptions {
 export class IkiRenderer implements Renderer, MouseTrackable {
   private canvas?: HTMLCanvasElement;
   private player?: IkiPlayer;
+  /** Kept so a view set before initialize() reaches the player it creates. */
+  private view?: IkiView;
   /** The loaded model; set together with `motion` once a load completes. */
   private model?: IkiModel;
   private motion?: IkiMotion;
@@ -62,6 +66,7 @@ export class IkiRenderer implements Renderer, MouseTrackable {
       throw new Error("Canvas element is required for Iki rendering");
     }
     this.player = new IkiPlayer(this.canvas);
+    if (this.view) this.player.setView(this.view);
     // Do NOT call start() or begin the motion loop here — wait for loadModel().
   }
 
@@ -181,6 +186,18 @@ export class IkiRenderer implements Renderer, MouseTrackable {
     const y =
       -(coords.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
     this.gaze = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
+  }
+
+  /**
+   * Frame `view` (centre and size in model units, +y up) instead of the
+   * model's box, e.g. a full body whose raised arm leaves the box; no argument
+   * restores the box. The engine keeps it across loads and throws on a
+   * non-finite centre or a non-positive size — before initialize(), that
+   * throw comes from initialize().
+   */
+  setView(view?: IkiView): void {
+    this.player?.setView(view);
+    this.view = view;
   }
 
   // Required by the MouseTrackable duck-type contract; not a stub to flesh out —

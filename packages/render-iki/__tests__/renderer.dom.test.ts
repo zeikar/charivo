@@ -17,6 +17,7 @@ const playerRegistry = vi.hoisted(() => {
       load: (model: IkiModel) => Promise<FakeLoadResult>;
       start: ReturnType<typeof vi.fn>;
       stop: ReturnType<typeof vi.fn>;
+      setView: ReturnType<typeof vi.fn>;
       destroy: ReturnType<typeof vi.fn>;
     }>,
   };
@@ -36,6 +37,7 @@ vi.mock("@ikijs/engine", async (importOriginal) => {
       this.pendingAtStart = pending.size;
     });
     stop = vi.fn();
+    setView = vi.fn();
     destroy = vi.fn();
 
     constructor(_canvas: HTMLCanvasElement) {
@@ -447,6 +449,23 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.AngleY)).toBe(26 * 0.25);
     // AngleX is the Idle clip's (2° at 0.5 s), blended over the gaze.
     expect(store.get(StandardParameter.AngleX)).toBeCloseTo(26 * 0.5 + 2);
+  });
+
+  it("forwards a view to the player, and no view restores the box", () => {
+    const player = playerRegistry.instances[0];
+    const view = { x: 0, y: 0, width: 250, height: 100 };
+    renderer.setView(view);
+    expect(player.setView).toHaveBeenLastCalledWith(view);
+    renderer.setView();
+    expect(player.setView).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("hands a view set before initialize to the player it creates", async () => {
+    const view = { x: 0, y: 10, width: 250, height: 100 };
+    const early = createIkiRenderer({ canvas });
+    early.setView(view);
+    await early.initialize();
+    expect(playerRegistry.instances[1].setView).toHaveBeenCalledWith(view);
   });
 
   it("destroy stops the loop and frees the player, idempotently", async () => {
