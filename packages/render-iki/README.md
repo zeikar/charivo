@@ -57,12 +57,13 @@ const catalog = renderer.getAvatarControlCatalog();
 ## Try it
 
 A runnable local harness lives in [`examples/iki-test`](../../examples/iki-test) —
-it drives the Iki hero model through charivo's `RenderManager` + this adapter:
+it drives an Iki model through charivo's `RenderManager` + this adapter:
 engine idle and hair physics, mouse-follow gaze blended over the sway,
 simulated lip-sync, and a button for every expression and motion the file
 declares (sent as `avatar:expression` / `avatar:motion` events), with the
 catalog printed below. Run `pnpm --filter @charivo/iki-test dev` and open the
-Vite URL.
+Vite URL. It loads Iki's bust hero by default; `?model=mint` loads a full body,
+framed with `setView()` so its `Wave` stays on the canvas.
 
 ## Public surface
 
@@ -74,6 +75,12 @@ Vite URL.
 - `destroy()` — stop that loop and free the player.
 - `setRealtimeLipSync(enabled)` / `updateRealtimeLipSyncRms(rms)` — drive the
   mouth aperture (`ParamMouthOpenY`) from lip-sync RMS; see "Motion".
+- `setView(view?)` — frame an `IkiView` (`{ x, y, width, height }`: centre and
+  size in model units, `y` up) instead of the model's box, e.g. a full body
+  whose raised arm leaves the box; no argument restores the box. The engine's
+  `IkiPlayer.setView`, callable before `initialize()` and kept across loads.
+  Not part of the `Renderer` contract, so call it on the renderer, not the
+  `RenderManager`. `IkiView` is re-exported.
 - `lookAt({ x, y })` — sets the gaze target (each `-1..1`, `y=1` up); see
   "Motion" for how it meets the engine's motion.
 - `updateViewWithMouse` / `handleMouseTap` — the `MouseTrackable` pair for

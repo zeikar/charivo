@@ -1,21 +1,56 @@
 import { createCharivo } from "@charivo/core";
 import { createRenderManager } from "@charivo/render";
-import { createIkiRenderer } from "@charivo/render-iki";
+import { createIkiRenderer, type IkiView } from "@charivo/render-iki";
+
+// The models this harness can load, picked with `?model=<name>`. A full body
+// is framed in a view wider than its box, so the waving hand stays on canvas;
+// the numbers are mint's `canvas` size.
+const MODELS: Record<string, { path: string; view?: IkiView }> = {
+  hero: { path: "/hero.iki" },
+  mint: {
+    path: "/mint.iki",
+    view: { x: 0, y: 0, width: 1.6 * 1100, height: 3692 },
+  },
+};
 
 const canvas = document.getElementById("avatar") as HTMLCanvasElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const expressionsEl = document.getElementById("expressions") as HTMLDivElement;
 const motionsEl = document.getElementById("motions") as HTMLDivElement;
 const catalogEl = document.getElementById("catalog") as HTMLDListElement;
+const modelsEl = document.getElementById("models") as HTMLDivElement;
 const setStatus = (m: string): void => {
   statusEl.textContent = m;
 };
 
 async function main(): Promise<void> {
+  const name = new URLSearchParams(location.search).get("model") ?? "hero";
+  for (const option of Object.keys(MODELS)) {
+    const link = document.createElement("a");
+    link.textContent = option;
+    link.href = `?model=${option}`;
+    if (option === name) link.setAttribute("aria-current", "page");
+    modelsEl.append(link);
+  }
+  const model = Object.hasOwn(MODELS, name) ? MODELS[name] : undefined;
+  if (!model) {
+    throw new Error(
+      `unknown model "${name}" — pick one of ${Object.keys(MODELS).join(", ")}`,
+    );
+  }
+
   // The full charivo render path: RenderManager wraps the iki adapter, the
   // adapter drives an .iki model through the iki engine. Mouse tracking + the
   // event bus exercise gaze and lip-sync exactly as the real app would.
   const renderer = createIkiRenderer({ canvas });
+  if (model.view) {
+    renderer.setView(model.view);
+    canvas.classList.add("full-body");
+    canvas.style.setProperty(
+      "--view-aspect",
+      String(model.view.width / model.view.height),
+    );
+  }
   const renderManager = createRenderManager(renderer, {
     canvas,
     mouseTracking: "document",
@@ -24,7 +59,7 @@ async function main(): Promise<void> {
   const charivo = createCharivo({ renderer: renderManager });
 
   await renderManager.initialize();
-  await renderManager.loadModel("/hero.iki");
+  await renderManager.loadModel(model.path);
   setStatus(
     "model loaded — engine idle, blink, breath and hair physics running. Move the mouse to gaze.",
   );

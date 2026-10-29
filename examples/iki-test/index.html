@@ -30,6 +30,20 @@
         background: #4b5563;
         border-radius: 12px;
       }
+      /* A full body keeps the view's aspect, bounded by the viewport's height. */
+      #avatar.full-body {
+        width: min(420px, calc(80vh * var(--view-aspect)));
+        height: auto;
+        aspect-ratio: var(--view-aspect);
+      }
+      #models a {
+        color: #f3f4f6;
+        font-size: 13px;
+      }
+      #models a[aria-current] {
+        font-weight: 700;
+        text-decoration: none;
+      }
       .row {
         display: flex;
         gap: 8px;
@@ -77,6 +91,7 @@
   </head>
   <body>
     <h1>charivo RenderManager → @charivo/render-iki → iki engine</h1>
+    <div class="row" id="models"></div>
     <canvas id="avatar"></canvas>
     <div class="row">
       <button id="speak">▶ Simulate speech (lip-sync)</button>
