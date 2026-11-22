@@ -5,7 +5,7 @@ current architecture as it is actually shipped:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - Two characters drawn by the [Iki](https://github.com/zeikar/iki) engine
-  through the private `@charivo/render-iki` adapter instead — **Twin**, a
+  through `@charivo/render-iki` instead — **Twin**, a
   bust, and **Mint**, a full body with a `Wave` motion — with the same chat,
   voice, lip-sync and avatar control, marked `Iki` in the character menu
 - `?character=<id>` opens the page on that character (any case, e.g.

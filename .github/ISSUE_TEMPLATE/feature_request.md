@@ -33,6 +33,7 @@ Which Charivo package would this feature belong to?
 - [ ] @charivo/realtime
 - [ ] @charivo/render
 - [ ] @charivo/render-live2d
+- [ ] @charivo/render-iki
 - [ ] @charivo/server
 - [ ] New package
 - [ ] Other (please specify)

@@ -16,7 +16,7 @@ The app exercises the current package stack:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
 - Two characters drawn by the [Iki](https://github.com/zeikar/iki) engine
-  through the private `@charivo/render-iki` adapter, a bust and a full body,
+  through `@charivo/render-iki`, a bust and a full body,
   with the same chat, voice, lip-sync and avatar control
 - `?character=<id>` to open on a given character, e.g.
   [`/?character=twin`](https://charivo.vercel.app/?character=twin) or

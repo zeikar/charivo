@@ -118,7 +118,7 @@ The usual flow is:
 
 Calling `loadModel(...)` again switches models. If a second call starts before
 the first has finished, the latest call wins in both renderers in this repo
-(`@charivo/render-live2d`, and the private `@charivo/render-iki` adapter): the
+(`@charivo/render-live2d` and `@charivo/render-iki`): the
 earlier load is dropped however late it lands. A renderer of your own should do
 the same, since an app switching characters does not wait for the previous
 switch.
@@ -158,8 +158,8 @@ waist, so a pointer on the face counts as above it and the character looks up.
 usually the one between the eyes. It is a `GazeOrigin` from `@charivo/render`:
 fractions of the model's own canvas, `(0, 0)` its top-left corner and `(1, 1)`
 its bottom-right, the way the point reads off a picture of the model. Both
-renderers in this repo (`@charivo/render-live2d`, and the private
-`@charivo/render-iki` adapter) implement it with those same units, and each
+renderers in this repo (`@charivo/render-live2d` and `@charivo/render-iki`)
+implement it with those same units, and each
 places the point on the canvas itself, so it holds at any canvas size or
 framing.
 
@@ -179,6 +179,11 @@ renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
 
 ## Alternatives
 
+- Use `@charivo/render-iki` to draw an `.iki` model on the open
+  [Iki](https://github.com/zeikar/iki) engine instead of a Live2D one:
+  `createIkiRenderer({ canvas })` takes the place of `createLive2DRenderer`,
+  and the manager, events, lip-sync and avatar control stay as above. The
+  [web demo](https://charivo.vercel.app/?character=twin) runs both.
 - Use `@charivo/render/stub` for tests or demos that do not need real rendering.
 - If you already have a custom renderer, keep using `@charivo/render` and provide a `Renderer` implementation from `@charivo/core`.
 
@@ -186,4 +191,5 @@ renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
 
 - [Render Package README](https://github.com/zeikar/charivo/blob/main/packages/render/README.md)
 - [render-live2d README](https://github.com/zeikar/charivo/blob/main/packages/render-live2d/README.md)
+- [render-iki README](https://github.com/zeikar/charivo/blob/main/packages/render-iki/README.md)
 - [Examples Web](./examples-web.md)

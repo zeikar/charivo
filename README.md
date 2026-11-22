@@ -374,6 +374,7 @@ Rendering:
 
 - `@charivo/render`: render manager, mouse tracking, lip-sync bridge
 - `@charivo/render-live2d`: Live2D Cubism renderer
+- `@charivo/render-iki`: renderer for `.iki` models on the open [Iki](https://github.com/zeikar/iki) engine
 - `@charivo/render/stub`: console renderer for tests and demos
 
 ## Contributing

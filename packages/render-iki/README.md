@@ -1,35 +1,26 @@
 # @charivo/render-iki
 
-Iki-engine rendering adapter for Charivo. Implements the charivo `Renderer`
-(plus the `MouseTrackable` pair) by driving an `.iki` puppet model through the
-[Iki](https://github.com/zeikar/iki) engine — a from-scratch, open Live2D
-alternative.
+[Iki](https://github.com/zeikar/iki) renderer for Charivo. It implements the
+charivo `Renderer` (plus the `MouseTrackable` pair) by driving an `.iki` puppet
+model through the Iki engine, an open 2D rig engine for the web, so a character
+needs no Live2D SDK or license.
 
-## Private dogfood adapter — not published
+In most apps you use it together with `@charivo/render`, the same way as
+`@charivo/render-live2d`. To see it running, open the web demo on an Iki
+character: [Twin](https://charivo.vercel.app/?character=twin) (a bust) or
+[Mint](https://charivo.vercel.app/?character=mint) (a full body).
 
-This package is **`private`** and is **not published to npm**. It exists to
-dogfood the Iki engine against a real charivo integration: the web demo's
-`Twin` and `Mint` characters ([`examples/web`](../../examples/web)) are drawn
-through it, with the demo's chat, voice and avatar control.
-
-It consumes [`@ikijs/engine`](https://www.npmjs.com/package/@ikijs/engine) and
-[`@ikijs/format`](https://www.npmjs.com/package/@ikijs/format) as ordinary npm
-dependencies — no sibling checkout, no path aliases, and the engine stays
-external in the bundle rather than being inlined into `dist`.
-
-Being private does not keep it out of the root passes: it has plain
-`build` / `typecheck` / `dev` scripts like every other package, so `pnpm verify`
-and CI compile it against the published engine. That is the point — a breaking
-change in Iki should fail charivo's build, not surface later by hand.
-
-It resolves `@charivo/core` and `@charivo/render` via their **built** `dist`
-declarations (not source), so both must be built first — which the root
-`pnpm build` already does in workspace-dependency order.
+## Install
 
 ```bash
-pnpm install
-pnpm build            # @charivo/core → @charivo/render → this adapter
+pnpm add @charivo/render-iki @charivo/render
 ```
+
+[`@ikijs/engine`](https://www.npmjs.com/package/@ikijs/engine) and
+[`@ikijs/format`](https://www.npmjs.com/package/@ikijs/format) come with it as
+dependencies. The package is browser-only and ESM-only, and MIT like the
+engine. Iki is pre-1.0, so each release of this package pins one engine minor
+(`^0.12` now) and moves to the next one in a release of its own.
 
 ## Usage
 
@@ -53,13 +44,17 @@ await renderManager.loadModel?.("/hero.iki");
 const catalog = renderer.getAvatarControlCatalog();
 ```
 
-(The package-name import resolves to `dist/`, so run
-`pnpm --filter @charivo/render-iki build` first.)
+`loadModel()` fetches the path, so serve the `.iki` file from your app (it is
+one JSON file with its textures inside). The models the demo uses are in
+[`examples/web/public/iki/`](https://github.com/zeikar/charivo/tree/main/examples/web/public/iki);
+the [Iki repo](https://github.com/zeikar/iki) documents the format.
 
 ## Try it
 
-A runnable local harness lives in [`examples/iki-test`](../../examples/iki-test) —
-it drives an Iki model through charivo's `RenderManager` + this adapter:
+Besides the web demo, a local harness lives in
+[`examples/iki-test`](https://github.com/zeikar/charivo/tree/main/examples/iki-test)
+in the charivo repo — it drives an Iki model through charivo's `RenderManager`
+and this adapter:
 engine idle and hair physics, mouse-follow gaze through the idle's own
 eyes-lead, head-follow model, simulated lip-sync, and a button for every expression and motion the file
 declares (sent as `avatar:expression` / `avatar:motion` events), with the
@@ -71,6 +66,10 @@ files are the web demo's, under `examples/web/public/iki/`, so there is one
 copy of each to refresh.
 
 ## Public surface
+
+The package exports `createIkiRenderer(options?)` and the types
+`IkiRenderer`, `IkiRendererOptions` (`{ canvas }`) and `IkiView`. The renderer
+it returns exposes:
 
 - `initialize()` — create the WebGL player (requires a canvas).
 - `loadModel(modelPath)` — fetch + parse an `.iki` model, build the engine's
@@ -115,8 +114,8 @@ the parsed model:
   base face over its `fadeOut`. `RenderManager` calls it when speech ends
   (`tts:audio:end`) or after its hold fallback.
 - `playMotionByGroup(group, index)` plays that clip one-shot, replacing a
-  running one. The `muteSound` option has nothing to mute: Iki clips carry no
-  audio.
+  running one. The `Renderer` contract's `{ muteSound }` option is accepted and
+  ignored: Iki clips carry no audio.
 - `getAvailableExpressions()` returns the expression ids and
   `getAvailableMotionGroups()` `{ group: clip count }`; `RenderManager` drops
   `avatar:expression` / `avatar:motion` events that name anything else.

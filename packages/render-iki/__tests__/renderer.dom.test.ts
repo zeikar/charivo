@@ -63,6 +63,17 @@ vi.mock("@ikijs/engine", async (importOriginal) => {
 
 import { createIkiRenderer, type IkiRenderer } from "../src/renderer";
 
+// The suite drives the factory's own return type, so a member dropped from
+// `IkiRenderer` fails the typecheck here. Only the three members it leaves
+// optional, as `Renderer` declares them, are asserted present.
+type LoadedIkiRenderer = IkiRenderer &
+  Required<
+    Pick<
+      IkiRenderer,
+      "loadModel" | "setRealtimeLipSync" | "updateRealtimeLipSyncRms"
+    >
+  >;
+
 const FIXTURE: IkiModel = {
   version: 1,
   name: "fixture",
@@ -192,9 +203,16 @@ function pumpTo(from: number, to: number): void {
   for (let t = from; t <= to; t += 100) pump(t);
 }
 
+describe("package entry", () => {
+  it("exports the factory and no class", async () => {
+    const entry = await import("../src/renderer");
+    expect(Object.keys(entry)).toEqual(["createIkiRenderer"]);
+  });
+});
+
 describe("IkiRenderer / IkiMotion integration", () => {
   let canvas: HTMLCanvasElement;
-  let renderer: IkiRenderer;
+  let renderer: LoadedIkiRenderer;
   let served: IkiModel;
 
   beforeEach(async () => {
@@ -227,7 +245,7 @@ describe("IkiRenderer / IkiMotion integration", () => {
     );
 
     canvas = document.createElement("canvas");
-    renderer = createIkiRenderer({ canvas });
+    renderer = createIkiRenderer({ canvas }) as LoadedIkiRenderer;
     await renderer.initialize();
   });
 

@@ -1,8 +1,7 @@
 {
   "name": "@charivo/render-iki",
   "version": "0.0.25",
-  "description": "Iki-engine rendering adapter for Charivo (private dogfood adapter; consumes @ikijs/engine from npm)",
-  "private": true,
+  "description": "Iki puppet renderer for Charivo",
   "type": "module",
   "main": "dist/renderer.js",
   "module": "dist/renderer.js",
@@ -15,13 +14,21 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/metafile-*.json"
   ],
   "scripts": {
     "build": "tsup && tsc -p tsconfig.dts.json --emitDeclarationOnly --declarationDir dist --pretty false",
-    "typecheck": "tsc --noEmit",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
   },
+  "keywords": [
+    "charivo",
+    "iki",
+    "avatar",
+    "webgl",
+    "lipsync"
+  ],
   "dependencies": {
     "@charivo/core": "workspace:^",
     "@charivo/render": "workspace:^",
@@ -31,6 +38,9 @@
   "devDependencies": {
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "MIT",
   "repository": {

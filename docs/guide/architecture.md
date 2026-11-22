@@ -143,6 +143,7 @@ when you explicitly want local development shortcuts or zero-server behavior.
 ### Rendering
 
 - `@charivo/render-live2d`
+- `@charivo/render-iki`
 - `@charivo/render/stub`
 
 ## Server Providers
@@ -234,13 +235,11 @@ scripts/
 ```
 
 - root `README.md`: project overview and top-level entry points
-- `packages/`: library packages, publishable except private development
-  adapters such as `@charivo/render-iki` (which the web demo uses for two
-  of its characters)
+- `packages/`: the published library packages
 - `examples/`: the two documented reference apps — [web](./examples-web.md) puts
   the LLM/TTS/STT client styles side by side, [companion](./examples-companion.md)
   is realtime-only with browser-local character memory — plus `iki-test`, a
-  private harness for the iki renderer adapter
+  private harness for `@charivo/render-iki`
 - `docs-site/`: the site that publishes `docs/guide/`
 - `docs/guide/`: integration guides and package selection help
 - `docs/history/`: migrations, upgrade notes, and implementation history
