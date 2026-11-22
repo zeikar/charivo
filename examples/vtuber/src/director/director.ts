@@ -5,9 +5,11 @@
 import { findCueLeak } from "./envelope";
 import { createIdleTimer } from "./idle-timer";
 import { decide, type PolicyView } from "./policy";
+import { createSegmentScheduler } from "./segment-scheduler";
 import { createSpeechQueue } from "./speech-queue";
 import type {
   CharacterPort,
+  Decision,
   DirectorConfig,
   DirectorCounters,
   DirectorLogEntry,
@@ -40,25 +42,50 @@ export type DirectorListener = (
 
 export interface Director {
   start(): void;
+  /**
+   * Ends a running show as `stopped`: timers, queue and sources are stopped at
+   * once, and the line in flight is interrupted. Resolves once that line is
+   * over and logged, or at once when the interrupt rejected (status
+   * `failed`). Never rejects; does nothing when the show is not running.
+   */
+  stop(): Promise<void>;
   getSnapshot(): DirectorSnapshot;
   /** Returns the function that unsubscribes `listener`. */
   subscribe(listener: DirectorListener): () => void;
 }
 
+const MAX_PUBLISH_PASSES = 100;
+
 export function createDirector({
   port,
+  plan,
   config,
   sources = [],
 }: DirectorOptions): Director {
   const queue = createSpeechQueue();
   const idleTimer = createIdleTimer(config.idleAfterMs);
+  const scheduler = createSegmentScheduler(plan);
   // Internal and external inputs share one lifecycle and one dispatch. The
   // idle timer goes first so it can be armed by anything a later source
-  // emits while starting.
-  const allSources: ShowEventSource<ShowEvent>[] = [idleTimer, ...sources];
+  // emits while starting; the scheduler next, so the opening cue is spoken
+  // before anything an external source emits while starting.
+  const allSources: ShowEventSource<ShowEvent>[] = [
+    idleTimer,
+    scheduler,
+    ...sources,
+  ];
 
   let status: DirectorStatus = "ready";
+  let errorMessage: string | null = null;
   let inFlight: Line | null = null;
+  // Settles once the in-flight line's speak() has settled and been handled.
+  let inFlightDone: Promise<void> = Promise.resolve();
+  // Pending while a cut line is being stopped; nothing starts meanwhile.
+  let cutting: Promise<void> | null = null;
+  // The show finishes when this line settles, whatever its result.
+  let endingLineId: string | null = null;
+  // What a stop() called again, or after the show ended, resolves with.
+  let stopping: Promise<void> = Promise.resolve();
   let nextLineNumber = 1;
   const lastChatAt = new Map<string, number>();
   const lastAgentAt = new Map<string, number>();
@@ -91,7 +118,7 @@ export function createDirector({
       lastChatAt,
       lastAgentAt,
       lastInterruptAt,
-      segment: null,
+      segment: scheduler.current()?.segment ?? null,
     };
   }
 
@@ -102,25 +129,61 @@ export function createDirector({
     if (decision.kind === "ignore") {
       counters.eventsIgnored++;
     } else {
-      nextLineNumber++;
-      if (event.kind === "chat") lastChatAt.set(event.viewer, now);
-      if (event.kind === "agent") lastAgentAt.set(event.source, now);
+      applyDecisionEffects(event, decision, now);
       queue.push(Object.freeze(decision.line));
-      if (decision.kind === "interrupt") {
-        // Set at decision time so a second urgent event cannot cut the same
-        // filler. Cutting the filler itself is not wired yet: until then the
-        // line waits in the queue like an enqueued one.
-        lastInterruptAt = now;
-      }
+      // The urgent line is queued, not started: once the cut settles the
+      // queue is drained by priority, so a queued cue still goes first. A
+      // cut already settling serves this line too.
+      if (decision.kind === "interrupt" && cutting === null) cut();
       drain();
     }
     publish();
   }
 
+  // What accepting an event does besides queueing its line: the cooldown
+  // and interrupt bookkeeping, and for a segment start, dropping queued idle
+  // filler, logging the segment and remembering the ending line.
+  function applyDecisionEffects(
+    event: ShowEvent,
+    decision: Exclude<Decision, { kind: "ignore" }>,
+    now: number,
+  ): void {
+    nextLineNumber++;
+    switch (event.kind) {
+      case "chat":
+        lastChatAt.set(event.viewer, now);
+        break;
+      case "agent":
+        lastAgentAt.set(event.source, now);
+        break;
+      case "segment":
+        // Filler was about the old segment; the new cue replaces it.
+        queue.removeWhere((line) => line.source === "idle");
+        log({
+          kind: "segment",
+          at: now,
+          index: event.index,
+          segment: event.segment,
+        });
+        if (event.segment.kind === "ending") endingLineId = decision.line.id;
+        break;
+    }
+    if (decision.kind === "interrupt") {
+      // Set at decision time so a second urgent event cannot cut the same
+      // filler.
+      lastInterruptAt = now;
+    }
+  }
+
   // Starts the next line if one can start now. Silence is judged here, after
   // the queue has been served, not from the queue's size when a line settled.
   function drain(): void {
-    if (status !== "running" || inFlight !== null || startTimer !== null) {
+    if (
+      status !== "running" ||
+      inFlight !== null ||
+      startTimer !== null ||
+      cutting !== null
+    ) {
       return;
     }
     const now = Date.now();
@@ -173,20 +236,43 @@ export function createDirector({
     } catch (error) {
       speaking = Promise.reject(error);
     }
-    speaking.then(
+    inFlightDone = speaking.then(
       (result) => settle(line, result),
       (error: unknown) =>
-        settle(line, {
-          status: "failed",
-          text: "",
-          error: error instanceof Error ? error.message : String(error),
-        }),
+        settle(line, { status: "failed", text: "", error: messageOf(error) }),
     );
+  }
+
+  // Stops the line in flight. Audio may overlap unless both port.interrupt()
+  // and the cut line's speak() have settled, so the next line waits for both;
+  // the cut line itself is not retried.
+  function cut(): Promise<void> {
+    const cutDone = inFlightDone;
+    let interrupting: Promise<void>;
+    try {
+      interrupting = port.interrupt();
+    } catch (error) {
+      interrupting = Promise.reject(error);
+    }
+    cutting = interrupting.then(
+      async () => {
+        await cutDone;
+        cutting = null;
+        drain();
+        publish();
+      },
+      (reason: unknown) => {
+        cutting = null;
+        // The audio may still be playing, so no other line may start, now or
+        // when the cut line settles: the show fails without waiting for it.
+        end("failed", messageOf(reason));
+      },
+    );
+    return cutting;
   }
 
   function settle(line: Line, result: SpeakResult): void {
     inFlight = null;
-    lastLineFailed = result.status === "failed";
     // A failed line is counted and skipped like any other end: no retry, and
     // the show carries on. Status `failed` is not for this.
     if (result.status === "completed") counters.linesSpoken++;
@@ -197,8 +283,43 @@ export function createDirector({
     const leak = findCueLeak(result.text);
     if (leak) counters.cueLeaks++;
     log({ kind: "line-end", at: Date.now(), line, result, leak });
+    // A late settle is still recorded but never starts anything.
+    if (status !== "running") {
+      publish();
+      return;
+    }
+    lastLineFailed = result.status === "failed";
+    if (line.id === endingLineId) {
+      end("finished");
+      return;
+    }
     drain();
     publish();
+  }
+
+  // The one way a show ends, whether finished, stopped or failed. A stop()
+  // whose interrupt rejects calls it twice, `stopped` then `failed`, so the
+  // teardown runs only the first time.
+  function end(next: DirectorStatus, message?: string): void {
+    const tearDown = status === "running";
+    status = next;
+    if (message !== undefined) {
+      errorMessage = message;
+      log({ kind: "error", at: Date.now(), message });
+    }
+    if (tearDown) {
+      inFlight = null;
+      queue.removeWhere(() => true);
+      // Not a source, so stopping the sources would leave it pending.
+      if (startTimer !== null) clearTimeout(startTimer);
+      startTimer = null;
+      for (const source of allSources) source.stop();
+    }
+    publish();
+  }
+
+  function messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   function log(entry: DirectorLogEntry): void {
@@ -206,14 +327,15 @@ export function createDirector({
   }
 
   function buildSnapshot(): DirectorSnapshot {
+    const current = scheduler.current();
     return Object.freeze({
       status,
-      segmentIndex: null,
-      segment: null,
+      segmentIndex: current?.index ?? null,
+      segment: current?.segment ?? null,
       inFlight,
       queue: Object.freeze(queue.snapshot()),
       counters: Object.freeze({ ...counters }),
-      error: null,
+      error: errorMessage,
     });
   }
 
@@ -226,7 +348,20 @@ export function createDirector({
       return;
     }
     publishing = true;
+    let passes = 0;
     do {
+      // A listener that pushes on every publish would otherwise loop forever
+      // and freeze the caller. What is left goes out with the next publish.
+      if (++passes > MAX_PUBLISH_PASSES) {
+        // Kept current, though the listeners have not seen it.
+        snapshot = buildSnapshot();
+        queueMicrotask(() => {
+          throw new Error(
+            `Director: listeners kept publishing for ${MAX_PUBLISH_PASSES} passes`,
+          );
+        });
+        break;
+      }
       republish = false;
       const current = buildSnapshot();
       snapshot = current;
@@ -251,9 +386,26 @@ export function createDirector({
     start() {
       if (status !== "ready") return;
       status = "running";
-      for (const source of allSources) source.start(dispatch);
+      for (const source of allSources) {
+        // A listener may stop the show while an earlier source starts; the
+        // rest were stopped by end() already and must not start after it.
+        if (status !== "running") break;
+        source.start(dispatch);
+      }
       drain();
       publish();
+    },
+
+    stop() {
+      if (status !== "running") return stopping;
+      // Taken before end() forgets the line in flight. A cut already
+      // settling is awaited rather than interrupted a second time.
+      const cutDone =
+        cutting ?? (inFlight === null ? Promise.resolve() : cut());
+      // Set before end(), whose publish may reach a listener calling stop().
+      stopping = cutDone;
+      end("stopped");
+      return cutDone;
     },
 
     getSnapshot() {
