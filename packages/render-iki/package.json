@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-iki",
-  "version": "0.0.25",
+  "version": "0.1.0",
   "description": "Iki puppet renderer for Charivo",
   "type": "module",
   "main": "dist/renderer.js",
