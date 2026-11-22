@@ -32,7 +32,9 @@ await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
 The renderer exposes:
 
 - `initialize()`
-- `loadModel(modelPath)`
+- `loadModel(modelPath)` — the latest call wins: a load that a later call
+  overtook releases its model and resolves without showing it, however late its
+  files arrive
 - `render(message, character?)`
 - `destroy()`
 - `getAvailableExpressions()`
@@ -44,6 +46,11 @@ The renderer exposes:
   playing; an unflagged call keeps the sound, which is what leaves a
   human-triggered motion audible
 - `lookAt({ x, y })`
+- `setGazeOrigin(origin?)` — the point of the model the mouse gaze is measured
+  from, as fractions of the model's canvas (`{ x: 0.5, y: 0.14 }` is between
+  Haru's eyes); no argument restores the canvas's centre, the Cubism sample's
+  convention, under which a pointer on a full body's face reads as above the
+  centre. It holds across `loadModel`; taps and `lookAt` are unaffected
 
 When used through `@charivo/render`, realtime lip sync, mouse tracking,
 and gaze are handled for you.

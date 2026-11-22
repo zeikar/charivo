@@ -71,6 +71,15 @@ If it also exposes optional methods such as `loadModel`, `setRealtimeLipSync`,
 `getAvatarControlCatalog` is the exception: the manager never calls it — it
 hands the app the model's catalog for avatar tools.
 
+Mouse tracking is installed when the renderer is `MouseTrackable`
+(`updateViewWithMouse` and `handleMouseTap`). That contract also has an
+optional `setGazeOrigin(origin?)`, which the app calls on the renderer itself:
+the point of the model, as a `GazeOrigin` (fractions of the model's own canvas,
+top-left `(0, 0)` to bottom-right `(1, 1)`), that the cursor is measured from
+instead of the canvas's centre — between the eyes of a full body, so a pointer
+on the face looks straight ahead. See
+[Where The Cursor Is Measured From](../../docs/guide/rendering.md#where-the-cursor-is-measured-from).
+
 ## Event Wiring
 
 `RenderManager` uses `setEventBus(...)` because it subscribes to upstream

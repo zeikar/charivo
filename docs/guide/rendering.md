@@ -116,6 +116,13 @@ The usual flow is:
 5. call `loadModel(...)`
 6. attach the manager to `Charivo`
 
+Calling `loadModel(...)` again switches models. If a second call starts before
+the first has finished, the latest call wins in both renderers in this repo
+(`@charivo/render-live2d`, and the private `@charivo/render-iki` adapter): the
+earlier load is dropped however late it lands. A renderer of your own should do
+the same, since an app switching characters does not wait for the previous
+switch.
+
 If the renderer exposes optional methods such as `playExpression`,
 `stopExpression`, `playMotionByGroup`, `lookAt`, or model catalog getters,
 `@charivo/render` will use them automatically. `getAvatarControlCatalog` is
@@ -140,6 +147,35 @@ suppress them.
 
 `setLocalGaze` returns `false` (no-op) while AI gaze owns the avatar or when
 the renderer has no `lookAt`.
+
+### Where The Cursor Is Measured From
+
+By default the cursor-follow gaze is measured from the canvas's centre. That
+suits a bust, whose face is near it. On a full-body model the centre is the
+waist, so a pointer on the face counts as above it and the character looks up.
+
+`renderer.setGazeOrigin({ x, y })` names the point to measure from instead,
+usually the one between the eyes. It is a `GazeOrigin` from `@charivo/render`:
+fractions of the model's own canvas, `(0, 0)` its top-left corner and `(1, 1)`
+its bottom-right, the way the point reads off a picture of the model. Both
+renderers in this repo (`@charivo/render-live2d`, and the private
+`@charivo/render-iki` adapter) implement it with those same units, and each
+places the point on the canvas itself, so it holds at any canvas size or
+framing.
+
+```ts
+await renderManager.loadModel?.("/live2d/Haru/Haru.model3.json");
+renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
+```
+
+- Call it on the renderer, not the manager, and again when the next model's
+  face is elsewhere: the renderer holds it across `loadModel`.
+- No argument restores the canvas's centre. A non-finite `x` or `y` throws.
+- Only the mouse cursor is affected. Taps hit-test where the pointer is, and
+  `lookAt` / `setLocalGaze` / AI gaze already take a direction.
+- It is an optional member of `MouseTrackable`, so a renderer of your own may
+  leave it out; an app that supports several renderers calls
+  `renderer.setGazeOrigin?.(origin)`.
 
 ## Alternatives
 
