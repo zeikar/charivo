@@ -29,8 +29,10 @@ import {
 } from "../../adapters/charivo-cascade-port";
 import {
   createDirector,
+  createPushSource,
   type Director,
   type DirectorSnapshot,
+  type PushSource,
 } from "../../director";
 import { SHOW_MAX_HISTORY_TURNS } from "../api/demo-limits";
 import {
@@ -40,7 +42,11 @@ import {
   HARU_MODEL_PATH,
   HARU_MOTION_DESCRIPTIONS,
 } from "../lib/character";
+import { FAKE_GAME_EVENT_SCRIPT } from "../lib/fake-game-events";
+import { FAKE_VIEWER_SCRIPT } from "../lib/fake-viewers";
+import { createScriptedSource } from "../lib/scripted-source";
 import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../lib/show-plan";
+import { appendToShowLog, EMPTY_SHOW_LOG, type ShowLog } from "../lib/show-log";
 
 export type ShowLifecycle = "idle" | "starting" | "running" | "stopping";
 
@@ -59,11 +65,23 @@ export interface VtuberShow {
   /** True once the port's audio could not be stopped; only a reload recovers. */
   needsReload: boolean;
   snapshot: DirectorSnapshot | null;
+  /** The current show's log; emptied when a new show starts. */
+  log: ShowLog;
   status: CharacterStatus;
   caption: string;
   error: string | null;
+  scriptedViewers: boolean;
+  scriptedGameEvents: boolean;
+  setScriptedViewers(enabled: boolean): void;
+  setScriptedGameEvents(enabled: boolean): void;
   startShow(): Promise<void>;
   stopShow(): Promise<void>;
+  /** Dropped unless a show is running. */
+  submitChat(message: {
+    viewer: string;
+    text: string;
+    highlighted: boolean;
+  }): void;
 }
 
 export function useVtuberShow({
@@ -75,6 +93,9 @@ export function useVtuberShow({
   const [lifecycle, setLifecycleState] = useState<ShowLifecycle>("idle");
   const [needsReload, setNeedsReloadState] = useState(false);
   const [snapshot, setSnapshot] = useState<DirectorSnapshot | null>(null);
+  const [log, setLog] = useState<ShowLog>(EMPTY_SHOW_LOG);
+  const [scriptedViewers, setScriptedViewersState] = useState(true);
+  const [scriptedGameEvents, setScriptedGameEventsState] = useState(true);
   const [audioActive, setAudioActive] = useState(false);
   const [caption, setCaption] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +107,11 @@ export function useVtuberShow({
   const needsReloadRef = useRef(false);
   const directorRef = useRef<Director | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const chatSourceRef = useRef<PushSource | null>(null);
+  // Read by the scripted sources as each entry comes due, so a toggle takes
+  // effect mid-show without restarting it.
+  const scriptedViewersRef = useRef(true);
+  const scriptedGameEventsRef = useRef(true);
 
   const setLifecycle = useCallback((next: ShowLifecycle) => {
     lifecycleRef.current = next;
@@ -95,6 +121,16 @@ export function useVtuberShow({
   const setNeedsReload = useCallback((next: boolean) => {
     needsReloadRef.current = next;
     setNeedsReloadState(next);
+  }, []);
+
+  const setScriptedViewers = useCallback((enabled: boolean) => {
+    scriptedViewersRef.current = enabled;
+    setScriptedViewersState(enabled);
+  }, []);
+
+  const setScriptedGameEvents = useCallback((enabled: boolean) => {
+    scriptedGameEventsRef.current = enabled;
+    setScriptedGameEventsState(enabled);
   }, []);
 
   // A port stays unusable for good, so this only ever turns needsReload on;
@@ -288,15 +324,33 @@ export function useVtuberShow({
     // A new show starts from an empty conversation, not the last show's.
     session.charivo.clearHistory();
     setCaption("");
+    setLog(EMPTY_SHOW_LOG);
+    // Fresh sources per show: the scripts replay from this Start.
+    const chatSource = createPushSource();
+    chatSourceRef.current = chatSource;
     const director = createDirector({
       port: session.port,
       plan: DEFAULT_SHOW_PLAN,
       config: SHOW_DIRECTOR_CONFIG,
+      sources: [
+        chatSource,
+        createScriptedSource(
+          FAKE_VIEWER_SCRIPT,
+          () => scriptedViewersRef.current,
+        ),
+        createScriptedSource(
+          FAKE_GAME_EVENT_SCRIPT,
+          () => scriptedGameEventsRef.current,
+        ),
+      ],
     });
     directorRef.current = director;
-    unsubscribeRef.current = director.subscribe((next) => {
+    unsubscribeRef.current = director.subscribe((next, entries) => {
       if (sessionRef.current !== session) return;
       setSnapshot(next);
+      if (entries.length > 0) {
+        setLog((current) => appendToShowLog(current, entries));
+      }
       checkUsable(session);
       if (
         (next.status === "finished" || next.status === "failed") &&
@@ -321,6 +375,15 @@ export function useVtuberShow({
     releaseDirector(director);
   }, [checkUsable, releaseDirector, setLifecycle]);
 
+  // The Director stops its sources when the show ends, so the push source
+  // drops a message sent before Start or after the end.
+  const submitChat = useCallback<VtuberShow["submitChat"]>(
+    ({ viewer, text, highlighted }) => {
+      chatSourceRef.current?.push({ kind: "chat", viewer, text, highlighted });
+    },
+    [],
+  );
+
   let status: CharacterStatus = "idle";
   if (audioActive) status = "speaking";
   else if (snapshot?.status === "failed") status = "failed";
@@ -331,10 +394,16 @@ export function useVtuberShow({
     lifecycle,
     needsReload,
     snapshot,
+    log,
     status,
     caption,
     error,
+    scriptedViewers,
+    scriptedGameEvents,
+    setScriptedViewers,
+    setScriptedGameEvents,
     startShow,
     stopShow,
+    submitChat,
   };
 }

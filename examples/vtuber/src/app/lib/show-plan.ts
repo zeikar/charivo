@@ -49,3 +49,15 @@ export const SHOW_DIRECTOR_CONFIG: DirectorConfig = {
   minLineIntervalMs: 7_000,
   failedLineBackoffMs: 14_000,
 };
+
+/** "Topic 2 of 3: A recent trip" — topics are counted apart from the opening and ending. */
+export function describeSegment(plan: ShowPlan, index: number): string {
+  const segment = plan.segments[index];
+  if (segment.kind === "opening") return `Opening: ${segment.title}`;
+  if (segment.kind === "ending") return `Ending: ${segment.title}`;
+  const topics = plan.segments.filter((s) => s.kind === "topic").length;
+  const number = plan.segments
+    .slice(0, index + 1)
+    .filter((s) => s.kind === "topic").length;
+  return `Topic ${number} of ${topics}: ${segment.title}`;
+}

@@ -1,5 +1,7 @@
 import type { DirectorSnapshot, ShowPlan } from "../../director";
 import type { CharacterStatus, ShowLifecycle } from "../hooks/useVtuberShow";
+import { describeSegment } from "../lib/show-plan";
+import { FOCUS_RING } from "./focus-ring";
 
 const STATUS_STYLES: Record<
   CharacterStatus,
@@ -26,21 +28,6 @@ const STATUS_STYLES: Record<
     dot: "bg-red-500",
   },
 };
-
-const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2";
-
-/** "Topic 2 of 3: A recent trip" — topics are counted apart from the opening and ending. */
-function describeSegment(plan: ShowPlan, index: number): string {
-  const segment = plan.segments[index];
-  if (segment.kind === "opening") return `Opening: ${segment.title}`;
-  if (segment.kind === "ending") return `Ending: ${segment.title}`;
-  const topics = plan.segments.filter((s) => s.kind === "topic").length;
-  const number = plan.segments
-    .slice(0, index + 1)
-    .filter((s) => s.kind === "topic").length;
-  return `Topic ${number} of ${topics}: ${segment.title}`;
-}
 
 type ShowBarProps = {
   status: CharacterStatus;
