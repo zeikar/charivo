@@ -168,7 +168,7 @@ export interface DirectorSnapshot {
   segmentIndex: number | null;
   segment: Segment | null;
   inFlight: Line | null;
-  queue: Line[];
+  queue: readonly Line[];
   counters: DirectorCounters;
   /** Set when status is `failed`. */
   error: string | null;
