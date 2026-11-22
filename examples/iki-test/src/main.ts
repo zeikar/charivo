@@ -1,14 +1,17 @@
 import { createCharivo } from "@charivo/core";
 import { createRenderManager } from "@charivo/render";
 import { createIkiRenderer, type IkiView } from "@charivo/render-iki";
+// The web demo ships these models as its Iki characters; one copy serves both.
+import heroUrl from "../../web/public/iki/hero.iki?url";
+import mintUrl from "../../web/public/iki/mint.iki?url";
 
 // The models this harness can load, picked with `?model=<name>`. A full body
 // is framed in a view wider than its box, so the waving hand stays on canvas;
 // the numbers are mint's `canvas` size.
 const MODELS: Record<string, { path: string; view?: IkiView }> = {
-  hero: { path: "/hero.iki" },
+  hero: { path: heroUrl },
   mint: {
-    path: "/mint.iki",
+    path: mintUrl,
     view: { x: 0, y: 0, width: 1.6 * 1100, height: 3692 },
   },
 };

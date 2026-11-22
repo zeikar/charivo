@@ -203,6 +203,11 @@ describe("IkiRenderer / IkiMotion integration", () => {
     pending.clear();
     served = FIXTURE;
 
+    // The engine's idle draws from Math.random. Pinned at 0.5, every gaze it
+    // picks for itself is the centre (0, 0), so an eye or a head turn seen
+    // below can only be the host's.
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       pending.set(++nextRafId, cb);
       return nextRafId;
@@ -228,6 +233,7 @@ describe("IkiRenderer / IkiMotion integration", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("keeps one rAF loop, motion scheduled first", async () => {
@@ -242,63 +248,100 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(pending.size).toBe(1);
   });
 
-  it("honours a gaze stored before load on frame 1, deterministically", async () => {
-    expect(() => renderer.lookAt({ x: 0.5, y: 0 })).not.toThrow();
+  it("leaves the head and eyes to the engine's idle until a gaze arrives", async () => {
     await renderer.loadModel("/x.iki");
+    const store = playerRegistry.instances[0]!.store;
 
+    pumpTo(0, 1000);
+
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0, 2);
+    // Only the idle's drift, still fading in: well short of a gaze's follow.
+    expect(Math.abs(store.get(StandardParameter.AngleX))).toBeLessThan(2);
+  });
+
+  it("hands a gaze stored before load to the engine: the eyes go there, the head follows", async () => {
+    expect(() => renderer.lookAt({ x: 0.5, y: -0.25 })).not.toThrow();
+    await renderer.loadModel("/x.iki");
+    const store = playerRegistry.instances[0]!.store;
+
+    // Springs, not a write: nothing has moved on the first frame.
     pump(0);
+    expect(store.get(StandardParameter.EyeballX)).toBe(0);
 
-    const store = playerRegistry.instances[0]!.store;
-    expect(store.get(StandardParameter.AngleX)).toBe(13);
-    expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
-    expect(store.get(StandardParameter.EyeballY)).toBe(0);
-    expect(store.get(StandardParameter.MouthOpen)).toBe(0);
+    pumpTo(100, 1000);
+
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.5, 2);
+    expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(-0.25, 2);
+    // The engine's follow is 10° per unit of gaze, plus its drift (under 1°
+    // this early). The adapter's old 26° per unit would read 13 here.
+    const angleX = store.get(StandardParameter.AngleX);
+    expect(angleX).toBeGreaterThan(3.5);
+    expect(angleX).toBeLessThan(6.5);
+    expect(store.get(StandardParameter.AngleY)).toBeLessThan(-1);
   });
 
-  it("head = target + idle sway, eyes = target, over several frames", async () => {
-    renderer.lookAt({ x: 0.5, y: 0 });
-    await renderer.loadModel("/x.iki");
-
-    const store = playerRegistry.instances[0]!.store;
-
-    for (let t = 0; t <= 96; t += 16) {
-      pump(t);
-      const angleX = store.get(StandardParameter.AngleX);
-      expect(angleX).toBeGreaterThanOrEqual(13 - 3.5);
-      expect(angleX).toBeLessThanOrEqual(13 + 3.5);
-      expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
-    }
-    // Deterministic on the idle clock at t <= 96ms: no blink has started yet
-    // (the first blink starts >= 1500ms) and breath is still rising (sin > 0
-    // for 0 < t < 1750ms).
-    expect(store.get(StandardParameter.EyeOpenLeft)).toBe(1);
-    expect(store.get(StandardParameter.Breath)).toBeGreaterThan(0.5);
-
-    // IdleMotion clamps dt to 100ms, so 100ms steps advance its clock fully.
-    // By t=1500ms idle sway is large enough to tell blended (16.27) apart
-    // from a host-wins regression that drops idle's `+ motionValue` (13.00).
-    for (let t = 196; t < 1500; t += 100) pump(t);
-    pump(1500);
-    expect(store.get(StandardParameter.AngleX)).toBeGreaterThan(14);
-  });
-
-  it("lets physics read the blended (host-driven) pose", async () => {
+  it("moves a held gaze when the host sends another", async () => {
     renderer.lookAt({ x: 1, y: 0 });
     await renderer.loadModel("/x.iki");
+    const store = playerRegistry.instances[0]!.store;
+    pumpTo(0, 1000);
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(1, 2);
 
+    renderer.lookAt({ x: -1, y: 0 });
+    pumpTo(1100, 2000);
+
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(-1, 2);
+    expect(store.get(StandardParameter.AngleX)).toBeLessThan(-5);
+  });
+
+  it("lets physics read the head a gaze turned", async () => {
+    renderer.lookAt({ x: 1, y: 0 });
+    await renderer.loadModel("/x.iki");
     const store = playerRegistry.instances[0]!.store;
 
-    pump(0);
-    pump(16);
-    pump(32);
-    pump(48);
+    pumpTo(0, 1000);
 
-    const angleX = store.get(StandardParameter.AngleX);
-    expect(angleX).toBeGreaterThanOrEqual(22.5);
-    expect(angleX).toBeLessThanOrEqual(29.5);
-    // Pins the spring seeded from the host-driven head (26°), not idle's
-    // ~0° sway: an unblended seed settles near -0.0024, well short of -8.
-    expect(store.get(StandardParameter.HairSwayX)).toBeLessThan(-8);
+    // The fixture's rig reads AngleX at scale -10: the head's turn after the
+    // gaze swings it to about -3, where the idle's drift alone leaves it
+    // within 0.2 of rest.
+    expect(store.get(StandardParameter.HairSwayX)).toBeLessThan(-1);
+  });
+
+  // The engine clamps and drops a non-finite pair itself, so only the
+  // adapter's own eye write, under an `Idle` group, can show the adapter's:
+  // on a model whose eyes range past ±1, where the store would let 2 through.
+  describe("under an Idle group whose eyes range to ±2", () => {
+    beforeEach(() => {
+      served = {
+        ...IDLE_FIXTURE,
+        parameters: IDLE_FIXTURE.parameters.map((parameter) =>
+          parameter.id === StandardParameter.EyeballX
+            ? { ...parameter, min: -2, max: 2 }
+            : parameter,
+        ),
+      };
+    });
+
+    it("clamps a gaze to -1..1", async () => {
+      renderer.lookAt({ x: 5, y: 0 });
+      await renderer.loadModel("/x.iki");
+
+      pumpTo(0, 200);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballX)).toBe(1);
+    });
+
+    it("keeps the last gaze when a non-finite one arrives", async () => {
+      renderer.lookAt({ x: 0.5, y: 0 });
+      renderer.lookAt({ x: Number.NaN, y: 0 });
+      await renderer.loadModel("/x.iki");
+
+      pumpTo(0, 200);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
+    });
   });
 
   it("maps mouse position to gaze", async () => {
@@ -315,13 +358,115 @@ describe("IkiRenderer / IkiMotion integration", () => {
       toJSON: () => ({}),
     } as DOMRect);
 
-    renderer.updateViewWithMouse({ clientX: 400, clientY: 200 });
-    pump(0);
+    // Right edge, a quarter of the way down from the top: x = 1, y = 0.5.
+    renderer.updateViewWithMouse({ clientX: 400, clientY: 100 });
+    pumpTo(0, 1000);
 
     const store = playerRegistry.instances[0]!.store;
-    expect(store.get(StandardParameter.AngleX)).toBe(26);
-    // -(200 − 200) / 200 is -0, not 0 — mathematically "no vertical offset" either way.
-    expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0);
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(1, 2);
+    expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
+  });
+
+  describe("setGazeOrigin", () => {
+    // The fixture is 100 model units square. In the 400 px canvas below it
+    // draws at 4 px a unit, so the point a quarter of the way down it, 25
+    // units above its centre, is 100 px above the canvas's: client y 100.
+    beforeEach(() => {
+      vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+        left: 0,
+        top: 0,
+        width: 400,
+        height: 400,
+        right: 400,
+        bottom: 400,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+    });
+
+    it("measures the mouse from a point of the model, not the canvas centre", async () => {
+      await renderer.loadModel("/x.iki");
+      renderer.setGazeOrigin({ x: 0.5, y: 0.25 });
+
+      // Level with the origin at the right edge: without it this reads 0.5 up.
+      renderer.updateViewWithMouse({ clientX: 400, clientY: 100 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(1, 2);
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0, 2);
+    });
+
+    it("finds the point through the view the model is framed in", async () => {
+      // Twice as wide as the model: it now draws at 2 px a unit, so the same
+      // point is 50 px above the canvas's centre, client y 150.
+      renderer.setView({ x: 0, y: 0, width: 200, height: 100 });
+      renderer.setGazeOrigin({ x: 0.5, y: 0.25 });
+      await renderer.loadModel("/x.iki");
+
+      renderer.updateViewWithMouse({ clientX: 400, clientY: 150 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0, 2);
+    });
+
+    it("follows the view's centre, and the origin's x", async () => {
+      // The view's centre is 50 units right of the model's, and the origin,
+      // four fifths of the way across the model, 30: 20 units left of the
+      // view's centre, 80 px left of the canvas's, client x 120.
+      renderer.setView({ x: 50, y: 0, width: 100, height: 100 });
+      renderer.setGazeOrigin({ x: 0.8, y: 0.5 });
+      await renderer.loadModel("/x.iki");
+
+      renderer.updateViewWithMouse({ clientX: 220, clientY: 200 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.5, 2);
+    });
+
+    it("goes back to the canvas centre with no argument", async () => {
+      await renderer.loadModel("/x.iki");
+      renderer.setGazeOrigin({ x: 0.5, y: 0.25 });
+      renderer.setGazeOrigin();
+
+      renderer.updateViewWithMouse({ clientX: 400, clientY: 100 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
+    });
+
+    it("refuses a non-finite point, and keeps the one it had", async () => {
+      await renderer.loadModel("/x.iki");
+      renderer.setGazeOrigin({ x: 0.5, y: 0.25 });
+
+      expect(() => renderer.setGazeOrigin({ x: 0.5, y: Number.NaN })).toThrow(
+        "finite x and y",
+      );
+      expect(() =>
+        renderer.setGazeOrigin({ x: 0.5 } as { x: number; y: number }),
+      ).toThrow("finite x and y");
+
+      renderer.updateViewWithMouse({ clientX: 400, clientY: 100 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0, 2);
+    });
+
+    it("leaves lookAt alone: that is already a direction", async () => {
+      await renderer.loadModel("/x.iki");
+      renderer.setGazeOrigin({ x: 0.5, y: 0.25 });
+
+      renderer.lookAt({ x: 0, y: 0.5 });
+      pumpTo(0, 1000);
+
+      const store = playerRegistry.instances[0]!.store;
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
+    });
   });
 
   it("writes lip-sync on the frame, and closes the mouth when disabled", async () => {
@@ -422,7 +567,7 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.MouthForm)).toBe(0);
   });
 
-  it("adds a nod clip over the gaze on AngleY", async () => {
+  it("plays a nod over the gaze: the clip takes the head, the eyes stay", async () => {
     renderer.lookAt({ x: 0, y: 0.5 });
     await renderer.loadModel("/x.iki");
     const store = playerRegistry.instances[0]!.store;
@@ -432,11 +577,13 @@ describe("IkiRenderer / IkiMotion integration", () => {
     renderer.playMotionByGroup("Nod", 5); // out of range: ignored
     pumpTo(100, 500);
 
-    // Halfway through the clip: its -10° key, on top of the 13° gaze.
-    expect(store.get(StandardParameter.AngleY)).toBeCloseTo(26 * 0.5 - 10);
+    // Halfway through the clip, its -10° key: a clip replaces the idle's head,
+    // gaze follow included, for as long as it runs.
+    expect(store.get(StandardParameter.AngleY)).toBeCloseTo(-10);
+    expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
   });
 
-  it("writes the gaze the model's Idle loop leaves unwritten", async () => {
+  it("writes the eyes itself under a model's Idle loop, and leaves it the head", async () => {
     served = IDLE_FIXTURE;
     renderer.lookAt({ x: 0.5, y: 0.25 });
     await renderer.loadModel("/x.iki");
@@ -444,11 +591,13 @@ describe("IkiRenderer / IkiMotion integration", () => {
 
     pumpTo(0, 500);
 
+    // A write after update(), so the eyes are there at once, not on a spring.
     expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
     expect(store.get(StandardParameter.EyeballY)).toBe(0.25);
-    expect(store.get(StandardParameter.AngleY)).toBe(26 * 0.25);
-    // AngleX is the Idle clip's (2° at 0.5 s), blended over the gaze.
-    expect(store.get(StandardParameter.AngleX)).toBeCloseTo(26 * 0.5 + 2);
+    // AngleX is the Idle clip's (2° at 0.5 s); AngleY, which it does not
+    // animate, rests.
+    expect(store.get(StandardParameter.AngleX)).toBeCloseTo(2);
+    expect(store.get(StandardParameter.AngleY)).toBe(0);
   });
 
   it("forwards a view to the player, and no view restores the box", () => {
@@ -515,6 +664,39 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(pending.size).toBe(0);
   });
 
+  it("drops a load whose fetch lands after a later load finished", async () => {
+    // The engine only supersedes loads that reach it in order; this one would
+    // reach it last, and replace the model the host asked for after it.
+    const slow = { ...FIXTURE, expressions: undefined };
+    let resolveSlow!: (value: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/slow.iki"
+          ? new Promise<Response>((resolve) => {
+              resolveSlow = resolve;
+            })
+          : Promise.resolve({
+              ok: true,
+              text: async () => JSON.stringify(FIXTURE),
+            } as Response),
+      ),
+    );
+    const player = playerRegistry.instances[0]!;
+    const loadSpy = vi.spyOn(player, "load");
+
+    const slowLoad = renderer.loadModel("/slow.iki");
+    await renderer.loadModel("/x.iki");
+    resolveSlow({
+      ok: true,
+      text: async () => JSON.stringify(slow),
+    } as Response);
+    await slowLoad;
+
+    expect(loadSpy).toHaveBeenCalledTimes(1);
+    expect(renderer.getAvailableExpressions()).toEqual(["smile", "surprised"]);
+  });
+
   it("builds nothing for a superseded load", async () => {
     const player = playerRegistry.instances[0]!;
     vi.spyOn(player, "load").mockResolvedValueOnce({
@@ -540,9 +722,10 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(loadSpy).toHaveBeenCalledTimes(2);
     expect(pending.size).toBe(1);
 
-    pump(0);
+    pumpTo(0, 1000);
     // Confirms IkiMotion was rebuilt against the second load's store, not
-    // left wired to the first load's (now-discarded) one.
-    expect(player.store.get(StandardParameter.AngleX)).toBe(13);
+    // left wired to the first load's (now-discarded) one, and that the gaze
+    // was handed to the rebuilt one.
+    expect(player.store.get(StandardParameter.EyeballX)).toBeCloseTo(0.5, 2);
   });
 });

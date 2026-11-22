@@ -14,6 +14,7 @@ export const HARU_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "coral", rate: 1.1, pitch: 1.3, volume: 0.8 },
   },
   voices: { openai: "coral", gemini: "Zephyr" },
+  gazeOrigin: { x: 0.499, y: 0.143 },
   live2d: {
     modelPath: "/live2d/Haru/Haru.model3.json",
     // Affect only — these ride in the setExpression schema on every request, and

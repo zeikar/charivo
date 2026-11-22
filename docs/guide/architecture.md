@@ -235,7 +235,8 @@ scripts/
 
 - root `README.md`: project overview and top-level entry points
 - `packages/`: library packages, publishable except private development
-  adapters such as `@charivo/render-iki`
+  adapters such as `@charivo/render-iki` (which the web demo uses for two
+  of its characters)
 - `examples/`: the two documented reference apps — [web](./examples-web.md) puts
   the LLM/TTS/STT client styles side by side, [companion](./examples-companion.md)
   is realtime-only with browser-local character memory — plus `iki-test`, a

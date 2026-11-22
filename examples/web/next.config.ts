@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     "@charivo/llm",
     "@charivo/realtime",
     "@charivo/render",
+    "@charivo/render-iki",
     "@charivo/render-live2d",
     "@charivo/server",
     "@charivo/stt",

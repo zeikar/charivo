@@ -11,6 +11,7 @@ export const HIYORI_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "marin", rate: 1.0, pitch: 1.2, volume: 0.8 },
   },
   voices: { openai: "marin", gemini: "Achernar" },
+  gazeOrigin: { x: 0.497, y: 0.179 },
   live2d: {
     modelPath: "/live2d/Hiyori/Hiyori.model3.json",
   },

@@ -11,6 +11,7 @@ export const MAO_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "shimmer", rate: 1.2, pitch: 1.1, volume: 0.9 },
   },
   voices: { openai: "shimmer", gemini: "Puck" },
+  gazeOrigin: { x: 0.5, y: 0.246 },
   live2d: {
     modelPath: "/live2d/Mao/Mao.model3.json",
     // Affect only — these ride in the setExpression schema on every request.

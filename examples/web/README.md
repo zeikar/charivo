@@ -4,6 +4,13 @@ This is the reference Next.js app for the Charivo workspace. It exercises the
 current architecture as it is actually shipped:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
+- Two characters drawn by the [Iki](https://github.com/zeikar/iki) engine
+  through the private `@charivo/render-iki` adapter instead — **Twin**, a
+  bust, and **Mint**, a full body with a `Wave` motion — with the same chat,
+  voice, lip-sync and avatar control, marked `Iki` in the character menu
+- `?character=<id>` opens the page on that character (any case, e.g.
+  `/?character=twin`); an unknown id opens on Haru as usual, and picking
+  another character from the menu does not rewrite the URL
 - LLM chat through Gemini and OpenAI, each in a server-route and a
   browser-direct form, plus an OpenClaw proxy (dev builds only) and a stub
 - TTS through Gemini and OpenAI, each in a server-route and a browser-direct
@@ -61,7 +68,7 @@ What the routes *do* defend against, in `src/app/api/demo-limits.ts`:
   read as a bug. They bound an ordinary visitor, not a determined caller.
 
 One thing the routes deliberately do **not** pin is `instructions`. The demo
-composes them in the browser from the avatar catalog of whichever Live2D model
+composes them in the browser from the avatar catalog of whichever model
 finished loading, so the server cannot rebuild them. They are size-capped, but a
 caller can still supply their own system prompt on the pinned model — worth
 knowing before you treat this as a template.
@@ -257,7 +264,11 @@ compare the tradeoffs:
   up — the manager is built
   once per session, so a mid-call switch could not take effect — and a Gemini
   call locks the character picker too, since that transport cannot patch a live
-  session the way OpenAI can.
+  session the way OpenAI can. On either provider a call locks the characters
+  drawn by the other engine (Twin and Mint during a call with a Live2D
+  character, and the reverse): switching engine rebuilds the renderer and
+  everything attached to it, which would hang up. Twin and Mint share a
+  renderer, so they stay switchable with each other.
 - The stub LLM mode is useful for UI work and deterministic demos.
 
 ## Structure
@@ -283,8 +294,18 @@ examples/web/src/app
 
 The current lifecycle boundary is deliberate:
 
-- `useLive2D` owns canvas mount and unmount.
+- `useLive2D` owns canvas mount and unmount. It mounts a fresh canvas when the
+  selected character's engine changes (Live2D or Iki), because the two
+  renderers want different WebGL contexts. Two Iki characters share one
+  canvas; `useCharivoChat` reframes it (the view and the canvas's shape) as
+  each one's model loads.
 - `useCharivoChat` owns Charivo setup, manager attachment, event subscription, and teardown.
+  A new canvas re-runs all of it with that engine's renderer, so a switch
+  between engines starts over where a switch within one only loads a model.
+  After every model load it hands the renderer that character's `gazeOrigin`
+  (the point between the eyes, in the character config) through
+  `setGazeOrigin`, one call for either engine, so a pointer on a full body's
+  face looks straight ahead rather than up.
 
 The demo also calls `realtimeManager.prepareAudio?.(...)` from the realtime
 connect click, before `startSession(...)`. Both calls must be given the same
@@ -313,6 +334,13 @@ under the
 
 Using these models requires agreeing to the
 [per-model terms](https://docs.live2d.com/cubism-editor-manual/sample-model/).
+
+**Twin** (`public/iki/hero.iki`) and **Mint** (`public/iki/mint.iki`) are not
+Live2D models and are not covered by those terms: they are the
+[Iki](https://github.com/zeikar/iki) project's own characters, copied from
+that repository. Unlike the Live2D characters, their expression and motion
+descriptions are not written in the character config — each `.iki` file
+declares its own.
 
 No model ships in any published `@charivo/*` package — they exist only in this
 demo. The Cubism SDK itself carries separate terms; see

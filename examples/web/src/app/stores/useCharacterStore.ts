@@ -12,7 +12,7 @@ type CharacterStore = {
   selectedCharacter: CharacterId;
   setSelectedCharacter: (id: CharacterId) => void;
   getCharacter: (id: CharacterId) => AppCharacter;
-  getLive2DModelPath: (id: CharacterId) => string;
+  getModelPath: (id: CharacterId) => string;
   getExpressionDescriptions: (
     id: CharacterId,
   ) => Record<string, string> | undefined;
@@ -31,25 +31,25 @@ export const useCharacterStore = create<CharacterStore>((set) => ({
     }
     return config.character;
   },
-  getLive2DModelPath: (id) => {
+  getModelPath: (id) => {
     const config = CHARACTER_CONFIGS[id];
     if (!config) {
       throw new Error(`Character config not found: ${id}`);
     }
-    return config.live2d.modelPath;
+    return (config.live2d ?? config.iki).modelPath;
   },
   getExpressionDescriptions: (id) => {
     const config = CHARACTER_CONFIGS[id];
     if (!config) {
       throw new Error(`Character config not found: ${id}`);
     }
-    return config.live2d.expressionDescriptions;
+    return config.live2d?.expressionDescriptions;
   },
   getMotionDescriptions: (id) => {
     const config = CHARACTER_CONFIGS[id];
     if (!config) {
       throw new Error(`Character config not found: ${id}`);
     }
-    return config.live2d.motionDescriptions;
+    return config.live2d?.motionDescriptions;
   },
 }));

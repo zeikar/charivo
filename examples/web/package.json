@@ -16,6 +16,7 @@
     "@charivo/llm": "workspace:*",
     "@charivo/realtime": "workspace:*",
     "@charivo/render": "workspace:*",
+    "@charivo/render-iki": "workspace:*",
     "@charivo/render-live2d": "workspace:*",
     "@charivo/server": "workspace:*",
     "@charivo/stt": "workspace:*",
