@@ -17,7 +17,7 @@
   <rect width="64" height="64" rx="15" fill="url(#charivoBg)"/>
 
   <!-- Ears. Drawn before the head so their bases tuck under it, and stroked in
-       their own fill colour so the tips round off -- a bare triangle reads as a
+       their own fill colour so the tips round off: a bare triangle reads as a
        horn once the icon is down at 16px. -->
   <path d="M 17.5 14 L 14.5 25 L 29.5 20.5 Z" fill="#FFF7ED" stroke="#FFF7ED" stroke-width="2.8" stroke-linejoin="round"/>
   <path d="M 46.5 14 L 49.5 25 L 34.5 20.5 Z" fill="#FFF7ED" stroke="#FFF7ED" stroke-width="2.8" stroke-linejoin="round"/>
