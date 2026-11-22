@@ -13,8 +13,11 @@ export interface FakeSpeakCall {
 }
 
 export interface FakePortOptions {
-  /** How long a line plays before it settles. Defaults to 1,000 ms. */
-  durationMs?: number;
+  /**
+   * How long a line plays before it settles, fixed or per call index.
+   * Defaults to 1,000 ms.
+   */
+  durationMs?: number | ((index: number) => number);
   /**
    * How a line ends when nothing interrupts it, e.g. a `"failed"` result with
    * or without an `error`. Defaults to `"completed"` with a plain reply.
@@ -68,7 +71,12 @@ export function createFakePort(options: FakePortOptions = {}): FakePort {
       };
       calls.push(call);
       return new Promise<SpeakResult>((resolve) => {
-        const timer = setTimeout(() => settle(respond(call)), durationMs);
+        const timer = setTimeout(
+          () => settle(respond(call)),
+          typeof durationMs === "function"
+            ? durationMs(call.index)
+            : durationMs,
+        );
         function settle(result: SpeakResult) {
           clearTimeout(timer);
           unsettled.delete(call);

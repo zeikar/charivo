@@ -1679,6 +1679,15 @@ describe("createDirector: a listener that pushes on every publish", () => {
 });
 
 describe("createFakePort", () => {
+  it("can give each line its own duration by call index", async () => {
+    const port = createFakePort({ durationMs: (index) => (index + 1) * 100 });
+    void port.speak("a");
+    await vi.advanceTimersByTimeAsync(100);
+    void port.speak("b");
+    await vi.advanceTimersByTimeAsync(200);
+    expect(port.calls.map((call) => call.endedAt)).toEqual([100, 300]);
+  });
+
   it("settles the cancelled speak() before interrupt() resolves by default", async () => {
     const port = createFakePort({ durationMs: 10_000 });
     const order: string[] = [];
