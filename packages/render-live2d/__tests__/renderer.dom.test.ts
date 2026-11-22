@@ -46,8 +46,16 @@ const rendererMocks = vi.hoisted(() => {
     }
   }
 
+  // Model units to view coordinates: halved, and lifted a quarter on y, so a
+  // test can tell the matrix was applied and which axis is which.
   class MockModelMatrix {
     setWidth = vi.fn();
+    transformX(value: number): number {
+      return value * 0.5;
+    }
+    transformY(value: number): number {
+      return value * 0.5 + 0.25;
+    }
   }
 
   class MockModel {
@@ -93,7 +101,8 @@ const rendererMocks = vi.hoisted(() => {
     update = vi.fn(() => undefined);
     draw = vi.fn((_projection: unknown) => undefined);
     getModel = vi.fn(() => ({
-      getCanvasWidth: () => 2,
+      getCanvasWidth: (): number => 2,
+      getCanvasHeight: (): number => 4,
     }));
     getModelMatrix = vi.fn(() => this.modelMatrix);
 
@@ -297,6 +306,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+type MockModelInstance = InstanceType<typeof rendererMocks.MockModel>;
+
 describe("Live2DRenderer", () => {
   it("throws when initialized without a canvas", async () => {
     const renderer = new Live2DRendererImpl();
@@ -345,6 +356,57 @@ describe("Live2DRenderer", () => {
       "/models/second.model3.json",
       rendererMocks.MockHost.instances[0],
     );
+  });
+
+  /**
+   * Hold the model the pending `loadModel()` call just created at
+   * `waitUntilReady`, which that call reaches a microtask from now.
+   */
+  function holdLatestModel(): { model: MockModelInstance; land: () => void } {
+    const model = rendererMocks.MockModel.instances.at(-1)!;
+    let land!: () => void;
+    model.waitUntilReady = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          land = () => {
+            model.ready = true;
+            resolve();
+          };
+        }),
+    );
+    return { model, land: () => land() };
+  }
+
+  it("keeps the latest load's model when an earlier load lands after it", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+
+    const slowLoad = renderer.loadModel("/models/slow.model3.json");
+    const slow = holdLatestModel();
+    slow.model.expressions = ["slow"];
+    await renderer.loadModel("/models/fast.model3.json");
+    const fast = rendererMocks.MockModel.instances.at(-1)!;
+
+    slow.land();
+    await slowLoad;
+
+    expect(renderer.getAvailableExpressions()).toEqual(["happy"]);
+    expect(slow.model.release).toHaveBeenCalledTimes(1);
+    expect(fast.release).not.toHaveBeenCalled();
+  });
+
+  it("releases a model that lands after destroy instead of keeping it", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+
+    const load = renderer.loadModel("/models/slow.model3.json");
+    const slow = holdLatestModel();
+    await renderer.destroy();
+    slow.land();
+    await load;
+
+    expect(renderer.getAvailableExpressions()).toEqual([]);
+    expect(slow.model.release).toHaveBeenCalledTimes(1);
   });
 
   it("rebuilds the host and reloads the last model after WebGL context restore", async () => {
@@ -506,6 +568,115 @@ describe("Live2DRenderer", () => {
       0,
       1,
     );
+  });
+
+  describe("setGazeOrigin", () => {
+    // The pointer below is view (10, 12), as in the test above. The mock
+    // model's canvas is 2 x 4 units, so the point three quarters across and a
+    // quarter down is (0.5, 1) from its centre, which the mock model matrix
+    // puts at view (0.25, 0.75).
+    async function readyRenderer() {
+      Object.defineProperty(window, "devicePixelRatio", {
+        value: 2,
+        configurable: true,
+      });
+      const renderer = new Live2DRendererImpl({
+        canvas: createCanvasFixture(),
+      });
+      await renderer.initialize();
+      await renderer.loadModel("/models/hiyori.model3.json");
+      return { renderer, model: rendererMocks.MockModel.instances.at(-1)! };
+    }
+
+    it("measures the drag from a point of the model, not the view's centre", async () => {
+      const { renderer, model } = await readyRenderer();
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+
+      expect(model.setDragging).toHaveBeenLastCalledWith(9.75, 11.25);
+    });
+
+    // The frame loop fits a model wider than one unit to a portrait canvas's
+    // width, and there the pointer's view coordinates are width / height times
+    // the drawn model's. The mock model is 2 units wide, so on a 200 x 400
+    // canvas the origin's (0.25, 0.75) halves.
+    it("scales the point where the model is fitted to a portrait canvas's width", async () => {
+      const { renderer, model } = await readyRenderer();
+      const canvas = document.querySelector("canvas")!;
+      canvas.width = 200;
+      canvas.height = 400;
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+
+      expect(model.setDragging).toHaveBeenLastCalledWith(9.875, 11.625);
+    });
+
+    it("does not scale it for a model one unit wide, which a portrait canvas fits by height", async () => {
+      const { renderer, model } = await readyRenderer();
+      const canvas = document.querySelector("canvas")!;
+      canvas.width = 200;
+      canvas.height = 400;
+      model.getModel = vi.fn(() => ({
+        getCanvasWidth: () => 1,
+        getCanvasHeight: () => 4,
+      }));
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+
+      // (0.25 x 1, 0.25 x 4) from the centre, through the mock matrix.
+      expect(model.setDragging).toHaveBeenLastCalledWith(9.875, 11.25);
+    });
+
+    it("leaves taps where the pointer is", async () => {
+      const { renderer, model } = await readyRenderer();
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      renderer.handleMouseTap({ clientX: 15, clientY: 26 });
+
+      expect(model.hitTest).toHaveBeenCalledWith(
+        LAppDefine.HitAreaNameBody,
+        10,
+        12,
+      );
+    });
+
+    it("leaves lookAt alone: that is already a direction", async () => {
+      const { renderer, model } = await readyRenderer();
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      renderer.lookAt({ x: 0.5, y: -0.5 });
+
+      expect(model.setDragging).toHaveBeenLastCalledWith(0.5, -0.5);
+    });
+
+    it("holds across a model load, and goes back to the centre with no argument", async () => {
+      const { renderer } = await readyRenderer();
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+      await renderer.loadModel("/models/haru.model3.json");
+      const next = rendererMocks.MockModel.instances.at(-1)!;
+
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+      expect(next.setDragging).toHaveBeenLastCalledWith(9.75, 11.25);
+
+      renderer.setGazeOrigin();
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+      expect(next.setDragging).toHaveBeenLastCalledWith(10, 12);
+    });
+
+    it("refuses a non-finite point, and keeps the one it had", async () => {
+      const { renderer, model } = await readyRenderer();
+      renderer.setGazeOrigin({ x: 0.75, y: 0.25 });
+
+      expect(() => renderer.setGazeOrigin({ x: Number.NaN, y: 0.25 })).toThrow(
+        "finite x and y",
+      );
+
+      renderer.updateViewWithMouse({ clientX: 15, clientY: 26 });
+      expect(model.setDragging).toHaveBeenLastCalledWith(9.75, 11.25);
+    });
   });
 
   it("destroys the render loop, model, host, and resize teardown", async () => {

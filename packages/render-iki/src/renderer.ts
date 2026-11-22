@@ -4,8 +4,7 @@
  * ordinary npm dependencies, so it builds and typechecks like any other
  * workspace package. Idle, motion clips, expressions, physics and hair-chain
  * motion come from the engine's own `IkiMotion`; this adapter only schedules
- * it, blends the host's gaze on top (see `motion-blend.ts`) and writes
- * lip-sync last.
+ * it, hands it the host's gaze as its gaze target and writes lip-sync last.
  */
 
 import type {
@@ -15,19 +14,19 @@ import type {
   Message,
   Renderer,
 } from "@charivo/core";
-import type { MouseCoordinates, MouseTrackable } from "@charivo/render";
+import type {
+  GazeOrigin,
+  MouseCoordinates,
+  MouseTrackable,
+} from "@charivo/render";
 import { IkiMotion, IkiPlayer, type IkiView } from "@ikijs/engine";
 import {
+  IDLE_MOTION_GROUP,
   IkiFormatError,
   loadIkiModel,
   StandardParameter,
   type IkiModel,
 } from "@ikijs/format";
-import {
-  blendMotionWrite,
-  GAZE_PARAMETER_IDS,
-  type HostGaze,
-} from "./motion-blend";
 
 export type { IkiView };
 
@@ -50,10 +49,13 @@ export class IkiRenderer implements Renderer, MouseTrackable {
   /** The loaded model; set together with `motion` once a load completes. */
   private model?: IkiModel;
   private motion?: IkiMotion;
+  /** Counts loadModel() calls, so one a later call overtook can tell. */
+  private loadCount = 0;
   private motionRafId?: number;
-  private gaze?: HostGaze;
-  /** Gaze ids the IkiMotion sink wrote during the current update. */
-  private readonly gazeIdsWritten = new Set<string>();
+  /** Host gaze, each axis -1..1, y up; unset until the first lookAt / mouse. */
+  private gaze?: GazeCoordinates;
+  /** Where the mouse gaze is measured from; unset = canvas centre. */
+  private gazeOrigin?: GazeOrigin;
   private lipSyncEnabled = false;
   private mouthOpen = 0;
 
@@ -74,6 +76,7 @@ export class IkiRenderer implements Renderer, MouseTrackable {
     if (!this.player) {
       throw new Error("Iki renderer is not initialized");
     }
+    const load = ++this.loadCount;
 
     const res = await fetch(modelPath);
     if (!res.ok) {
@@ -90,8 +93,11 @@ export class IkiRenderer implements Renderer, MouseTrackable {
         : err;
     }
 
-    // destroy() may have run while the fetch above was in flight.
-    if (!this.player) return;
+    // destroy() may have run while the fetch above was in flight, or a later
+    // loadModel() begun. The engine supersedes only the loads that reach it in
+    // order, and this one, its fetch the slower, would reach it last and
+    // replace the model asked for after it.
+    if (!this.player || load !== this.loadCount) return;
 
     // Must be awaited: `load()` decodes the model's textures before it swaps
     // in the new ParameterStore, so building IkiMotion early would read
@@ -108,11 +114,9 @@ export class IkiRenderer implements Renderer, MouseTrackable {
     this.motion = new IkiMotion(
       model,
       (id) => player.getParameter(id),
-      (id, value) => {
-        if (GAZE_PARAMETER_IDS.includes(id)) this.gazeIdsWritten.add(id);
-        player.setParameter(id, blendMotionWrite(id, value, this.gaze));
-      },
+      (id, value) => player.setParameter(id, value),
     );
+    if (this.gaze) this.motion.setGazeTarget(this.gaze.x, this.gaze.y);
 
     // Motion first: rAF callbacks fire in request order, so starting the
     // motion loop before the engine's own render loop means the pose is
@@ -136,20 +140,15 @@ export class IkiRenderer implements Renderer, MouseTrackable {
     const { player, motion } = this;
     if (!player || !motion) return;
 
-    this.gazeIdsWritten.clear();
     motion.update(now);
 
-    // IkiMotion leaves a head or gaze id unwritten when the model's `Idle`
-    // clips replace the procedural sway and don't animate it, so the sink
-    // never saw it: put the host gaze there directly. Physics already ran,
-    // so it reads this write one frame late.
+    // A model's `Idle` clips replace the procedural head and gaze, and the
+    // engine's gaze target moves nothing under them: put the eyes there
+    // directly, as the engine asks of a host. The head stays the clips'.
     const gaze = this.gaze;
-    if (gaze) {
-      for (const id of GAZE_PARAMETER_IDS) {
-        if (!this.gazeIdsWritten.has(id)) {
-          player.setParameter(id, blendMotionWrite(id, 0, gaze));
-        }
-      }
+    if (gaze && this.model?.motions?.[IDLE_MOTION_GROUP]) {
+      player.setParameter(StandardParameter.EyeballX, gaze.x);
+      player.setParameter(StandardParameter.EyeballY, gaze.y);
     }
 
     // After update(), so lip-sync beats an expression that opens the mouth.
@@ -174,18 +173,68 @@ export class IkiRenderer implements Renderer, MouseTrackable {
   }
 
   lookAt(coords: GazeCoordinates): void {
-    this.gaze = { x: clamp(coords.x, -1, 1), y: clamp(coords.y, -1, 1) };
+    this.setGaze(coords.x, coords.y);
   }
 
   updateViewWithMouse(coords: MouseCoordinates): void {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
+    const origin = this.gazeOriginOnCanvas(rect);
     // Normalize to [-1, 1] with Y inverted (gaze y is up-positive).
     const x =
-      (coords.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+      (coords.clientX - (rect.left + rect.width / 2 + origin.x)) /
+      (rect.width / 2);
     const y =
-      -(coords.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
+      -(coords.clientY - (rect.top + rect.height / 2 + origin.y)) /
+      (rect.height / 2);
+    this.setGaze(x, y);
+  }
+
+  /**
+   * `MouseTrackable.setGazeOrigin`: measure the mouse gaze from a point of the
+   * model's canvas (fractions, top-left to bottom-right) instead of the
+   * canvas element's centre. Throws on a non-finite `x` or `y`: kept, it would
+   * turn every pointer gaze into one the engine drops, and the mouse would
+   * stop moving the eyes with nothing said.
+   */
+  setGazeOrigin(origin?: GazeOrigin): void {
+    if (origin && !(Number.isFinite(origin.x) && Number.isFinite(origin.y))) {
+      throw new Error(
+        `Iki: setGazeOrigin() needs a finite x and y, got ${origin.x}, ${origin.y}`,
+      );
+    }
+    this.gazeOrigin = origin;
+  }
+
+  /**
+   * Where the gaze origin lands, in CSS px from the canvas's centre (y down),
+   * by the fit the engine draws with: the view, or the model's box, scaled to
+   * the canvas with its aspect kept and centred. The centre itself when no
+   * origin is set or no model is loaded to place one on.
+   */
+  private gazeOriginOnCanvas(rect: DOMRect): { x: number; y: number } {
+    const origin = this.gazeOrigin;
+    const model = this.model?.canvas;
+    if (!origin || !model) return { x: 0, y: 0 };
+    // The fractions, in model units: origin at the box's centre, +y up.
+    const x = (origin.x - 0.5) * model.width;
+    const y = (0.5 - origin.y) * model.height;
+    const view = this.view ?? { x: 0, y: 0, ...model };
+    const fit = Math.min(rect.width / view.width, rect.height / view.height);
+    return { x: (x - view.x) * fit, y: -(y - view.y) * fit };
+  }
+
+  /**
+   * The eyes go to the target and the head follows through the engine's idle
+   * (`IkiMotion.setGazeTarget`), not through head angles written here: those
+   * would stack on the idle's own drift and gaze follow.
+   */
+  private setGaze(x: number, y: number): void {
+    // The engine ignores a non-finite pair; keep it out of the Idle-group
+    // eye write too.
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this.gaze = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
+    this.motion?.setGazeTarget(this.gaze.x, this.gaze.y);
   }
 
   /**

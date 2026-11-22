@@ -2,20 +2,33 @@ import { HARU_CHARACTER_CONFIG } from "./Haru";
 import { HIYORI_CHARACTER_CONFIG } from "./Hiyori";
 import { MAO_CHARACTER_CONFIG } from "./Mao";
 import { MARK_CHARACTER_CONFIG } from "./Mark";
+import { MINT_CHARACTER_CONFIG } from "./Mint";
 import { NATORI_CHARACTER_CONFIG } from "./Natori";
 import { RICE_CHARACTER_CONFIG } from "./Rice";
+import { TWIN_CHARACTER_CONFIG } from "./Twin";
 import { WANKO_CHARACTER_CONFIG } from "./Wanko";
-import type { CharacterConfig, CharacterVoiceProvider } from "./types";
+import type {
+  CharacterConfig,
+  CharacterEngine,
+  CharacterVoiceProvider,
+} from "./types";
 
-export { type CharacterConfig, type CharacterVoiceProvider } from "./types";
+export {
+  type CharacterConfig,
+  type CharacterEngine,
+  type CharacterVoiceProvider,
+  type IkiConfig,
+} from "./types";
 
 export const CHARACTER_CONFIGS = {
   Haru: HARU_CHARACTER_CONFIG,
   Hiyori: HIYORI_CHARACTER_CONFIG,
   Mao: MAO_CHARACTER_CONFIG,
   Mark: MARK_CHARACTER_CONFIG,
+  Mint: MINT_CHARACTER_CONFIG,
   Natori: NATORI_CHARACTER_CONFIG,
   Rice: RICE_CHARACTER_CONFIG,
+  Twin: TWIN_CHARACTER_CONFIG,
   Wanko: WANKO_CHARACTER_CONFIG,
 } as const satisfies Record<string, CharacterConfig>;
 
@@ -37,6 +50,19 @@ export function getCharacterConfig(
 
 export function getCharacter(id: CharacterId): AppCharacter {
   return getCharacterConfig(id).character;
+}
+
+/**
+ * The character a `?character=` value names, whatever its case; undefined for
+ * no value or one that names none.
+ */
+export function findCharacterId(value: string | null): CharacterId | undefined {
+  const wanted = value?.toLowerCase();
+  return CHARACTER_IDS.find((id) => id.toLowerCase() === wanted);
+}
+
+export function getCharacterEngine(id: CharacterId): CharacterEngine {
+  return getCharacterConfig(id).iki ? "iki" : "live2d";
 }
 
 export function resolveCharacterVoice<TId extends string>(

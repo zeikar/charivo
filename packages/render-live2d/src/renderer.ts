@@ -1,5 +1,5 @@
 import { type GazeCoordinates, type Renderer } from "@charivo/core";
-import { type MouseTrackable } from "@charivo/render";
+import { type GazeOrigin, type MouseTrackable } from "@charivo/render";
 
 import { Live2DRendererImpl } from "./live2d-renderer";
 
@@ -16,6 +16,7 @@ export interface Live2DRenderer extends Renderer, MouseTrackable {
     options?: { muteSound?: boolean },
   ): void;
   lookAt(coords: GazeCoordinates): void;
+  setGazeOrigin(origin?: GazeOrigin): void;
   getAvailableExpressions(): string[];
   getAvailableMotionGroups(): Record<string, number>;
 }

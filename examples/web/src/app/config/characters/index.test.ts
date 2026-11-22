@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   CHARACTER_CONFIGS,
   CHARACTER_IDS,
+  findCharacterId,
+  getCharacterEngine,
   resolveCharacterVoice,
 } from "./index";
 
@@ -12,8 +14,10 @@ const EXPECTED_VOICE_IDS = {
   Hiyori: "marin",
   Mao: "shimmer",
   Mark: "cedar",
+  Mint: "marin",
   Natori: "verse",
   Rice: "ballad",
+  Twin: "shimmer",
   Wanko: "alloy",
 } as const;
 
@@ -22,8 +26,10 @@ const EXPECTED_GEMINI_VOICE_IDS = {
   Hiyori: "Achernar",
   Mao: "Puck",
   Mark: "Charon",
+  Mint: "Callirrhoe",
   Natori: "Despina",
   Rice: "Leda",
+  Twin: "Aoede",
   Wanko: "Fenrir",
 } as const;
 
@@ -179,7 +185,7 @@ function readModelExpressionIds(modelPath: string): string[] {
 // error. These assertions are what turn that into a caught mistake.
 describe("expression descriptions", () => {
   const documented = CHARACTER_IDS.filter(
-    (id) => CHARACTER_CONFIGS[id].live2d.expressionDescriptions !== undefined,
+    (id) => CHARACTER_CONFIGS[id].live2d?.expressionDescriptions !== undefined,
   );
 
   it("covers the characters whose model IDs are opaque", () => {
@@ -189,7 +195,7 @@ describe("expression descriptions", () => {
   for (const id of documented) {
     it(`${id}: every key names a real expression, with a non-empty value`, () => {
       const { modelPath, expressionDescriptions } =
-        CHARACTER_CONFIGS[id].live2d;
+        CHARACTER_CONFIGS[id].live2d!;
       const declared = Object.keys(expressionDescriptions ?? {}).sort();
 
       expect(declared).toEqual(readModelExpressionIds(modelPath).sort());
@@ -203,7 +209,7 @@ describe("expression descriptions", () => {
 
 describe("motion descriptions", () => {
   const documented = CHARACTER_IDS.filter(
-    (id) => CHARACTER_CONFIGS[id].live2d.motionDescriptions !== undefined,
+    (id) => CHARACTER_CONFIGS[id].live2d?.motionDescriptions !== undefined,
   );
 
   it("covers the characters whose motions were watched", () => {
@@ -212,14 +218,14 @@ describe("motion descriptions", () => {
 
   for (const id of documented) {
     it(`${id}: motion files are still in the observed order`, () => {
-      const { modelPath } = CHARACTER_CONFIGS[id].live2d;
+      const { modelPath } = CHARACTER_CONFIGS[id].live2d!;
       expect(readModelMotionFiles(modelPath)).toEqual(
         EXPECTED_MOTION_FILES[id],
       );
     });
 
     it(`${id}: every group is described, one entry per motion`, () => {
-      const { motionDescriptions } = CHARACTER_CONFIGS[id].live2d;
+      const { motionDescriptions } = CHARACTER_CONFIGS[id].live2d!;
       const pinned = EXPECTED_MOTION_FILES[id]!;
 
       // Equality, not inclusion: a partial or empty motionDescriptions would
@@ -238,4 +244,111 @@ describe("motion descriptions", () => {
       }
     });
   }
+});
+
+// An Iki character carries no descriptions in its config: the LLM's catalog is
+// whatever the `.iki` file declares, so an empty or undescribed one would leave
+// avatar control with nothing to pick from, silently.
+describe("iki characters", () => {
+  const ikiIds = CHARACTER_IDS.filter((id) => getCharacterEngine(id) === "iki");
+
+  it("are the ones the demo ships", () => {
+    expect(ikiIds).toEqual(["Mint", "Twin"]);
+  });
+
+  for (const id of ikiIds) {
+    it(`${id}: the model file declares described expressions and motions, and has the configured shape`, () => {
+      const publicDir = fileURLToPath(
+        new URL("../../../../public", import.meta.url),
+      );
+      const model = JSON.parse(
+        readFileSync(
+          `${publicDir}${CHARACTER_CONFIGS[id].iki!.modelPath}`,
+          "utf8",
+        ),
+      ) as {
+        canvas: { width: number; height: number };
+        parts: Array<{ id: string; transform: { x: number; y: number } }>;
+        expressions?: Array<{ id: string; description: string }>;
+        motions?: Record<string, Array<{ description: string }>>;
+      };
+
+      const descriptions = [
+        ...(model.expressions ?? []),
+        ...Object.values(model.motions ?? {}).flat(),
+      ].map((entry) => entry.description);
+
+      const { view, canvasAspect } = CHARACTER_CONFIGS[id].iki!;
+      const framed = view ?? model.canvas;
+      expect(canvasAspect).toBe(framed.width / framed.height);
+      // A view may be larger than the model's own box, never smaller.
+      expect(framed.width).toBeGreaterThanOrEqual(model.canvas.width);
+      expect(framed.height).toBeGreaterThanOrEqual(model.canvas.height);
+      // The gaze origin is a number copied from the file, which a model
+      // refresh can move (or swap the character behind `hero.iki` altogether):
+      // it must still sit between the eyes the file draws. Part positions are
+      // model units from the canvas's centre, y up; the origin is a fraction
+      // of the canvas from its top-left.
+      const eyes = ["eye_L", "eye_R"].map((partId) => {
+        const { x, y } = model.parts.find(
+          (part) => part.id === partId,
+        )!.transform;
+        return {
+          x: 0.5 + x / model.canvas.width,
+          y: 0.5 - y / model.canvas.height,
+        };
+      });
+      const gazeOrigin = CHARACTER_CONFIGS[id].gazeOrigin!;
+      expect(gazeOrigin.x).toBeCloseTo((eyes[0].x + eyes[1].x) / 2, 2);
+      expect(gazeOrigin.y).toBeCloseTo((eyes[0].y + eyes[1].y) / 2, 2);
+
+      expect(model.expressions?.length).toBeGreaterThan(0);
+      expect(Object.keys(model.motions ?? {}).length).toBeGreaterThan(0);
+      for (const description of descriptions) {
+        expect(description.trim().length).toBeGreaterThan(0);
+      }
+    });
+  }
+});
+
+describe("getCharacterEngine", () => {
+  it("is live2d for every other character", () => {
+    expect(
+      CHARACTER_IDS.filter((id) => getCharacterEngine(id) === "live2d"),
+    ).toEqual(["Haru", "Hiyori", "Mao", "Mark", "Natori", "Rice", "Wanko"]);
+  });
+});
+
+describe("findCharacterId", () => {
+  it("finds a character by its id, in any case", () => {
+    expect(findCharacterId("Twin")).toBe("Twin");
+    expect(findCharacterId("twin")).toBe("Twin");
+    expect(findCharacterId("HARU")).toBe("Haru");
+  });
+
+  it("is undefined for no value, an empty one, or a name no character has", () => {
+    expect(findCharacterId(null)).toBeUndefined();
+    expect(findCharacterId("")).toBeUndefined();
+    expect(findCharacterId("Twi")).toBeUndefined();
+    expect(findCharacterId("toString")).toBeUndefined();
+  });
+});
+
+describe("gaze origins", () => {
+  it("are points inside the model's canvas, where a character has one", () => {
+    for (const id of CHARACTER_IDS) {
+      const origin = CHARACTER_CONFIGS[id].gazeOrigin;
+      if (!origin) continue;
+      for (const value of [origin.x, origin.y]) {
+        expect(value).toBeGreaterThan(0);
+        expect(value).toBeLessThan(1);
+      }
+    }
+  });
+
+  it("are set for every character but the one whose model has no eyes to find", () => {
+    expect(
+      CHARACTER_IDS.filter((id) => !CHARACTER_CONFIGS[id].gazeOrigin),
+    ).toEqual(["Wanko"]);
+  });
 });

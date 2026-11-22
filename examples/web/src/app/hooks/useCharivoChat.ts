@@ -29,6 +29,7 @@ import type { GeminiLiveTranscriptionBootstrapFn } from "@charivo/stt/gemini-liv
 import type { OpenAIRealtimeTranscriptionBootstrapFn } from "@charivo/stt/openai-realtime";
 import { createTTSManager } from "@charivo/tts";
 import { bootstrapTranscription } from "./bootstrap-transcription";
+import type { IkiRenderer } from "@charivo/render-iki";
 import type { Live2DRenderer } from "@charivo/render-live2d";
 import {
   buildAvatarControlInstructions,
@@ -47,7 +48,9 @@ import { syncAvatarControlTools } from "../lib/avatar-tools";
 import { useCharacterStore } from "../stores/useCharacterStore";
 import {
   type CharacterVoiceProvider,
+  type IkiConfig,
   getCharacterConfig,
+  getCharacterEngine,
   resolveCharacterVoice,
 } from "../config/characters";
 import { useChatStore } from "../stores/useChatStore";
@@ -57,7 +60,7 @@ import {
   shouldResetRealtimeUiState,
 } from "./realtime-ui";
 
-type Live2DRendererHandle = Live2DRenderer;
+type AvatarRendererHandle = Live2DRenderer | IkiRenderer;
 
 type UseCharivoChatOptions = {
   canvasContainerRef: MutableRefObject<HTMLDivElement | null>;
@@ -172,16 +175,38 @@ async function stopRealtime(instance: Charivo | null): Promise<void> {
 }
 
 function readAvatarCatalog(
-  renderer: Live2DRendererHandle | null,
+  renderer: AvatarRendererHandle | null,
   expressionDescriptions?: Record<string, string>,
   motionDescriptions?: Record<string, string[]>,
 ): AvatarControlCatalog {
   return {
-    expressions: renderer?.getAvailableExpressions() ?? [],
-    motions: renderer?.getAvailableMotionGroups() ?? {},
+    // An Iki model file declares its own descriptions and the renderer hands
+    // them over with the ids; a Live2D model's come from the character config.
+    ...(renderer?.getAvatarControlCatalog?.() ?? {
+      expressions: renderer?.getAvailableExpressions() ?? [],
+      motions: renderer?.getAvailableMotionGroups() ?? {},
+    }),
     ...(expressionDescriptions ? { expressionDescriptions } : {}),
     ...(motionDescriptions ? { motionDescriptions } : {}),
   };
+}
+
+/**
+ * Frame an Iki character once its model is in: the view it is drawn in, and
+ * the canvas's shape to match. Both are per character, not per engine, so a
+ * switch between two Iki characters reframes the canvas they share. Called
+ * right after the load resolves, which is before the model's first frame.
+ */
+function frameIkiCharacter(
+  renderer: AvatarRendererHandle | null,
+  canvas: HTMLCanvasElement,
+  iki: IkiConfig | undefined,
+): void {
+  if (!iki || !renderer || !("setView" in renderer)) {
+    return;
+  }
+  renderer.setView(iki.view);
+  canvas.style.aspectRatio = String(iki.canvasAspect);
 }
 
 /** Which of a character's voice ids the selected TTS player speaks with. */
@@ -190,12 +215,9 @@ function ttsVoiceProviderFor(type: TTSPlayerType): CharacterVoiceProvider {
 }
 
 export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
-  const {
-    getLive2DModelPath,
-    getExpressionDescriptions,
-    getMotionDescriptions,
-  } = useCharacterStore();
-  const { canvas, character } = useLive2D({ canvasContainerRef });
+  const { getModelPath, getExpressionDescriptions, getMotionDescriptions } =
+    useCharacterStore();
+  const { canvas, canvasEngine, character } = useLive2D({ canvasContainerRef });
 
   const {
     charivo,
@@ -247,7 +269,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     [character, selectedTTSPlayer],
   );
 
-  const rendererRef = useRef<Live2DRendererHandle | null>(null);
+  const rendererRef = useRef<AvatarRendererHandle | null>(null);
   const renderManagerRef = useRef<RenderManager | null>(null);
   const llmManagerRef = useRef<LLMManager | null>(null);
   const sttManagerRef = useRef<STTManager | null>(null);
@@ -477,6 +499,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       return;
     }
 
+    // The selected character belongs to the other engine: `useLive2D` is
+    // already mounting that engine's canvas, and the run it triggers builds
+    // everything for it. Nothing to build on this one.
+    if (getCharacterEngine(currentCharacterRef.current.id) !== canvasEngine) {
+      return;
+    }
+
     let disposed = false;
     let instance: Charivo | null = null;
     let renderManager: RenderManager | null = null;
@@ -557,17 +586,29 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     const initialize = async () => {
       try {
         const initialCharacter = currentCharacterRef.current;
-        const [
-          { createLive2DRenderer },
-          { createRenderManager },
-          { createLLMManager },
-        ] = await Promise.all([
-          import("@charivo/render-live2d"),
-          import("@charivo/render"),
-          import("@charivo/llm"),
-        ]);
+        // Only the selected character's engine is downloaded.
+        const [renderer, { createRenderManager }, { createLLMManager }] =
+          await Promise.all([
+            canvasEngine === "iki"
+              ? import("@charivo/render-iki").then(
+                  ({ createIkiRenderer }): AvatarRendererHandle =>
+                    createIkiRenderer({ canvas }),
+                )
+              : import("@charivo/render-live2d").then(
+                  ({ createLive2DRenderer }): AvatarRendererHandle =>
+                    createLive2DRenderer({ canvas }),
+                ),
+            import("@charivo/render"),
+            import("@charivo/llm"),
+          ]);
 
-        const renderer = createLive2DRenderer({ canvas });
+        // A character on the other engine was picked while the chunk loaded,
+        // and that run may already own the shared refs: nothing is built yet,
+        // so stop before overwriting them.
+        if (disposed) {
+          return;
+        }
+
         rendererRef.current = renderer;
 
         renderManager = createRenderManager(renderer, {
@@ -577,9 +618,22 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         renderManagerRef.current = renderManager;
 
         await renderManager.initialize();
-        await renderManager.loadModel?.(
-          getLive2DModelPath(initialCharacter.id),
-        );
+        await renderManager.loadModel?.(getModelPath(initialCharacter.id));
+
+        // Before the catalog is published: a superseded run's renderer is
+        // already destroyed and reads back an empty one, which would replace
+        // the catalog of the character now on screen.
+        if (disposed) {
+          await teardown();
+          return;
+        }
+
+        const initialConfig = getCharacterConfig(initialCharacter.id);
+        // Per character and the same call for either engine; the renderer
+        // holds it across loads, so every load sets or clears it.
+        renderer.setGazeOrigin(initialConfig.gazeOrigin);
+        frameIkiCharacter(renderer, canvas, initialConfig.iki);
+
         const initialCatalog = readAvatarCatalog(
           renderer,
           getExpressionDescriptions(initialCharacter.id),
@@ -593,11 +647,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           expressionDescriptions: initialCatalog.expressionDescriptions,
           motionDescriptions: initialCatalog.motionDescriptions,
         });
-
-        if (disposed) {
-          await teardown();
-          return;
-        }
 
         renderManager.setMessageCallback?.(
           (message: Message, owner?: Character) => {
@@ -944,13 +993,14 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
   }, [
     addMessage,
     canvas,
+    canvasEngine,
     clearMessages,
     createLLMClient,
     createSTTTranscriber,
     createTTSPlayer,
     getExpressionDescriptions,
     getMotionDescriptions,
-    getLive2DModelPath,
+    getModelPath,
     selectedLLMClient,
     selectedSTTTranscriber,
     selectedTTSPlayer,
@@ -987,10 +1037,22 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       return;
     }
 
+    // A character on the other engine cannot load into this renderer: the
+    // canvas is remounted for it and the setup effect above rebuilds
+    // everything, loading that character as its first.
+    if (getCharacterEngine(resolvedCharacter.id) !== canvasEngine) {
+      return;
+    }
+
     let cancelled = false;
 
     const syncCharacter = async () => {
       try {
+        // Mid-switch nothing is synced: this run has already handed Charivo
+        // the new character and asked the renderer for its model. Without
+        // this, picking the previous character again before the load lands
+        // would count as already synced and leave this one's model up.
+        syncedCharacterIdRef.current = null;
         clearMessages();
         resetRealtimeUiState();
         resetAvatarDebug();
@@ -998,8 +1060,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         charivo.clearHistory();
         charivo.setCharacter(resolvedCharacter);
         await renderManagerRef.current?.loadModel?.(
-          getLive2DModelPath(resolvedCharacter.id),
+          getModelPath(resolvedCharacter.id),
         );
+        // A newer pick superseded this run, whose load resolves all the same
+        // and possibly last: the renderer and the catalog are that pick's now.
+        if (cancelled) {
+          return;
+        }
+
+        const nextConfig = getCharacterConfig(resolvedCharacter.id);
+        rendererRef.current?.setGazeOrigin(nextConfig.gazeOrigin);
+        if (canvas) {
+          frameIkiCharacter(rendererRef.current, canvas, nextConfig.iki);
+        }
         const nextCatalog = readAvatarCatalog(
           rendererRef.current,
           getExpressionDescriptions(resolvedCharacter.id),
@@ -1013,10 +1086,6 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           expressionDescriptions: nextCatalog.expressionDescriptions,
           motionDescriptions: nextCatalog.motionDescriptions,
         });
-
-        if (cancelled) {
-          return;
-        }
 
         syncedCharacterIdRef.current = resolvedCharacter.id;
 
@@ -1072,11 +1141,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     };
   }, [
     resolvedCharacter,
+    canvas,
+    canvasEngine,
     charivo,
     clearMessages,
     getExpressionDescriptions,
     getMotionDescriptions,
-    getLive2DModelPath,
+    getModelPath,
     isRealtimeMode,
     resetRealtimeUiState,
     setRealtimeAssistantDraft,

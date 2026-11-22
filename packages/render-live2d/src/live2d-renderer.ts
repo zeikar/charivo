@@ -5,7 +5,11 @@ import {
   type Message,
   type Renderer,
 } from "@charivo/core";
-import { type MouseCoordinates, type MouseTrackable } from "@charivo/render";
+import {
+  type GazeOrigin,
+  type MouseCoordinates,
+  type MouseTrackable,
+} from "@charivo/render";
 import { Option, CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
 import { CubismViewMatrix } from "@framework/math/cubismviewmatrix";
@@ -28,6 +32,10 @@ export class Live2DRendererImpl
   private host?: CubismModelHost;
   private model?: LAppModel;
   private lastModelPath?: string;
+  /** Counts model loads, so one a later load overtook can tell. */
+  private loadCount = 0;
+  /** Where the mouse gaze is measured from; unset = the view's centre. */
+  private gazeOrigin?: GazeOrigin;
   private teardownResize?: ResizeTeardown;
   private teardownBrowserLifecycle?: () => void;
   private animationFrameId?: number;
@@ -67,10 +75,29 @@ export class Live2DRendererImpl
     this.lastModelPath = modelPath;
     this.model?.release();
 
+    const model = await this.loadLatest(modelPath, this.host);
+    if (model) this.model = model;
+  }
+
+  /**
+   * Load a model for `host`. Resolves undefined, with the model released, when
+   * it is no longer the one wanted by the time it is ready: a later load began
+   * (the latest call wins, however late this one lands), or the host it was
+   * built for is gone (destroy(), or a context restore).
+   */
+  private async loadLatest(
+    modelPath: string,
+    host: CubismModelHost,
+  ): Promise<LAppModel | undefined> {
+    const load = ++this.loadCount;
     const model = new LAppModel();
-    await model.loadAssets(modelPath, this.host);
+    await model.loadAssets(modelPath, host);
     await model.waitUntilReady();
-    this.model = model;
+    if (load !== this.loadCount || this.host !== host) {
+      model.release();
+      return undefined;
+    }
+    return model;
   }
 
   async render(_message: Message, _character?: Character): Promise<void> {
@@ -224,7 +251,7 @@ export class Live2DRendererImpl
     const canvas = this.canvas!;
 
     if (coreModel) {
-      if (coreModel.getCanvasWidth() > 1.0 && canvas.width < canvas.height) {
+      if (this.fitsModelToWidth(coreModel)) {
         this.model.getModelMatrix().setWidth(2.0);
         projection.scale(1.0, canvas.width / canvas.height);
       } else {
@@ -290,7 +317,64 @@ export class Live2DRendererImpl
   updateViewWithMouse(coords: MouseCoordinates): void {
     if (!this.model?.isReady()) return;
     const { viewX, viewY } = this.toViewCoordinates(coords);
-    this.model.setDragging(viewX, viewY);
+    const origin = this.gazeOriginInView();
+    this.model.setDragging(viewX - origin.x, viewY - origin.y);
+  }
+
+  /**
+   * `MouseTrackable.setGazeOrigin`: measure the mouse drag from a point of the
+   * model's canvas (fractions, top-left to bottom-right) instead of the view's
+   * centre. Throws on a non-finite `x` or `y`: kept, it would hand the model a
+   * NaN drag on every pointer move.
+   */
+  setGazeOrigin(origin?: GazeOrigin): void {
+    if (origin && !(Number.isFinite(origin.x) && Number.isFinite(origin.y))) {
+      throw new Error(
+        `Live2D: setGazeOrigin() needs a finite x and y, got ${origin.x}, ${origin.y}`,
+      );
+    }
+    this.gazeOrigin = origin;
+  }
+
+  /**
+   * Where the gaze origin sits in view coordinates, the space a drag and a
+   * hit test are given in and the model matrix maps the model into: the
+   * fractions become model units (origin at the canvas's centre, +y up) and
+   * go through that matrix, read at each call because the frame loop refits
+   * it to the canvas. The view's centre when no origin is set.
+   */
+  private gazeOriginInView(): { x: number; y: number } {
+    const origin = this.gazeOrigin;
+    const coreModel = this.model?.getModel();
+    if (!origin || !this.model || !this.canvas || !coreModel) {
+      return { x: 0, y: 0 };
+    }
+    const modelMatrix = this.model.getModelMatrix();
+    // In the width fit the frame loop draws with the canvas's width as the
+    // unit, while a pointer's view coordinates keep its height: they come out
+    // width / height times the drawn model's (the Cubism sample's mismatch,
+    // which the plain drag and the hit test have always lived with). The
+    // origin takes the same factor, so it lands where a pointer on it does.
+    const scale = this.fitsModelToWidth(coreModel)
+      ? this.canvas.width / this.canvas.height
+      : 1;
+    return {
+      x:
+        scale *
+        modelMatrix.transformX((origin.x - 0.5) * coreModel.getCanvasWidth()),
+      y:
+        scale *
+        modelMatrix.transformY((0.5 - origin.y) * coreModel.getCanvasHeight()),
+    };
+  }
+
+  /**
+   * True when the frame loop fits the model to the canvas's width rather than
+   * its height: a model wider than one unit on a portrait canvas.
+   */
+  private fitsModelToWidth(coreModel: { getCanvasWidth(): number }): boolean {
+    const canvas = this.canvas!;
+    return coreModel.getCanvasWidth() > 1.0 && canvas.width < canvas.height;
   }
 
   handleMouseTap(coords: MouseCoordinates): void {
@@ -421,10 +505,8 @@ export class Live2DRendererImpl
       this.resizeCanvas();
 
       if (this.lastModelPath) {
-        const model = new LAppModel();
-        await model.loadAssets(this.lastModelPath, this.host);
-        await model.waitUntilReady();
-        this.model = model;
+        const model = await this.loadLatest(this.lastModelPath, this.host);
+        if (model) this.model = model;
       }
 
       this.updateViewMatrices();

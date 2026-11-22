@@ -11,6 +11,7 @@ export const NATORI_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "verse", rate: 0.95, pitch: 1.0, volume: 0.75 },
   },
   voices: { openai: "verse", gemini: "Despina" },
+  gazeOrigin: { x: 0.503, y: 0.136 },
   live2d: {
     modelPath: "/live2d/Natori/Natori.model3.json",
   },

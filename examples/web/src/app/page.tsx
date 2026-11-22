@@ -11,8 +11,10 @@ import { AvatarDebugPanel } from "./components/chat/AvatarDebugPanel";
 import { ChatInput } from "./components/chat/ChatInput";
 import { SessionCapNotice } from "./components/chat/SessionCapNotice";
 import { RealtimeErrorNotice } from "./components/chat/RealtimeErrorNotice";
+import { findCharacterId } from "./config/characters";
 import { useCharivoChat } from "./hooks/useCharivoChat";
 import { useRealtimeMode } from "./hooks/useRealtimeMode";
+import { useCharacterStore } from "./stores/useCharacterStore";
 import { useChatStore } from "./stores/useChatStore";
 
 export default function Home() {
@@ -58,6 +60,21 @@ export default function Home() {
 
   const { toggleRealtimeMode, sendRealtimeMessage, interruptRealtime } =
     useRealtimeMode();
+
+  // `?character=<id>` opens the page on that character, so a link can land on
+  // one. Read once, in an effect because the prerendered page cannot know it;
+  // picking another from the menu leaves the URL alone.
+  const setSelectedCharacter = useCharacterStore(
+    (state) => state.setSelectedCharacter,
+  );
+  useEffect(() => {
+    const id = findCharacterId(
+      new URLSearchParams(window.location.search).get("character"),
+    );
+    if (id) {
+      setSelectedCharacter(id);
+    }
+  }, [setSelectedCharacter]);
 
   const handleSendClick = () => {
     if (!input.trim()) {

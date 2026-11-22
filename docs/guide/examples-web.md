@@ -15,6 +15,13 @@ example, not just a demo. The other is
 The app exercises the current package stack:
 
 - Live2D rendering through `@charivo/render-live2d` and `@charivo/render`
+- Two characters drawn by the [Iki](https://github.com/zeikar/iki) engine
+  through the private `@charivo/render-iki` adapter, a bust and a full body,
+  with the same chat, voice, lip-sync and avatar control
+- `?character=<id>` to open on a given character, e.g.
+  [`/?character=twin`](https://charivo.vercel.app/?character=twin) or
+  [`/?character=mint`](https://charivo.vercel.app/?character=mint) for the Iki
+  ones
 - LLM chat through Gemini and OpenAI, each in a server-route and a
   browser-direct form, plus an OpenClaw proxy (dev builds only) and a stub
 - TTS through Gemini and OpenAI, each in a server-route and a browser-direct
@@ -32,7 +39,7 @@ The app exercises the current package stack:
 
 The current hook split is deliberate:
 
-- `useLive2D` owns canvas mount and unmount
+- `useLive2D` owns canvas mount and unmount, with a fresh canvas when the selected character's engine (Live2D or Iki) changes
 - `useCharivoChat` owns Charivo setup, render/LLM/TTS/STT manager attachment, event subscription, and teardown
 - `useRealtimeMode` owns the realtime manager: it attaches and detaches it on the shared Charivo instance, and starts and stops the session
 
@@ -121,6 +128,9 @@ place:
   `/api/stt-gemini-live`
 - a realtime provider selector, OpenAI Realtime or Gemini Live, that starts on
   Gemini Live and locks while a call is connecting or up
+- a character picker that a Gemini Live call locks whole, and that any call
+  locks for the characters drawn by the other engine (the Iki characters during
+  a call with a Live2D one, and the reverse)
 - stub LLM mode for deterministic UI work
 
 ## Files To Read

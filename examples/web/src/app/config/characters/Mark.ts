@@ -12,6 +12,7 @@ export const MARK_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "cedar", rate: 0.9, pitch: 0.9, volume: 0.8 },
   },
   voices: { openai: "cedar", gemini: "Charon" },
+  gazeOrigin: { x: 0.502, y: 0.413 },
   live2d: {
     modelPath: "/live2d/Mark/Mark.model3.json",
   },

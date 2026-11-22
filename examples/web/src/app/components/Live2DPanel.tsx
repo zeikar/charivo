@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 
+import { getCharacterEngine } from "../config/characters";
 import {
   useCharacterStore,
   CHARACTERS,
@@ -26,16 +27,26 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
   // no session to patch yet, and the `syncedCharacterIdRef` early return means
   // nothing corrects the mismatch later. OpenAI patches sessions fine, so it
   // stays switchable.
+  const callActive = isRealtimeMode || isConnecting;
   const characterSwitchLocked =
-    (isRealtimeMode || isConnecting) && selectedRealtimeProvider === "gemini";
+    callActive && selectedRealtimeProvider === "gemini";
 
-  const handleCharacterSelect = (id: string) => {
+  // Either provider: a character drawn by the other engine needs another
+  // renderer and canvas, and `useCharivoChat` rebuilds its whole setup around
+  // them — which would hang up the call. Characters of the engine on screen
+  // stay switchable.
+  const isCharacterLocked = (id: CharacterId) =>
+    characterSwitchLocked ||
+    (callActive &&
+      getCharacterEngine(id) !== getCharacterEngine(selectedCharacter));
+
+  const handleCharacterSelect = (id: CharacterId) => {
     // Disabling the button only blocks the toggle: a menu already open when the
     // lock engaged stays mounted and clickable.
-    if (characterSwitchLocked) {
+    if (isCharacterLocked(id)) {
       return;
     }
-    setSelectedCharacter(id as CharacterId);
+    setSelectedCharacter(id);
   };
 
   return (
@@ -51,6 +62,9 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
               >
                 {characterSwitchLocked && <span aria-hidden>🔒</span>}
                 {selectedCharacter}
+                {getCharacterEngine(selectedCharacter) === "iki" && (
+                  <IkiBadge />
+                )}
                 <ChevronDownIcon
                   className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
                 />
@@ -61,11 +75,18 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
                 className="mt-2 ml-2 md:ml-4 bg-white dark:bg-gray-700 rounded-lg shadow-xl ring-1 ring-black/5 dark:ring-white/5 w-32 focus:outline-none z-50"
               >
                 {CHARACTERS.map((character) => (
-                  <MenuItem key={character.id}>
+                  <MenuItem
+                    key={character.id}
+                    disabled={isCharacterLocked(character.id)}
+                  >
                     {({ focus }) => (
                       <button
                         onClick={() => handleCharacterSelect(character.id)}
-                        className={`w-full px-4 py-2 text-left transition-colors text-sm ${
+                        className={`w-full px-4 py-2 text-left transition-colors text-sm inline-flex items-center gap-2 ${
+                          isCharacterLocked(character.id)
+                            ? "cursor-not-allowed opacity-50"
+                            : ""
+                        } ${
                           character.id === selectedCharacter
                             ? "bg-blue-100 dark:bg-gray-600 text-blue-600 dark:text-blue-400 font-medium"
                             : focus
@@ -74,6 +95,9 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
                         } first:rounded-t-lg last:rounded-b-lg`}
                       >
                         {character.id}
+                        {getCharacterEngine(character.id) === "iki" && (
+                          <IkiBadge />
+                        )}
                       </button>
                     )}
                   </MenuItem>
@@ -98,5 +122,14 @@ export function Live2DPanel({ canvasContainerRef }: Live2DPanelProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Marks a character drawn by the Iki engine rather than Live2D. */
+function IkiBadge() {
+  return (
+    <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600 dark:bg-gray-600 dark:text-gray-200">
+      Iki
+    </span>
   );
 }

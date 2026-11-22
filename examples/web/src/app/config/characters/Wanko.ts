@@ -11,6 +11,8 @@ export const WANKO_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "alloy", rate: 1.1, pitch: 1.2, volume: 0.9 },
   },
   voices: { openai: "alloy", gemini: "Fenrir" },
+  // No gazeOrigin: the model has no ParamEyeBallX to find its eyes by, and
+  // the canvas's centre already sits on it.
   live2d: {
     modelPath: "/live2d/Wanko/Wanko.model3.json",
   },

@@ -12,6 +12,7 @@ export const RICE_CHARACTER_CONFIG = defineCharacterConfig({
     voice: { voiceId: "ballad", rate: 1.15, pitch: 1.4, volume: 0.85 },
   },
   voices: { openai: "ballad", gemini: "Leda" },
+  gazeOrigin: { x: 0.632, y: 0.265 },
   live2d: {
     modelPath: "/live2d/Rice/Rice.model3.json",
   },
