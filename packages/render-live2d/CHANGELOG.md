@@ -1,5 +1,17 @@
 # @charivo/render-live2d
 
+## 0.7.0
+
+### Minor Changes
+
+- 2f522f7: Add `setGazeOrigin(origin?)`: the point of the model the cursor-follow gaze is measured from. Until now a pointer was read against the canvas's centre, which on a full-body model is the waist, so a pointer on the face counted as above it and the character looked up. `@charivo/render` declares it as an optional `MouseTrackable` method with the `GazeOrigin` type — fractions of the model's own canvas, `(0, 0)` its top-left corner and `(1, 1)` its bottom-right, the same for any renderer — and `@charivo/render-live2d` implements it. Unset, the gaze is measured from the centre as before; taps and `lookAt` are unaffected; a renderer that does not implement it keeps working.
+
+### Patch Changes
+
+- 2f522f7: `loadModel()` keeps the model of the latest call. Loads that overlapped used to finish in whatever order their files arrived, so switching models twice in quick succession could leave the first pick's model on screen, and the one it replaced was never released. A load that a later call overtook now releases its model and resolves without showing it; so does one that lands after `destroy()` or after a WebGL context restore rebuilt the host.
+- Updated dependencies [2f522f7]
+  - @charivo/render@0.12.0
+
 ## 0.6.6
 
 ### Patch Changes
