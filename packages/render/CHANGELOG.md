@@ -1,5 +1,13 @@
 # @charivo/render
 
+## 0.12.1
+
+### Patch Changes
+
+- 9b354de: `createRenderManager()` returns a manager whose `loadModel`, `setLocalGaze` and `setMessageCallback` are required in the type, following `RenderManager` in `@charivo/core`: calling them needs no `?.`. The methods were always there and behave as before. Upgrade together with `@charivo/core`.
+- Updated dependencies [9b354de]
+  - @charivo/core@0.38.0
+
 ## 0.12.0
 
 ### Minor Changes
