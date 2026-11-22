@@ -32,6 +32,7 @@ Which Charivo packages are you using?
 - [ ] @charivo/realtime
 - [ ] @charivo/render
 - [ ] @charivo/render-live2d
+- [ ] @charivo/render-iki
 - [ ] @charivo/server
 - [ ] Other (please specify)
 

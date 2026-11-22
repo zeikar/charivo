@@ -57,7 +57,7 @@ To read the shipped reference apps:
 - [Getting Started](./getting-started.md): minimal production-oriented setup
 - [Architecture](./architecture.md): package boundaries, layering, and event wiring
 - [Choosing Packages](./choosing-packages.md): remote vs browser-direct vs browser-native
-- [Rendering](./rendering.md): `@charivo/render` and `@charivo/render-live2d`
+- [Rendering](./rendering.md): `@charivo/render`, `@charivo/render-live2d`, and `@charivo/render-iki`
 - [LLM](./llm.md): conversation manager and client choices
 - [TTS](./tts.md): speech playback and lip-sync wiring
 - [STT](./stt.md): microphone recording and transcription paths

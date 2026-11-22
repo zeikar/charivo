@@ -158,6 +158,18 @@ Choose this path when:
 @charivo/render-live2d
 ```
 
+### Iki rendering
+
+```text
+@charivo/render
+@charivo/render-iki
+```
+
+Same wiring as Live2D with `createIkiRenderer` in place of
+`createLive2DRenderer`, for `.iki` models on the open
+[Iki](https://github.com/zeikar/iki) engine. MIT, with no Live2D SDK in the
+bundle.
+
 ## Related Guides
 
 - [Getting Started](./getting-started.md)

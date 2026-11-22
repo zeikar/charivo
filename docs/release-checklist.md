@@ -54,8 +54,16 @@ Run this from the repository root before publishing public packages.
 - Confirm every published package still trusts `zeikar/charivo` / `release.yml`
   (`npm trust list @charivo/<pkg>` shows `createPackage`); publishing runs on
   OIDC, and the workflow upgrades the runner's npm to 11 because trusted
-  publishing needs 11.5.1+. `NPM_TOKEN` is only a fallback: to use it, pass it
-  back into the changesets step's `env`.
+  publishing needs 11.5.1+. `NPM_TOKEN` is only a fallback: the workflow passes
+  it as `NODE_AUTH_TOKEN`, and npm uses it only for a package with no trust
+  config.
+- A package's first publish cannot use OIDC: trust can only be registered for
+  a package that already exists on npm. The workflow passes `NPM_TOKEN` as
+  `NODE_AUTH_TOKEN` for that one publish, so the token must be unexpired and
+  allowed to create packages in the `@charivo` scope. Once the package is up,
+  register trust (`npm trust github @charivo/<pkg> --repo zeikar/charivo --file
+  release.yml --allow-publish --allow-stage-publish --yes`, npm 11.15+), or
+  every later release of it keeps depending on the token.
 - Confirm GitHub Actions is allowed to create pull requests.
 - Confirm the target version does not already exist on npm.
 - Confirm the release PR was merged, not just opened.
