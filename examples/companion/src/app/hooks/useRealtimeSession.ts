@@ -376,7 +376,7 @@ export function useRealtimeSession(
           });
           charivoRef.current = charivo;
           await renderManager.initialize();
-          await renderManager.loadModel?.(resolvedCharacter.modelPath);
+          await renderManager.loadModel(resolvedCharacter.modelPath);
           if (disposed) {
             await teardownThisRender();
             return;

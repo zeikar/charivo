@@ -42,6 +42,7 @@ class StubRenderManager implements RenderManager {
   setLocalGaze = vi.fn((_coords: GazeCoordinates) => false);
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
   disconnect = vi.fn(() => undefined);
+  loadModel = vi.fn(async (_modelPath: string) => undefined);
 }
 
 class StubTTSManager implements TTSManager {
@@ -945,6 +946,7 @@ class GateableRenderManager implements RenderManager {
   setLocalGaze = vi.fn((_coords: GazeCoordinates) => false);
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
   disconnect = vi.fn(() => undefined);
+  loadModel = vi.fn(async (_modelPath: string) => undefined);
 
   /** Renders whose message matches stay pending until settled explicitly. */
   hold: (message: Message) => boolean = () => false;

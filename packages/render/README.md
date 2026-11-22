@@ -25,7 +25,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/live2d/hiyori/hiyori.model3.json");
+await renderManager.loadModel("/live2d/hiyori/hiyori.model3.json");
 ```
 
 ## What It Does

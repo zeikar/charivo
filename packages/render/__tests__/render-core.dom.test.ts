@@ -81,6 +81,22 @@ describe("RenderManager", () => {
     vi.restoreAllMocks();
   });
 
+  it("loadModel hands the path to the renderer, and resolves without loading when the renderer has none", async () => {
+    const loadModel = vi.fn(async (_modelPath: string) => undefined);
+    const loading = createRenderManager(
+      Object.assign(new StubRenderer(), { loadModel }),
+    );
+
+    await loading.loadModel("/models/a.model3.json");
+
+    expect(loadModel).toHaveBeenCalledWith("/models/a.model3.json");
+    await expect(
+      createRenderManager(new StubRenderer()).loadModel(
+        "/models/a.model3.json",
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("initializes, renders messages, invokes the callback, and destroys cleanly", async () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);

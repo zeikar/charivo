@@ -8,6 +8,7 @@ export interface Live2DRendererOptions {
 }
 
 export interface Live2DRenderer extends Renderer, MouseTrackable {
+  loadModel(modelPath: string): Promise<void>;
   playExpression(expressionId: string): void;
   stopExpression(): void;
   playMotionByGroup(

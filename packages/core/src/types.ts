@@ -416,7 +416,8 @@ export interface RenderManager {
   setEventBus(eventBus: CharivoEventBus): void;
   /** Removes all event-bus listeners registered by setEventBus and releases any held expression. */
   disconnect(): void;
-  loadModel?(modelPath: string): Promise<void>;
+  /** Loads the model through the renderer's `loadModel`; resolves without loading anything when the renderer has none. */
+  loadModel(modelPath: string): Promise<void>;
   setMessageCallback?(
     callback: (message: Message, character?: Character) => void,
   ): void;

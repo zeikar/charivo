@@ -259,6 +259,10 @@ The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly
 tear down typed character, TTS, and realtime events without duck typing.
 
+It must also expose `loadModel(modelPath)`, which the app calls to load or
+switch the model. The core never calls it; a manager with nothing to load
+resolves it without doing anything.
+
 ### `RenderManager` public methods
 
 Beyond the event-bus contract, `RenderManager` exposes optional public methods
