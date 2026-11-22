@@ -173,6 +173,67 @@ importers:
         specifier: ^5.4.20
         version: 5.4.20(@types/node@22.18.6)(lightningcss@1.30.1)(terser@5.46.1)
 
+  examples/vtuber:
+    dependencies:
+      '@charivo/avatar':
+        specifier: workspace:*
+        version: link:../../packages/avatar
+      '@charivo/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@charivo/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
+      '@charivo/render':
+        specifier: workspace:*
+        version: link:../../packages/render
+      '@charivo/render-live2d':
+        specifier: workspace:*
+        version: link:../../packages/render-live2d
+      '@charivo/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@charivo/tts':
+        specifier: workspace:*
+        version: link:../../packages/tts
+      next:
+        specifier: 15.5.9
+        version: 15.5.9(@babel/core@7.29.0(supports-color@8.1.1))(@playwright/test@1.59.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      react:
+        specifier: 19.1.0
+        version: 19.1.0
+      react-dom:
+        specifier: 19.1.0
+        version: 19.1.0(react@19.1.0)
+    devDependencies:
+      '@eslint/eslintrc':
+        specifier: ^3
+        version: 3.3.1(supports-color@8.1.1)
+      '@tailwindcss/postcss':
+        specifier: ^4
+        version: 4.1.13
+      '@types/node':
+        specifier: ^22
+        version: 22.18.6
+      '@types/react':
+        specifier: ^19
+        version: 19.1.15
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.1.9(@types/react@19.1.15)
+      eslint:
+        specifier: ^9
+        version: 9.36.0(jiti@2.6.0)(supports-color@8.1.1)
+      eslint-config-next:
+        specifier: 15.5.3
+        version: 15.5.3(eslint@9.36.0(jiti@2.6.0)(supports-color@8.1.1))(supports-color@8.1.1)(typescript@5.9.2)
+      tailwindcss:
+        specifier: ^4
+        version: 4.1.13
+      typescript:
+        specifier: ^5
+        version: 5.9.2
+
   examples/web:
     dependencies:
       '@charivo/avatar':

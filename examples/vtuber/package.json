@@ -1,0 +1,36 @@
+{
+  "name": "vtuber",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack -p 3002 --hostname 127.0.0.1",
+    "prebuild": "pnpm -w build",
+    "build": "next build --turbopack",
+    "start": "next start -p 3002 --hostname 127.0.0.1",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@charivo/avatar": "workspace:*",
+    "@charivo/core": "workspace:*",
+    "@charivo/llm": "workspace:*",
+    "@charivo/render": "workspace:*",
+    "@charivo/render-live2d": "workspace:*",
+    "@charivo/server": "workspace:*",
+    "@charivo/tts": "workspace:*",
+    "next": "15.5.9",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

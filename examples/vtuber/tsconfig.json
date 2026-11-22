@@ -1,0 +1,38 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@charivo/avatar": ["../../packages/avatar/src/index.ts"],
+      "@charivo/core": ["../../packages/core/src/index.ts"],
+      "@charivo/llm/remote": ["../../packages/llm/src/remote/index.ts"],
+      "@charivo/llm": ["../../packages/llm/src/index.ts"],
+      "@charivo/tts/remote": ["../../packages/tts/src/remote/index.ts"],
+      "@charivo/tts": ["../../packages/tts/src/index.ts"],
+      "@charivo/render": ["../../packages/render/src/index.ts"],
+      "@charivo/render-live2d": ["../../packages/render-live2d"],
+      "@charivo/server/gemini": ["../../packages/server/src/gemini/index.ts"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
