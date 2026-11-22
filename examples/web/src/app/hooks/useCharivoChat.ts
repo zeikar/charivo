@@ -618,7 +618,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         renderManagerRef.current = renderManager;
 
         await renderManager.initialize();
-        await renderManager.loadModel?.(getModelPath(initialCharacter.id));
+        await renderManager.loadModel(getModelPath(initialCharacter.id));
 
         // Before the catalog is published: a superseded run's renderer is
         // already destroyed and reads back an empty one, which would replace
@@ -648,7 +648,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           motionDescriptions: initialCatalog.motionDescriptions,
         });
 
-        renderManager.setMessageCallback?.(
+        renderManager.setMessageCallback(
           (message: Message, owner?: Character) => {
             if (disposed) {
               return;
@@ -1059,7 +1059,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         setRealtimeError(null);
         charivo.clearHistory();
         charivo.setCharacter(resolvedCharacter);
-        await renderManagerRef.current?.loadModel?.(
+        await renderManagerRef.current?.loadModel(
           getModelPath(resolvedCharacter.id),
         );
         // A newer pick superseded this run, whose load resolves all the same

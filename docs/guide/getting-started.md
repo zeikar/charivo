@@ -76,7 +76,7 @@ const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 const charivo = createCharivo({
   renderer: renderManager,
@@ -114,7 +114,7 @@ const renderManager = createRenderManager(createLive2DRenderer({ canvas }), {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 const charivo = createCharivo({
   renderer: renderManager,

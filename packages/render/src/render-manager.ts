@@ -243,7 +243,8 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * Load the model (if the renderer supports it)
+   * Load the model through the renderer; resolves without loading anything
+   * when the renderer has no `loadModel`.
    */
   async loadModel(modelPath: string): Promise<void> {
     if (this.renderer.loadModel) {

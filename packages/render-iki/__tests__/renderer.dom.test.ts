@@ -64,14 +64,11 @@ vi.mock("@ikijs/engine", async (importOriginal) => {
 import { createIkiRenderer, type IkiRenderer } from "../src/renderer";
 
 // The suite drives the factory's own return type, so a member dropped from
-// `IkiRenderer` fails the typecheck here. Only the three members it leaves
+// `IkiRenderer` fails the typecheck here. Only the two members it leaves
 // optional, as `Renderer` declares them, are asserted present.
 type LoadedIkiRenderer = IkiRenderer &
   Required<
-    Pick<
-      IkiRenderer,
-      "loadModel" | "setRealtimeLipSync" | "updateRealtimeLipSyncRms"
-    >
+    Pick<IkiRenderer, "setRealtimeLipSync" | "updateRealtimeLipSyncRms">
   >;
 
 const FIXTURE: IkiModel = {

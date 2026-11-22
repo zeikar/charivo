@@ -15,6 +15,7 @@ export interface IkiRendererOptions {
 }
 
 export interface IkiRenderer extends Renderer, MouseTrackable {
+  loadModel(modelPath: string): Promise<void>;
   playExpression(expressionId: string): void;
   stopExpression(): void;
   /** `options.muteSound` is accepted for the `Renderer` contract and ignored: Iki motion clips carry no audio. */

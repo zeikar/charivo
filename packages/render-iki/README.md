@@ -38,7 +38,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/hero.iki");
+await renderManager.loadModel("/hero.iki");
 
 // The model file is the catalog: ids, counts and descriptions for the LLM.
 const catalog = renderer.getAvatarControlCatalog();

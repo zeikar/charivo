@@ -411,13 +411,15 @@ export interface RenderManager {
   destroy(): Promise<void>;
   setCharacter(character: Character): void;
   render(message: Message, character?: Character): Promise<void>;
-  /** Local-presence gaze (webcam), peer of mouse-tracking. Returns true when applied. */
-  setLocalGaze?(coords: GazeCoordinates): boolean;
+  /** Local-presence gaze (webcam), peer of mouse-tracking. Returns true when applied; a manager with no gaze control returns false. */
+  setLocalGaze(coords: GazeCoordinates): boolean;
   setEventBus(eventBus: CharivoEventBus): void;
   /** Removes all event-bus listeners registered by setEventBus and releases any held expression. */
   disconnect(): void;
-  loadModel?(modelPath: string): Promise<void>;
-  setMessageCallback?(
+  /** Loads the model through the renderer's `loadModel`; resolves without loading anything when the renderer has none. */
+  loadModel(modelPath: string): Promise<void>;
+  /** Sets the callback the manager invokes with each message once the renderer has rendered it; a later call replaces it. */
+  setMessageCallback(
     callback: (message: Message, character?: Character) => void,
   ): void;
 }

@@ -5,24 +5,28 @@ sidebar_position: 5
 
 # Rendering
 
-Charivo's rendering layer is usually built from `@charivo/render` and
-`@charivo/render-live2d`.
+Charivo's rendering layer is built from `@charivo/render` and a concrete
+renderer: `@charivo/render-live2d` for Live2D Cubism models, or
+`@charivo/render-iki` for `.iki` models.
 
 ## Recommended Stack
 
 Use:
 
-- `@charivo/render-live2d` as the concrete renderer
+- `@charivo/render-live2d` or `@charivo/render-iki` as the concrete renderer
 - `@charivo/render` as the stateful manager
 
-This is the default rendering path in the repo.
+The examples on this page use Live2D, the default path in the repo. The Iki
+renderer takes the same wiring; see [Iki Renderer](#iki-renderer).
 
 ## What Each Package Does
 
-- `@charivo/render-live2d` draws the Live2D model and exposes renderer methods
+- `@charivo/render-live2d` draws a Live2D model and exposes renderer methods
+- `@charivo/render-iki` does the same for an `.iki` model on the open
+  [Iki](https://github.com/zeikar/iki) engine
 - `@charivo/render` connects the renderer to Charivo events, mouse tracking, canonical avatar actions, and lip-sync updates
 
-Most apps use both together.
+Most apps use the manager with one of the two renderers.
 
 ## Basic Setup
 
@@ -37,7 +41,7 @@ const renderManager = createRenderManager(renderer, {
 });
 
 await renderManager.initialize();
-await renderManager.loadModel?.("/live2d/Hiyori/Hiyori.model3.json");
+await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 ```
 
 Attach the manager to `Charivo` after initialization:
@@ -45,6 +49,55 @@ Attach the manager to `Charivo` after initialization:
 ```ts
 charivo.attachRenderer(renderManager);
 ```
+
+## Iki Renderer
+
+`@charivo/render-iki` draws an `.iki` model on the
+[Iki](https://github.com/zeikar/iki) engine. The setup is the one above with
+`createIkiRenderer` in place of `createLive2DRenderer`:
+
+```bash
+pnpm add @charivo/render-iki @charivo/render
+```
+
+```ts
+import { createIkiRenderer } from "@charivo/render-iki";
+import { createRenderManager } from "@charivo/render";
+
+const renderer = createIkiRenderer({ canvas });
+const renderManager = createRenderManager(renderer, {
+  canvas,
+  mouseTracking: "document",
+});
+
+await renderManager.initialize();
+await renderManager.loadModel("/iki/hero.iki");
+```
+
+The rest of this page applies to both renderers: the manager, its events,
+lip-sync, expressions, motions and gaze. What differs with Iki:
+
+- **License.** The package and the engine are MIT, and no Live2D SDK is in the
+  bundle.
+- **Model file.** An `.iki` model is one JSON file with its textures inside.
+  The two the web demo uses are in
+  [`examples/web/public/iki/`](https://github.com/zeikar/charivo/tree/main/examples/web/public/iki).
+- **Catalog.** The file declares a description for every expression and motion,
+  and `renderer.getAvatarControlCatalog()` returns them with the ids and
+  counts, so avatar tools need no hand-written descriptions; see
+  [Building The Catalog](./avatar.md#building-the-catalog).
+- **Framing.** `renderer.setView({ x, y, width, height })` frames that region
+  (centre and size in model units, `y` up) instead of the model's own box,
+  for example a full body whose raised arm leaves the box.
+- **Taps and motion audio.** Iki has no tap motions and its clips carry no
+  audio, so a tap does nothing and `muteSound` has nothing to mute.
+
+An app that offers both kinds of character gives each engine its own canvas:
+a canvas keeps the WebGL context its first renderer created, and the Iki
+engine needs a stencil buffer that a context created for Live2D lacks. The
+[web demo](./examples-web.md) does this, and opens on an Iki character with
+[`?character=twin`](https://charivo.vercel.app/?character=twin) or
+[`?character=mint`](https://charivo.vercel.app/?character=mint).
 
 ## What `@charivo/render` Adds
 
@@ -164,14 +217,14 @@ places the point on the canvas itself, so it holds at any canvas size or
 framing.
 
 ```ts
-await renderManager.loadModel?.("/live2d/Haru/Haru.model3.json");
+await renderManager.loadModel("/live2d/Haru/Haru.model3.json");
 renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
 ```
 
 - Call it on the renderer, not the manager, and again when the next model's
   face is elsewhere: the renderer holds it across `loadModel`.
 - No argument restores the canvas's centre. A non-finite `x` or `y` throws.
-- Only the mouse cursor is affected. Taps hit-test where the pointer is, and
+- Only the mouse cursor is affected. Live2D taps hit-test where the pointer is, and
   `lookAt` / `setLocalGaze` / AI gaze already take a direction.
 - It is an optional member of `MouseTrackable`, so a renderer of your own may
   leave it out; an app that supports several renderers calls
@@ -179,11 +232,6 @@ renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
 
 ## Alternatives
 
-- Use `@charivo/render-iki` to draw an `.iki` model on the open
-  [Iki](https://github.com/zeikar/iki) engine instead of a Live2D one:
-  `createIkiRenderer({ canvas })` takes the place of `createLive2DRenderer`,
-  and the manager, events, lip-sync and avatar control stay as above. The
-  [web demo](https://charivo.vercel.app/?character=twin) runs both.
 - Use `@charivo/render/stub` for tests or demos that do not need real rendering.
 - If you already have a custom renderer, keep using `@charivo/render` and provide a `Renderer` implementation from `@charivo/core`.
 

@@ -261,13 +261,19 @@ tear down typed character, TTS, and realtime events without duck typing.
 
 ### `RenderManager` public methods
 
-Beyond the event-bus contract, `RenderManager` exposes optional public methods
-for driving avatar state from the app layer:
+Beyond the event-bus contract, `RenderManager` has three methods the app layer
+calls. The core calls none of them, but all three are required members, so a
+manager of your own declares them even where it has nothing to do:
 
+- `loadModel(modelPath: string): Promise<void>` — loads or switches the model.
+  A manager with nothing to load resolves without doing anything.
 - `setLocalGaze(coords: GazeCoordinates): boolean` — drives local-presence gaze
   (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
   avatar (the `avatar:gaze` suspend window is active) or when the renderer has
   no `lookAt`.
+- `setMessageCallback(callback)` — sets the one callback the manager invokes
+  with each message once the renderer has rendered it, and the character it
+  was rendered for, if any. A later call replaces it.
 
 ## Errors
 
