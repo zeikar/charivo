@@ -1,7 +1,7 @@
 {
   "name": "@charivo/llm",
   "version": "0.13.3",
-  "description": "LLM manager and browser adapters for Charivo",
+  "description": "LLM manager and browser adapters for Charivo AI characters, with OpenAI, Gemini, and OpenClaw support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

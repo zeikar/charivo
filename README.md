@@ -294,8 +294,12 @@ App
   modality packages (it accepts credentials from your app config; it does not
   store or own them).
 
+Charivo is the character's embodiment, not an agent framework. Planning,
+persistent memory, deciding when to speak, and OS access belong to your app
+or to an agent runtime that drives Charivo.
+
 See the [Architecture guide](https://zeikar.dev/charivo/architecture/) for
-event wiring, package roles, and detailed layering.
+event wiring, package roles, detailed layering, and what Charivo leaves out.
 
 ## Package Map
 

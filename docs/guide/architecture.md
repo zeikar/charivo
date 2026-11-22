@@ -208,6 +208,40 @@ Browser-native packages are a separate option:
 Use them when you want browser-only speech features and can accept browser
 support differences.
 
+## What Charivo Does Not Do
+
+Charivo is the embodiment layer of an AI character: its voice, face, gaze,
+motion, and the live conversation channel. Deciding what the character should
+do, and remembering it, belongs to your application or to an agent runtime
+that drives Charivo. These stay out of the packages on purpose:
+
+- **Agent planning and long-running work**: planners, subagents, sandboxes,
+  code execution, background tasks. Run them in an agent runtime and connect
+  its replies through an LLM client. [LiveClaw](https://github.com/zeikar/liveclaw)
+  does this with OpenClaw: its Electron main process runs
+  `@charivo/server/openclaw`, and the renderer reaches it through a custom
+  LLM client over IPC.
+- **Deciding when to speak**: schedulers, idle-speech timers, attention or
+  priority queues that decide whether an event becomes a line. Neither input
+  path queues for you. In cascade mode, `Charivo.userSay()` is latest-wins,
+  so a newer call cancels the turn in progress. In realtime mode,
+  `sendMessage()` is rejected while a response is in progress (see
+  [Realtime](./realtime.md)). An app that feeds the character from several
+  sources needs its own queue in front of it.
+- **Persistent memory**: fact stores, summaries, retrieval across sessions.
+  Charivo keeps the current session's conversation history in cascade mode
+  (in realtime mode the provider keeps it), and nothing more. The Companion
+  example keeps its long-term memory in app code and composes it into the
+  session instructions.
+- **Tool infrastructure beyond the turn**: Charivo runs the tool loop for the
+  tools you register, the avatar tools included (see
+  [Avatar Tool Calling](./llm.md#avatar-tool-calling) for its limits). It does
+  not host MCP sessions, manage tool-server credentials, or enable
+  provider-hosted tools such as web search or remote MCP.
+- **Desktop or OS access**: file system, clipboard, notifications, input
+  automation. Keep these in a privileged host process, such as an Electron
+  main process, not in the renderer that runs Charivo.
+
 ## Repository Layout
 
 ```text

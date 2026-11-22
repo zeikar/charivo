@@ -1,7 +1,7 @@
 {
   "name": "@charivo/realtime",
   "version": "0.20.7",
-  "description": "Realtime manager and browser adapters for Charivo",
+  "description": "Realtime voice conversation manager for Charivo AI characters, with OpenAI Realtime and Gemini Live support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

@@ -1,7 +1,7 @@
 {
   "name": "@charivo/tts",
   "version": "0.10.3",
-  "description": "TTS manager and browser adapters for Charivo",
+  "description": "Text-to-speech (TTS) manager and browser adapters for Charivo AI characters, with OpenAI, Gemini, and Web Speech support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",

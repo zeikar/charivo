@@ -2,7 +2,7 @@
   "name": "charivo",
   "version": "0.0.0",
   "private": true,
-  "description": "A modular Live2D + LLM framework for interactive character experiences",
+  "description": "A modular TypeScript framework for embodied Live2D AI characters: LLM, voice, expression, motion, gaze, and real-time conversation",
   "keywords": [
     "live2d",
     "llm",
