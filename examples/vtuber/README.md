@@ -263,18 +263,54 @@ hand for cue disclosure and for treating a cue or event as a viewer's words.
 
 ### Results
 
-**Provisional.** The full-show live run and the verdict on whether a core
-primitive is warranted are not recorded yet.
+Measured 2026-11-22 on the demo key, with the production build (`next start`) in
+Chromium driven by Playwright on macOS. Speech used the default Web Speech voice
+(Samantha, en-US). Nobody listened: "spoken" below means the browser reported
+`speechSynthesis.speaking` for the line and the Director logged it completed.
 
-Early observations from browser runs on the demo key, 2026-11-22. They come from
-short runs, not the full show, and prove little:
+**Run 1, no input (criterion 1).** Both scripted sources off, nothing touched
+after Start.
 
-- a line took about 7 to 21 s of "thinking" before speech. That is Gemini chat
-  latency over one to four chat requests through the avatar tool loop
-- lines were spoken
-- cue leaks counted 0
-- a chat message was answered after the line that was playing
-- a super chat cut idle filler; the cut line shows as cancelled, not failed
+- The show reached `finished` 631 s after Start. The ending cue was queued at
+  600 s, waited for the idle line in flight, and started at 608 s.
+- Segments ran in order: opening at 0 s, the three topics at 60, 240 and 420 s,
+  the ending at 600 s.
+- Lines spoken 24, cancelled 0, failed 0, ignored 0, cue leaks 0. Every segment
+  had its cue line plus recurring idle lines (2, 5, 7 and 5 for the opening and
+  the three topics), and the ending line was spoken.
+- No two lines overlapped and none was cut. The longest stretch without speech
+  while running was 31 s; a line usually took 7 to 21 s of "thinking" (one to
+  four Gemini chat requests through the avatar tool loop) before speech.
+- Verdict: autonomy demonstrated, with the caveat above that it was observed
+  through `speechSynthesis`, not heard.
+
+**Run 2, scripted viewers and game events on (criteria 2 and 3).** Stopped by
+hand at 371 s.
+
+- Lines spoken 16, cancelled 2 (the cut idle line and the line in flight at
+  Stop), failed 0, ignored 0, cue leaks 0.
+- All six scripted viewer messages were answered. A chat sent while a line was
+  playing was marked queued and answered after that line ended, behind two
+  higher-priority items that were already waiting (a scripted super chat and a
+  high-priority game event), as the priority order says.
+- A super chat sent during idle filler cut it (logged cancelled, not failed) and
+  was answered in the same second.
+- Of four game events, two got reaction lines and two were dropped as stale
+  after waiting past `agentMaxAgeMs` (30 s) behind chat. Events appeared only in
+  the Director panel, never as viewer messages.
+
+**Leak review.** All 46 spoken lines across both runs were read: none contains a
+tag, the word "director", or "stage direction", and none answers a cue or an
+event as if a viewer had said it.
+
+**Is a core non-user-input primitive warranted? Not yet.** On the cascade path
+the envelope held: 0 leaks over 46 lines, including all 24 lines of run 1,
+which were driven only by cues. What the workaround cannot fix is structural
+rather than behavioral: cues still sit in history as `user` turns and use up
+`maxHistoryTurns`, and an interrupted cue stays there. Neither broke this show.
+Revisit when the Director moves to Companion's realtime path, where the
+provider owns the history and a person speaks too, so a cue sent as `user`
+text cannot be told apart from them.
 
 ## Credits
 
