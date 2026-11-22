@@ -93,8 +93,8 @@ lip-sync, expressions, motions and gaze. What differs with Iki:
   audio, so a tap does nothing and `muteSound` has nothing to mute.
 
 An app that offers both kinds of character gives each engine its own canvas:
-a canvas keeps the WebGL context its first renderer created, with that
-renderer's context attributes. The
+a canvas keeps the WebGL context its first renderer created, and the Iki
+engine needs a stencil buffer that a context created for Live2D lacks. The
 [web demo](./examples-web.md) does this, and opens on an Iki character with
 [`?character=twin`](https://charivo.vercel.app/?character=twin) or
 [`?character=mint`](https://charivo.vercel.app/?character=mint).
@@ -224,7 +224,7 @@ renderer.setGazeOrigin({ x: 0.5, y: 0.14 });
 - Call it on the renderer, not the manager, and again when the next model's
   face is elsewhere: the renderer holds it across `loadModel`.
 - No argument restores the canvas's centre. A non-finite `x` or `y` throws.
-- Only the mouse cursor is affected. Taps hit-test where the pointer is, and
+- Only the mouse cursor is affected. Live2D taps hit-test where the pointer is, and
   `lookAt` / `setLocalGaze` / AI gaze already take a direction.
 - It is an optional member of `MouseTrackable`, so a renderer of your own may
   leave it out; an app that supports several renderers calls

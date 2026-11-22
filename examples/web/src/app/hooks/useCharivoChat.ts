@@ -648,7 +648,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           motionDescriptions: initialCatalog.motionDescriptions,
         });
 
-        renderManager.setMessageCallback?.(
+        renderManager.setMessageCallback(
           (message: Message, owner?: Character) => {
             if (disposed) {
               return;

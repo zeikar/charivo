@@ -791,7 +791,7 @@ export function useRealtimeSession(
 
   const setLocalGaze = useCallback(
     (coords: GazeCoordinates): boolean =>
-      renderManagerRef.current?.setLocalGaze?.(coords) ?? false,
+      renderManagerRef.current?.setLocalGaze(coords) ?? false,
     [],
   );
 

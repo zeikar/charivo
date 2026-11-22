@@ -43,6 +43,9 @@ class StubRenderManager implements RenderManager {
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
   disconnect = vi.fn(() => undefined);
   loadModel = vi.fn(async (_modelPath: string) => undefined);
+  setMessageCallback = vi.fn(
+    (_callback: (message: Message, character?: Character) => void) => undefined,
+  );
 }
 
 class StubTTSManager implements TTSManager {
@@ -947,6 +950,9 @@ class GateableRenderManager implements RenderManager {
   setEventBus = vi.fn((_eventBus: CharivoEventBus) => undefined);
   disconnect = vi.fn(() => undefined);
   loadModel = vi.fn(async (_modelPath: string) => undefined);
+  setMessageCallback = vi.fn(
+    (_callback: (message: Message, character?: Character) => void) => undefined,
+  );
 
   /** Renders whose message matches stay pending until settled explicitly. */
   hold: (message: Message) => boolean = () => false;
