@@ -124,10 +124,13 @@ Use `examples/companion` when you want:
 
 Use [Examples Web](./examples-web.md) instead when you want to compare client
 styles (remote vs browser-direct vs browser-native) or need LLM/TTS/STT wiring.
+Use [Examples VTuber](./examples-vtuber.md) when you want to see an app decide
+when the character speaks.
 
 ## Related Guides
 
 - [Realtime](./realtime.md)
 - [Rendering](./rendering.md)
 - [Examples Web](./examples-web.md)
+- [Examples VTuber](./examples-vtuber.md)
 - [Architecture](./architecture.md)

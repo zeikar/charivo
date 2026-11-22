@@ -228,6 +228,8 @@ that drives Charivo. These stay out of the packages on purpose:
   `sendMessage()` is rejected while a response is in progress (see
   [Realtime](./realtime.md)). An app that feeds the character from several
   sources needs its own queue in front of it.
+  [Examples VTuber](./examples-vtuber.md) builds one: a Director with a
+  priority queue, pacing, and interrupts.
 - **Persistent memory**: fact stores, summaries, retrieval across sessions.
   Charivo keeps the current session's conversation history in cascade mode
   (in realtime mode the provider keeps it), and nothing more. The Companion
@@ -259,6 +261,7 @@ packages/
 examples/
   web/
   companion/
+  vtuber/
   iki-test/
 docs/
   guide/
@@ -270,10 +273,12 @@ scripts/
 
 - root `README.md`: project overview and top-level entry points
 - `packages/`: the published library packages
-- `examples/`: the two documented reference apps — [web](./examples-web.md) puts
+- `examples/`: the three documented reference apps — [web](./examples-web.md) puts
   the LLM/TTS/STT client styles side by side, [companion](./examples-companion.md)
-  is realtime-only with browser-local character memory — plus `iki-test`, a
-  private harness for `@charivo/render-iki`
+  is realtime-only with browser-local character memory, and
+  [vtuber](./examples-vtuber.md) is an autonomous show with a Director that
+  decides when the character speaks — plus `iki-test`, a private harness for
+  `@charivo/render-iki`
 - `docs-site/`: the site that publishes `docs/guide/`
 - `docs/guide/`: integration guides and package selection help
 - `docs/history/`: migrations, upgrade notes, and implementation history

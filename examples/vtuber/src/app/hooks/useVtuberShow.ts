@@ -235,8 +235,9 @@ export function useVtuberShow({
         // No await from here to the ready flag: once Charivo exists the
         // cleanup owns every manager through charivo.dispose(), and nothing
         // in between can be left half-built by a cleanup that runs mid-way.
-        // Web Speech, not a server TTS route: Gemini TTS's free tier allows
-        // 10 requests a day, far short of one show. The player declares
+        // Web Speech, not a server TTS route: Gemini TTS answered 429 on the
+        // demo key (10 requests a day for gemini-3.1-flash-tts, measured
+        // 2026-11-22), far short of one show; that is not a free-tier fact. The player declares
         // playbackMode "web-speech", so the manager simulates lip sync from
         // the text instead of analyzing audio it never sees.
         const tts = createTTSManager(createWebTTSPlayer());

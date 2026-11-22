@@ -47,6 +47,11 @@ server-mediated (production) and browser-direct dev clients for chat, TTS, and
 STT; realtime voice always uses the server route in this demo, and the same
 menu switches it between Gemini Live and OpenAI Realtime.
 
+To see an app decide when the character speaks, run
+[`examples/vtuber`](./examples/vtuber): an autonomous show with a Director that
+queues, paces, and interrupts speech. It needs only a Gemini key and runs on
+loopback; see its [README](./examples/vtuber/README.md).
+
 The snippets below are for adding Charivo to your own app, not for pasting into
 an empty file — a Live2D scene needs a canvas, the Cubism runtime, model assets,
 and a bundler, which the demo above already wires up.
@@ -296,7 +301,8 @@ App
 
 Charivo is the character's embodiment, not an agent framework. Planning,
 persistent memory, deciding when to speak, and OS access belong to your app
-or to an agent runtime that drives Charivo.
+or to an agent runtime that drives Charivo. [`examples/vtuber`](./examples/vtuber)
+shows one way to build the deciding-when-to-speak layer in the app.
 
 See the [Architecture guide](https://zeikar.dev/charivo/architecture/) for
 event wiring, package roles, detailed layering, and what Charivo leaves out.

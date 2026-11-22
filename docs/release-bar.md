@@ -59,7 +59,8 @@ explicitly waived in writing with its rationale and the scope the waiver covers.
 - Voices are OpenAI built-in synthetic identities (`marin`, `sage`) — not clones
   of any real person, so voice-similarity risk is low.
 - Bundled models are attributed in the demo README Credits sections
-  ([companion](../examples/companion/README.md), [web](../examples/web/README.md));
+  ([companion](../examples/companion/README.md), [web](../examples/web/README.md),
+  [vtuber](../examples/vtuber/README.md));
   the vendored Live2D Cubism SDK ships its own license (see
   [`packages/render-live2d/LICENSE.md`](../packages/render-live2d/LICENSE.md) and
   the root README "Live2D Note").

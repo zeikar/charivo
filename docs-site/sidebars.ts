@@ -14,6 +14,7 @@ const sidebars: SidebarsConfig = {
     "avatar",
     "examples-web",
     "examples-companion",
+    "examples-vtuber",
   ],
 };
 

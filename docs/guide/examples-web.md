@@ -5,10 +5,12 @@ sidebar_position: 11
 
 # Examples Web
 
-`examples/web` is one of two reference Next.js apps in the Charivo workspace, and
-the one to read when comparing client styles. Read it as a current integration
-example, not just a demo. The other is
-[Examples Companion](./examples-companion.md), a realtime-only app.
+`examples/web` is one of three reference Next.js apps in the Charivo workspace,
+and the one to read when comparing client styles. Read it as a current
+integration example, not just a demo. The others are
+[Examples Companion](./examples-companion.md), a realtime-only app, and
+[Examples VTuber](./examples-vtuber.md), an autonomous show that decides when
+the character speaks.
 
 ## What It Covers
 

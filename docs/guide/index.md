@@ -51,6 +51,9 @@ To read the shipped reference apps:
   ([app README](https://github.com/zeikar/charivo/blob/main/examples/web/README.md))
 - [Examples Companion](./examples-companion.md) — realtime-only, browser-local
   memory ([app README](https://github.com/zeikar/charivo/blob/main/examples/companion/README.md))
+- [Examples VTuber](./examples-vtuber.md) — an autonomous show: a Director that
+  decides when the character speaks
+  ([app README](https://github.com/zeikar/charivo/blob/main/examples/vtuber/README.md))
 
 ## Guide Map
 
@@ -65,6 +68,7 @@ To read the shipped reference apps:
 - [Avatar Control](./avatar.md): optional model-driven expression, motion, and gaze
 - [Examples Web](./examples-web.md): Next.js reference app and API routes
 - [Examples Companion](./examples-companion.md): realtime-only app with browser-local character memory
+- [Examples VTuber](./examples-vtuber.md): autonomous livestream app with a Director that schedules speech
 
 ## Guide Docs vs Package READMEs
 
