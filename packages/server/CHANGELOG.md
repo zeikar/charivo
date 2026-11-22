@@ -1,5 +1,15 @@
 # @charivo/server
 
+## 0.12.3
+
+### Patch Changes
+
+- Updated dependencies [9b354de]
+  - @charivo/core@0.38.0
+  - @charivo/llm@0.13.3
+  - @charivo/stt@0.11.3
+  - @charivo/tts@0.10.3
+
 ## 0.12.2
 
 ### Patch Changes
