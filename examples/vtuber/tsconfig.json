@@ -25,7 +25,7 @@
       "@charivo/core": ["../../packages/core/src/index.ts"],
       "@charivo/llm/remote": ["../../packages/llm/src/remote/index.ts"],
       "@charivo/llm": ["../../packages/llm/src/index.ts"],
-      "@charivo/tts/remote": ["../../packages/tts/src/remote/index.ts"],
+      "@charivo/tts/web": ["../../packages/tts/src/web/index.ts"],
       "@charivo/tts": ["../../packages/tts/src/index.ts"],
       "@charivo/render": ["../../packages/render/src/index.ts"],
       "@charivo/render-live2d": ["../../packages/render-live2d"],

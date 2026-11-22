@@ -189,13 +189,13 @@ export function useVtuberShow({
           { createRenderManager },
           { createLLMManager },
           { createRemoteLLMClient },
-          { createRemoteTTSPlayer },
+          { createWebTTSPlayer },
         ] = await Promise.all([
           import("@charivo/render-live2d"),
           import("@charivo/render"),
           import("@charivo/llm"),
           import("@charivo/llm/remote"),
-          import("@charivo/tts/remote"),
+          import("@charivo/tts/web"),
         ]);
         if (disposed) return;
 
@@ -235,9 +235,11 @@ export function useVtuberShow({
         // No await from here to the ready flag: once Charivo exists the
         // cleanup owns every manager through charivo.dispose(), and nothing
         // in between can be left half-built by a cleanup that runs mid-way.
-        const tts = createTTSManager(
-          createRemoteTTSPlayer({ apiEndpoint: "/api/tts" }),
-        );
+        // Web Speech, not a server TTS route: Gemini TTS's free tier allows
+        // 10 requests a day, far short of one show. The player declares
+        // playbackMode "web-speech", so the manager simulates lip sync from
+        // the text instead of analyzing audio it never sees.
+        const tts = createTTSManager(createWebTTSPlayer());
         const instance = createCharivo({
           renderer: renderManager,
           llm,

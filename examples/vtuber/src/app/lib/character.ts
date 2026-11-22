@@ -7,8 +7,10 @@ export const HARU_CHARACTER: Character = {
     "The host of a cozy livestream, chatting with her viewers in a relaxed, welcoming way",
   personality:
     "Warm, cheerful, and easygoing, like a friend hosting a late-evening stream. Speaks in short, casual, natural sentences, keeps the conversation moving on her own, and answers viewers by name when she can. Never reads out stage directions or mentions being an AI unless asked.",
-  // Gemini TTS ignores `rate` and `pitch`, so only the voice itself is set.
-  voice: { voiceId: "Zephyr", volume: 0.8 },
+  // No voiceId: the Web Speech player matches it against the browser's voice
+  // names, which differ per browser and OS, and it takes no language. The
+  // browser's default voice speaks instead.
+  voice: { volume: 0.8 },
 };
 
 export const HARU_MODEL_PATH = "/live2d/Haru/Haru.model3.json";

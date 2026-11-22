@@ -42,10 +42,10 @@ export const DEFAULT_SHOW_PLAN: ShowPlan = {
 
 export const SHOW_DIRECTOR_CONFIG: DirectorConfig = {
   ...DEFAULT_DIRECTOR_CONFIG,
-  // Loose pacing: about one TTS request per 7 s keeps a normal show under the
-  // 10 requests per minute measured on the demo key, and the backoff eases
-  // off further while lines are failing. These space lines; they do not count
-  // or limit provider requests.
+  // Show pacing: a line every 7 s, and 14 s after a failed one. That also
+  // keeps the chat route's rate modest, since one line makes one to four chat
+  // requests through the avatar tool loop. These space lines; they do not
+  // count or limit requests.
   minLineIntervalMs: 7_000,
   failedLineBackoffMs: 14_000,
 };
