@@ -5,6 +5,7 @@ export {
   type DirectorOptions,
 } from "./director";
 export {
+  hasEnvelopeTag,
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   SHOW_PROTOCOL_INSTRUCTIONS,

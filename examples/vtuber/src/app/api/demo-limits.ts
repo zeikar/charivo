@@ -20,7 +20,8 @@ export const SHOW_MAX_HISTORY_TURNS = 20;
  * round is generous for an avatar that sets an expression and plays a motion.
  */
 export const TOOL_LOOP_ROUNDS = 3;
-const TOOL_CALLS_PER_ROUND = 4;
+export const TOOL_CALLS_PER_ROUND = 4;
+const TOOL_ROUNDS_TOOL_RESULTS = TOOL_LOOP_ROUNDS * TOOL_CALLS_PER_ROUND;
 
 /**
  * System message + two per history turn + tool-loop headroom:
@@ -39,6 +40,34 @@ export const CHAT_MAX_MESSAGES =
 export const CHAT_MAX_MESSAGE_CHARS = 8_000;
 export const CHAT_MAX_TOTAL_CHARS = 60_000;
 export const CHAT_MAX_TOOLS = 24;
+
+/**
+ * The route bounds every reply it returns, because a reply comes back as an
+ * assistant message in the next requests, and one too long for the limits above
+ * would make every following turn fail validation. The budget is what is left
+ * of CHAT_MAX_TOTAL_CHARS for replies once everything else a full request
+ * carries is reserved:
+ *   system message                      6 000
+ *   21 user messages (cue or chat) x 400  8 400  (a full history plus the new one)
+ *   12 tool results x 200                2 400  (3 rounds x 4 calls)
+ *   left for replies        60 000 - 16 800 = 43 200
+ *   replies: 20 history + 3 tool-round assistant messages = 23
+ *   43 200 / 23 = 1 878 characters each, below CHAT_MAX_MESSAGE_CHARS.
+ */
+const SYSTEM_MESSAGE_RESERVE_CHARS = 6_000;
+const USER_MESSAGE_RESERVE_CHARS = 400;
+const TOOL_RESULT_RESERVE_CHARS = 200;
+const REPLIES_PER_REQUEST = SHOW_MAX_HISTORY_TURNS + TOOL_LOOP_ROUNDS;
+export const CHAT_REPLY_MAX_CHARS = Math.min(
+  CHAT_MAX_MESSAGE_CHARS,
+  Math.floor(
+    (CHAT_MAX_TOTAL_CHARS -
+      SYSTEM_MESSAGE_RESERVE_CHARS -
+      (SHOW_MAX_HISTORY_TURNS + 1) * USER_MESSAGE_RESERVE_CHARS -
+      TOOL_ROUNDS_TOOL_RESULTS * TOOL_RESULT_RESERVE_CHARS) /
+      REPLIES_PER_REQUEST,
+  ),
+);
 export const CHAT_MAX_TOOL_CALLS_PER_MESSAGE = 16;
 export const CHAT_MAX_TOOLS_BYTES = 32_768;
 export const CHAT_MAX_TOOL_CALLS_BYTES = 16_384;

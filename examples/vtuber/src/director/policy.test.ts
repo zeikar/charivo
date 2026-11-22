@@ -43,6 +43,7 @@ function view(overrides: Partial<PolicyView> = {}): PolicyView {
     lastAgentAt: new Map(),
     lastInterruptAt: null,
     segment: null,
+    ending: false,
     ...overrides,
   };
 }
@@ -88,8 +89,8 @@ function lineOf(decision: Decision): Line {
 }
 
 describe("PRIORITY", () => {
-  it("orders ending > segment > urgent > normal > low > idle", () => {
-    expect(PRIORITY.endingCue).toBeGreaterThan(PRIORITY.segmentCue);
+  it("orders segment > urgent > normal > low > idle > ending", () => {
+    expect(PRIORITY.idle).toBeGreaterThan(PRIORITY.endingCue);
     expect(PRIORITY.segmentCue).toBeGreaterThan(PRIORITY.urgent);
     expect(PRIORITY.urgent).toBeGreaterThan(PRIORITY.normal);
     expect(PRIORITY.normal).toBeGreaterThan(PRIORITY.low);
@@ -528,7 +529,19 @@ describe("decide: segment", () => {
     });
   });
 
-  it("ranks the ending cue above everything", () => {
+  it.each<ShowEvent>([
+    chat(),
+    chat({ highlighted: true }),
+    agent(),
+    agent({ priority: "high" }),
+  ])("ignores a $kind event once the ending has been accepted", (event) => {
+    expect(decide(event, view({ ending: true }), config)).toEqual({
+      kind: "ignore",
+      reason: "show-ending",
+    });
+  });
+
+  it("ranks the ending cue below everything else", () => {
     const line = lineOf(
       decide({ kind: "segment", index: 5, segment: ending }, view(), config),
     );

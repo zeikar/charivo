@@ -44,8 +44,10 @@ import {
 } from "../lib/character";
 import { FAKE_GAME_EVENT_SCRIPT } from "../lib/fake-game-events";
 import { FAKE_VIEWER_SCRIPT } from "../lib/fake-viewers";
+import { withEnvelopeTagGuard } from "../lib/guarded-llm-client";
 import { createScriptedSource } from "../lib/scripted-source";
 import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../lib/show-plan";
+import { withSpeechDeadline } from "../lib/speech-deadline";
 import { appendToShowLog, EMPTY_SHOW_LOG, type ShowLog } from "../lib/show-log";
 
 export type ShowLifecycle = "idle" | "starting" | "running" | "stopping";
@@ -223,7 +225,9 @@ export function useVtuberShow({
         };
 
         const llm = createLLMManager(
-          createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
+          withEnvelopeTagGuard(
+            createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
+          ),
           {
             tools: createAvatarControlTools(catalog),
             resultProjectors: [createAvatarResultProjector()],
@@ -240,7 +244,7 @@ export function useVtuberShow({
         // 2026-11-22), far short of one show; that is not a free-tier fact. The player declares
         // playbackMode "web-speech", so the manager simulates lip sync from
         // the text instead of analyzing audio it never sees.
-        const tts = createTTSManager(createWebTTSPlayer());
+        const tts = createTTSManager(withSpeechDeadline(createWebTTSPlayer()));
         const instance = createCharivo({
           renderer: renderManager,
           llm,

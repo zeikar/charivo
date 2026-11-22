@@ -36,7 +36,13 @@ export function formatAgentEvent(source: string, text: string): string {
   return `[EVENT] ${sanitize(source, MAX_NAME_LENGTH)}: ${sanitize(text, MAX_TEXT_LENGTH)}`;
 }
 
-const LEAK = /\[(DIRECTOR|CHAT|EVENT)\]|\bdirectors?\b/i;
+const ENVELOPE_TAG = /\[(DIRECTOR|CHAT|EVENT)\]/i;
+const LEAK = new RegExp(`${ENVELOPE_TAG.source}|\\bdirectors?\\b`, "i");
+
+/** True when `text` contains an envelope tag. A paraphrase of a cue is not detected. */
+export function hasEnvelopeTag(text: string): boolean {
+  return ENVELOPE_TAG.test(text);
+}
 
 /**
  * True when a reply contains an envelope tag or names the director. It cannot

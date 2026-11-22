@@ -119,6 +119,7 @@ export function createDirector({
       lastAgentAt,
       lastInterruptAt,
       segment: scheduler.current()?.segment ?? null,
+      ending: endingLineId !== null,
     };
   }
 

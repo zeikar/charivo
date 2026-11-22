@@ -62,6 +62,7 @@ export type IgnoreReason =
   | "source-cooldown"
   | "queue-full"
   | "not-silent"
+  | "show-ending"
   | "stale";
 
 export type Decision =

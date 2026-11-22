@@ -80,6 +80,11 @@ limits are about the shape of a request, not its rate:
 - per-message, total-size, tool-count, and tool-argument size caps bound what one
   request can make you pay for
 - the model is chosen by the route, never by the request
+- a reply is cut to 1,878 characters (at a sentence or word end), so a full
+  history of replies still fits the request limits; the arithmetic is in
+  `demo-limits.ts`
+- a request must be `application/json` (else 415), and a browser request must
+  come from `http://127.0.0.1:3002` or `http://localhost:3002` (else 403)
 - there is no authentication, no rate limiting, and no request counting
 
 ## Pacing and quotas
@@ -88,7 +93,11 @@ Speech is the browser's Web Speech API (`@charivo/tts/web`), so it costs
 nothing and has no quota. Voice quality and the available voices depend on the
 browser and OS, and the example does not pick one: the browser's default voice
 speaks. Lip sync is simulated from the text, because Web Speech gives no audio to
-analyze.
+analyze. Each speak has a deadline (10 s plus 150 ms per character, capped at
+2 minutes); if the browser never reports the end of an utterance, the speech is
+cancelled and the line fails, so the next one can start.
+The cancel also calls `speechSynthesis.cancel()` itself when an utterance is
+only queued, because the web player cancels only while it is speaking.
 
 This is a change from an earlier design that used Gemini TTS. On the demo key,
 Gemini TTS answered 429 with a free-tier limit of 10 requests per day for
@@ -162,7 +171,7 @@ reload.
 
 | Input | Priority | Ignored when | Expires |
 | --- | --- | --- | --- |
-| Ending cue | 5 (highest) | never | no |
+| Ending cue | -1 (lowest) | never | no |
 | Segment cue | 4 | never | no |
 | Super chat, or `high` agent event | 3 | empty; queue full (a repeat viewer or source is not limited) | chat never; agent after 30 s |
 | Chat, or `normal` agent event | 2 | empty; same viewer or source within 10 s; queue full | chat never; agent after 30 s |
@@ -173,8 +182,10 @@ The queue holds at most five chats and three agent events. Equal priorities are
 spoken in arrival order. A super chat or `high` event interrupts only idle
 filler, and only if 15 s have passed since the last interrupt; otherwise it waits
 in the queue. Queued chat is spoken by priority once the current line ends, so a
-segment or ending cue can still go first, and pacing applies. A segment start
-also discards queued idle filler.
+segment cue can still go first, and pacing applies. A segment start also
+discards queued idle filler. The ending cue ranks last: once it is accepted, new
+chat and agent events are ignored (`show-ending`), what was already queued is
+spoken first, and the show finishes when the ending line settles.
 
 **The envelope.** Charivo's only input is `userSay()`, which stores everything as
 a viewer message. So each input is tagged, and the character's system prompt
@@ -247,8 +258,12 @@ Known limits of the workaround, from reading the code:
 - they count against `maxHistoryTurns`, so they push real chat out of the window
 - a cue that was interrupted stays in history, and the model sees a direction it
   never finished
-- there is no hook to veto a reply before it is spoken, so a reply that reveals a
-  cue is spoken anyway and can only be counted afterwards
+- Charivo has no hook between the LLM reply and the speech, so the app wraps the
+  LLM client: a final reply containing an envelope tag (`[DIRECTOR]`, `[CHAT]`,
+  `[EVENT]`), or repeating a `[DIRECTOR]` cue verbatim (30 characters or more of
+  it, ignoring case and spacing), is withheld: the line is reported failed and
+  nothing is spoken. A paraphrase of a cue is still spoken and can only be
+  counted afterwards
 
 The automated tests cover sequencing and envelope placement against scripted
 replies: one line at a time, nothing cut, the show reaches its ending, and the
@@ -299,13 +314,14 @@ hand at 371 s.
   after waiting past `agentMaxAgeMs` (30 s) behind chat. Events appeared only in
   the Director panel, never as viewer messages.
 
-**Leak review.** All 46 spoken lines across both runs were read: none contains a
+**Leak review.** Every spoken line of run 1 (24) and every Haru line in run 2's
+transcript (run 2 recorded 16 lines spoken and 2 cancelled) were read: none contains a
 tag, the word "director", or "stage direction", and none answers a cue or an
 event as if a viewer had said it.
 
 **Is a core non-user-input primitive warranted? Not yet.** On the cascade path
-the envelope held: 0 leaks over 46 lines, including all 24 lines of run 1,
-which were driven only by cues. What the workaround cannot fix is structural
+the envelope held: 0 leaks in run 1 (24 lines, driven only by cues) and in run 2's
+transcript (16 lines spoken, 2 cancelled). What the workaround cannot fix is structural
 rather than behavioral: cues still sit in history as `user` turns and use up
 `maxHistoryTurns`, and an interrupted cue stays there. Neither broke this show.
 Revisit when the Director moves to Companion's realtime path, where the

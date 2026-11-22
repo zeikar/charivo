@@ -37,6 +37,7 @@ const IGNORE_REASON_LABELS: Record<IgnoreReason, string> = {
   "source-cooldown": "source cooldown",
   "queue-full": "queue full",
   "not-silent": "not silent",
+  "show-ending": "show ending",
   stale: "stale",
 };
 

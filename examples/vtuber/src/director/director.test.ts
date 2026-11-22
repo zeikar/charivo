@@ -1251,14 +1251,16 @@ describe("createDirector: ending", () => {
         segmentIndex: 2,
         inFlight: { prompt: "[DIRECTOR] Say goodbye." },
       });
-      // Even a highlighted chat cannot cut the ending; it only queues.
+      // Chat arriving once the ending has started is ignored, not queued
+      // behind it to be wiped when the show finishes.
       chat.push({
         kind: "chat",
         viewer: "mika",
         text: "wait!",
         highlighted: true,
       });
-      expect(director.getSnapshot().queue).toHaveLength(1);
+      expect(director.getSnapshot().queue).toHaveLength(0);
+      expect(director.getSnapshot().counters.eventsIgnored).toBe(1);
       expect(port.interruptCalls).toBe(0);
 
       await vi.advanceTimersByTimeAsync(1_000);
@@ -1278,6 +1280,42 @@ describe("createDirector: ending", () => {
       expect(port.calls).toHaveLength(spoken);
     },
   );
+});
+
+describe("createDirector: ending order", () => {
+  it("speaks chat accepted before the ending first, ignores later chat, and finishes after the ending line", async () => {
+    const { director, chat, port } = setup({
+      plan: {
+        segments: [
+          { kind: "opening", title: "Hi", cue: "Open.", durationMs: 4_000 },
+          { kind: "ending", title: "Bye", cue: "Say goodbye." },
+        ],
+      },
+      config: { minLineIntervalMs: 5_000 },
+      port: { durationMs: 2_000 },
+    });
+    director.start();
+    // Queued behind the 5 s line spacing, so it is still waiting when the
+    // ending cue is accepted at 4 s.
+    await vi.advanceTimersByTimeAsync(3_000);
+    chat.push(say("rin"));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
+      "[CHAT] rin: hi from rin",
+      "[DIRECTOR] Say goodbye.",
+    ]);
+
+    chat.push(say("mika"));
+    expect(director.getSnapshot().counters.eventsIgnored).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(prompts(port)).toEqual([
+      "[DIRECTOR] Open.",
+      "[CHAT] rin: hi from rin",
+      "[DIRECTOR] Say goodbye.",
+    ]);
+    expect(director.getSnapshot().status).toBe("finished");
+  });
 });
 
 describe("createDirector: stop()", () => {

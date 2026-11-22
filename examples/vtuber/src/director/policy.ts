@@ -20,9 +20,13 @@ import type {
   ShowEvent,
 } from "./types";
 
-/** Line ranks. Higher is spoken first. */
+/**
+ * Line ranks. Higher is spoken first. The ending cue ranks last: it closes
+ * the show and finishing clears the queue, so whatever was accepted before
+ * it must be spoken first.
+ */
 export const PRIORITY = {
-  endingCue: 5,
+  endingCue: -1,
   segmentCue: 4,
   /** Highlighted chat and `high` agent events. */
   urgent: 3,
@@ -62,6 +66,8 @@ export interface PolicyView {
    */
   lastInterruptAt: number | null;
   segment: Segment | null;
+  /** True once the ending cue has been accepted: no new chat or agent event is. */
+  ending: boolean;
 }
 
 // "stale" is never returned here: a line goes stale while it waits, so the
@@ -72,6 +78,11 @@ export function decide(
   config: DirectorConfig,
 ): Decision {
   if (!view.running) return { kind: "ignore", reason: "show-not-running" };
+  // Anything accepted now would be queued behind the ending cue, which goes
+  // last, or be wiped when the show finishes.
+  if (view.ending && (event.kind === "chat" || event.kind === "agent")) {
+    return { kind: "ignore", reason: "show-ending" };
+  }
 
   switch (event.kind) {
     case "chat":
