@@ -271,8 +271,9 @@ manager of your own declares them even where it has nothing to do:
   (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
   avatar (the `avatar:gaze` suspend window is active) or when the renderer has
   no `lookAt`.
-- `setMessageCallback(callback)` — registers a callback the manager invokes
-  with each message it renders, and the character it rendered it for.
+- `setMessageCallback(callback)` — sets the one callback the manager invokes
+  with each message once the renderer has rendered it, and the character it
+  was rendered for, if any. A later call replaces it.
 
 ## Errors
 
