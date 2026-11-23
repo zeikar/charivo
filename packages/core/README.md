@@ -269,8 +269,8 @@ manager of your own declares them even where it has nothing to do:
   A manager with nothing to load resolves without doing anything.
 - `setLocalGaze(coords: GazeCoordinates): boolean` — drives local-presence gaze
   (e.g. webcam face tracking). Returns `false` (no-op) while AI gaze owns the
-  avatar (the `avatar:gaze` suspend window is active) or when the renderer has
-  no `lookAt`.
+  avatar (an `avatar:gaze` claim is still live) or when the renderer has no
+  `lookAt`.
 - `setMessageCallback(callback)` — sets the one callback the manager invokes
   with each message once the renderer has rendered it, and the character it
   was rendered for, if any. A later call replaces it.
@@ -394,11 +394,26 @@ Important event names include:
 - `avatar:expression`
 - `avatar:motion`
 - `avatar:gaze`
+- `avatar:release`
+- `performance:start`
+- `performance:end`
 - `realtime:error`
 
-`avatar:gaze` (a bare `GazeCoordinates`) and `realtime:usage` (a flat
-`RealtimeUsageEvent`) intentionally use flat payloads rather than wrapper
+`avatar:gaze` (`GazeCoordinates` plus the claim fields) and `realtime:usage` (a
+flat `RealtimeUsageEvent`) intentionally use flat payloads rather than wrapper
 objects.
+
+`avatar:expression` and `avatar:gaze` are claims. Each may carry three optional
+fields (`AvatarClaimOptions`), so an event with none is still valid: `source`
+(defaults to `"app"`), `priority` (`reflex`, `explicit`, `inferred` or
+`ambient`; defaults to `"explicit"`) and `hold` (`{ ms }`, `"until-release"` or
+`{ performance: id }`; defaults per channel). `avatar:motion` is one-shot and
+takes only `priority`. `avatar:release` — `{ source, channel? }` — ends that
+source's live claim on one channel, or on both when `channel` is omitted.
+`performance:start` (`{ performanceId, origin, voiced }`) and `performance:end`
+(`{ performanceId, origin, status }`) mark one line of speech or a silent act so
+a hold can follow it; nothing built-in emits them yet. See
+[Claims And Arbitration](../../docs/guide/rendering.md#claims-and-arbitration).
 
 The event bus isolates each listener: one that throws is reported via
 `console.error` and does not stop the listeners queued behind it, so `emit`

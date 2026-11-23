@@ -44,8 +44,13 @@ The renderer exposes:
 - `playMotionByGroup(group, index, options?)` — `options.muteSound` plays the
   motion without the sample clip baked into it, and interrupts one already
   playing; an unflagged call keeps the sound, which is what leaves a
-  human-triggered motion audible
+  human-triggered motion audible. `options.priority` maps onto Cubism's own
+  priorities: `"force"` cuts any running motion, `"normal"` (the default) is
+  declined while a normal or forced motion runs, `"idle"` starts only when
+  nothing, the idle loop included, is playing
 - `lookAt({ x, y })`
+- `clearGaze()` — drops the target `lookAt` set and returns the gaze to centre;
+  `RenderManager` calls it when the last gaze claim ends
 - `setGazeOrigin(origin?)` — the point of the model the mouse gaze is measured
   from, as fractions of the model's canvas (`{ x: 0.5, y: 0.14 }` is between
   Haru's eyes); no argument restores the canvas's centre, the Cubism sample's

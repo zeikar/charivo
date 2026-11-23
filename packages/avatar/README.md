@@ -193,17 +193,19 @@ The tool loop instead adds a round trip for each round of tool calls.
 
 ## Events
 
-The director emits `avatar:expression` — `{ expressionId }` and
-`avatar:motion` — `{ group, index, muteSound: true }` (muted for the same reason
-as tool-call motions), and never `avatar:gaze`.
+The director emits `avatar:expression` —
+`{ expressionId, source: "avatar-director", priority: "inferred" }` and
+`avatar:motion` — `{ group, index, muteSound: true, priority: "inferred" }`
+(muted for the same reason as tool-call motions), and never `avatar:gaze`. An
+`explicit` claim, such as a tool call's, outranks the director's inferred one.
 
 `createAvatarResultProjector()` emits, on successful tool execution:
 
-- `avatar:expression` — `{ expressionId }`
-- `avatar:motion` — `{ group, index, muteSound: true }` — the result projector
+- `avatar:expression` — `{ expressionId, source: "tool", priority: "explicit" }`
+- `avatar:motion` — `{ group, index, muteSound: true, priority: "explicit" }` — the result projector
   asks for muting because the motion came from a tool call, so a sample clip
   baked into the motion does not talk over the character's own voice
-- `avatar:gaze` — `{ x, y }`
+- `avatar:gaze` — `{ x, y, source: "tool", priority: "explicit" }`
 
 `@charivo/render`'s `RenderManager` already listens for these three events, so
 wiring a `RenderManager` picks them up automatically.

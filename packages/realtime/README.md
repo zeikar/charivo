@@ -369,9 +369,10 @@ plays the audio itself and ends it only when its scheduler has drained AND the
 server's `turnComplete` has arrived — neither alone, because the scheduler
 drains spuriously at the start of a turn and `turnComplete` is paced by a
 server clock rather than observed from playback (both measured).
-Consumers act on this event — `RenderManager` releases a held expression and
-stops lip-sync there — so a custom transport that reports it at send completion
-will reset the avatar's face mid-reply. See
+Consumers act on this event — `RenderManager` stops lip-sync there and, when no
+voiced performance is open, ends the speech span that holds a speech-scoped
+expression — so a custom transport that reports it at send completion will
+reset the avatar's face mid-reply. See
 [docs/guide/realtime.md](../../docs/guide/realtime.md#audio-output-lifecycle).
 
 `RealtimeState.audioPlaying` exposes the same playback segment as state, which is

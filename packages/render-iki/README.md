@@ -20,7 +20,7 @@ pnpm add @charivo/render-iki @charivo/render
 [`@ikijs/format`](https://www.npmjs.com/package/@ikijs/format) come with it as
 dependencies. The package is browser-only and ESM-only, and MIT like the
 engine. Iki is pre-1.0, so each release of this package pins one engine minor
-(`^0.12` now) and moves to the next one in a release of its own.
+(`^0.13` now) and moves to the next one in a release of its own.
 
 ## Usage
 
@@ -76,7 +76,9 @@ it returns exposes:
   `IkiMotion` for it, start the adapter's rAF loop that steps it, then start
   the engine's own render loop. The latest call wins: one whose fetch is still
   out when a later call begins resolves without loading, however late it lands
-  (or rejects, if its own fetch or parse fails).
+  (or rejects, if its own fetch or parse fails). A newer call also cancels a
+  load the engine is still adopting, so a newer request that fails leaves the
+  installed model in place.
 - `render(message, character?)` — stateless (the engine's rAF draws).
 - `destroy()` — stop that loop and free the player.
 - `setRealtimeLipSync(enabled)` / `updateRealtimeLipSyncRms(rms)` — drive the
@@ -89,6 +91,9 @@ it returns exposes:
   `RenderManager`. `IkiView` is re-exported.
 - `lookAt({ x, y })` — sets the gaze target (each clamped to `-1..1`, `y=1`
   up; a non-finite pair is ignored); see "Gaze".
+- `clearGaze()` — forgets the target and lets the engine spring the eyes back to
+  its idle gaze; `RenderManager` calls it when the last gaze claim ends. See
+  "Gaze".
 - `setGazeOrigin(origin?)` — `MouseTrackable`'s optional method, the same call
   and units as `@charivo/render-live2d`'s: the point of the model the mouse
   gaze is measured from, as a `GazeOrigin` from `@charivo/render` (fractions of
@@ -98,7 +103,8 @@ it returns exposes:
 - `updateViewWithMouse` / `handleMouseTap` — the `MouseTrackable` pair for
   cursor-follow. Both are present because `RenderManager` installs mouse
   tracking only when both exist; tap is a no-op (Iki has no tap motions).
-- `playExpression(id)` / `stopExpression()` / `playMotionByGroup(group, index)`
+- `playExpression(id)` / `stopExpression()` /
+  `playMotionByGroup(group, index, options?)`
   and `getAvailableExpressions()` / `getAvailableMotionGroups()` /
   `getAvatarControlCatalog()` — see "Expressions and motions".
 
@@ -111,11 +117,15 @@ the parsed model:
 
 - `playExpression(id)` fades the expression in over its `fadeIn`; one is active
   at a time, and a new one replaces it. `stopExpression()` fades back to the
-  base face over its `fadeOut`. `RenderManager` calls it when speech ends
-  (`tts:audio:end`) or after its hold fallback.
-- `playMotionByGroup(group, index)` plays that clip one-shot, replacing a
-  running one. The `Renderer` contract's `{ muteSound }` option is accepted and
-  ignored: Iki clips carry no audio.
+  base face over its `fadeOut`. `RenderManager` calls it when the expression's
+  hold ends (its speech span, a `hold`, or an `avatar:release`) and no other
+  claim is left.
+- `playMotionByGroup(group, index, options?)` plays that clip one-shot,
+  replacing a running one. `options.priority` decides it against the clip
+  running: `"force"` always plays, `"normal"` (the default) is declined while a
+  `"force"` clip runs, `"idle"` is declined while a `"normal"` or `"force"`
+  clip runs; equal priority still replaces. The `Renderer` contract's
+  `{ muteSound }` option is accepted and ignored: Iki clips carry no audio.
 - `getAvailableExpressions()` returns the expression ids and
   `getAvailableMotionGroups()` `{ group: clip count }`; `RenderManager` drops
   `avatar:expression` / `avatar:motion` events that name anything else.
@@ -142,12 +152,11 @@ Each frame runs in this order, and a later write wins:
 
 | Step | Writes |
 | --- | --- |
-| 1. Idle (`IkiMotion`) | blink (and the brows' dip with it, on a model that declares brows), breath, the ambient sway that hair physics follows, and the gaze and head: the eyes hold a point and the head follows it over its own slow drift — unless the model declares an `Idle` motion group, whose looping clips replace the head and gaze |
+| 1. Idle (`IkiMotion`) | blink (and the brows' dip with it, on a model that declares brows), breath, the ambient sway that hair physics follows, and the gaze and head: the eyes hold a point and the head follows it over its own slow drift — unless the model declares an `Idle` motion group, whose looping clips replace the head and the engine then drives the eyes itself |
 | 2. Clips (`IkiMotion`) | the `Idle` loop, then the one-shot from `playMotionByGroup` over it |
 | 3. Expressions (`IkiMotion`) | the active expression, or its fade back to base |
 | 4. Physics and chains (`IkiMotion`) | hair sway outputs, reading the head steps 1–3 wrote |
-| 5. Eyes under an `Idle` group (adapter) | `ParamEyeBallX/Y` at the host gaze — only on a model that declares an `Idle` group, and only once a gaze exists |
-| 6. Lip-sync (adapter) | `ParamMouthOpenY`, while lip-sync is enabled |
+| 5. Lip-sync (adapter) | `ParamMouthOpenY`, while lip-sync is enabled |
 
 ### Gaze
 
@@ -163,12 +172,9 @@ of its ±30°; the eyes carry the rest.
   while the head keeps its turn toward the target, and the pitch returns to the
   target over the clip's fade-out. The eyes stay on the target unless the clip
   or an expression drives them, in which case that wins.
-- Under a declared `Idle` group the engine's gaze target moves nothing, since
-  the group's clips own the head and gaze. The adapter then writes the eyes at
-  the target itself (step 5) and leaves the head to the clips. That write is
-  the last one, so on such a model the eyes jump to the target with no spring
-  and the host gaze beats an expression or clip that moves the eyes — the
-  reverse of a model without the group.
+- Under a declared `Idle` group the group's clips own the head, and the engine
+  (0.13) still drives the eyes at the target on its springs, so the adapter
+  writes no eye parameter itself.
 - The mouth is the expression's until lip-sync is enabled; lip-sync, written
   after `IkiMotion`, overrides it, and disabling lip-sync closes the mouth and
   hands it back to the expression or rest.
@@ -182,8 +188,8 @@ a bust the centre is close enough to the face; on a full body it is the waist,
 so a pointer on her face reads as above it and she looks up until the origin is
 set between her eyes.
 
-A gaze persists until the next one, across a reload too: there is no "gaze
-released" signal in the `Renderer` contract (`RenderManager` suspends mouse
-tracking; it never tells the renderer an AI gaze ended), so the adapter never
-calls `clearGazeTarget()`. Before the first gaze the character looks where the
-idle picks.
+A direct `lookAt()` or cursor gaze persists until the next one, across a reload
+too. `clearGaze()` drops it: the adapter forgets the target and calls the
+engine's `clearGazeTarget()`, so the eyes spring back to the idle gaze.
+`RenderManager` calls it when the last gaze claim ends. Before the first gaze
+the character looks where the idle picks.
