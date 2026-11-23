@@ -53,7 +53,7 @@ from realtime session lifecycle.
 The current reference app ships:
 
 - `POST /api/chat-openai`
-  Uses `@charivo/server/openai` with model `gpt-4.1-nano`
+  Uses `@charivo/server/openai` with model `gpt-5.6-luna`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`. Local-only, matching the two menu entries it
   serves: it answers 404 in a production build, where `OPENCLAW_BASE_URL`

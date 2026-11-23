@@ -81,7 +81,7 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 const charivo = createCharivo({
   renderer: renderManager,
   llm: createLLMManager(
-    createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-4.1-nano" }),
+    createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-5.6-luna" }),
   ),
   tts: createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
   character: {
@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
 
   const provider = createOpenAILLMProvider({
     apiKey: process.env.OPENAI_API_KEY!,
-    model: "gpt-4.1-nano",
+    model: "gpt-5.6-luna",
   });
 
   try {

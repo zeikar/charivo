@@ -142,7 +142,7 @@ const LLM_API_KEY_ENV: ApiKeyEnv =
 function createLLMProvider(apiKey: string) {
   return CASCADE_LLM === "gemini"
     ? createGeminiLLMProvider({ apiKey, model: "gemini-3.5-flash-lite" })
-    : createOpenAILLMProvider({ apiKey, model: "gpt-4.1-nano" });
+    : createOpenAILLMProvider({ apiKey, model: "gpt-5.6-luna" });
 }
 
 const TTS_API_KEY_ENV: ApiKeyEnv =

@@ -1,5 +1,6 @@
 export {
   type OpenAILLMConfig,
+  type OpenAIReasoningEffort,
   OpenAILLMProvider,
   createOpenAILLMProvider,
 } from "@charivo/llm/openai";

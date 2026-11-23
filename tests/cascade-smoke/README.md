@@ -7,7 +7,7 @@ Covered chain (the recommended remote-client + server-provider path):
 
 - `@charivo/stt/remote` → `/api/stt` → `@charivo/server/openai` (whisper-1),
   or `@charivo/server/gemini` (gemini-3.5-transcribe) with `CASCADE_STT=gemini`
-- `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-4.1-nano),
+- `@charivo/llm/remote` → `/api/chat` → `@charivo/server/openai` (gpt-5.6-luna),
   or `@charivo/server/gemini` (gemini-3.5-flash-lite) with `CASCADE_LLM=gemini`
 - `@charivo/tts/remote` → `/api/tts` → `@charivo/server/openai` (gpt-4o-mini-tts),
   buffered mp3; or `@charivo/server/gemini` (gemini-3.1-flash-tts-preview) with
