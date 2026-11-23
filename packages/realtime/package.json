@@ -1,6 +1,6 @@
 {
   "name": "@charivo/realtime",
-  "version": "0.20.8",
+  "version": "0.20.9",
   "description": "Realtime voice conversation manager for Charivo AI characters, with OpenAI Realtime and Gemini Live support",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
