@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Render manager for Charivo AI characters: lip sync, expressions, motions, and gaze",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
