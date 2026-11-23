@@ -190,7 +190,9 @@ modalities can reuse.
   `ResolveBrainInputOptions`, `DirectionRole`
 - `@charivo/llm/openai`: `createOpenAILLMClient(config)` (browser client,
   dev/testing only) and, for server-side use, `createOpenAILLMProvider(config)`,
-  `OpenAILLMProvider`, `type OpenAILLMConfig`
+  `OpenAILLMProvider`, `type OpenAILLMConfig`, `type OpenAIReasoningEffort`.
+  The default model is `gpt-5.6-luna`, sent with `reasoning_effort: "none"`;
+  set `reasoningEffort` for other gpt-5 family models
 - `@charivo/llm/openclaw`: `createOpenClawLLMClient(config)` (browser client,
   dev/testing only) and, for server-side use, `createOpenClawLLMProvider(config)`,
   `OpenClawLLMProvider`, `type OpenClawLLMConfig`. `sessionKey` exists only on

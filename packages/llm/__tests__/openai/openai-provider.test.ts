@@ -270,6 +270,23 @@ function respondWithToolCall(toolCall: Record<string, unknown>): void {
 }
 
 describe("OpenAILLMProvider.generateResponseWithTools", () => {
+  it("sends the default model's tool requests with reasoning off", async () => {
+    // gpt-5.6-luna rejects function tools unless reasoning_effort is "none".
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    await provider.generateResponseWithTools(
+      [{ role: "user", content: "weather?" }],
+      [weatherTool],
+    );
+
+    expect(openaiMocks.createCompletion.mock.calls[0]![0]).toMatchObject({
+      model: "gpt-5.6-luna",
+      reasoning_effort: "none",
+      max_completion_tokens: 1000,
+      tools: [expect.objectContaining({ type: "function" })],
+    });
+  });
+
   it("maps tool turns and definitions onto the chat.completions payload", async () => {
     const provider = new OpenAILLMProvider({ apiKey: "key" });
 
