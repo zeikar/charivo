@@ -35,6 +35,23 @@ charivo.emit("avatar:motion", { group: "TapBody", index: 0 });
 charivo.emit("avatar:gaze", { x: 0.2, y: -0.1 });
 ```
 
+A non-verbal reaction, such as a flinch or a nod from a game, can say whose it
+is, how strongly it competes and how long it lasts, then release itself:
+
+```ts
+charivo.emit("avatar:expression", {
+  expressionId: "F03",
+  source: "game",
+  priority: "reflex",
+  hold: "until-release",
+});
+// later
+charivo.emit("avatar:release", { source: "game" });
+```
+
+See [Claims And Arbitration](./rendering.md#claims-and-arbitration) for the
+priority order and the holds.
+
 Emit on the bus rather than calling the renderer, so `RenderManager` stays the
 single owner of expression state — including the auto-release in
 [Rendering](./rendering.md#expression-auto-release).
@@ -56,10 +73,12 @@ the instruction builder tells the model what those ids mean.
 - catalog-aware instruction text
 - a result projector that turns successful calls into `avatar:expression`,
   `avatar:motion` (asking for `muteSound`, so a motion's baked-in sample clip
-  does not talk over the character), and `avatar:gaze`
+  does not talk over the character), and `avatar:gaze`; its claims come from
+  source `"tool"` at `explicit` priority
 - a text-driven director that classifies each spoken line against the catalog
   and emits `avatar:expression` and `avatar:motion` (also with `muteSound`),
-  without gaze
+  without gaze; its claims come from source `"avatar-director"` at `inferred`
+  priority
 
 It owns no rendering and no session state. It builds on `@charivo/core`'s
 neutral contracts — `ToolRegistration` / `ToolResultProjector` for the tools,
@@ -132,6 +151,12 @@ catalog, and emits `avatar:expression` and `avatar:motion` with
 `muteSound: true`. It emits no gaze. `RenderManager` still owns the expression
 hold and release; see
 [Expression Auto-Release](./rendering.md#expression-auto-release).
+
+Its claims come from source `"avatar-director"` at `inferred` priority, so an
+`explicit` expression claim, such as a tool call or an app event, outranks the
+director's expression while it is live. Only expressions are outranked: motions
+are one-shot, and `explicit` and `inferred` both map to the renderer's `normal`
+motion priority, so neither outranks the other.
 
 The director drives only the body, not what the character says. The vtuber
 example's separate show "Director" decides when to talk.

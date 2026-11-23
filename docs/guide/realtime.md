@@ -363,8 +363,8 @@ Use a result projector when you want those tool results bridged back into
 
 `tts:audio:end` reports that playback finished, not that the server finished
 producing the audio. That distinction matters because consumers act on it:
-`RenderManager` releases a held expression there and stops lip-sync, so reporting
-it early resets the avatar's face partway through its own reply.
+`RenderManager` releases the expressions held for that speech there and stops
+lip-sync, so reporting it early resets the avatar's face partway through its own reply.
 
 (`tts:audio:start` is looser by design — the legacy transport also raises it on
 the first audio chunk arriving, so treat it as "output has begun", not as a

@@ -110,23 +110,123 @@ engine needs a stencil buffer that a context created for Live2D lacks. The
   text-driven director motions so a Cubism sample's prerecorded voice never
   talks over the character's own; without the flag the clip stays audible.
 - `avatar:gaze`
+- `avatar:release` — ends a source's live expression or gaze claim, or both
+  when it names no channel; see [Claims And Arbitration](#claims-and-arbitration)
+- `performance:start` and `performance:end` — mark one line of speech or a
+  silent act, so a hold can follow it; nothing built-in emits them yet, and
+  an app running its own speech pipeline may
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
 events yourself.
 
+## Claims And Arbitration
+
+Expressions and gaze are shown through claims. Each `avatar:expression` or
+`avatar:gaze` event is a claim on its channel, and the manager shows the
+winner. A claim carries three optional fields, so an event with none of them
+is still valid:
+
+```ts
+charivo.emit("avatar:expression", {
+  expressionId: "F03",
+  source: "game",
+  priority: "reflex",
+  hold: { ms: 1500 },
+});
+charivo.emit("avatar:release", { source: "game", channel: "expression" });
+```
+
+`source` defaults to `"app"` and `priority` to `"explicit"`. `hold` defaults per
+channel:
+
+| Channel | Kind | Default hold | Base (no live claim) |
+| --- | --- | --- | --- |
+| expression | held | speech-scoped, see [Expression Auto-Release](#expression-auto-release) | `stopExpression()`; a renderer without it keeps the last face |
+| gaze | held | 1,200 ms | `clearGaze()` when the renderer has it, then local-presence gaze and mouse as before |
+| motion | one-shot | none | the model's idle loop |
+
+Lip sync is not a claim channel: `tts:audio:start`, `tts:audio:end` and
+`tts:lipsync:update` drive it directly.
+
+### Priority
+
+Priority runs `reflex` > `explicit` > `inferred` > `ambient`, and the rules for
+a held channel are:
+
+- One live claim per `source`. A new claim from the same source replaces its
+  previous one and counts as the newest.
+- The highest priority wins; a tie goes to the newest claim.
+- The renderer is called only when the winning value changes. A repeated claim
+  for a value that is already showing refreshes that source's hold and replays
+  nothing.
+- When the winner is released or expires, the next live claim is shown. With
+  none left, the channel returns to its base.
+- A claim naming an expression the loaded model lacks, or a `hold.ms` that is
+  not a positive finite number, is ignored and does not displace that source's
+  live claim. So is a claim whose `{ performance }` hold names a performance
+  that already ended.
+
+### Holds
+
+| Hold | Released when |
+| --- | --- |
+| `{ ms }` | the timer fires |
+| `"until-release"` | `avatar:release` names its source, the same source claims again, or the manager lets go (`disconnect()`, `destroy()`, `loadModel()`) |
+| `{ performance: id }` | `performance:end` arrives for that id. If its start has not been seen, the claim waits up to the 8-second pre-speech window for `performance:start`, then expires; if the id already ended, the claim is dropped |
+
+The manager remembers the last 32 ended performance ids on the bus it is
+attached to. An end always records its id, even when its start was never seen
+(or was seen after it, since the bus dispatches synchronously), and a start for
+a recorded id opens nothing.
+
+`disconnect()` and `destroy()` drop every claim and release the expression at
+once, leaving no timer. Swapping to a different bus keeps what is showing, but
+the open speech spans can no longer end, so the claims bound to them fall back
+to the pre-speech window.
+
+### Motion Priority
+
+A motion is one-shot: it has no source, no hold and nothing to release, only a
+priority. The manager keeps no motion priority state. It maps the claim priority
+and forwards it, and the renderer decides against the clip that is actually
+running, so a displaced motion is simply discarded.
+
+| Claim priority | `MotionPriority` | Live2D | Iki |
+| --- | --- | --- | --- |
+| `reflex` | `"force"` | cuts any running motion | always plays |
+| `explicit`, `inferred` | `"normal"` | declined while a normal or force motion runs (as before) | declined while a force clip runs; replaces a normal clip (as before) |
+| `ambient` | `"idle"` | starts only when nothing, the idle loop included, is playing | declined while a normal or force clip runs |
+
+The option is passed only when it is not `"normal"`, so an unflagged call keeps
+its old two-argument shape, and a renderer of your own that ignores it plays
+every motion, as before.
+
+The same motion requested twice within a second is still dropped as a repeat.
+A `reflex` motion skips that check, because the check cannot tell a motion the
+renderer declined from one it played. An `ambient` motion is not recorded for it
+either, since it is often declined while any clip runs.
+
 ## Expression Auto-Release
 
-An expression triggered via `avatar:expression` is released when
-`tts:audio:end` arrives — however long the utterance runs — and the model fades
-back to its base face over the expression's `FadeOutTime` (1 second when the
-`.exp3.json` does not set one) instead of snapping.
+An expression claimed with no `hold` is speech-scoped. It lasts for the speech
+it accompanies and is released when that speech ends, however long it runs, so
+the model fades back to its base face over the expression's `FadeOutTime`
+(1 second when the `.exp3.json` does not set one) instead of snapping.
 
-A roughly 8-second timer is the fallback for setups where no audio events flow
-at all, such as text-only configurations that never emit `tts:audio:start` /
-`tts:audio:end`. It is disarmed while an utterance is playing, so it never
-competes with speech: it fires only before speech starts, or where it is the
-sole release trigger.
+A **speech span** is a `performance:start` with `voiced: true` up to its
+`performance:end`. While no voiced performance is open, a `tts:audio:start` up
+to the next `tts:audio:end` counts as one too, for speech nothing reported as a
+performance. A claim binds to the span in progress, or else to the next one that
+starts within 8 seconds. If none does, it expires at the end of that window; this
+is also what returns the face in text-only setups that never emit
+`tts:audio:start` / `tts:audio:end`. An unvoiced performance binds no
+speech-scoped claim. The window is not a ceiling on speech: once bound, the
+claim lasts until its span ends.
+
+A span's end releases only the claims bound to it. A silent reaction with a
+`{ ms }` or `"until-release"` hold outlives unrelated speech, and a mid-line
+reflex falls back to the line's own expression when it expires.
 
 Three qualifications:
 
@@ -139,11 +239,12 @@ Three qualifications:
 - A release requested before the expression has finished fading in — a long
   authored `FadeInTime`, or rendering paused in a hidden tab — waits for the
   fade-in to complete and then fades, so an expression can remain visible
-  beyond the nominal 8-second hold.
+  beyond the nominal 8-second window.
 - This applies when the renderer implements `stopExpression`.
   `@charivo/render-live2d` does, and so does `@charivo/render-iki`, which fades
   over the `.iki` expression's own `fadeOut`; a renderer that omits it keeps
-  the expression until something else replaces it.
+  the expression until something else replaces it, though its claims still
+  expire so a lower one can take over.
 
 Idle motion, eye blink, and breath keep running throughout.
 
@@ -154,8 +255,8 @@ Idle motion, eye blink, and breath keep running throughout.
 
 Rendering subscribes to upstream events, so it needs the full event bus
 contract. This split is part of the public design. Detaching or replacing the
-renderer tears down its bus subscriptions and releases any held expression via
-`disconnect()`, so a detached manager stops reacting to events without being
+renderer tears down its bus subscriptions and releases any held expression and
+gaze via `disconnect()`, so a detached manager stops reacting to events without being
 destroyed.
 
 ## Model Loading
@@ -174,10 +275,19 @@ the first has finished, the latest call wins in both renderers in this repo
 (`@charivo/render-live2d` and `@charivo/render-iki`): the
 earlier load is dropped however late it lands. A renderer of your own should do
 the same, since an app switching characters does not wait for the previous
-switch.
+switch. Once the latest call has settled, no earlier call may still install its
+model; the manager relies on that when it resumes avatar events.
+
+A load releases every held expression and gaze claim first, and the manager
+ignores `avatar:expression`, `avatar:motion` and `avatar:gaze` while the latest
+`loadModel(...)` call is pending, then admits them again as soon as it resolves
+or rejects. An expression id cannot be checked against a catalog that is about
+to change, and a gaze target applies to the current model only. A renderer
+without `loadModel` is unaffected.
 
 If the renderer exposes optional methods such as `playExpression`,
-`stopExpression`, `playMotionByGroup`, `lookAt`, or model catalog getters,
+`stopExpression`, `playMotionByGroup`, `lookAt`, `clearGaze`, or model catalog
+getters,
 `@charivo/render` will use them automatically. `getAvatarControlCatalog` is
 for the app, not the manager: it is where avatar tools read the catalog from
 — see [Building The Catalog](./avatar.md#building-the-catalog).
@@ -186,8 +296,12 @@ for the app, not the manager: it is where avatar tools read the catalog from
 
 The render manager arbitrates between three gaze drivers:
 
-1. **AI gaze** — driven by the `avatar:gaze` event from the realtime model's
-   look intent. Owns the avatar's gaze while the AI suspend window is active.
+1. **AI gaze** — a gaze claim, made by the `avatar:gaze` event from a model's
+   look intent. It follows the claim rules above (1,200 ms unless it names a
+   hold) and owns the avatar's gaze while any gaze claim is live. When the last
+   one ends, the manager calls the renderer's optional `clearGaze()`, which drops
+   the target so the renderer's own resting gaze resumes (Iki: the idle gaze;
+   Live2D: centre).
 2. **Local-presence gaze** — driven by calling `renderManager.setLocalGaze(coords)` from
    the app layer (e.g. webcam face tracking). Suspends mouse cursor tracking
    through a separate local-gaze window while active.
@@ -195,11 +309,12 @@ The render manager arbitrates between three gaze drivers:
 
 **Priority for cursor-follow:** AI (`avatar:gaze`) > local-presence (`setLocalGaze`) > mouse cursor
 
-**Deliberate taps** yield only to the AI window — local-presence does not
+**Deliberate taps** yield only to a live gaze claim — local-presence does not
 suppress them.
 
 `setLocalGaze` returns `false` (no-op) while AI gaze owns the avatar or when
-the renderer has no `lookAt`.
+the renderer has no `lookAt`. A direct `lookAt()`, `setLocalGaze` and the cursor
+are not claims, and their target persists as before.
 
 ### Where The Cursor Is Measured From
 

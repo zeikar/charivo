@@ -183,7 +183,7 @@ Charivo intentionally keeps two event contracts:
 
 This is deliberate.
 
-- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `avatar:expression`, `avatar:motion`, and `avatar:gaze`
+- `RenderManager` subscribes to upstream events such as `tts:lipsync:update`, `avatar:expression`, `avatar:motion`, `avatar:gaze`, `avatar:release`, `performance:start`, and `performance:end`
 - TTS, STT, realtime, and LLM managers mainly publish events back into core —
   for `LLMManager` that means `avatar:*`-style events from tool result
   projectors, not conversation events
