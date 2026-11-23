@@ -32,8 +32,8 @@
   "dependencies": {
     "@charivo/core": "workspace:^",
     "@charivo/render": "workspace:^",
-    "@ikijs/engine": "^0.12.1",
-    "@ikijs/format": "^0.11.1"
+    "@ikijs/engine": "^0.13.0",
+    "@ikijs/format": "^0.12.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

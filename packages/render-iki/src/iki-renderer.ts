@@ -19,7 +19,6 @@ import type {
 } from "@charivo/render";
 import { IkiMotion, IkiPlayer, type IkiView } from "@ikijs/engine";
 import {
-  IDLE_MOTION_GROUP,
   IkiFormatError,
   loadIkiModel,
   StandardParameter,
@@ -135,15 +134,6 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
     if (!player || !motion) return;
 
     motion.update(now);
-
-    // A model's `Idle` clips replace the procedural head and gaze, and the
-    // engine's gaze target moves nothing under them: put the eyes there
-    // directly, as the engine asks of a host. The head stays the clips'.
-    const gaze = this.gaze;
-    if (gaze && this.model?.motions?.[IDLE_MOTION_GROUP]) {
-      player.setParameter(StandardParameter.EyeballX, gaze.x);
-      player.setParameter(StandardParameter.EyeballY, gaze.y);
-    }
 
     // After update(), so lip-sync beats an expression that opens the mouth.
     if (this.lipSyncEnabled) {

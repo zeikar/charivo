@@ -392,11 +392,11 @@ importers:
         specifier: workspace:^
         version: link:../render
       '@ikijs/engine':
-        specifier: ^0.12.1
-        version: 0.12.1
+        specifier: ^0.13.0
+        version: 0.13.0
       '@ikijs/format':
-        specifier: ^0.11.1
-        version: 0.11.1
+        specifier: ^0.12.0
+        version: 0.12.0
     devDependencies:
       tsup:
         specifier: ^8.5.0
@@ -2127,11 +2127,11 @@ packages:
     resolution: {integrity: sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==}
     engines: {node: '>=18.18'}
 
-  '@ikijs/engine@0.12.1':
-    resolution: {integrity: sha512-siVi1uOeKjhFJUvLuHudlMcSNrC0weOGOj6cn0ntxT5WkEjAnJyR3qbGrf1xKloeoW0ZJBRCfuQ1A/S5yN+xSA==}
+  '@ikijs/engine@0.13.0':
+    resolution: {integrity: sha512-iHl6LgRa4DY0cUbbTwzO2LqHDU+P4USuYFpzHtCtViTHJGJz4rKXMJ05iEFkZVUkWm4zPtOwH+GkEdAS21ZobA==}
 
-  '@ikijs/format@0.11.1':
-    resolution: {integrity: sha512-tGaCShPrPFZ/HmTPpodnPjOVt0grXI99NnPeHBcucaOfReuaaw5RR6qYMe+ezX5LohTFvReSDv7rrtedunkdSg==}
+  '@ikijs/format@0.12.0':
+    resolution: {integrity: sha512-jXYo0qez2Mekxbf4xKcLhDptOinAU9fsV3G9Sk5kKdvDmuHAImj+FhmArGgkx5kBt7zjNuwQa0QHJIIKWAz0MA==}
 
   '@img/colour@1.0.0':
     resolution: {integrity: sha512-A5P/LfWGFSl6nsckYtjw9da+19jB8hkJ6ACTGcDfEJ0aE+l2n2El7dsVM7UVHZQ9s2lmYMWlrS21YLy2IR1LUw==}
@@ -11012,11 +11012,11 @@ snapshots:
 
   '@humanwhocodes/retry@0.4.3': {}
 
-  '@ikijs/engine@0.12.1':
+  '@ikijs/engine@0.13.0':
     dependencies:
-      '@ikijs/format': 0.11.1
+      '@ikijs/format': 0.12.0
 
-  '@ikijs/format@0.11.1': {}
+  '@ikijs/format@0.12.0': {}
 
   '@img/colour@1.0.0':
     optional: true

@@ -44,10 +44,26 @@ vi.mock("@ikijs/engine", async (importOriginal) => {
       playerRegistry.instances.push(this);
     }
 
+    // The engine's `cancelLoad` settles a pending load as superseded and
+    // adopts nothing; with none pending it does nothing.
+    private pendingLoad?: { cancelled: boolean };
+
     async load(model: IkiModel): Promise<FakeLoadResult> {
+      const load = { cancelled: false };
+      this.pendingLoad = load;
+      await Promise.resolve();
+      if (this.pendingLoad === load) this.pendingLoad = undefined;
+      if (load.cancelled) return { failedTextures: [], superseded: true };
       this.store = new actual.ParameterStore(model.parameters);
       return { failedTextures: [], superseded: false };
     }
+
+    cancelLoad = vi.fn(() => {
+      if (this.pendingLoad) {
+        this.pendingLoad.cancelled = true;
+        this.pendingLoad = undefined;
+      }
+    });
 
     getParameter(id: string): number {
       return this.store.get(id);
@@ -322,9 +338,9 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.HairSwayX)).toBeLessThan(-1);
   });
 
-  // The engine clamps and drops a non-finite pair itself, so only the
-  // adapter's own eye write, under an `Idle` group, can show the adapter's:
-  // on a model whose eyes range past ±1, where the store would let 2 through.
+  // The engine clamps and drops a non-finite pair itself; on a model whose
+  // eyes range past ±1, where the store would let 2 through, these show it
+  // under an `Idle` group, where the engine moves the eyes by a spring.
   describe("under an Idle group whose eyes range to ±2", () => {
     beforeEach(() => {
       served = {
@@ -341,10 +357,10 @@ describe("IkiRenderer / IkiMotion integration", () => {
       renderer.lookAt({ x: 5, y: 0 });
       await renderer.loadModel("/x.iki");
 
-      pumpTo(0, 200);
+      pumpTo(0, 2000);
 
       const store = playerRegistry.instances[0]!.store;
-      expect(store.get(StandardParameter.EyeballX)).toBe(1);
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(1, 2);
     });
 
     it("keeps the last gaze when a non-finite one arrives", async () => {
@@ -352,10 +368,10 @@ describe("IkiRenderer / IkiMotion integration", () => {
       renderer.lookAt({ x: Number.NaN, y: 0 });
       await renderer.loadModel("/x.iki");
 
-      pumpTo(0, 200);
+      pumpTo(0, 2000);
 
       const store = playerRegistry.instances[0]!.store;
-      expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.5, 2);
     });
   });
 
@@ -598,7 +614,7 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
   });
 
-  it("writes the eyes itself under a model's Idle loop, and leaves it the head", async () => {
+  it("moves the eyes by the engine under a model's Idle loop, and leaves it the head", async () => {
     served = IDLE_FIXTURE;
     renderer.lookAt({ x: 0.5, y: 0.25 });
     await renderer.loadModel("/x.iki");
@@ -606,9 +622,9 @@ describe("IkiRenderer / IkiMotion integration", () => {
 
     pumpTo(0, 500);
 
-    // A write after update(), so the eyes are there at once, not on a spring.
-    expect(store.get(StandardParameter.EyeballX)).toBe(0.5);
-    expect(store.get(StandardParameter.EyeballY)).toBe(0.25);
+    // The engine's spring settles the eyes in about 0.3 s.
+    expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.5, 2);
+    expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.25, 2);
     // AngleX is the Idle clip's (2° at 0.5 s); AngleY, which it does not
     // animate, rests.
     expect(store.get(StandardParameter.AngleX)).toBeCloseTo(2);
