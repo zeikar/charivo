@@ -3,6 +3,7 @@ import { createWebTTSPlayer } from "@charivo/tts/web";
 
 const speech = window.speechSynthesis as unknown as {
   speaking: boolean;
+  pending: boolean;
   cancel: ReturnType<typeof vi.fn>;
   speak: ReturnType<typeof vi.fn>;
   getVoices: ReturnType<typeof vi.fn>;
@@ -10,6 +11,7 @@ const speech = window.speechSynthesis as unknown as {
 
 beforeEach(() => {
   speech.speaking = false;
+  speech.pending = false;
   speech.cancel.mockClear();
   speech.speak.mockClear();
   speech.getVoices.mockReset();
@@ -72,6 +74,28 @@ describe("WebTTSPlayer", () => {
     const player = createWebTTSPlayer();
     await player.stop();
     expect(speech.cancel).toHaveBeenCalled();
+  });
+
+  it("stops an utterance that is still queued", async () => {
+    // A browser can hold an utterance before it starts speaking (Firefox does
+    // while voices load); stop() must cancel it or it plays later.
+    speech.pending = true;
+    const player = createWebTTSPlayer();
+    await player.stop();
+    expect(speech.cancel).toHaveBeenCalled();
+  });
+
+  it("clears a queued utterance before speaking a new one", () => {
+    speech.pending = true;
+    const player = createWebTTSPlayer();
+    void player.speak("next line");
+    expect(speech.cancel).toHaveBeenCalled();
+  });
+
+  it("does not cancel when nothing is speaking or queued", async () => {
+    const player = createWebTTSPlayer();
+    await player.stop();
+    expect(speech.cancel).not.toHaveBeenCalled();
   });
 
   it("warns when voice is missing", () => {

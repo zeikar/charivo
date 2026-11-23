@@ -96,8 +96,6 @@ speaks. Lip sync is simulated from the text, because Web Speech gives no audio t
 analyze. Each speak has a deadline (10 s plus 150 ms per character, capped at
 2 minutes); if the browser never reports the end of an utterance, the speech is
 cancelled and the line fails, so the next one can start.
-The cancel also calls `speechSynthesis.cancel()` itself when an utterance is
-only queued, because the web player cancels only while it is speaking.
 
 This is a change from an earlier design that used Gemini TTS. On the demo key,
 Gemini TTS answered 429 with a free-tier limit of 10 requests per day for

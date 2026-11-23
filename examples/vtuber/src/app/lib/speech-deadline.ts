@@ -21,24 +21,6 @@ export function speechDeadlineMs(text: string): number {
 }
 
 /**
- * The web player's stop() cancels only while `speechSynthesis.speaking`, so an
- * utterance still queued (pending, e.g. a browser waiting for voices) would
- * survive it and play later. Timeout and explicit stop() both come through
- * here so they also clear pending utterances.
- */
-async function cancelSpeech(player: TTSPlayer): Promise<void> {
-  try {
-    await player.stop();
-  } finally {
-    const synthesis =
-      typeof window === "undefined" ? undefined : window.speechSynthesis;
-    if (synthesis && (synthesis.pending || synthesis.speaking)) {
-      synthesis.cancel();
-    }
-  }
-}
-
-/**
  * On timeout the speech is cancelled with the player's stop(), and only then
  * does speak() reject, so the line is reported failed and the next one cannot
  * overlap a voice that is still going. An explicit stop() disarms the active
@@ -55,7 +37,7 @@ export function withSpeechDeadline(player: TTSPlayer): TTSPlayer {
     isSupported: () => player.isSupported(),
     stop() {
       active?.disarm();
-      return cancelSpeech(player);
+      return player.stop();
     },
     speak(text: string, options?: TTSOptions): Promise<void> {
       const deadlineMs = speechDeadlineMs(text);
@@ -83,7 +65,7 @@ export function withSpeechDeadline(player: TTSPlayer): TTSPlayer {
           if (active === utterance) active = null;
           const seconds = Math.round(deadlineMs / 1000);
           const timedOut = `Speech timed out after ${seconds} s without finishing`;
-          cancelSpeech(player).then(
+          player.stop().then(
             () => reject(new Error(timedOut)),
             (stopError: unknown) =>
               reject(

@@ -43,9 +43,7 @@ class WebTTSPlayer implements TTSPlayer {
    */
   async speak(text: string, options?: TTSOptions): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (this.synthesis.speaking) {
-        this.synthesis.cancel();
-      }
+      this.cancelQueued();
 
       const utterance = new SpeechSynthesisUtterance(text);
 
@@ -77,7 +75,13 @@ class WebTTSPlayer implements TTSPlayer {
   }
 
   async stop(): Promise<void> {
-    if (this.synthesis.speaking) {
+    this.cancelQueued();
+  }
+
+  // `speaking` alone misses an utterance the browser is still holding before
+  // it starts (Firefox queues while voices load); it would play after a stop.
+  private cancelQueued(): void {
+    if (this.synthesis.speaking || this.synthesis.pending) {
       this.synthesis.cancel();
     }
   }

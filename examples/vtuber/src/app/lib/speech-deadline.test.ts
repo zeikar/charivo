@@ -115,43 +115,6 @@ describe("withSpeechDeadline", () => {
     expect(bSettled).toBe(false);
   });
 
-  describe("pending browser utterances", () => {
-    // Only a queued utterance: the player's own stop() would not cancel it.
-    const synthesis = { pending: true, speaking: false, cancel: vi.fn() };
-    beforeEach(() => {
-      synthesis.cancel.mockClear();
-      vi.stubGlobal("window", { speechSynthesis: synthesis });
-    });
-    afterEach(() => vi.unstubAllGlobals());
-
-    it("cancels them on timeout", async () => {
-      const wrapped = withSpeechDeadline(
-        fakePlayer(() => new Promise(() => {})),
-      );
-      const done = wrapped.speak("hi");
-      const assertion = expect(done).rejects.toThrow(/timed out/);
-      await vi.advanceTimersByTimeAsync(SPEECH_MAX_MS);
-      await assertion;
-      expect(synthesis.cancel).toHaveBeenCalledTimes(1);
-    });
-
-    it("cancels them on an explicit stop()", async () => {
-      const wrapped = withSpeechDeadline(
-        fakePlayer(() => new Promise(() => {})),
-      );
-      void wrapped.speak("hi");
-      await wrapped.stop();
-      expect(synthesis.cancel).toHaveBeenCalledTimes(1);
-    });
-
-    it("leaves an idle synthesis alone", async () => {
-      synthesis.pending = false;
-      await withSpeechDeadline(fakePlayer(async () => {})).stop();
-      synthesis.pending = true;
-      expect(synthesis.cancel).not.toHaveBeenCalled();
-    });
-  });
-
   it("delegates the rest of the player", () => {
     const player = fakePlayer(async () => {});
     const wrapped = withSpeechDeadline(player);
