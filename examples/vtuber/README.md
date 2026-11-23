@@ -24,7 +24,9 @@ It is a worked example of:
 - a priority queue with pacing, cooldowns, and interrupts in front of
   `Charivo.userSay()`
 - a cascade stack (Gemini chat through a server route, browser speech) driving a
-  Live2D character with `@charivo/avatar` tools
+  Live2D character, with `@charivo/avatar`'s
+  [text-driven director](../../packages/avatar/README.md#text-driven-director)
+  choosing its expression and motion from the spoken line
 
 It is a minimum viable demo, not a product. Out of scope:
 
@@ -70,12 +72,14 @@ minutes) or you press **Stop**.
 
 `POST /api/chat` uses `@charivo/server/gemini` with the model pinned in
 `src/app/api/demo-limits.ts` (`gemini-3.5-flash-lite`). The browser reaches it
-through the remote LLM client (the hook passes `apiEndpoint: "/api/chat"`). Its
+through the remote LLM client (the hook passes `apiEndpoint: "/api/chat"`). It
+serves two callers: the talker, and the avatar classifier that picks an
+expression and motion for each line. Neither sends tools. Its
 limits are about the shape of a request, not its rate:
 
 - a request carries at most 56 messages. The app pins `maxHistoryTurns` to 20
   (40 messages), and the route's cap is derived from the same constant plus
-  headroom for the tool loop, so a long show does not outgrow the route
+  headroom for tool messages, so a long show does not outgrow the route
   (Charivo's default of 40 turns would)
 - per-message, total-size, tool-count, and tool-argument size caps bound what one
   request can make you pay for
@@ -106,14 +110,19 @@ would be the upgrade.
 
 The Director's pacing, set in `src/app/lib/show-plan.ts`:
 
-- `minLineIntervalMs` (7,000 ms): the least time between the starts of two lines
+- `idleAfterMs` (3,000 ms): how long the Director waits, with nothing to say,
+  before it asks for an idle line
+- `minLineIntervalMs` (9,000 ms): the least time between the starts of two lines
 - `failedLineBackoffMs` (14,000 ms): the least time from a failed line's start to
   the next line
 
-These shape the show. They are **not request limits**: a line makes one to four
-chat requests, because the avatar tool loop calls the model again after each
-round of tool calls (at most three rounds). The chat model's request ceiling was
-not measured.
+These shape the show. They are **not request limits**. A line makes two browser
+requests to `/api/chat`: one from the talker and one from the avatar classifier.
+Both count against the same key. The model's stated quota on this key is 15
+requests per minute; the most browser requests to `/api/chat` seen in any 60 s
+window was 12 (see [the 2026-11-23 run](#avatar-director-measured-2026-11-23)).
+That is observed browser traffic, not proof that the limit holds: retries on the
+provider side are invisible to the browser.
 
 A failed line (a provider 429 or 503, which the route returns as a 500, or a
 client timeout) is logged, counted, and skipped. It is
@@ -145,10 +154,22 @@ rows are convention. The Director uses the global
 **All four inputs are sources.** Two are passed in as `sources`, typed so they
 can emit only `chat` and `agent` events: the chat box (`createPushSource()`) and
 the scripted viewers emit chat, and the scripted game events emit agent events. Two are created
-by the Director itself and emit internal events: the idle timer (`idle`, 8 s after
+by the Director itself and emit internal events: the idle timer (`idle`, 3 s after
 a drain finds nothing to say) and the segment scheduler (`segment`, at each
 segment start). The Director starts every source on `start()` and stops each one
 once when the show ends.
+
+**The head and the body are split.** The talker, Charivo's LLM manager, has no
+tools and writes only the line. The avatar director listens for
+`character:speak`, classifies the line with a second LLM call in parallel with
+the speech, and emits `avatar:expression` and `avatar:motion`; a result that
+arrives after its line is no longer current is dropped. If a classification
+fails, the line still finishes and the avatar keeps its current state. The
+classifier is a second remote LLM client to the same route, so its requests
+share the talker's quota. Gaze is not an LLM decision: it follows the mouse
+(`mouseTracking`). The hook logs each decision to the browser console with an
+`[avatar]` prefix. The package side is described in the
+[Text-Driven Director](../../packages/avatar/README.md#text-driven-director).
 
 **"Speaking" is derived, not read.** The Director never reads Charivo events. It
 is busy from calling `port.speak()` until that promise settles, and it starts a
@@ -215,7 +236,7 @@ The module follows a simple model of an agent that appears to act on its own:
 | Perception | the event sources |
 | Reflex (cheap, immediate decisions) | `policy.ts`, which decides without calling a model |
 | Conscious (deliberate, in character) | Charivo's LLM |
-| Action | `CharacterPort`, plus the avatar tools (expression, motion, gaze) |
+| Action | `CharacterPort`, plus the avatar director (expression, motion) |
 
 The talker is the character. Skill agents are separate processes that do work
 the talker should not, such as playing a game. They exchange information with it
@@ -296,8 +317,11 @@ after Start.
   had its cue line plus recurring idle lines (2, 5, 7 and 5 for the opening and
   the three topics), and the ending line was spoken.
 - No two lines overlapped and none was cut. The longest stretch without speech
-  while running was 31 s; a line usually took 7 to 21 s of "thinking" (one to
-  four Gemini chat requests through the avatar tool loop) before speech.
+  while running was 31 s; a line usually took several seconds of "thinking"
+  before speech. A later measurement of that tool-based build (2026-11-23, 11
+  lines) found a median of about 3.55 s (2.5 to 4.2 s) from the talker request
+  to the start of speech, with 2 to 3 chat requests per line at about 1.25 s
+  each. The longer figure first reported here did not reproduce.
 - Verdict: autonomy demonstrated, with the caveat above that it was observed
   through `speechSynthesis`, not heard.
 
@@ -329,6 +353,40 @@ rather than behavioral: cues still sit in history as `user` turns and use up
 Revisit when the Director moves to Companion's realtime path, where the
 provider owns the history and a person speaks too, so a cue sent as `user`
 text cannot be told apart from them.
+
+### Avatar director, measured 2026-11-23
+
+After the avatar moved from LLM tools to the text-driven director. Production
+build, headless Chromium with `fetch` and `speechSynthesis` instrumented, both
+scripted sources on, `gemini-3.5-flash-lite`. Two runs; the second came after one
+prompt change and is the final state. "Selected" below means the event was
+emitted on the bus; it is not confirmed playback, because the render manager can
+still decline a selection at its catalog or debounce checks.
+
+- **Latency.** From the talker request to the start of speech: median 1.29 s
+  (1.04 to 1.75 s, 19 lines) in run 1 and 1.17 s (1.02 to 1.60 s, 18 lines) in
+  run 2, against about 3.55 s for the tool build. Each line made exactly one
+  talker request. The avatar expression was emitted a median of about 1 s after
+  the utterance started.
+- **Silence between lines.** Median about 4.1 s (run 2: 4.07 s; idle gaps 4.05
+  to 4.55 s; lines already queued followed about 1 to 2 s after the previous one),
+  against about 11.5 s for the tool build.
+- **Requests.** At most 12 `/api/chat` requests in any 60 s window, in both runs,
+  beside the key's stated 15 per minute. This is observed browser traffic, not
+  proof that the limit holds.
+- **Live HTTP failures.** None in either run besides the one injected below, and
+  no 429 in the server output. Avatar requests share the talker's quota, so a
+  live 429 could still land on either.
+- **Selections (run 2, 16 completed lines, opening line excluded).** An
+  expression on 16 of 16 lines (F01 12, F02 2, F06 1, F08 1); a motion on 12 of
+  16 (TapBody[0] 9, TapBody[1] 2, TapBody[2] 1); classifier failures 0 of 16. No
+  expression read as wrong. Motions fit about 10 of 16 lines, and the main miss
+  was an unwarranted TapBody[0] on a calm line.
+- **The prompt change.** Run 1 picked a motion on 16 of 16 lines. The one change
+  was telling the classifier that most lines need no motion; run 2 is after it.
+- **Failure.** The test script answered the opening line's classifier request
+  with a 500. The line still completed and the next line started as usual. No
+  other failure case was exercised.
 
 ## Credits
 

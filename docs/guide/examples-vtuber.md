@@ -26,6 +26,11 @@ It is local-only: it has no live demo, and its scripts bind to `127.0.0.1`.
 - A portable Director module that reaches the character only through two small
   contracts (`CharacterPort` and `ShowEventSource`), so the same module could sit
   in front of a different adapter
+- A talker and an avatar director kept apart: the LLM writes only the spoken line,
+  and `@charivo/avatar`'s
+  [text-driven director](./avatar.md#text-driven-director) picks the expression
+  and motion from that line with a second LLM call, so a failed classification
+  does not stop the line
 - An envelope that tags viewer chat, stage directions, and game events, because
   `userSay()` treats every input as a viewer message, and a record of how well
   that holds
@@ -50,7 +55,8 @@ The only server route is chat:
 - `POST /api/chat`
   Uses `@charivo/server/gemini` with model `gemini-3.5-flash-lite`. The model is
   pinned by the route, and the request's message count, size, and tool schemas
-  are capped. It has no authentication and no rate limiting
+  are capped. It has no authentication and no rate limiting. It serves two
+  callers, the talker and the avatar classifier, and neither sends tools
 
 Because the route is unauthenticated and the show makes requests without anyone
 typing, the `dev` and `start` scripts both pass `--hostname 127.0.0.1`. Do not expose the app on a
