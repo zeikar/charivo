@@ -1,6 +1,6 @@
 {
   "name": "@charivo/render-live2d",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Live2D Cubism renderer for Charivo AI characters, with lip sync, expressions, motions, and gaze",
   "type": "module",
   "main": "dist/renderer.js",

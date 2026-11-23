@@ -1,5 +1,12 @@
 # @charivo/llm
 
+## 0.13.6
+
+### Patch Changes
+
+- Updated dependencies [f21917b]
+  - @charivo/core@0.40.0
+
 ## 0.13.5
 
 ### Patch Changes
