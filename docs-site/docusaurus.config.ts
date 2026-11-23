@@ -25,6 +25,10 @@ const config: Config = {
 
   onBrokenLinks: "throw",
 
+  // The playground's Iki models are served from the web demo's copies, so
+  // there is one file per model in the repo (served at /charivo/<name>.iki).
+  staticDirectories: ["static", "../examples/web/public/iki"],
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".
@@ -67,6 +71,11 @@ const config: Config = {
           sidebarId: "guideSidebar",
           position: "left",
           label: "Guide",
+        },
+        {
+          to: "/playground",
+          label: "Playground",
+          position: "left",
         },
         {
           href: "https://github.com/zeikar/charivo",

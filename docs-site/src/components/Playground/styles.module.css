@@ -1,0 +1,227 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.stageColumn {
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  /* Short enough to keep the claims readout below it in view. */
+  height: clamp(380px, calc(100vh - 380px), 680px);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: linear-gradient(
+    180deg,
+    var(--ifm-color-emphasis-100),
+    var(--ifm-color-emphasis-200)
+  );
+  overflow: hidden;
+}
+
+/* The engine fits the model inside the canvas, aspect kept and centred. */
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.switcher {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 999px;
+  background: var(--ifm-background-surface-color);
+  box-shadow: var(--ifm-global-shadow-lw);
+}
+
+.switch {
+  padding: 0.3rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch:hover {
+  background: var(--ifm-color-emphasis-200);
+}
+
+.switch[aria-pressed="true"] {
+  background: var(--ifm-color-primary);
+  color: var(--ifm-font-color-base-inverse);
+}
+
+.stageStatus {
+  position: absolute;
+  inset: auto 0 1rem;
+  margin: 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+}
+
+.section {
+  padding: 0.9rem 1.1rem;
+}
+
+.section + .section {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+.sectionHeading,
+.readoutHeading {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+}
+
+.helper {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pill {
+  padding: 0.3rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-base);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Not on a pressed pill: it keeps its pressed colours under the pointer. */
+.pill:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--ifm-color-emphasis-300);
+}
+
+.pill[aria-pressed="true"] {
+  background: var(--ifm-color-primary);
+  color: var(--ifm-font-color-base-inverse);
+}
+
+.pill:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.switch:focus-visible,
+.pill:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+.lineError {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ifm-color-danger-dark);
+}
+
+.readout {
+  margin-top: 1rem;
+}
+
+.empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+.claimList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.claim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.5rem;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 0.5rem;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+/* " · " between the fields, but not before the first or the badge. */
+.claim > span:not(:first-child):not(.showing)::before {
+  content: "·";
+  margin-right: 0.5rem;
+  color: var(--ifm-color-emphasis-500);
+}
+
+.claim[aria-current="true"] {
+  border-color: var(--ifm-color-primary);
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-font-color-base);
+}
+
+.priority {
+  font-weight: 600;
+}
+
+.expression {
+  font-weight: 600;
+}
+
+.hold {
+  font-variant-numeric: tabular-nums;
+}
+
+.showing {
+  margin-left: auto;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: var(--ifm-color-primary);
+  color: var(--ifm-font-color-base-inverse);
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+@media (max-width: 996px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .stage {
+    height: clamp(320px, 100vw, 460px);
+  }
+}

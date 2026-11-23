@@ -5,6 +5,7 @@
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
+    "prebuild": "pnpm --filter \"docs-site^...\" build",
     "build": "docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
@@ -15,6 +16,10 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@charivo/core": "workspace:*",
+    "@charivo/render": "workspace:*",
+    "@charivo/render-iki": "workspace:*",
+    "@charivo/tts": "workspace:*",
     "@docusaurus/core": "3.10.0",
     "@docusaurus/faster": "3.10.0",
     "@docusaurus/preset-classic": "3.10.0",

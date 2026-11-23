@@ -122,6 +122,9 @@ events yourself.
 
 ## Claims And Arbitration
 
+To watch arbitration live, try the [Playground](https://zeikar.dev/charivo/playground/):
+a reflex overrides a held pick for a moment, then the face falls back to it.
+
 Expressions and gaze are shown through claims. Each `avatar:expression` or
 `avatar:gaze` event is a claim on its channel, and the manager shows the
 winner. A claim carries three optional fields, so an event with none of them

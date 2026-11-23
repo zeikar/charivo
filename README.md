@@ -20,6 +20,7 @@ rewriting the whole stack.
 
 - Live2D web app — https://charivo.vercel.app/
 - Companion (Realtime voice + cross-session memory) — https://charivo-companion.vercel.app/
+- Playground (an Iki character in your browser, no API key or LLM) — https://zeikar.dev/charivo/playground/
 
 ## Documentation
 
