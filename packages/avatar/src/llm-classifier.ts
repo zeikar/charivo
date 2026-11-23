@@ -66,8 +66,10 @@ function buildSystemMessage(catalog: AvatarControlCatalog): string {
     if (meanings !== null) {
       lines.push(`Motion meanings: ${meanings}.`);
     }
+    // Measured live: "only for bigger beats" alone still drew a motion on
+    // every line, so the default is spelled out as null.
     lines.push(
-      "Pick a motion only for bigger beats such as greetings, emphasis, or strong reactions; null otherwise.",
+      'Most lines need no motion: set "motion" to null unless the line is a greeting, a goodbye, or a strong reaction such as surprise or delight.',
     );
   }
 
