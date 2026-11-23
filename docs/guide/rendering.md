@@ -163,7 +163,8 @@ a held channel are:
 - When the winner is released or expires, the next live claim is shown. With
   none left, the channel returns to its base.
 - A claim naming an expression the loaded model lacks, or a `hold.ms` that is
-  not a positive finite number, is ignored and does not displace that source's
+  not a positive finite number of at most 2,147,483,647 (the `setTimeout`
+  limit), is ignored and does not displace that source's
   live claim. So is a claim whose `{ performance }` hold names a performance
   that already ended.
 
@@ -202,10 +203,11 @@ The option is passed only when it is not `"normal"`, so an unflagged call keeps
 its old two-argument shape, and a renderer of your own that ignores it plays
 every motion, as before.
 
-The same motion requested twice within a second is still dropped as a repeat.
-A `reflex` motion skips that check, because the check cannot tell a motion the
-renderer declined from one it played. An `ambient` motion is not recorded for it
-either, since it is often declined while any clip runs.
+A repeat of the same motion within a second is dropped, but only after an
+accepted, non-`ambient` request for it: a motion the renderer declines (its
+`playMotionByGroup` returns `false`) or an `ambient` one leaves the check
+unchanged, so asking again once the blocking clip ends still plays. A `reflex`
+request skips the check entirely.
 
 ## Expression Auto-Release
 

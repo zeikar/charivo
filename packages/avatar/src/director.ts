@@ -22,8 +22,7 @@ export interface AvatarDirectorOptions {
   classifier: AvatarClassifier;
   /**
    * Receives `avatar:expression` and `avatar:motion`; a `Charivo` instance
-   * fits. The expression is an `inferred` claim, so an `explicit` expression
-   * claim (a tool call, an app event) outranks it.
+   * fits.
    */
   emitter: CharivoEventEmitter;
   /** Defaults to `console.warn`. */
@@ -43,7 +42,8 @@ export interface AvatarDirector {
 
 /**
  * Text-driven avatar control. Its expression is an `inferred` claim from the
- * `avatar-director` source, so an `explicit` expression claim outranks it.
+ * `avatar-director` source, so an `explicit` expression claim (a tool call, an
+ * app event) outranks it.
  */
 export function createAvatarDirector(
   options: AvatarDirectorOptions,

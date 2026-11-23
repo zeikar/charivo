@@ -271,6 +271,16 @@ describe("RenderManager", () => {
       ]);
     });
 
+    it("does not debounce a motion the renderer declined", () => {
+      const { renderer, bus } = boundManager();
+      renderer.playMotionByGroup.mockReturnValueOnce(false as never);
+
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+
+      expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(2);
+    });
+
     it("still debounces a repeated explicit motion inside 1 s", () => {
       const { renderer, bus } = boundManager();
 
@@ -1337,6 +1347,92 @@ describe("RenderManager", () => {
       });
     }
 
+    it("ignores a claim a renderer emits while the load releases the held ones", async () => {
+      const load = deferred();
+      const renderer = loadingRenderer(load.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: "until-release",
+      });
+      renderer.stopExpression.mockImplementation(() => {
+        bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      });
+
+      const loading = manager.loadModel("/models/b.model3.json");
+      load.resolve();
+      await loading;
+
+      expect(renderer.playExpression.mock.calls).toEqual([["exp_happy"]]);
+    });
+
+    it("does not delegate an older load when a renderer's cleanup starts a newer one", async () => {
+      const renderer = loadingRenderer(Promise.resolve());
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: "until-release",
+      });
+      let newer: Promise<void> | undefined;
+      renderer.stopExpression.mockImplementationOnce(() => {
+        newer = manager.loadModel("/models/newer.model3.json");
+      });
+
+      await manager.loadModel("/models/older.model3.json");
+      await newer;
+
+      expect(renderer.loadModel.mock.calls).toEqual([
+        ["/models/newer.model3.json"],
+      ]);
+    });
+
+    it("returns to the lower claim after a renderer's playExpression emitted a higher one", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+      manager.setEventBus(bus);
+
+      renderer.playExpression.mockImplementationOnce(() => {
+        bus.emit("avatar:expression", {
+          expressionId: "exp_sad",
+          source: "e",
+          hold: "until-release",
+        });
+      });
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "d",
+        priority: "inferred",
+        hold: "until-release",
+      });
+      expect(renderer.playExpression.mock.calls).toEqual([
+        ["exp_happy"],
+        ["exp_sad"],
+      ]);
+
+      bus.emit("avatar:release", { source: "e" });
+      expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_happy");
+    });
+
+    it("forgets the same-motion debounce when the model changes", async () => {
+      const renderer = loadingRenderer(Promise.resolve());
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+      await manager.loadModel("/models/b.model3.json");
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+
+      expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(2);
+    });
+
     it("releases a held claim before loading and never shows a claim made while the load is pending", async () => {
       const load = deferred();
       const renderer = loadingRenderer(load.promise);
@@ -1886,6 +1982,27 @@ describe("RenderManager", () => {
       vi.advanceTimersByTime(7_999);
       expect(renderer.clearGaze).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a gaze claim with a non-finite target and keeps the source's live claim", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 1, y: 0, hold: "until-release" });
+      bus.emit("avatar:gaze", {
+        x: Number.NaN,
+        y: 0,
+        priority: "reflex",
+        hold: "until-release",
+      });
+      bus.emit("avatar:gaze", { x: 0, y: Number.POSITIVE_INFINITY });
+
+      expect(renderer.lookAt).toHaveBeenCalledTimes(1);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+      bus.emit("avatar:release", { source: "app" });
       expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
     });
 

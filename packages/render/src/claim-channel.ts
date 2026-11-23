@@ -36,7 +36,7 @@ export interface ClaimChannel<V> {
   /**
    * Returns `false` when the claim is ignored: a `hold` that is not one of the
    * {@link AvatarHold} shapes, or a `hold.ms` that is not a positive finite
-   * number. The source's live claim stays in place.
+   * number of at most 2,147,483,647 (the `setTimeout` limit). The source's live claim stays in place.
    */
   claim(request: ClaimRequest<V>): boolean;
   release(source: string): void;
@@ -67,6 +67,9 @@ interface Claim<V> {
 
 // Holds arrive on public events that plain JavaScript may emit, so a typo
 // such as "until-released" is rejected rather than read as some other hold.
+// setTimeout fires immediately for a delay above this (a 32-bit signed limit).
+const MAX_HOLD_MS = 2_147_483_647;
+
 function isValidHold(hold: unknown): hold is AvatarHold {
   if (hold === "until-release") {
     return true;
@@ -76,7 +79,10 @@ function isValidHold(hold: unknown): hold is AvatarHold {
   }
   if ("ms" in hold) {
     return (
-      typeof hold.ms === "number" && Number.isFinite(hold.ms) && hold.ms > 0
+      typeof hold.ms === "number" &&
+      Number.isFinite(hold.ms) &&
+      hold.ms > 0 &&
+      hold.ms <= MAX_HOLD_MS
     );
   }
   return "performance" in hold && typeof hold.performance === "string";

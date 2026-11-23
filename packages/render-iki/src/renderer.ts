@@ -26,12 +26,13 @@ export interface IkiRenderer extends Renderer, MouseTrackable {
    * `"force"` therefore always plays, and `"idle"` is declined (not queued)
    * while a `"normal"` or `"force"` clip runs. `options.muteSound` is accepted for the `Renderer`
    * contract and ignored: Iki motion clips carry no audio.
+   * Returns `false` when the motion was declined.
    */
   playMotionByGroup(
     group: string,
     index: number,
     options?: { muteSound?: boolean; priority?: MotionPriority },
-  ): void;
+  ): boolean;
   lookAt(coords: GazeCoordinates): void;
   /**
    * Drop the target a `lookAt` or the mouse set: the eyes spring back to the

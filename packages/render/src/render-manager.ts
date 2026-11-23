@@ -77,15 +77,16 @@ export class RenderManager implements IRenderManager {
       if (expressionId === this.shownExpression) {
         return;
       }
-      this.renderer.playExpression?.(expressionId);
+      // Recorded first: a renderer may emit another claim from inside the call.
       this.shownExpression = expressionId;
+      this.renderer.playExpression?.(expressionId);
     },
     clear: () => {
       // A renderer without stopExpression keeps the last face, so the claims
       // still expire (a lower one can take over) but nothing is reset.
       if (this.hasExpressionRelease(this.renderer)) {
-        this.renderer.stopExpression();
         this.shownExpression = undefined;
+        this.renderer.stopExpression();
       }
     },
     defaultHold: "speech",
@@ -383,17 +384,25 @@ export class RenderManager implements IRenderManager {
       return;
     }
 
-    // A claim carried across the swap would count as showing on a model
-    // that never received it: a repeated expression would never be played,
-    // and a gaze target would keep cursor and local gaze suspended.
-    for (const channel of this.heldChannels) {
-      channel.releaseAll();
-    }
     // Only the latest call gates: once it settles the renderer can no longer
     // install an earlier one, so an older call blocks and resumes nothing.
     const load = ++this.loadSeq;
     this.pendingLoad = load;
     try {
+      // A claim carried across the swap would count as showing on a model
+      // that never received it: a repeated expression would never be played,
+      // and a gaze target would keep cursor and local gaze suspended. Released
+      // while the load is pending, so a claim a renderer emits during the
+      // release is ignored too.
+      for (const channel of this.heldChannels) {
+        channel.releaseAll();
+      }
+      // The debounce remembers a clip of the model being replaced.
+      this.lastMotion = undefined;
+      // A renderer's cleanup callback may have started a newer load.
+      if (load !== this.loadSeq) {
+        return;
+      }
       await this.renderer.loadModel(modelPath);
       // The new model starts on its base face even where stopExpression is
       // missing; a failed load keeps the old model and the face it shows. An
@@ -531,17 +540,20 @@ export class RenderManager implements IRenderManager {
     // never learned about the options sees no change at all. The priority is
     // forwarded, never tracked here: admission is the renderer's call.
     const priority = MOTION_PRIORITY[claimPriority];
+    let accepted: boolean | void;
     if (muteSound || priority !== "normal") {
-      this.renderer.playMotionByGroup(motion.group, index, {
+      accepted = this.renderer.playMotionByGroup(motion.group, index, {
         ...(muteSound ? { muteSound: true } : {}),
         ...(priority !== "normal" ? { priority } : {}),
       });
     } else {
-      this.renderer.playMotionByGroup(motion.group, index);
+      accepted = this.renderer.playMotionByGroup(motion.group, index);
     }
-    // An idle-priority motion is often declined while any clip runs, so
-    // recording it would debounce a following ordinary request for that clip.
-    if (priority !== "idle") {
+    // A motion the renderer declined never played, so recording it would
+    // debounce the same request once the clip that blocked it has ended. An
+    // idle-priority motion is also left unrecorded: it must not debounce a
+    // following ordinary request for that clip.
+    if (accepted !== false && priority !== "idle") {
       this.lastMotion = { group: motion.group, index, at: now };
     }
     return true;
@@ -557,6 +569,11 @@ export class RenderManager implements IRenderManager {
       return false;
     }
     if (this.isEndedPerformanceHold(data.hold)) {
+      return false;
+    }
+    // Rejected before the claim, so a bad target cannot replace the source's
+    // live claim.
+    if (!Number.isFinite(data.x) || !Number.isFinite(data.y)) {
       return false;
     }
 
@@ -633,7 +650,7 @@ export class RenderManager implements IRenderManager {
       group: string,
       index: number,
       options?: { muteSound?: boolean; priority?: MotionPriority },
-    ): void;
+    ): boolean | void;
   } {
     return (
       "playMotionByGroup" in renderer &&

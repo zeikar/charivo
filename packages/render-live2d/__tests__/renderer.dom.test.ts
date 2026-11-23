@@ -436,6 +436,58 @@ describe("Live2DRenderer", () => {
     );
   });
 
+  it("gives the rebuilt model the held expression and gaze, and honors a clear made during recovery", async () => {
+    const canvas = createCanvasFixture();
+    const renderer = new Live2DRendererImpl({ canvas });
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+    renderer.setRealtimeLipSync(true);
+    renderer.playExpression("happy");
+    renderer.lookAt({ x: 0.2, y: 0.1 });
+
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const rebuilt = rendererMocks.MockModel.instances.at(-1)!;
+    expect(rebuilt).not.toBe(rendererMocks.MockModel.instances[0]);
+    expect(rebuilt.setExpression).toHaveBeenCalledWith("happy");
+    expect(rebuilt.setRealtimeLipSync).toHaveBeenCalledWith(true);
+    expect(rebuilt.setRealtimeLipSync.mock.invocationCallOrder[0]).toBeLessThan(
+      rebuilt.setExpression.mock.invocationCallOrder[0]!,
+    );
+    expect(rebuilt.setDragging).toHaveBeenCalledWith(0.2, 0.1);
+
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    renderer.stopExpression();
+    renderer.clearGaze();
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const again = rendererMocks.MockModel.instances.at(-1)!;
+    expect(again.setRealtimeLipSync).toHaveBeenCalledWith(true);
+    expect(again).not.toBe(rebuilt);
+    expect(again.setExpression).not.toHaveBeenCalled();
+    expect(again.setDragging).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a lookAt target the mouse has since superseded", async () => {
+    const canvas = createCanvasFixture();
+    const renderer = new Live2DRendererImpl({ canvas });
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+    renderer.lookAt({ x: 0.2, y: 0.1 });
+    renderer.updateViewWithMouse({ clientX: 10, clientY: 10 });
+
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      rendererMocks.MockModel.instances.at(-1)!.setDragging,
+    ).not.toHaveBeenCalled();
+  });
+
   it("exposes empty expression and motion data when no ready model exists", () => {
     const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
 
@@ -527,6 +579,19 @@ describe("Live2DRenderer", () => {
       0,
       LAppDefine.PriorityNormal,
     );
+  });
+
+  it("reports whether the model accepted the motion", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+    const model = rendererMocks.MockModel.instances[0]!;
+    model.ready = true;
+
+    expect(renderer.playMotionByGroup("Tap", 0)).toBe(true);
+    model.startMotion.mockReturnValueOnce(-1);
+    expect(renderer.playMotionByGroup("Tap", 0)).toBe(false);
+    expect(renderer.playMotionByGroup("Missing", 0)).toBe(false);
   });
 
   it("maps the motion priority onto Cubism's own priorities", async () => {

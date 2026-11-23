@@ -74,6 +74,8 @@ export class LAppModel extends CubismUserModel {
   private readonly _poseRestore = new PoseRestore(IDLE_RESTORE_SECONDS);
   private realtimeLipSyncRms = 0;
   private useRealtimeLipSync = false;
+  /** The queue entry whose clip is playing; only its end may stop the clip. */
+  private wavOwner?: CubismMotionQueueEntryHandle;
 
   private readonly idParamAngleX = CubismFramework.getIdManager().getId(
     CubismDefaultParameterId.ParamAngleX,
@@ -193,6 +195,7 @@ export class LAppModel extends CubismUserModel {
       );
       this._poseRestore.reset();
     }
+    this.settleWav();
     this._model.saveParameters();
 
     if (!motionUpdated && this._eyeBlink) {
@@ -308,15 +311,24 @@ export class LAppModel extends CubismUserModel {
     const soundFile = this.modelSetting.getMotionSoundFileName(group, index);
     const soundPath = soundFile ? `${this.modelHomeDir}${soundFile}` : null;
     const muted = options?.muteSound === true;
+    // Assigned once the queue accepts the start; the began handler runs later.
+    let handle: CubismMotionQueueEntryHandle =
+      InvalidMotionQueueEntryHandleValue;
 
-    if (muted) {
-      // Synchronously, the moment the start is accepted -- not only from the
+    if (muted || priority === LAppDefine.PriorityForce) {
+      // A forced start displaces the running motion, and Cubism may fade it
+      // out without calling its finish handler, so its clip would play on
+      // under the new motion. A forced motion with a clip starts its own in
+      // the began handler below.
+      //
+      // For a muted start, synchronously, the moment the start is accepted -- not only from the
       // began handler below. That handler runs off the render loop, which
       // pauses on a hidden tab or a lost GL context, so relying on it alone
       // lets a prior clip play on indefinitely. Even while running, a pending
       // fetch can resolve in the frames before the motion begins; the began
       // handler keeps its own stop to catch exactly that.
       this.wavHandler.cancel();
+      this.wavOwner = undefined;
     }
 
     motion.setBeganMotionHandler((self) => {
@@ -325,24 +337,36 @@ export class LAppModel extends CubismUserModel {
         // ambient motion may still be playing, and while it does its RMS
         // drives the mouth whenever realtime lip sync is off.
         this.wavHandler.cancel();
+        this.wavOwner = undefined;
       } else if (soundPath) {
         this.wavHandler.start(soundPath);
+        this.wavOwner = handle;
       }
       onBegan?.(self);
     });
     motion.setFinishedMotionHandler((self) => {
-      // Plain stop, deliberately: it does NOT supersede a load in flight, so a
-      // motion ending cannot cancel the clip of one that has already taken
-      // over. Counting outstanding motions instead was tried and is wrong --
-      // Cubism marks a faded-out entry finished without calling this handler
-      // (acubismmotion.ts), so any tally leaks permanently.
-      if (!muted && soundPath) {
-        this.wavHandler.stop();
-      }
+      // The clip is not stopped here: see settleWav().
       onFinished?.(self);
     });
 
-    return this._motionManager.startMotionPriority(motion, false, priority);
+    handle = this._motionManager.startMotionPriority(motion, false, priority);
+    return handle;
+  }
+
+  /**
+   * Ends the clip once the queue entry that owns it has finished. Checked
+   * against the queue after each update rather than from the finish callback:
+   * Cubism fades some entries out without calling it, and the callback cannot
+   * tell which entry ended. `cancel` also drops a decode still pending.
+   */
+  private settleWav(): void {
+    if (
+      this.wavOwner !== undefined &&
+      this._motionManager.isFinishedByHandle(this.wavOwner)
+    ) {
+      this.wavHandler.cancel();
+      this.wavOwner = undefined;
+    }
   }
 
   public startRandomMotion(

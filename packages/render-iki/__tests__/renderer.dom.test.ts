@@ -614,8 +614,9 @@ describe("IkiRenderer / IkiMotion integration", () => {
     const store = playerRegistry.instances[0]!.store;
 
     pump(0);
-    renderer.playMotionByGroup("Nod", 0);
-    renderer.playMotionByGroup("Nod", 5); // out of range: ignored
+    expect(renderer.playMotionByGroup("Nod", 0)).toBe(true);
+    // Out of range: ignored, and reported as declined.
+    expect(renderer.playMotionByGroup("Nod", 5)).toBe(false);
     pumpTo(100, 500);
 
     // Halfway through the clip, its -10° key: a clip replaces the idle's head,

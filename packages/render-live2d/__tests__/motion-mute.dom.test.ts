@@ -30,6 +30,8 @@ function buildModel(soundFile: string | null) {
   const model = Object.create(LAppModel.prototype) as LAppModel;
   const motion = new FakeMotion();
 
+  let lastHandle = 0;
+  const finishedHandles = new Set<number>();
   const wavHandler = { start: vi.fn(), stop: vi.fn(), cancel: vi.fn() };
 
   // The pieces startMotion reads. Everything else is irrelevant here, and
@@ -48,15 +50,21 @@ function buildModel(soundFile: string | null) {
   (model as unknown as { _motionManager: unknown })._motionManager = {
     setReservePriority: vi.fn(),
     reserveMotion: vi.fn(() => true),
-    startMotionPriority: vi.fn(() => 1),
+    startMotionPriority: vi.fn(() => ++lastHandle),
+    isFinishedByHandle: vi.fn((handle: number) => finishedHandles.has(handle)),
   };
 
-  return { model, motion, wavHandler };
+  /** Cubism fires the finish callback, then marks the entry finished; update() settles. */
+  const settle = () => (model as unknown as { settleWav(): void }).settleWav();
+
+  return { model, motion, wavHandler, finishedHandles, settle };
 }
 
 describe("LAppModel motion sound", () => {
   it("plays the clip on a default start", () => {
-    const { model, motion, wavHandler } = buildModel("sounds/haru_talk_13.wav");
+    const { model, motion, wavHandler, finishedHandles, settle } = buildModel(
+      "sounds/haru_talk_13.wav",
+    );
 
     model.startMotion("TapBody", 0, LAppDefine.PriorityNormal);
     motion.began?.(motion);
@@ -65,8 +73,9 @@ describe("LAppModel motion sound", () => {
       "/models/haru/sounds/haru_talk_13.wav",
     );
 
-    motion.finished?.(motion);
-    expect(wavHandler.stop).toHaveBeenCalled();
+    finishedHandles.add(1);
+    settle();
+    expect(wavHandler.cancel).toHaveBeenCalled();
   });
 
   it("never starts the clip on a muted start, and silences one already playing", () => {
@@ -108,6 +117,56 @@ describe("LAppModel motion sound", () => {
     expect(motion.began).toBeDefined();
     expect(wavHandler.cancel).toHaveBeenCalled();
     expect(wavHandler.start).not.toHaveBeenCalled();
+  });
+
+  it("silences the displaced clip when a forced start is accepted, and lets the new motion start its own", () => {
+    const silent = buildModel(null);
+    silent.model.startMotion("Idle", 0, LAppDefine.PriorityForce);
+    expect(silent.wavHandler.cancel).toHaveBeenCalled();
+    silent.motion.began?.(silent.motion);
+    expect(silent.wavHandler.start).not.toHaveBeenCalled();
+
+    const voiced = buildModel("sounds/haru_talk_13.wav");
+    voiced.model.startMotion("TapBody", 0, LAppDefine.PriorityForce);
+    expect(voiced.wavHandler.cancel).toHaveBeenCalled();
+    voiced.motion.began?.(voiced.motion);
+    expect(voiced.wavHandler.start).toHaveBeenCalledWith(
+      "/models/haru/sounds/haru_talk_13.wav",
+    );
+  });
+
+  it("lets a displaced entry's finish stop the clip only once the owning entry has finished, even for the same cached motion", () => {
+    const { model, motion, wavHandler, finishedHandles, settle } =
+      buildModel("sounds/a.wav");
+
+    model.startMotion("TapBody", 0, LAppDefine.PriorityNormal);
+    motion.began?.(motion);
+    model.startMotion("TapBody", 0, LAppDefine.PriorityForce);
+    motion.began?.(motion);
+    expect(wavHandler.start).toHaveBeenCalledTimes(2);
+    wavHandler.cancel.mockClear();
+
+    // The outgoing entry (handle 1) ends, with or without its callback.
+    finishedHandles.add(1);
+    motion.finished?.(motion);
+    settle();
+    expect(wavHandler.cancel).not.toHaveBeenCalled();
+
+    // The owner fades out and Cubism never calls the finish callback. cancel()
+    // rather than stop(), so a decode still pending cannot start afterwards.
+    finishedHandles.add(2);
+    settle();
+    expect(wavHandler.cancel).toHaveBeenCalledTimes(1);
+    expect(wavHandler.stop).not.toHaveBeenCalled();
+
+    settle();
+    expect(wavHandler.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a playing clip alone when a normal start is accepted", () => {
+    const { model, wavHandler } = buildModel(null);
+    model.startMotion("Idle", 0, LAppDefine.PriorityNormal);
+    expect(wavHandler.cancel).not.toHaveBeenCalled();
   });
 
   it("is audible again on the next default start of the same cached motion", () => {
@@ -156,7 +215,9 @@ describe("LAppModel motion sound", () => {
   });
 
   it("composes the caller's callbacks rather than replacing the sound handling", () => {
-    const { model, motion, wavHandler } = buildModel("sounds/haru_talk_13.wav");
+    const { model, motion, wavHandler, finishedHandles, settle } = buildModel(
+      "sounds/haru_talk_13.wav",
+    );
     const onBegan = vi.fn();
     const onFinished = vi.fn();
 
@@ -168,12 +229,14 @@ describe("LAppModel motion sound", () => {
       onBegan,
     );
     motion.began?.(motion);
+    finishedHandles.add(1);
     motion.finished?.(motion);
 
     expect(onBegan).toHaveBeenCalled();
     expect(onFinished).toHaveBeenCalled();
     // Passing callbacks used to clobber the sound handlers entirely.
     expect(wavHandler.start).toHaveBeenCalled();
-    expect(wavHandler.stop).toHaveBeenCalled();
+    settle();
+    expect(wavHandler.cancel).toHaveBeenCalled();
   });
 });

@@ -276,9 +276,9 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
     group: string,
     index: number,
     options?: { muteSound?: boolean; priority?: MotionPriority },
-  ): void {
+  ): boolean {
     const motion = this.motion;
-    if (!motion) return;
+    if (!motion) return false;
     const priority = options?.priority ?? "normal";
 
     const running = motion.activeMotion();
@@ -290,14 +290,16 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
       running.index === oneShot.index &&
       MOTION_RANK[priority] < MOTION_RANK[oneShot.priority]
     ) {
-      return;
+      return false;
     }
 
     // Recorded only once the engine accepts the clip: a rejected request
     // leaves the running one, and its priority, in place.
     if (motion.playMotion(group, index)) {
       this.oneShot = { group, index, priority };
+      return true;
     }
+    return false;
   }
 
   getAvailableExpressions(): string[] {

@@ -22,8 +22,8 @@ export type AvatarClaimPriority =
 /**
  * How long a held claim (expression or gaze) stays live.
  *
- * - `{ ms }`: until the timer fires; `ms` must be a positive finite number or
- *   the claim is ignored.
+ * - `{ ms }`: until the timer fires; `ms` must be a positive finite number of
+ *   at most 2,147,483,647 (the `setTimeout` limit) or the claim is ignored.
  * - `"until-release"`: until `avatar:release` names its source or the same
  *   source claims again.
  * - `{ performance: id }`: until `performance:end` for that id.
@@ -439,12 +439,13 @@ export interface Renderer {
   /**
    * `options.muteSound` asks for the motion without its baked-in sample clip; renderers with no motion audio may ignore it, and omitting it keeps the clip audible.
    * `options.priority` lets the renderer decide against the motion actually running (absent means `"normal"`); a renderer without motion priorities may ignore it and play every motion.
+   * Returns `false` when the renderer declined the motion (a lower priority than the one running, no such clip, no model); `true` or nothing means it was accepted, so a renderer that returns nothing still fits.
    */
   playMotionByGroup?(
     group: string,
     index: number,
     options?: { muteSound?: boolean; priority?: MotionPriority },
-  ): void;
+  ): boolean | void;
   lookAt?(coords: GazeCoordinates): void;
   /**
    * Drops the target a `lookAt` set so the renderer's own resting gaze resumes.

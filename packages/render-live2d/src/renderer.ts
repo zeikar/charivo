@@ -19,13 +19,13 @@ export interface Live2DRenderer extends Renderer, MouseTrackable {
    * `options.priority` maps onto Cubism's own motion priorities: `"force"`
    * cuts any motion, `"normal"` (the default) is declined while a normal or
    * forced motion runs, `"idle"` starts only when no motion, the idle loop
-   * included, is playing.
+   * included, is playing. Returns `false` when the motion was declined.
    */
   playMotionByGroup(
     group: string,
     index: number,
     options?: { muteSound?: boolean; priority?: MotionPriority },
-  ): void;
+  ): boolean;
   lookAt(coords: GazeCoordinates): void;
   /** Return the gaze to centre, dropping the target a `lookAt` set. */
   clearGaze(): void;

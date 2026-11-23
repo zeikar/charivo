@@ -14,6 +14,8 @@ export class LAppWavFileHandler {
   private gainNode?: GainNode;
   private rms = 0;
   private isActive = false;
+  /** Context time at which the current source started. */
+  private startedAt = 0;
   // Bumped by every start and stop. A fetch/decode begun before one of those
   // can still resolve after it, and without this check it would start playing
   // into the silence that was just asked for.
@@ -41,6 +43,7 @@ export class LAppWavFileHandler {
         this.audioBufferSourceNode.buffer = buffer;
         this.audioBufferSourceNode.connect(this.gainNode);
         this.gainNode.connect(context.destination);
+        this.startedAt = context.currentTime;
         this.audioBufferSourceNode.start(0);
         this.isActive = true;
       })
@@ -56,7 +59,9 @@ export class LAppWavFileHandler {
     }
 
     const context = this.audioContext;
-    const currentTime = context.currentTime;
+    // The context outlives every clip, so playback position is the time since
+    // this source started, not the context's own clock.
+    const currentTime = context.currentTime - this.startedAt;
     const buffer = this.audioBufferSourceNode.buffer;
     if (!buffer) {
       this.stop();

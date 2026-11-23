@@ -168,7 +168,7 @@ describe("claim channel", () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
-    it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY])(
+    it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
       "ignores a claim whose ms is %s and keeps the source's live claim",
       (ms) => {
         const { channel, shown, clear, claim } = setup();

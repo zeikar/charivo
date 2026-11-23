@@ -14,6 +14,7 @@ import {
 import { Option, CubismFramework } from "@framework/live2dcubismframework";
 import { CubismMatrix44 } from "@framework/math/cubismmatrix44";
 import { CubismViewMatrix } from "@framework/math/cubismviewmatrix";
+import { InvalidMotionQueueEntryHandleValue } from "@framework/motion/cubismmotionqueuemanager";
 
 import { LAppModel } from "./cubism/lappmodel";
 import { CubismModelHost } from "./cubism/model-host";
@@ -43,6 +44,15 @@ export class Live2DRendererImpl
   private loadCount = 0;
   /** Where the mouse gaze is measured from; unset = the view's centre. */
   private gazeOrigin?: GazeOrigin;
+  /**
+   * What the face and gaze were last told, kept so a rebuilt model (WebGL
+   * context restore) can be given back what a held claim put on the old one.
+   * Updated even while no model exists, so a clear during recovery is honored.
+   */
+  private appliedExpression?: string;
+  private appliedGaze?: GazeCoordinates;
+  /** Recorded like the above: the rebuilt model starts with lip sync off. */
+  private appliedRealtimeLipSync = false;
   private teardownResize?: ResizeTeardown;
   private teardownBrowserLifecycle?: () => void;
   private animationFrameId?: number;
@@ -80,6 +90,8 @@ export class Live2DRendererImpl
     if (!this.host) throw new Error("Live2D renderer is not initialized");
 
     this.lastModelPath = modelPath;
+    this.appliedExpression = undefined;
+    this.appliedGaze = undefined;
     this.model?.release();
 
     const model = await this.loadLatest(modelPath, this.host);
@@ -116,6 +128,7 @@ export class Live2DRendererImpl
    * Set realtime lip sync mode (controlled by RenderManager)
    */
   setRealtimeLipSync(enabled: boolean): void {
+    this.appliedRealtimeLipSync = enabled;
     if (this.model?.isReady()) {
       this.model.setRealtimeLipSync(enabled);
     }
@@ -150,8 +163,12 @@ export class Live2DRendererImpl
    * Play a specific expression by ID
    */
   playExpression(expressionId: string): void {
-    if (!this.model?.isReady()) return;
+    if (!this.model?.isReady()) {
+      this.appliedExpression = expressionId;
+      return;
+    }
     if (this.model.hasExpression(expressionId)) {
+      this.appliedExpression = expressionId;
       this.model.setExpression(expressionId);
     }
   }
@@ -160,6 +177,7 @@ export class Live2DRendererImpl
    * Drop the active expression and return to the model's base face
    */
   stopExpression(): void {
+    this.appliedExpression = undefined;
     if (!this.model?.isReady()) return;
     this.model.clearExpression();
   }
@@ -171,25 +189,24 @@ export class Live2DRendererImpl
     group: string,
     index: number,
     options?: { muteSound?: boolean; priority?: MotionPriority },
-  ): void {
-    if (!this.model?.isReady()) return;
-    if (this.model.hasMotion(group, index)) {
-      // Whether the motion may start is decided by LAppModel.startMotion,
-      // against the motion Cubism is actually running.
-      const priority = CUBISM_MOTION_PRIORITY[options?.priority ?? "normal"];
-      // An unmuted call keeps the exact three-argument shape it has always
-      // had, so nothing changes for callers that never pass options.
-      if (options?.muteSound) {
-        this.model.startMotion(group, index, priority, undefined, undefined, {
+  ): boolean {
+    if (!this.model?.isReady()) return false;
+    if (!this.model.hasMotion(group, index)) return false;
+    // Whether the motion may start is decided by LAppModel.startMotion,
+    // against the motion Cubism is actually running.
+    const priority = CUBISM_MOTION_PRIORITY[options?.priority ?? "normal"];
+    // An unmuted call keeps the exact three-argument shape it has always
+    // had, so nothing changes for callers that never pass options.
+    const handle = options?.muteSound
+      ? this.model.startMotion(group, index, priority, undefined, undefined, {
           muteSound: true,
-        });
-      } else {
-        this.model.startMotion(group, index, priority);
-      }
-    }
+        })
+      : this.model.startMotion(group, index, priority);
+    return handle !== InvalidMotionQueueEntryHandleValue;
   }
 
   lookAt(coords: GazeCoordinates): void {
+    this.appliedGaze = coords;
     if (!this.model?.isReady()) return;
 
     this.model.setDragging(clamp(coords.x, -1, 1), clamp(coords.y, -1, 1));
@@ -197,6 +214,7 @@ export class Live2DRendererImpl
 
   /** Cubism has no stored gaze target to drop; the neutral drag is centre. */
   clearGaze(): void {
+    this.appliedGaze = undefined;
     if (!this.model?.isReady()) return;
 
     this.model.setDragging(0, 0);
@@ -327,6 +345,8 @@ export class Live2DRendererImpl
   }
 
   updateViewWithMouse(coords: MouseCoordinates): void {
+    // The pointer now owns the gaze, so an earlier lookAt() target is stale.
+    this.appliedGaze = undefined;
     if (!this.model?.isReady()) return;
     const { viewX, viewY } = this.toViewCoordinates(coords);
     const origin = this.gazeOriginInView();
@@ -518,7 +538,16 @@ export class Live2DRendererImpl
 
       if (this.lastModelPath) {
         const model = await this.loadLatest(this.lastModelPath, this.host);
-        if (model) this.model = model;
+        if (model) {
+          this.model = model;
+          // Before the expression: with lip sync off, an expression restored
+          // mid-speech would keep the mouth open for the rest of the line.
+          if (this.appliedRealtimeLipSync) model.setRealtimeLipSync(true);
+          // The rebuilt model starts neutral; give it back what was applied.
+          if (this.appliedExpression)
+            this.playExpression(this.appliedExpression);
+          if (this.appliedGaze) this.lookAt(this.appliedGaze);
+        }
       }
 
       this.updateViewMatrices();

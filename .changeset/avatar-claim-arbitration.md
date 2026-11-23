@@ -15,7 +15,7 @@ Avatar control is now arbitrated per channel. Several writers, such as an app re
     - `avatar:release { source, channel? }`
     - `performance:start { performanceId, origin, voiced }`
     - `performance:end { performanceId, origin, status }`
-  - `Renderer.playMotionByGroup` takes `priority?: MotionPriority`, and `Renderer` gains an optional `clearGaze()`.
+  - `Renderer.playMotionByGroup` takes `priority?: MotionPriority` and may return `false` when it declines the motion (returning nothing still means accepted), and `Renderer` gains an optional `clearGaze()`.
 - `@charivo/render`:
   - **Arbitration rules:** `RenderManager` keeps a claim stack for expression and for gaze. The highest live priority wins, and a tie goes to the newest. A source replaces its own claim. When a claim ends, the channel falls back to the next live claim, then to the base face or gaze.
   - **Default holds:** an expression with no hold lasts for the speech it is bound to. Before any speech starts, it gets an 8 s pre-speech window. A gaze claim defaults to 1,200 ms, and `clearGaze()` runs when the last gaze claim ends.

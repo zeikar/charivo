@@ -170,6 +170,36 @@ describe("LAppWavFileHandler", () => {
     expect(audioMocks.sourceNode.start).toHaveBeenCalled();
   });
 
+  it("measures playback from when the source started, not from context creation", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        ({
+          arrayBuffer: async () => new ArrayBuffer(8),
+        }) as Response,
+    ) as typeof fetch;
+
+    const handler = new LAppWavFileHandler();
+    handler.start("/voice.wav");
+    const context = audioMocks.MockAudioContext.instances[0]!;
+    // The context has been running for 0.8 s when the clip (1 s) starts.
+    context.currentTime = 0.8;
+    await flushPromises();
+    await vi.waitFor(() => {
+      expect(audioMocks.sourceNode.start).toHaveBeenCalled();
+    });
+    const stopSpy = vi.spyOn(handler, "stop");
+
+    // 0.25 s into the clip: sample index 1, and the clip is not over.
+    context.currentTime = 1.05;
+    handler.update(0.25);
+    expect(stopSpy).not.toHaveBeenCalled();
+    expect(handler.getRms()).toBeCloseTo(1);
+
+    context.currentTime = 1.8;
+    handler.update(0.25);
+    expect(stopSpy).toHaveBeenCalled();
+  });
+
   it("no-ops when no browser audio context is available", () => {
     Object.defineProperty(window, "AudioContext", {
       value: undefined,
