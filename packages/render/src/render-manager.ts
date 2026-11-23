@@ -26,6 +26,9 @@ const MOTION_DEBOUNCE_MS = 1_000;
 // ends, because a reply longer than the window would otherwise reset the
 // expression mid-sentence. Internal constant, no public knob by design.
 const EXPRESSION_HOLD_MS = 8_000;
+// How many ended performance ids are remembered, so a claim or start that
+// arrives after its performance:end is recognised as late.
+const ENDED_PERFORMANCE_MEMORY = 32;
 
 /**
  * Render Manager - Class responsible for managing the state of a rendering session
@@ -83,15 +86,24 @@ export class RenderManager implements IRenderManager {
    * symbol per session, so no claim can bind to an earlier session by id.
    */
   private audioSpan?: symbol;
+  /** Voiced performances in progress; while any is open, audio opens no span. */
+  private readonly openVoicedPerformances = new Set<string>();
+  /** The last ended performance ids heard on the current bus, oldest first. */
+  private readonly endedPerformances = new Set<string>();
+  /** Numbers each loadModel() call; avatar claims wait while the latest is pending. */
+  private loadSeq = 0;
+  private pendingLoad?: number;
   private lastMotion?: { group: string; index: number; at: number };
-  private eventBus?: CharivoEventBus;
+  /** The current bus and how to remove what setEventBus() registered on it. */
+  private binding?: { bus: CharivoEventBus; off: Array<() => void> };
 
-  // Stable handler references so they can be removed by reference in disconnect()
+  // Bus handlers; setEventBus() registers each one per binding.
   private readonly handleTtsAudioStart = (
     _data: EventMap["tts:audio:start"],
   ): void => {
-    // A repeated start inside one session is the same speech, not a new span.
-    if (!this.audioSpan) {
+    // A repeated start inside one session is the same speech, not a new span,
+    // and audio inside a voiced performance is that performance's speech.
+    if (!this.audioSpan && this.openVoicedPerformances.size === 0) {
       this.audioSpan = Symbol("tts:audio");
       this.expressions.spanStarted(this.audioSpan, { speech: true });
     }
@@ -122,6 +134,44 @@ export class RenderManager implements IRenderManager {
     this.applyExpression(data);
   };
 
+  private readonly handleAvatarRelease = (
+    data: EventMap["avatar:release"],
+  ): void => {
+    if (data.channel === undefined || data.channel === "expression") {
+      this.expressions.release(data.source);
+    }
+  };
+
+  private readonly handlePerformanceStart = (
+    data: EventMap["performance:start"],
+  ): void => {
+    // The bus is synchronous, so a listener ahead of this one can end the
+    // performance inside its own start: that end was already heard here.
+    if (this.endedPerformances.has(data.performanceId)) {
+      return;
+    }
+    // A restart may change whether the performance is voiced.
+    if (data.voiced) {
+      this.openVoicedPerformances.add(data.performanceId);
+    } else {
+      this.openVoicedPerformances.delete(data.performanceId);
+    }
+    this.expressions.spanStarted(data.performanceId, { speech: data.voiced });
+  };
+
+  private readonly handlePerformanceEnd = (
+    data: EventMap["performance:end"],
+  ): void => {
+    this.endedPerformances.delete(data.performanceId);
+    this.endedPerformances.add(data.performanceId);
+    if (this.endedPerformances.size > ENDED_PERFORMANCE_MEMORY) {
+      const [oldest] = this.endedPerformances;
+      this.endedPerformances.delete(oldest!);
+    }
+    this.openVoicedPerformances.delete(data.performanceId);
+    this.expressions.spanEnded(data.performanceId);
+  };
+
   private readonly handleAvatarMotion = (
     data: EventMap["avatar:motion"],
   ): void => {
@@ -150,7 +200,7 @@ export class RenderManager implements IRenderManager {
     // the open speech span mid-utterance — putting its claims back on the
     // pre-speech window, and dropping realtime lip sync until the next audio
     // start.
-    if (this.eventBus === eventBus) {
+    if (this.binding?.bus === eventBus) {
       return;
     }
 
@@ -159,13 +209,34 @@ export class RenderManager implements IRenderManager {
     // expression claims instead of dropping them.
     this.unbindEventBus();
 
-    this.eventBus = eventBus;
-    eventBus.on("tts:audio:start", this.handleTtsAudioStart);
-    eventBus.on("tts:audio:end", this.handleTtsAudioEnd);
-    eventBus.on("tts:lipsync:update", this.handleTtsLipsyncUpdate);
-    eventBus.on("avatar:expression", this.handleAvatarExpression);
-    eventBus.on("avatar:motion", this.handleAvatarMotion);
-    eventBus.on("avatar:gaze", this.handleAvatarGaze);
+    const binding = { bus: eventBus, off: [] as Array<() => void> };
+    this.binding = binding;
+    const on = <K extends keyof EventMap>(
+      event: K,
+      handler: (data: EventMap[K]) => void,
+    ): void => {
+      // The bus dispatches from a snapshot, so this callback still runs for
+      // an event during which a listener ahead of it detached the manager or
+      // swapped its bus. Acting then would create a claim nothing can
+      // release, or write into the next binding's state.
+      const listener = (data: EventMap[K]): void => {
+        if (this.binding === binding) {
+          handler(data);
+        }
+      };
+      eventBus.on(event, listener);
+      binding.off.push(() => eventBus.off(event, listener));
+    };
+
+    on("tts:audio:start", this.handleTtsAudioStart);
+    on("tts:audio:end", this.handleTtsAudioEnd);
+    on("tts:lipsync:update", this.handleTtsLipsyncUpdate);
+    on("avatar:expression", this.handleAvatarExpression);
+    on("avatar:motion", this.handleAvatarMotion);
+    on("avatar:gaze", this.handleAvatarGaze);
+    on("avatar:release", this.handleAvatarRelease);
+    on("performance:start", this.handlePerformanceStart);
+    on("performance:end", this.handlePerformanceEnd);
   }
 
   /**
@@ -173,7 +244,7 @@ export class RenderManager implements IRenderManager {
    * nothing if no bus is connected.
    */
   private unbindEventBus(): void {
-    if (!this.eventBus) {
+    if (!this.binding) {
       return;
     }
 
@@ -186,15 +257,16 @@ export class RenderManager implements IRenderManager {
     // left to release it — setEventBus() rewiring deliberately keeps it — and
     // goes back to the pre-speech window instead.
     this.audioSpan = undefined;
+    this.openVoicedPerformances.clear();
     this.expressions.spansLost();
+    // The ended ids belong to the bus they were heard on: the next bus may
+    // start a performance under the same id.
+    this.endedPerformances.clear();
 
-    this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
-    this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
-    this.eventBus.off("tts:lipsync:update", this.handleTtsLipsyncUpdate);
-    this.eventBus.off("avatar:expression", this.handleAvatarExpression);
-    this.eventBus.off("avatar:motion", this.handleAvatarMotion);
-    this.eventBus.off("avatar:gaze", this.handleAvatarGaze);
-    this.eventBus = undefined;
+    for (const off of this.binding.off) {
+      off();
+    }
+    this.binding = undefined;
   }
 
   /**
@@ -205,7 +277,7 @@ export class RenderManager implements IRenderManager {
    * connected, and is safe to call multiple times.
    */
   disconnect(): void {
-    if (!this.eventBus) {
+    if (!this.binding) {
       return;
     }
 
@@ -262,17 +334,34 @@ export class RenderManager implements IRenderManager {
 
   /**
    * Load the model through the renderer; resolves without loading anything
-   * when the renderer has no `loadModel`.
+   * when the renderer has no `loadModel`. Avatar claims that arrive while the
+   * latest call is pending are ignored.
    */
   async loadModel(modelPath: string): Promise<void> {
-    if (this.renderer.loadModel) {
-      // A claim carried across the swap would count as showing on a model
-      // that never received it, so a repeat of it would never be played.
-      this.expressions.releaseAll();
+    if (!this.renderer.loadModel) {
+      return;
+    }
+
+    // A claim carried across the swap would count as showing on a model
+    // that never received it, so a repeat of it would never be played.
+    this.expressions.releaseAll();
+    // Only the latest call gates: once it settles the renderer can no longer
+    // install an earlier one, so an older call blocks and resumes nothing.
+    const load = ++this.loadSeq;
+    this.pendingLoad = load;
+    try {
       await this.renderer.loadModel(modelPath);
       // The new model starts on its base face even where stopExpression is
-      // missing; a failed load keeps the old model and the face it shows.
-      this.shownExpression = undefined;
+      // missing; a failed load keeps the old model and the face it shows. An
+      // older call that resolves while the latest is pending may have
+      // installed its model, and stays on screen if the latest then fails.
+      if (this.pendingLoad !== undefined) {
+        this.shownExpression = undefined;
+      }
+    } finally {
+      if (this.pendingLoad === load) {
+        this.pendingLoad = undefined;
+      }
     }
   }
 
@@ -332,6 +421,10 @@ export class RenderManager implements IRenderManager {
   }
 
   private applyExpression(data: EventMap["avatar:expression"]): boolean {
+    // An id cannot be checked against a catalog that is about to change.
+    if (this.pendingLoad !== undefined) {
+      return false;
+    }
     if (!this.hasExpressionControl(this.renderer)) {
       return false;
     }
@@ -341,6 +434,19 @@ export class RenderManager implements IRenderManager {
     if (
       this.hasExpressionCatalog(this.renderer) &&
       !this.renderer.getAvailableExpressions().includes(data.expressionId)
+    ) {
+      return false;
+    }
+
+    const hold: unknown = data.hold;
+    // A straggler for a performance that already ended. It is ignored rather
+    // than replacing the source's claim, which may belong to a newer line.
+    if (
+      typeof hold === "object" &&
+      hold !== null &&
+      "performance" in hold &&
+      typeof hold.performance === "string" &&
+      this.endedPerformances.has(hold.performance)
     ) {
       return false;
     }

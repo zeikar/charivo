@@ -39,8 +39,11 @@ class TestEventBus implements CharivoEventBus {
     }
   }
 
+  // Dispatches from a snapshot, as @charivo/core's EventBus does, so a
+  // listener that unbinds the manager mid-dispatch still has the manager's
+  // own callback for that event follow it.
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
-    this.listeners[event]?.forEach((listener) => listener(data));
+    [...(this.listeners[event] ?? [])].forEach((listener) => listener(data));
   }
 }
 
@@ -741,6 +744,526 @@ describe("RenderManager", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  describe("avatar:release and performance spans", () => {
+    it("an until-release claim outlives an utterance and is released by avatar:release for its source", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "game",
+        hold: "until-release",
+      });
+      bus.emit("tts:audio:start", {});
+      bus.emit("tts:audio:end", {});
+      vi.advanceTimersByTime(60_000);
+      // Another source, and the other channel, release nothing here.
+      bus.emit("avatar:release", { source: "app" });
+      bus.emit("avatar:release", { source: "game", channel: "gaze" });
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("avatar:release", { source: "game", channel: "expression" });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("a claim tied to a performance waits for its start, then holds until its end, not an inner tts:audio:end", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: { performance: "p1" },
+      });
+      vi.advanceTimersByTime(5_000);
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      bus.emit("tts:audio:start", {});
+      vi.advanceTimersByTime(30_000);
+      bus.emit("tts:audio:end", {});
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("a field-less claim made during a voiced performance is released at its end, not at an inner tts:audio:end", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      bus.emit("tts:audio:start", {});
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      vi.advanceTimersByTime(30_000);
+      bus.emit("tts:audio:end", {});
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("an unvoiced performance binds no field-less claim", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: false,
+      });
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      vi.advanceTimersByTime(7_999);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("a claim tied to a performance that has already ended is dropped", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: { performance: "p1" },
+      });
+
+      expect(renderer.playExpression).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("an end dispatched from inside its own start leaves no span for a later claim to bind to", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      // Registered ahead of the manager, so the manager hears the end first.
+      bus.on("performance:start", ({ performanceId, origin }) => {
+        bus.emit("performance:end", {
+          performanceId,
+          origin,
+          status: "cancelled",
+        });
+      });
+      manager.setEventBus(bus);
+
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      vi.advanceTimersByTime(8_000);
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("forgets the ids the old bus ended once it moves to another bus", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const busA = new TestEventBus();
+      const busB = new TestEventBus();
+
+      manager.setEventBus(busA);
+      busA.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+
+      manager.setEventBus(busB);
+      busB.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      busB.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      busB.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    function startPerformance(
+      bus: TestEventBus,
+      performanceId: string,
+      voiced: boolean,
+    ): void {
+      bus.emit("performance:start", { performanceId, origin: "test", voiced });
+    }
+
+    function endPerformance(bus: TestEventBus, performanceId: string): void {
+      bus.emit("performance:end", {
+        performanceId,
+        origin: "test",
+        status: "completed",
+      });
+    }
+
+    it("a late claim for an ended performance leaves the same source's live claim in place", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      endPerformance(bus, "p1");
+      startPerformance(bus, "p2", true);
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "director",
+        hold: { performance: "p2" },
+      });
+      bus.emit("avatar:expression", {
+        expressionId: "exp_sad",
+        source: "director",
+        hold: { performance: "p1" },
+      });
+
+      expect(renderer.playExpression.mock.calls).toEqual([["exp_happy"]]);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      endPerformance(bus, "p2");
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("remembers only the last 32 ended ids, and a repeated end makes an id the newest again", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      for (let i = 0; i < 32; i++) {
+        endPerformance(bus, `p${i}`);
+      }
+      // p0 moves to the newest end, so the next end evicts p1 instead.
+      endPerformance(bus, "p0");
+      endPerformance(bus, "p32");
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_sad",
+        hold: { performance: "p0" },
+      });
+      expect(renderer.playExpression).not.toHaveBeenCalled();
+
+      startPerformance(bus, "p1", true);
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      endPerformance(bus, "p1");
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("a voiced performance that starts during unreported audio holds a claim made inside it until its own end", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("tts:audio:start", {});
+      startPerformance(bus, "p1", true);
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      bus.emit("tts:audio:end", {});
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      endPerformance(bus, "p1");
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("a performance restarted as unvoiced no longer stops audio from opening a speech span", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      startPerformance(bus, "p1", true);
+      startPerformance(bus, "p1", false);
+      bus.emit("tts:audio:start", {});
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("tts:audio:end", {});
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("avatar:release without a channel releases the expression of the source it names", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "game",
+        hold: "until-release",
+      });
+      bus.emit("avatar:release", { source: "game" });
+
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("an explicit performance hold follows an unvoiced performance to its end", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: { performance: "p1" },
+      });
+      startPerformance(bus, "p1", false);
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      endPerformance(bus, "p1");
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("a listener ahead of the manager that unbinds it mid-dispatch", () => {
+    it("swapping the bus inside performance:end leaves the old bus's end out of the new bus's memory", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const busA = new TestEventBus();
+      const busB = new TestEventBus();
+
+      busA.on("performance:end", () => manager.setEventBus(busB));
+      manager.setEventBus(busA);
+
+      busA.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      busB.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      busB.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      vi.advanceTimersByTime(30_000);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+    });
+
+    it("disconnecting inside avatar:expression leaves no claim behind", () => {
+      vi.useFakeTimers();
+
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      bus.on("avatar:expression", () => manager.disconnect());
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: "until-release",
+      });
+
+      expect(renderer.playExpression).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("disconnecting inside tts:lipsync:update sends no RMS after the detach", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      bus.on("tts:lipsync:update", () => manager.disconnect());
+      manager.setEventBus(bus);
+      bus.emit("tts:audio:start", {});
+
+      bus.emit("tts:lipsync:update", { rms: 0.9 });
+
+      expect(renderer.updateRealtimeLipSyncRms).not.toHaveBeenCalledWith(0.9);
+      expect(renderer.updateRealtimeLipSyncRms).toHaveBeenLastCalledWith(0);
+    });
+  });
+
+  describe("model load", () => {
+    function deferred() {
+      let resolve!: () => void;
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    function loadingRenderer(...loads: Array<Promise<void>>) {
+      const queue = [...loads];
+      return Object.assign(new StubRenderer(), {
+        loadModel: vi.fn((_modelPath: string) => queue.shift()!),
+      });
+    }
+
+    it("releases a held claim before loading and never shows a claim made while the load is pending", async () => {
+      const load = deferred();
+      const renderer = loadingRenderer(load.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        hold: "until-release",
+      });
+
+      const loading = manager.loadModel("/models/b.model3.json");
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+      expect(renderer.stopExpression.mock.invocationCallOrder[0]).toBeLessThan(
+        renderer.loadModel.mock.invocationCallOrder[0]!,
+      );
+
+      bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      load.resolve();
+      await loading;
+
+      expect(renderer.playExpression.mock.calls).toEqual([["exp_happy"]]);
+
+      bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_sad");
+    });
+
+    it("a rejected load rejects, releases nothing twice and admits claims again", async () => {
+      const load = deferred();
+      const renderer = loadingRenderer(load.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      const loading = manager.loadModel("/models/missing.model3.json");
+      bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      load.reject(new Error("fetch failed"));
+      await expect(loading).rejects.toThrow("fetch failed");
+
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+      expect(renderer.playExpression.mock.calls).toEqual([["exp_happy"]]);
+
+      bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_sad");
+    });
+
+    it("an older load that never settles blocks nothing once the latest resolves", async () => {
+      const stuck = deferred();
+      const latest = deferred();
+      const renderer = loadingRenderer(stuck.promise, latest.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      void manager.loadModel("/models/a.model3.json");
+      const loading = manager.loadModel("/models/b.model3.json");
+      latest.resolve();
+      await loading;
+
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      expect(renderer.playExpression).toHaveBeenCalledWith("exp_happy");
+    });
+
+    it("an older load that settles first resumes nothing while the latest is pending", async () => {
+      const older = deferred();
+      const latest = deferred();
+      const renderer = loadingRenderer(older.promise, latest.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      const first = manager.loadModel("/models/a.model3.json");
+      const second = manager.loadModel("/models/b.model3.json");
+      older.resolve();
+      await first;
+
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      expect(renderer.playExpression).not.toHaveBeenCalled();
+
+      latest.resolve();
+      await second;
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      expect(renderer.playExpression).toHaveBeenCalledWith("exp_happy");
+    });
+  });
+
   describe("on a renderer without stopExpression", () => {
     class NoReleaseRenderer implements Renderer {
       initialize = vi.fn(async () => undefined);
@@ -781,6 +1304,37 @@ describe("RenderManager", () => {
       await manager.loadModel("/models/b.model3.json");
       bus.emit("avatar:expression", { expressionId: "exp_happy" });
 
+      expect(renderer.playExpression).toHaveBeenCalledTimes(2);
+    });
+
+    it("an older load that installs while the latest is pending counts as a new model when the latest fails", async () => {
+      let resolveOlder!: () => void;
+      let rejectLatest!: (error: unknown) => void;
+      const renderer = new NoReleaseRenderer();
+      renderer.loadModel
+        .mockImplementationOnce(
+          () =>
+            new Promise<undefined>(
+              (res) => (resolveOlder = () => res(undefined)),
+            ),
+        )
+        .mockImplementationOnce(
+          () => new Promise<undefined>((_res, rej) => (rejectLatest = rej)),
+        );
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      const older = manager.loadModel("/models/a.model3.json");
+      const latest = manager.loadModel("/models/b.model3.json");
+      resolveOlder();
+      await older;
+      rejectLatest(new Error("fetch failed"));
+      await expect(latest).rejects.toThrow("fetch failed");
+
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
       expect(renderer.playExpression).toHaveBeenCalledTimes(2);
     });
   });
