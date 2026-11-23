@@ -174,6 +174,17 @@ async function stopRealtime(instance: Charivo | null): Promise<void> {
   }
 }
 
+export type ReactionKind = "startle" | "blush";
+
+// No motions: Live2D TapBody clips carry voice audio.
+const REACTIONS: Record<
+  ReactionKind,
+  { holdMs: number; gaze?: { x: number; y: number } }
+> = {
+  startle: { holdMs: 1500, gaze: { x: 0.6, y: 0.3 } },
+  blush: { holdMs: 2000 },
+};
+
 function readAvatarCatalog(
   renderer: AvatarRendererHandle | null,
   expressionDescriptions?: Record<string, string>,
@@ -1195,6 +1206,24 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     [charivo],
   );
 
+  const playReaction = useCallback(
+    (kind: ReactionKind, expressionId: string) => {
+      // A reflex claim outranks the AI's own expression/gaze for its hold, so
+      // the face visibly overrides a reply in progress, then falls back to it.
+      const { holdMs, gaze } = REACTIONS[kind];
+      const claim = {
+        source: "reaction",
+        priority: "reflex",
+        hold: { ms: holdMs },
+      } as const;
+      charivo?.emit("avatar:expression", { expressionId, ...claim });
+      if (gaze) {
+        charivo?.emit("avatar:gaze", { ...gaze, ...claim });
+      }
+    },
+    [charivo],
+  );
+
   const playMotion = useCallback((group: string, index: number) => {
     rendererRef.current?.playMotionByGroup(group, index);
   }, []);
@@ -1298,6 +1327,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     handleStartRecording,
     handleStopRecording,
     playExpression,
+    playReaction,
     playMotion,
     playGaze,
     getAvailableExpressions,

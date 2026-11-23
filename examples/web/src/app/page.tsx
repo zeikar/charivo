@@ -23,6 +23,7 @@ export default function Home() {
   // Get states and actions from store
   const {
     messages,
+    avatarCatalog,
     input,
     setInput,
     isLoading,
@@ -52,6 +53,7 @@ export default function Home() {
     handleStartRecording,
     handleStopRecording,
     playExpression,
+    playReaction,
     playMotion,
     playGaze,
     getAvailableExpressions,
@@ -155,7 +157,9 @@ export default function Home() {
             />
 
             <ControlPanel
+              avatarCatalog={avatarCatalog}
               onPlayExpression={playExpression}
+              onPlayReaction={playReaction}
               onPlayMotion={playMotion}
               onLookAt={playGaze}
               getAvailableExpressions={getAvailableExpressions}

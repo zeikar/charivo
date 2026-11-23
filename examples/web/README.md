@@ -22,6 +22,11 @@ current architecture as it is actually shipped:
   adapter, chosen in the settings menu
 - Avatar expression/motion/gaze tool calling from `@charivo/avatar`, wired into
   both LLM chat and realtime voice sessions
+- A Reactions section in the Controls menu (Startle, Blush) that emits
+  `reflex`-priority `avatar:expression` / `avatar:gaze` claims, so the face
+  overrides the AI's mid-sentence and then falls back to the AI's expression, or
+  to neutral if none is held. A button shows only
+  when the character's catalog has a matching expression (by id or description).
 
 ## Deploying this demo
 

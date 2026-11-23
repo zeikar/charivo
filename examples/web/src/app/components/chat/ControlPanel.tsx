@@ -5,10 +5,14 @@ import {
   ChevronDownIcon,
   FaceSmileIcon,
   EyeIcon,
+  BoltIcon,
 } from "@heroicons/react/24/outline";
-import type { GazeCoordinates } from "@charivo/core";
+import type { AvatarControlCatalog, GazeCoordinates } from "@charivo/core";
+import type { ReactionKind } from "../../hooks/useCharivoChat";
 
 type ControlPanelProps = {
+  avatarCatalog: AvatarControlCatalog;
+  onPlayReaction: (kind: ReactionKind, expressionId: string) => void;
   onPlayExpression: (expressionId: string) => void;
   onPlayMotion: (group: string, index: number) => void;
   onLookAt: (coords: GazeCoordinates) => void;
@@ -24,13 +28,37 @@ const GAZE_PRESETS: Array<{ label: string; coords: GazeCoordinates }> = [
   { label: "Down", coords: { x: 0, y: -1 } },
 ];
 
+// Live2D ids are opaque (F06), so the match runs on id and description both.
+const REACTION_BUTTONS: Array<{
+  kind: ReactionKind;
+  label: string;
+  pattern: RegExp;
+}> = [
+  { kind: "startle", label: "Startle", pattern: /surpris|shock|startl|alarm/i },
+  { kind: "blush", label: "Blush", pattern: /shy|blush|embarrass/i },
+];
+
+function findExpression(catalog: AvatarControlCatalog, pattern: RegExp) {
+  return catalog.expressions.find(
+    (id) =>
+      pattern.test(id) ||
+      pattern.test(catalog.expressionDescriptions?.[id] ?? ""),
+  );
+}
+
 export function ControlPanel({
+  avatarCatalog,
+  onPlayReaction,
   onPlayExpression,
   onPlayMotion,
   onLookAt,
   getAvailableExpressions,
   getAvailableMotionGroups,
 }: ControlPanelProps) {
+  const reactions = REACTION_BUTTONS.flatMap(({ kind, label, pattern }) => {
+    const expressionId = findExpression(avatarCatalog, pattern);
+    return expressionId ? [{ kind, label, expressionId }] : [];
+  });
   const [expressions, setExpressions] = useState<string[]>([]);
   const [motionGroups, setMotionGroups] = useState<Record<string, number>>({});
 
@@ -58,6 +86,33 @@ export function ControlPanel({
               className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl ring-1 ring-black/5 dark:ring-white/5 w-[min(19rem,calc(100vw-1.5rem))] md:w-72 max-h-[22rem] overflow-y-auto focus:outline-none z-50"
             >
               <div className="p-4 space-y-4">
+                {/* Reactions */}
+                {reactions.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <BoltIcon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                      <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+                        Reactions
+                      </h3>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                      Overrides the AI&apos;s face for a moment, even
+                      mid-sentence.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {reactions.map(({ kind, label, expressionId }) => (
+                        <button
+                          key={kind}
+                          onClick={() => onPlayReaction(kind, expressionId)}
+                          className="px-3 py-2 text-xs font-medium bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Expressions */}
                 {expressions.length > 0 && (
                   <div>
