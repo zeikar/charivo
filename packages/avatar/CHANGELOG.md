@@ -1,5 +1,11 @@
 # @charivo/avatar
 
+## 0.5.0
+
+### Minor Changes
+
+- 47de43f: Add a text-driven avatar director beside the tool-calling mode: `createAvatarDirector(...)` reads each spoken line, asks a classifier for a catalog-valid expression and motion, and emits `avatar:expression` and `avatar:motion` (with `muteSound: true`). `createLLMAvatarClassifier(client)` is a classifier that makes one stateless `LLMClient.call()` per line, and `connectAvatarDirectorToCascade(bus, director)` wires the director to a cascade (`userSay()`) turn, classifying each voiced reply on `tts:start`. The existing tool-calling exports are unchanged.
+
 ## 0.4.8
 
 ### Patch Changes
