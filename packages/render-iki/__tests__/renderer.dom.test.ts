@@ -519,7 +519,8 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.MouthOpen)).toBe(0);
 
     pump(16);
-    expect(store.get(StandardParameter.MouthOpen)).toBeCloseTo(0.9);
+    // The analyzer's value is the final mouth opening: no renderer gain.
+    expect(store.get(StandardParameter.MouthOpen)).toBeCloseTo(0.5);
 
     renderer.setRealtimeLipSync(false);
     expect(store.get(StandardParameter.MouthOpen)).toBe(0);
@@ -541,7 +542,7 @@ describe("IkiRenderer / IkiMotion integration", () => {
     renderer.setRealtimeLipSync(true);
     renderer.updateRealtimeLipSyncRms(0.1);
     pump(32);
-    expect(store.get(StandardParameter.MouthOpen)).toBeCloseTo(0.18);
+    expect(store.get(StandardParameter.MouthOpen)).toBeCloseTo(0.1);
 
     renderer.setRealtimeLipSync(false);
     pump(48);

@@ -30,9 +30,6 @@ import type { IkiRenderer, IkiRendererOptions } from "./renderer";
 
 // ── Tuning constants ─────────────────────────────────────────────────────────
 
-/** Amplify RMS→mouth-open so quiet speech still opens the mouth. */
-const MOUTH_GAIN = 1.8;
-
 const MOTION_RANK: Record<MotionPriority, number> = {
   idle: 0,
   normal: 1,
@@ -170,7 +167,8 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
 
   updateRealtimeLipSyncRms(rms: number): void {
     if (!this.lipSyncEnabled) return;
-    this.mouthOpen = clamp01(rms * MOUTH_GAIN);
+    // The analyzer already emits the final 0..1 mouth value; no extra gain.
+    this.mouthOpen = clamp01(rms);
   }
 
   lookAt(coords: GazeCoordinates): void {

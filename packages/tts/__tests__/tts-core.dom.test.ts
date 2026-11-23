@@ -34,14 +34,12 @@ class NonFinalizingAudio extends MockAudio {
 
 class MockAnalyser {
   fftSize = 0;
-  smoothingTimeConstant = 0;
-  frequencyBinCount = 128; // fftSize 256, as in production
   connect = vi.fn(() => undefined);
   disconnect = vi.fn(() => undefined);
-  getByteFrequencyData = vi.fn((target: Uint8Array) => {
-    // One saturated bin inside the [12, 76) speech band: sqrt(1 / 64) * 1.7 = 0.2125
-    target.fill(0);
-    target[40] = 255;
+  getFloatTimeDomainData = vi.fn((target: Float32Array) => {
+    // A steady audible level, so an attached analyzer reads above zero and a
+    // stopped one can be told apart.
+    target.fill(0.25);
   });
 }
 

@@ -12,8 +12,11 @@ It exports:
   managers receive an emitter via `setEventEmitter(...)`; the concrete bus
   implementation is internal, and consumers subscribe via `charivo.on/off(...)`
 - `createLipSyncAnalyzer`: the shared audio-analysis utility the TTS manager
-  and realtime clients use to compute mouth-open RMS and emit
-  `tts:lipsync:update`
+  and realtime clients use to emit `tts:lipsync:update`. Its `rms` is already
+  the final 0..1 mouth opening: the signal's RMS, normalized against a slowly
+  decaying recent peak, gated below about -50 dBFS, and passed through a fast
+  attack / quicker release envelope so the mouth closes between syllables.
+  Renderers apply it without further gain
 - `fetchWithTimeout` (with `DEFAULT_FETCH_TIMEOUT_MS`): the shared `fetch`
   wrapper that enforces a timeout, layers an optional external `AbortSignal`
   on top, and classifies the failure into the `CharivoError` taxonomy; the

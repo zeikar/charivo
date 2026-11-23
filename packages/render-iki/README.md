@@ -82,7 +82,8 @@ it returns exposes:
 - `render(message, character?)` — stateless (the engine's rAF draws).
 - `destroy()` — stop that loop and free the player.
 - `setRealtimeLipSync(enabled)` / `updateRealtimeLipSyncRms(rms)` — drive the
-  mouth aperture (`ParamMouthOpenY`) from lip-sync RMS; see "Motion".
+  mouth aperture (`ParamMouthOpenY`) from the 0..1 lip-sync value, applied
+  as-is; see "Motion".
 - `setView(view?)` — frame an `IkiView` (`{ x, y, width, height }`: centre and
   size in model units, `y` up) instead of the model's box, e.g. a full body
   whose raised arm leaves the box; no argument restores the box. The engine's

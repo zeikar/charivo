@@ -118,14 +118,12 @@ class MockRealtimeSession extends MockEmitter {
 // Drives the analyzed output level. Tests that exercise the playback-drain
 // path drop it to 0 to simulate audio finishing; everything else leaves the
 // default, which reads as audible.
-let mockAnalyserLevel = 128;
+let mockAnalyserLevel = 0.25;
 
 class MockAnalyser {
-  fftSize = 256;
-  smoothingTimeConstant = 0.8;
-  frequencyBinCount = 4;
+  fftSize = 0;
 
-  getByteFrequencyData(target: Uint8Array): void {
+  getFloatTimeDomainData(target: Float32Array): void {
     target.fill(mockAnalyserLevel);
   }
 
@@ -188,7 +186,7 @@ beforeEach(() => {
   sdkState.transport = null;
   sdkState.audioElement = null;
   sdkState.peerConnection = null;
-  mockAnalyserLevel = 128;
+  mockAnalyserLevel = 0.25;
   vi.useFakeTimers();
   // Drive the analyzer's frame loop off the fake timer clock. jsdom's own
   // requestAnimationFrame does not survive this file's repeated fake/real timer
@@ -203,6 +201,9 @@ beforeEach(() => {
     value: (handle: number) => clearTimeout(handle),
     configurable: true,
   });
+  // The lip-sync envelope times its frames with performance.now(), which fake
+  // timers leave real; follow the faked Date so the level moves with the clock.
+  vi.spyOn(performance, "now").mockImplementation(() => Date.now());
   Object.defineProperty(window, "AudioContext", {
     value: MockAudioContext,
     configurable: true,
@@ -1261,7 +1262,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       // sample above RealtimeManager's floor would re-open audio output with no
       // further buffer event left to close it.
       events.length = 0;
-      mockAnalyserLevel = 128;
+      mockAnalyserLevel = 0.25;
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(
@@ -1304,7 +1305,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       // turn one and nothing resumed it, so audio kept playing to a still mouth
       // for the rest of the session.
       events.length = 0;
-      mockAnalyserLevel = 128;
+      mockAnalyserLevel = 0.25;
       sdkState.session?.emit("transport_event", {
         type: "output_audio_buffer.started",
       });
@@ -1379,7 +1380,7 @@ describe("OpenAIRealtimeAgentsClient", () => {
       });
 
       events.length = 0;
-      mockAnalyserLevel = 128;
+      mockAnalyserLevel = 0.25;
 
       // Hiding and showing the tab must not restart metering on residual audio:
       // RealtimeManager would read that as a new audio start with no buffer
@@ -1421,9 +1422,15 @@ describe("OpenAIRealtimeAgentsClient", () => {
       // reading is authoritative, and a released expression cannot be restored.
       mockAnalyserLevel = 0;
       await vi.advanceTimersByTimeAsync(5_000);
+      // The level really fell below RealtimeManager's 0.001 start threshold:
+      // silence was observed, not just skipped.
+      const lastLipSync = events
+        .filter((event) => event.type === "audio.lipsync")
+        .at(-1);
+      expect(lastLipSync?.rms).toBeLessThan(0.001);
       expect(endedCount(events)).toBe(0);
 
-      mockAnalyserLevel = 128;
+      mockAnalyserLevel = 0.25;
       await vi.advanceTimersByTimeAsync(2_000);
       expect(endedCount(events)).toBe(0);
       await client.disconnect();

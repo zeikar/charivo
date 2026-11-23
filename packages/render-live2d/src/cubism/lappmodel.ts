@@ -252,11 +252,15 @@ export class LAppModel extends CubismUserModel {
     //
     // Outside an utterance `useRealtimeLipSync` is false, so expressions keep
     // full control of the mouth.
+    //
+    // The value is already the final 0..1 mouth opening (the analyzer owns the
+    // gain), which is the standard ParamMouthOpenY range.
     if (this.useRealtimeLipSync) {
-      const lipSyncValue = this.realtimeLipSyncRms * 1.8;
-
       for (let i = 0; i < this.lipSyncIds.getSize(); i++) {
-        this._model.setParameterValueById(this.lipSyncIds.at(i), lipSyncValue);
+        this._model.setParameterValueById(
+          this.lipSyncIds.at(i),
+          this.realtimeLipSyncRms,
+        );
       }
     }
 

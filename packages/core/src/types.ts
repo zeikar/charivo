@@ -432,6 +432,7 @@ export interface Renderer {
   render(message: Message, character?: Character): Promise<void>;
   loadModel?(modelPath: string): Promise<void>;
   setRealtimeLipSync?(enabled: boolean): void;
+  /** `rms` is the final 0..1 mouth opening from `tts:lipsync:update`; apply it without extra gain. */
   updateRealtimeLipSyncRms?(rms: number): void;
   playExpression?(expressionId: string): void;
   /** Releases the active expression so the model returns to its base face — implementations may fade it out rather than snapping; renderers without expression state omit it. */

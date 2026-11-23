@@ -1,26 +1,89 @@
 /**
- * Shared lip sync audio analysis: the single RMS computation used across the repo.
+ * Shared lip sync audio analysis: the single mouth-open computation used across the repo.
+ *
+ * The output is already the final 0..1 mouth value; renderers map it to their
+ * mouth parameter without further gain. Constants were tuned offline against
+ * Gemini TTS lines replayed through a 48 kHz context at 60 fps.
  */
-export const LIPSYNC_FFT_SIZE = 256;
-export const LIPSYNC_SMOOTHING_TIME_CONSTANT = 0.8;
+
+/** ~21 ms of samples at 48 kHz: covers a whole 60 fps frame of audio. */
+export const LIPSYNC_FFT_SIZE = 1024;
+
+/** Below about -50 dBFS is silence or line noise: the mouth target is 0. */
+const GATE_AMPLITUDE = 10 ** (-50 / 20);
+/**
+ * The loudness reference never drops below -40 dBFS, so near-silence is not
+ * normalized up to a wide-open mouth, while a voice ~20 dB quieter than
+ * typical TTS still spans the full range.
+ */
+const PEAK_FLOOR_AMPLITUDE = 10 ** (-40 / 20);
+/**
+ * The reference follows the loudest recent level and decays 6 dB per second, so
+ * loud and quiet voices both use the range and only the louder syllables open fully.
+ */
+const PEAK_DECAY_DB_PER_SECOND = 6;
+/**
+ * Applied to level / peak: above 1 it expands the gap between syllables, so
+ * consonants and pauses read as a near-closed mouth instead of a half-open one.
+ */
+const OPENNESS_EXPONENT = 1.5;
+/** Opens fast enough to land on the syllable... */
+const ATTACK_MS = 35;
+/** ...and closes fast enough to show the gap before the next one. */
+const RELEASE_MS = 80;
+
+export interface LipSyncEnvelope {
+  level: number;
+  peak: number;
+}
+
+export function createLipSyncEnvelope(): LipSyncEnvelope {
+  return { level: 0, peak: PEAK_FLOOR_AMPLITUDE };
+}
 
 /**
- * Compute a mouth-open value from frequency data, focusing on speech frequencies.
+ * Advance the envelope by one frame of time-domain samples and return the mouth-open value (0..1).
  */
-export function computeLipSyncRms(frequencyData: Uint8Array): number {
-  // 10-60% of the spectrum (~2-14kHz at a 48kHz context)
-  const speechBandStart = Math.floor(frequencyData.length * 0.1);
-  const speechBandEnd = Math.floor(frequencyData.length * 0.6);
-
-  let sum = 0;
-  for (let index = speechBandStart; index < speechBandEnd; index += 1) {
-    const normalized = frequencyData[index] / 255;
-    sum += normalized * normalized;
+export function stepLipSyncEnvelope(
+  envelope: LipSyncEnvelope,
+  samples: Float32Array,
+  deltaMs: number,
+): number {
+  // An empty window has no level; dividing by its length would poison the peak with NaN.
+  if (samples.length === 0) {
+    return envelope.level;
   }
 
-  const rms = Math.sqrt(sum / (speechBandEnd - speechBandStart));
-  return Math.min(rms * 1.7, 1); // Amplify and clamp
+  let sum = 0;
+  for (let index = 0; index < samples.length; index += 1) {
+    sum += samples[index] * samples[index];
+  }
+  const rms = Math.sqrt(sum / samples.length);
+
+  envelope.peak = Math.max(
+    rms,
+    envelope.peak * 10 ** ((-PEAK_DECAY_DB_PER_SECOND * deltaMs) / 20000),
+    PEAK_FLOOR_AMPLITUDE,
+  );
+
+  const target =
+    rms < GATE_AMPLITUDE ? 0 : (rms / envelope.peak) ** OPENNESS_EXPONENT;
+  const timeConstantMs = target > envelope.level ? ATTACK_MS : RELEASE_MS;
+  envelope.level +=
+    (target - envelope.level) * (1 - Math.exp(-deltaMs / timeConstantMs));
+
+  return envelope.level;
 }
+
+/** Used when there is no previous frame to measure against. */
+const NOMINAL_FRAME_MS = 1000 / 60;
+/**
+ * A longer gap is a stall (a hidden tab pauses rAF while `<audio>` keeps
+ * playing), not elapsed animation time: counting all of it would finish the
+ * attack in one frame and snap the mouth open. Three 60 fps frames still
+ * covers real frame rates down to 20 fps.
+ */
+const MAX_FRAME_MS = 50;
 
 export interface LipSyncAnalyzerOptions {
   onRms: (rms: number) => void;
@@ -57,7 +120,9 @@ class LipSyncAnalyzerImpl implements LipSyncAnalyzer {
   private analyser?: AnalyserNode;
   private source?: AudioNode;
   private attachedStream?: MediaStream;
-  private dataArray?: Uint8Array<ArrayBuffer>;
+  private dataArray?: Float32Array<ArrayBuffer>;
+  private envelope = createLipSyncEnvelope();
+  private lastFrameTime?: number;
   private isActive = false;
   private animationFrameId?: number;
 
@@ -142,6 +207,8 @@ class LipSyncAnalyzerImpl implements LipSyncAnalyzer {
 
   pause(): void {
     this.cancelLoop();
+    // The mouth is reported closed, so resume() opens it again from closed.
+    this.resetEnvelope();
     this.options.onRms(0);
   }
 
@@ -198,14 +265,14 @@ class LipSyncAnalyzerImpl implements LipSyncAnalyzer {
   private createAnalyser(audioContext: AudioContext): AnalyserNode {
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = LIPSYNC_FFT_SIZE;
-    analyser.smoothingTimeConstant = LIPSYNC_SMOOTHING_TIME_CONSTANT;
     return analyser;
   }
 
   private startAnalysis(source: AudioNode, analyser: AnalyserNode): void {
     this.source = source;
     this.analyser = analyser;
-    this.dataArray = new Uint8Array(analyser.frequencyBinCount);
+    this.dataArray = new Float32Array(analyser.fftSize);
+    this.resetEnvelope();
     this.isActive = true;
     this.analyzeFrame();
   }
@@ -215,10 +282,24 @@ class LipSyncAnalyzerImpl implements LipSyncAnalyzer {
       return;
     }
 
-    this.analyser.getByteFrequencyData(this.dataArray);
-    this.options.onRms(computeLipSyncRms(this.dataArray));
+    const now = performance.now();
+    const deltaMs =
+      this.lastFrameTime === undefined
+        ? NOMINAL_FRAME_MS
+        : Math.min(now - this.lastFrameTime, MAX_FRAME_MS);
+    this.lastFrameTime = now;
+
+    this.analyser.getFloatTimeDomainData(this.dataArray);
+    this.options.onRms(
+      stepLipSyncEnvelope(this.envelope, this.dataArray, deltaMs),
+    );
 
     this.animationFrameId = requestAnimationFrame(() => this.analyzeFrame());
+  }
+
+  private resetEnvelope(): void {
+    this.envelope = createLipSyncEnvelope();
+    this.lastFrameTime = undefined;
   }
 
   private cancelLoop(): void {

@@ -91,7 +91,7 @@ async function main(): Promise<void> {
       }
       // Syllable-ish envelope with jitter, in 0..1.
       const env = Math.abs(Math.sin(t / 95)) * (0.45 + Math.random() * 0.55);
-      charivo.emit("tts:lipsync:update", { rms: Math.min(1, env * 0.7) });
+      charivo.emit("tts:lipsync:update", { rms: Math.min(1, env) });
     }, 50);
   });
 

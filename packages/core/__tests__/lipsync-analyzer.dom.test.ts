@@ -9,16 +9,16 @@ import {
 } from "vitest";
 import { createLipSyncAnalyzer } from "../src/lipsync-analyzer";
 
+// A steady voice is its own loudness reference, so the envelope's target is 1
+// and the first nominal 60 fps frame of attack lands here.
+const FIRST_FRAME_MOUTH = 1 - Math.exp(-(1000 / 60) / 35);
+
 class MockAnalyser {
   fftSize = 0;
-  smoothingTimeConstant = 0;
-  frequencyBinCount = 128; // fftSize 256, as in production
   connect = vi.fn(() => undefined);
   disconnect = vi.fn(() => undefined);
-  getByteFrequencyData = vi.fn((target: Uint8Array) => {
-    // One saturated bin inside the [12, 76) speech band: sqrt(1 / 64) * 1.7 = 0.2125
-    target.fill(0);
-    target[40] = 255;
+  getFloatTimeDomainData = vi.fn((target: Float32Array) => {
+    target.fill(0.5);
   });
 }
 
@@ -60,6 +60,7 @@ describe("createLipSyncAnalyzer", () => {
     (callback: FrameRequestCallback) => number
   >;
   let cancelAnimationFrameSpy: MockInstance<(handle: number) => void>;
+  let nowSpy: MockInstance<() => number>;
 
   beforeEach(() => {
     MockAudioContext.lastInstance = undefined;
@@ -74,6 +75,8 @@ describe("createLipSyncAnalyzer", () => {
     cancelAnimationFrameSpy = vi
       .spyOn(window, "cancelAnimationFrame")
       .mockImplementation(() => undefined);
+    // Frame timing feeds the envelope; a frozen clock keeps values exact.
+    nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
   });
 
   afterEach(() => {
@@ -92,14 +95,14 @@ describe("createLipSyncAnalyzer", () => {
     analyzer.stop();
 
     expect(MockAudioContext.lastInstance?.createAnalyser).toHaveBeenCalled();
-    expect(MockAudioContext.lastInstance?.analyser.fftSize).toBe(256);
-    expect(MockAudioContext.lastInstance?.analyser.smoothingTimeConstant).toBe(
-      0.8,
-    );
+    expect(MockAudioContext.lastInstance?.analyser.fftSize).toBe(1024);
+    expect(
+      MockAudioContext.lastInstance?.analyser.getFloatTimeDomainData,
+    ).toHaveBeenCalledWith(expect.objectContaining({ length: 1024 }));
     expect(
       MockAudioContext.lastInstance?.analyser.connect,
     ).toHaveBeenCalledWith(MockAudioContext.lastInstance?.destination);
-    expect(onRms).toHaveBeenCalledWith(0.2125);
+    expect(onRms).toHaveBeenCalledWith(FIRST_FRAME_MOUTH);
     expect(onRms).toHaveBeenLastCalledWith(0);
     expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1);
     expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(1);
@@ -204,8 +207,65 @@ describe("createLipSyncAnalyzer", () => {
 
     analyzer.resume();
 
-    expect(onRms).toHaveBeenLastCalledWith(0.2125);
+    // Reopens from closed, with attack, rather than snapping to wherever the
+    // envelope stood before the pause.
+    expect(onRms).toHaveBeenLastCalledWith(FIRST_FRAME_MOUTH);
     expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+  });
+
+  function captureFrames(): () => void {
+    let nextFrame: FrameRequestCallback | undefined;
+    requestAnimationFrameSpy.mockImplementation((callback) => {
+      nextFrame = callback;
+      return 1;
+    });
+    return () => nextFrame?.(performance.now());
+  }
+
+  it("advances the envelope by the measured frame time", () => {
+    const onRms = vi.fn();
+    const analyzer = createLipSyncAnalyzer({ onRms });
+    const runFrame = captureFrames();
+
+    analyzer.attachMediaStream({} as MediaStream);
+    nowSpy.mockReturnValue(30);
+    runFrame();
+
+    // Starting from FIRST_FRAME_MOUTH, 30 ms more of the 35 ms attack toward 1.
+    expect(onRms.mock.lastCall?.[0]).toBeCloseTo(
+      1 - Math.exp(-(1000 / 60) / 35 - 30 / 35),
+      10,
+    );
+  });
+
+  it("caps a stalled frame so the mouth eases open instead of snapping", () => {
+    const onRms = vi.fn();
+    const analyzer = createLipSyncAnalyzer({ onRms });
+    const runFrame = captureFrames();
+
+    analyzer.attachMediaStream({} as MediaStream);
+    // A hidden tab stops rAF for seconds while <audio> keeps playing.
+    nowSpy.mockReturnValue(5000);
+    runFrame();
+
+    expect(onRms.mock.lastCall?.[0]).toBeCloseTo(
+      1 - Math.exp(-(1000 / 60) / 35 - 50 / 35),
+      10,
+    );
+  });
+
+  it("starts each attach from a closed mouth", () => {
+    const onRms = vi.fn();
+    const analyzer = createLipSyncAnalyzer({ onRms });
+
+    analyzer.attachMediaStream({} as MediaStream);
+    analyzer.attachMediaStream({} as MediaStream);
+
+    const firstFrames = onRms.mock.calls
+      .map(([rms]) => rms as number)
+      .filter((rms) => rms > 0);
+    expect(firstFrames).toHaveLength(2);
+    expect(firstFrames[1]).toBeCloseTo(FIRST_FRAME_MOUTH, 10);
   });
 
   it("does not resume after stop until the next attach", () => {

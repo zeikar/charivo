@@ -91,14 +91,18 @@ locks this contract.
 previous version of this section were unified into one shared analyzer; this
 section reflects the current wiring.
 
-RMS-driven mouth movement: an analyzer reads the playing audio via Web Audio,
-computes a normalized RMS, and feeds it to the renderer, which drives the Live2D
-mouth-open parameter.
+Loudness-driven mouth movement: an analyzer reads the playing audio via Web
+Audio, turns its level into a 0..1 mouth opening, and feeds it to the renderer,
+which drives the mouth-open parameter.
 
 **One shared analyzer.** [`createLipSyncAnalyzer`](../packages/core/src/lipsync-analyzer.ts)
-in `@charivo/core` computes speech-band RMS (10–60% of the frequency spectrum)
-normalized to `min(rms * 1.7, 1)`. It is owned by the producers, not the
-renderer:
+in `@charivo/core` reads time-domain samples (a 1024-sample window) each frame
+and computes their RMS. It normalizes that against a recent peak, which decays
+6 dB/s and never drops below -40 dBFS. Anything under -50 dBFS counts as
+silence. The ratio is raised to the power 1.5 and smoothed with a 35 ms attack
+and an 80 ms release, so the mouth closes between syllables. Frame time is
+measured and capped at 50 ms. The result is the final mouth opening. It is
+owned by the producers, not the renderer:
 
 - the TTS manager ([tts-manager.ts](../packages/tts/src/tts-manager.ts))
   attaches it to the `<audio>` element it plays for `"audio"` playback mode
@@ -112,9 +116,8 @@ consumer: it toggles `setRealtimeLipSync` on `tts:audio:start` /
 `tts:audio:end` and feeds the RMS numbers to `updateRealtimeLipSyncRms` — it
 does not analyze audio itself.
 
-The Live2D renderer additionally amplifies the live RMS by `1.8` for visible
-mouth movement on web audio
-([lappmodel.ts](../packages/render-live2d/src/cubism/lappmodel.ts)), applied
+Renderers apply the value as-is, with no extra gain. The Live2D renderer
+([lappmodel.ts](../packages/render-live2d/src/cubism/lappmodel.ts)) writes it
 after other model updates so the realtime/TTS signal takes priority over the
 WAV-handler path.
 

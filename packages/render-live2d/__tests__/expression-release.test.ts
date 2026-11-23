@@ -821,7 +821,8 @@ describe("LAppModel realtime lip sync vs mouth-moving expressions", () => {
     model.setRealtimeLipSync(true, 0.5);
     model.update();
 
-    expect(mouth.read()).toBeCloseTo(0.5 * 1.8, 5);
+    // The analyzer's value is the final mouth opening: no renderer gain.
+    expect(mouth.read()).toBeCloseTo(0.5, 5);
   });
 
   it("drives the mouth closed at silence instead of letting the expression reopen it", () => {
