@@ -310,6 +310,16 @@ describe("createAvatarDirector", () => {
 
       expect(classifier).not.toHaveBeenCalled();
     });
+
+    it("makes no call when every motion group has no clips and there are no expressions", () => {
+      const { director, classifier } = setup({
+        catalog: { expressions: [], motions: { Idle: 0, Tap: 0 } },
+      });
+
+      director.say("Hello there!");
+
+      expect(classifier).not.toHaveBeenCalled();
+    });
   });
 
   describe("staleness between lines", () => {

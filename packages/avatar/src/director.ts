@@ -46,8 +46,11 @@ export function createAvatarDirector(
     ((error: unknown) => {
       console.warn("[charivo/avatar] Avatar classifier failed:", error);
     });
+  // A group with no clips offers nothing to play, so it alone is not worth a
+  // classifier request.
   const hasControls =
-    catalog.expressions.length > 0 || Object.keys(catalog.motions).length > 0;
+    catalog.expressions.length > 0 ||
+    Object.values(catalog.motions).some((count) => count > 0);
 
   // `null` means no incremental line is open, so the next push starts one.
   let buffer: string | null = null;

@@ -4,6 +4,10 @@ import type {
   ToolRegistration,
   ToolResultProjector,
 } from "@charivo/core";
+import {
+  formatExpressionMeanings,
+  formatMotionMeanings,
+} from "./catalog-meanings";
 
 export {
   connectAvatarDirectorToCascade,
@@ -13,6 +17,7 @@ export {
   type AvatarDirector,
   type AvatarDirectorOptions,
 } from "./director";
+export { createLLMAvatarClassifier } from "./llm-classifier";
 
 const MIN_GAZE = -1;
 const MAX_GAZE = 1;
@@ -35,57 +40,6 @@ export const AVATAR_CONTROL_TOOL_NAMES = [
   PLAY_MOTION_TOOL_NAME,
   LOOK_AT_TOOL_NAME,
 ] as const;
-
-// Iterates `catalog.expressions` (not `Object.keys(descriptions)`) because this
-// function is the single enforcement point for the key-intersection contract:
-// output order must follow the catalog's own expression order, and description
-// keys with no matching expression must be silently dropped rather than
-// validated by callers.
-function formatExpressionMeanings(
-  catalog: AvatarControlCatalog,
-): string | null {
-  const descriptions = catalog.expressionDescriptions;
-  if (!descriptions) {
-    return null;
-  }
-
-  const entries = catalog.expressions
-    .filter((expressionId) => Object.hasOwn(descriptions, expressionId))
-    .map((expressionId) => `${expressionId} = ${descriptions[expressionId]}`);
-
-  if (entries.length === 0) {
-    return null;
-  }
-
-  return entries.join("; ");
-}
-
-// Same key-intersection contract as formatExpressionMeanings, extended one
-// dimension: a group's descriptions are positional, so an entry past the
-// group's real motion count describes a motion that does not exist and is
-// dropped rather than surfaced.
-function formatMotionMeanings(catalog: AvatarControlCatalog): string | null {
-  const descriptions = catalog.motionDescriptions;
-  if (!descriptions) {
-    return null;
-  }
-
-  const entries = Object.entries(catalog.motions)
-    .filter(([group]) => Object.hasOwn(descriptions, group))
-    .flatMap(([group, count]) =>
-      (descriptions[group] ?? [])
-        .slice(0, count)
-        .flatMap((text, index) =>
-          text ? [`${group} #${index} = ${text}`] : [],
-        ),
-    );
-
-  if (entries.length === 0) {
-    return null;
-  }
-
-  return entries.join("; ");
-}
 
 export function buildAvatarControlInstructions(
   catalog: AvatarControlCatalog,
