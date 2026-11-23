@@ -196,12 +196,14 @@ describe("RenderManager", () => {
     expect(renderer.playExpression).toHaveBeenCalledTimes(1);
     expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(1);
 
+    // An expression that is still showing is never replayed, however late the
+    // repeat; a motion repeats once its debounce window has passed.
     await vi.advanceTimersByTimeAsync(300);
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
     await vi.advanceTimersByTimeAsync(700);
     bus.emit("avatar:motion", { group: "TapBody", index: 1 });
 
-    expect(renderer.playExpression).toHaveBeenCalledTimes(2);
+    expect(renderer.playExpression).toHaveBeenCalledTimes(1);
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(2);
   });
@@ -245,7 +247,7 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 
-  it("a debounced duplicate expression does not restart the hold window", async () => {
+  it("a repeated expression refreshes its hold without replaying it", async () => {
     vi.useFakeTimers();
 
     const renderer = new StubRenderer();
@@ -255,12 +257,16 @@ describe("RenderManager", () => {
     manager.setEventBus(bus);
 
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
-    await vi.advanceTimersByTimeAsync(200);
-    // Swallowed by the 300ms debounce window: must not reschedule the release.
+    await vi.advanceTimersByTimeAsync(5_000);
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
 
-    await vi.advanceTimersByTimeAsync(7_800);
+    // The first claim's window (due at 8_000) was replaced by the repeat's.
+    await vi.advanceTimersByTimeAsync(7_999);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
     expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    expect(renderer.playExpression).toHaveBeenCalledTimes(1);
   });
 
   it("holds the expression past the fallback window while speech is still playing", async () => {
@@ -597,7 +603,7 @@ describe("RenderManager", () => {
     expect(renderer.stopExpression).toHaveBeenCalledTimes(2);
   });
 
-  it("a renderer without stopExpression schedules no release timer and ignores tts:audio:end", () => {
+  it("a renderer without stopExpression keeps its face and never replays it", async () => {
     vi.useFakeTimers();
 
     class ExpressionOnlyRenderer implements Renderer {
@@ -623,16 +629,160 @@ describe("RenderManager", () => {
 
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
 
-    expect(vi.getTimerCount()).toBe(0);
-
-    // The audio-end release path is inert here too: without stopExpression the
-    // manager must keep its debounce state, so a duplicate still inside the
-    // 300ms window stays swallowed instead of replaying.
-    bus.emit("tts:audio:end", {});
+    // The claim's release is harmless without stopExpression, and the face it
+    // leaves up is still the one showing, so a repeat does not replay it.
+    bus.emit("tts:audio:start", {});
+    expect(() => bus.emit("tts:audio:end", {})).not.toThrow();
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(8_000);
     bus.emit("avatar:expression", { expressionId: "exp_happy" });
 
     expect(renderer.playExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("a timed reflex over an inferred claim falls back to it, then to the base face at the end of speech", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    bus.emit("avatar:expression", {
+      expressionId: "exp_sad",
+      source: "avatar-director",
+      priority: "inferred",
+    });
+    bus.emit("avatar:expression", {
+      expressionId: "exp_happy",
+      source: "game",
+      priority: "reflex",
+      hold: { ms: 1_500 },
+    });
+    expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_happy");
+
+    await vi.advanceTimersByTimeAsync(1_499);
+    expect(renderer.playExpression).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(renderer.playExpression).toHaveBeenCalledTimes(3);
+    expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_sad");
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a timed claim raised in silence outlives an unrelated utterance", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", {
+      expressionId: "exp_happy",
+      hold: { ms: 3_000 },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    bus.emit("tts:audio:start", {});
+    await vi.advanceTimersByTimeAsync(1_000);
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unknown expression id does not displace the same source's live claim", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    await vi.advanceTimersByTimeAsync(5_000);
+    bus.emit("avatar:expression", { expressionId: "exp_missing" });
+
+    expect(renderer.playExpression).toHaveBeenCalledTimes(1);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    // The original claim's window still runs from its own start.
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+  });
+
+  it("a repeated tts:audio:start is the same utterance: its one end releases the expression", async () => {
+    vi.useFakeTimers();
+
+    const renderer = new StubRenderer();
+    const manager = createRenderManager(renderer);
+    const bus = new TestEventBus();
+
+    manager.setEventBus(bus);
+
+    bus.emit("tts:audio:start", {});
+    bus.emit("avatar:expression", { expressionId: "exp_happy" });
+    bus.emit("tts:audio:start", {});
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+    bus.emit("tts:audio:end", {});
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  describe("on a renderer without stopExpression", () => {
+    class NoReleaseRenderer implements Renderer {
+      initialize = vi.fn(async () => undefined);
+      destroy = vi.fn(async () => undefined);
+      render = vi.fn(
+        async (_message: Message, _character?: Character) => undefined,
+      );
+      playExpression = vi.fn((_expressionId: string) => undefined);
+      loadModel = vi.fn(async (_modelPath: string) => undefined);
+    }
+
+    it("an expression replaced by another plays again when it comes back", () => {
+      const renderer = new NoReleaseRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      bus.emit("avatar:expression", { expressionId: "exp_sad" });
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      expect(renderer.playExpression.mock.calls).toEqual([
+        ["exp_happy"],
+        ["exp_sad"],
+        ["exp_happy"],
+      ]);
+    });
+
+    it("an expression shown before a model reload plays again on the new model", async () => {
+      const renderer = new NoReleaseRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+      await manager.loadModel("/models/b.model3.json");
+      bus.emit("avatar:expression", { expressionId: "exp_happy" });
+
+      expect(renderer.playExpression).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("renders character messages without implicit avatar actions", async () => {

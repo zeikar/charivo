@@ -8,6 +8,7 @@ import {
   type RenderManager as IRenderManager,
   type CharivoEventBus,
 } from "@charivo/core";
+import { createClaimChannel, type ClaimChannel } from "./claim-channel";
 import {
   setupMouseTracking,
   type MouseTrackable,
@@ -17,14 +18,13 @@ import {
 
 const GAZE_MOUSE_SUSPEND_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
-const EXPRESSION_DEBOUNCE_MS = 300;
 const MOTION_DEBOUNCE_MS = 1_000;
-// Fallback release for configs where no audio events flow at all — text-only
-// setups that never emit tts:audio:start/end, so nothing else would ever drop
-// the face back. It is NOT a general ceiling: while speech is playing,
-// tts:audio:end is the authority and this timer stands down, because a reply
-// longer than the window would otherwise reset the expression mid-sentence.
-// Internal constant, no public knob by design.
+// The pre-speech window: how long a speech-scoped expression waits for the
+// speech it accompanies to start. Text-only setups never emit
+// tts:audio:start/end, so this is what drops their face back. It is NOT a
+// ceiling on speech: once bound to a span, the claim lasts until that span
+// ends, because a reply longer than the window would otherwise reset the
+// expression mid-sentence. Internal constant, no public knob by design.
 const EXPRESSION_HOLD_MS = 8_000;
 
 /**
@@ -53,12 +53,36 @@ export class RenderManager implements IRenderManager {
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
   private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
-  private expressionReleaseTimer?: ReturnType<typeof setTimeout>;
-  /** True between tts:audio:start and tts:audio:end. */
-  private isSpeaking = false;
   private mouseTrackingSuspendedUntil = 0;
   private localGazeSuspendUntil = 0;
-  private lastExpression?: { expressionId: string; at: number };
+  /** The expression last handed to the renderer and not since stopped. */
+  private shownExpression?: string;
+  private readonly expressions: ClaimChannel<string> = createClaimChannel({
+    show: (expressionId) => {
+      // Without stopExpression an expired face stays up, so showing it again
+      // would only replay it.
+      if (expressionId === this.shownExpression) {
+        return;
+      }
+      this.renderer.playExpression?.(expressionId);
+      this.shownExpression = expressionId;
+    },
+    clear: () => {
+      // A renderer without stopExpression keeps the last face, so the claims
+      // still expire (a lower one can take over) but nothing is reset.
+      if (this.hasExpressionRelease(this.renderer)) {
+        this.renderer.stopExpression();
+        this.shownExpression = undefined;
+      }
+    },
+    defaultHold: "speech",
+    preSpeechWindowMs: EXPRESSION_HOLD_MS,
+  });
+  /**
+   * The open tts:audio session, reported as an anonymous speech span. A fresh
+   * symbol per session, so no claim can bind to an earlier session by id.
+   */
+  private audioSpan?: symbol;
   private lastMotion?: { group: string; index: number; at: number };
   private eventBus?: CharivoEventBus;
 
@@ -66,25 +90,23 @@ export class RenderManager implements IRenderManager {
   private readonly handleTtsAudioStart = (
     _data: EventMap["tts:audio:start"],
   ): void => {
-    // Speech is the authority on how long the expression is held from here:
-    // it ends at tts:audio:end, however long the utterance runs.
-    this.isSpeaking = true;
-    this.clearExpressionReleaseTimer();
+    // A repeated start inside one session is the same speech, not a new span.
+    if (!this.audioSpan) {
+      this.audioSpan = Symbol("tts:audio");
+      this.expressions.spanStarted(this.audioSpan, { speech: true });
+    }
     this.renderer.setRealtimeLipSync?.(true);
   };
 
   private readonly handleTtsAudioEnd = (
     _data: EventMap["tts:audio:end"],
   ): void => {
-    this.isSpeaking = false;
     this.deactivateRealtimeLipSync();
 
-    // The speech this expression accompanied is over, so drop the face back
-    // early instead of waiting out the hold cap. Guarded like the timer arm:
-    // a renderer without stopExpression keeps its expression until replaced,
-    // and must keep its debounce state along with it.
-    if (this.hasExpressionRelease(this.renderer)) {
-      this.releaseExpressionNow();
+    const span = this.audioSpan;
+    this.audioSpan = undefined;
+    if (span) {
+      this.expressions.spanEnded(span);
     }
   };
 
@@ -97,7 +119,7 @@ export class RenderManager implements IRenderManager {
   private readonly handleAvatarExpression = (
     data: EventMap["avatar:expression"],
   ): void => {
-    this.applyExpression(data.expressionId);
+    this.applyExpression(data);
   };
 
   private readonly handleAvatarMotion = (
@@ -124,17 +146,17 @@ export class RenderManager implements IRenderManager {
    */
   setEventBus(eventBus: CharivoEventBus): void {
     // Re-attaching the same bus is a no-op. `Charivo.attachRenderer()` calls
-    // this even for an already-attached manager, and tearing down would end
-    // the speaking state mid-utterance — rearming the fallback that is meant
-    // to stand down during speech, and dropping realtime lip sync until the
-    // next audio start.
+    // this even for an already-attached manager, and tearing down would lose
+    // the open speech span mid-utterance — putting its claims back on the
+    // pre-speech window, and dropping realtime lip sync until the next audio
+    // start.
     if (this.eventBus === eventBus) {
       return;
     }
 
     // Defensive self-clear: avoid double-registering if called again. Uses
-    // the listener-only unbind (not disconnect()) so a rewire preserves a
-    // pending expression release instead of abandoning it.
+    // the listener-only unbind (not disconnect()) so a rewire keeps the
+    // expression claims instead of dropping them.
     this.unbindEventBus();
 
     this.eventBus = eventBus;
@@ -147,7 +169,7 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * Remove the event bus listeners without touching expression state. Does
+   * Remove the event bus listeners, keeping the expression claims. Does
    * nothing if no bus is connected.
    */
   private unbindEventBus(): void {
@@ -160,15 +182,11 @@ export class RenderManager implements IRenderManager {
     this.deactivateRealtimeLipSync();
 
     // Detaching mid-utterance means this manager will never see that
-    // utterance's tts:audio:end. Leaving the speaking state set would keep the
-    // fallback disarmed for every expression handled afterwards, and a still
-    // held expression would have nothing left to release it — setEventBus()
-    // rewiring deliberately preserves it — so give it the fallback back.
-    const wasSpeaking = this.isSpeaking;
-    this.isSpeaking = false;
-    if (wasSpeaking && this.lastExpression) {
-      this.armExpressionReleaseFallback();
-    }
+    // utterance's tts:audio:end, so a claim bound to it would have nothing
+    // left to release it — setEventBus() rewiring deliberately keeps it — and
+    // goes back to the pre-speech window instead.
+    this.audioSpan = undefined;
+    this.expressions.spansLost();
 
     this.eventBus.off("tts:audio:start", this.handleTtsAudioStart);
     this.eventBus.off("tts:audio:end", this.handleTtsAudioEnd);
@@ -192,7 +210,7 @@ export class RenderManager implements IRenderManager {
     }
 
     this.unbindEventBus();
-    this.releaseExpressionNow();
+    this.expressions.releaseAll();
   }
 
   /**
@@ -248,7 +266,13 @@ export class RenderManager implements IRenderManager {
    */
   async loadModel(modelPath: string): Promise<void> {
     if (this.renderer.loadModel) {
+      // A claim carried across the swap would count as showing on a model
+      // that never received it, so a repeat of it would never be played.
+      this.expressions.releaseAll();
       await this.renderer.loadModel(modelPath);
+      // The new model starts on its base face even where stopExpression is
+      // missing; a failed load keeps the old model and the face it shows.
+      this.shownExpression = undefined;
     }
   }
 
@@ -288,8 +312,6 @@ export class RenderManager implements IRenderManager {
       this.resumeMouseTrackingTimer = undefined;
     }
 
-    this.clearExpressionReleaseTimer();
-
     await this.renderer.destroy();
   }
 
@@ -309,75 +331,26 @@ export class RenderManager implements IRenderManager {
     this.renderer.updateRealtimeLipSyncRms?.(rms);
   }
 
-  private applyExpression(expressionId: string): boolean {
+  private applyExpression(data: EventMap["avatar:expression"]): boolean {
     if (!this.hasExpressionControl(this.renderer)) {
       return false;
     }
 
+    // Checked before the channel, so an id the model lacks never displaces
+    // the source's live claim.
     if (
       this.hasExpressionCatalog(this.renderer) &&
-      !this.renderer.getAvailableExpressions().includes(expressionId)
+      !this.renderer.getAvailableExpressions().includes(data.expressionId)
     ) {
       return false;
     }
 
-    const now = Date.now();
-    if (
-      this.lastExpression?.expressionId === expressionId &&
-      now - this.lastExpression.at < EXPRESSION_DEBOUNCE_MS
-    ) {
-      return false;
-    }
-
-    this.renderer.playExpression(expressionId);
-    this.lastExpression = { expressionId, at: now };
-
-    this.clearExpressionReleaseTimer();
-
-    // Arming while speech is playing would race tts:audio:end and cut the
-    // expression off mid-sentence on any reply longer than the window.
-    if (!this.isSpeaking) {
-      this.armExpressionReleaseFallback();
-    }
-
-    return true;
-  }
-
-  /**
-   * Immediately release a held expression: cancels the pending release timer
-   * (a harmless no-op if it has already fired) and calls stopExpression so
-   * the model returns to its base face. Used when the hold window elapses
-   * naturally, when tts:audio:end reports the accompanying speech is over,
-   * and when disconnect() relinquishes the renderer early.
-   */
-  private releaseExpressionNow(): void {
-    this.clearExpressionReleaseTimer();
-
-    if (!this.lastExpression) {
-      return;
-    }
-
-    this.renderer.stopExpression?.();
-    this.lastExpression = undefined;
-  }
-
-  private armExpressionReleaseFallback(): void {
-    if (!this.hasExpressionRelease(this.renderer)) {
-      return;
-    }
-
-    this.clearExpressionReleaseTimer();
-    this.expressionReleaseTimer = setTimeout(
-      () => this.releaseExpressionNow(),
-      EXPRESSION_HOLD_MS,
-    );
-  }
-
-  private clearExpressionReleaseTimer(): void {
-    if (this.expressionReleaseTimer) {
-      clearTimeout(this.expressionReleaseTimer);
-      this.expressionReleaseTimer = undefined;
-    }
+    return this.expressions.claim({
+      source: data.source ?? "app",
+      priority: data.priority ?? "explicit",
+      value: data.expressionId,
+      hold: data.hold,
+    });
   }
 
   private applyMotion(motion: MotionSelection, muteSound?: boolean): boolean {
