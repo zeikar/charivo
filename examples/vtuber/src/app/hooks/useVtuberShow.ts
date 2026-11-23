@@ -16,9 +16,9 @@ import {
   type RenderManager,
 } from "@charivo/core";
 import {
-  buildAvatarControlInstructions,
-  createAvatarControlTools,
-  createAvatarResultProjector,
+  connectAvatarDirectorToCascade,
+  createAvatarDirector,
+  createLLMAvatarClassifier,
 } from "@charivo/avatar";
 import { createTTSManager } from "@charivo/tts";
 
@@ -162,6 +162,7 @@ export function useVtuberShow({
     let renderManager: RenderManager | null = null;
     let charivo: Charivo | null = null;
     let port: CharivoCascadePort | null = null;
+    let disconnectAvatar: (() => void) | null = null;
 
     // Before createCharivo the render manager has no owner to destroy it.
     const destroyOrphanRenderManager = async () => {
@@ -218,12 +219,7 @@ export function useVtuberShow({
           withEnvelopeTagGuard(
             createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
           ),
-          {
-            tools: createAvatarControlTools(catalog),
-            resultProjectors: [createAvatarResultProjector()],
-            toolInstructions: buildAvatarControlInstructions(catalog),
-            maxHistoryTurns: SHOW_MAX_HISTORY_TURNS,
-          },
+          { maxHistoryTurns: SHOW_MAX_HISTORY_TURNS },
         );
 
         // No await from here to the ready flag: once Charivo exists the
@@ -246,6 +242,25 @@ export function useVtuberShow({
         charivo = instance;
         port = createCharivoCascadePort(instance);
 
+        // The talker writes only the line; the avatar director classifies it
+        // on its own request, in parallel with speech. Unguarded: the guard
+        // protects spoken text from envelope tags, and a classification
+        // reply is never spoken.
+        const avatarDirector = createAvatarDirector({
+          catalog,
+          classifier: createLLMAvatarClassifier(
+            createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
+          ),
+          emitter: instance,
+          onError: (avatarError) => {
+            console.error("[avatar] classification failed:", avatarError);
+          },
+        });
+        disconnectAvatar = connectAvatarDirectorToCascade(
+          instance,
+          avatarDirector,
+        );
+
         instance.on("tts:audio:start", () => {
           if (!disposed) setAudioActive(true);
         });
@@ -253,7 +268,16 @@ export function useVtuberShow({
           if (!disposed) setAudioActive(false);
         });
         instance.on("character:speak", ({ text }) => {
+          console.log("[avatar] line:", text);
           if (!disposed) setCaption(text);
+        });
+        // The bus event is a selection, not confirmation that the renderer
+        // played it.
+        instance.on("avatar:expression", ({ expressionId }) => {
+          console.log("[avatar] expression selected:", expressionId);
+        });
+        instance.on("avatar:motion", ({ group, index }) => {
+          console.log("[avatar] motion selected:", `${group}[${index}]`);
         });
 
         sessionRef.current = { charivo: instance, tts, port };
@@ -292,6 +316,9 @@ export function useVtuberShow({
       // destroys the render manager itself.
       if (!charivo) return;
       port?.dispose();
+      // Before dispose: a classification still in flight must not emit onto a
+      // disposed instance.
+      disconnectAvatar?.();
       // Stops and disposes TTS and destroys the render manager, each even
       // when an earlier step failed.
       charivo.dispose().catch((disposeError: unknown) => {

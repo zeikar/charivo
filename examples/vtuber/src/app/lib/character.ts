@@ -17,8 +17,8 @@ export const HARU_MODEL_PATH = "/live2d/Haru/Haru.model3.json";
 
 export const HARU_GAZE_ORIGIN = { x: 0.499, y: 0.143 };
 
-// Affect only — these ride in the setExpression schema on every request, and
-// the model picks on feeling, not on how the mesh deforms. F01/F02/F05 and
+// Affect only — these feed the avatar director's classification prompt on
+// every line, and the model picks on feeling, not on how the mesh deforms. F01/F02/F05 and
 // F04/F08 overlap in kind, so each carries just enough to stay distinct.
 //
 // The meanings were established by rendering each expression in
@@ -41,7 +41,7 @@ export const HARU_EXPRESSION_DESCRIPTIONS: Record<string, string> = {
 // and watched. Positional: index 0 describes motion index 0.
 //
 // All four TapBody entries carry a prerecorded Japanese voice clip. Those
-// are silenced when an AI tool call triggers the motion, so the wording below
+// are muted by the avatar director when it triggers the motion, so the wording below
 // describes what is SEEN.
 export const HARU_MOTION_DESCRIPTIONS: Record<string, string[]> = {
   Idle: [

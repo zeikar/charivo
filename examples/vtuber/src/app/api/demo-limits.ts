@@ -15,9 +15,13 @@
 export const SHOW_MAX_HISTORY_TURNS = 20;
 
 /**
+ * The show's callers no longer send tools (the avatar director classifies in
+ * a separate, tool-free request), but the route's request contract is
+ * unchanged, so the tool headroom below stays.
+ *
  * One tool round is an assistant message carrying the calls plus one `tool`
  * message per call; `LLMManager` runs at most three rounds. Four calls per
- * round is generous for an avatar that sets an expression and plays a motion.
+ * round is generous for a caller that sets an expression and plays a motion.
  *
  * TOOL_LOOP_ROUNDS mirrors `MAX_TOOL_ROUNDS` in @charivo/llm
  * (packages/llm/src/llm-manager.ts), which is private, so it is copied here:

@@ -168,12 +168,15 @@ describe("parseChatRequest shape validation", () => {
   });
 
   it("defaults an omitted tools key to an empty list", () => {
-    const result = parseChatRequest({
-      messages: [{ role: "user", content: "hi" }],
-    });
+    // The avatar classification request: system + user, no tools key.
+    const messages = [
+      { role: "system", content: "Pick an expression and a motion." },
+      { role: "user", content: "Hello, everyone!" },
+    ];
+    const result = parseChatRequest({ messages });
     expect(result).toEqual({
       success: true,
-      value: { messages: [{ role: "user", content: "hi" }], tools: [] },
+      value: { messages, tools: [] },
     });
   });
 });

@@ -43,8 +43,8 @@ export const DEFAULT_SHOW_PLAN: ShowPlan = {
 export const SHOW_DIRECTOR_CONFIG: DirectorConfig = {
   ...DEFAULT_DIRECTOR_CONFIG,
   // Show pacing: a line every 7 s, and 14 s after a failed one. That also
-  // keeps the chat route's rate modest, since one line makes one to four chat
-  // requests through the avatar tool loop. These space lines; they do not
+  // keeps the chat route's rate modest, since one line makes two chat
+  // requests: the talker's reply and the avatar director's classification. These space lines; they do not
   // count or limit requests.
   minLineIntervalMs: 7_000,
   failedLineBackoffMs: 14_000,
