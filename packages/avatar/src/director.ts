@@ -58,37 +58,51 @@ export function createAvatarDirector(
   // line is superseded, which is what makes every older result stale.
   let current: AbortController | null = null;
 
-  function endLine(): void {
+  // Every new line state is committed before the previous controller is
+  // aborted: abort listeners run synchronously and may start or extend a line
+  // of their own, which must not be overwritten afterwards.
+  function startLine(text: string): void {
+    const previous = current;
+    const controller =
+      hasControls && text.trim() !== "" ? new AbortController() : null;
     buffer = null;
-    current?.abort();
-    current = null;
+    current = controller;
+    previous?.abort();
+    if (controller && current === controller) {
+      classify(text, controller);
+    }
   }
 
-  function classify(text: string): void {
-    if (!hasControls || text.trim() === "") {
-      return;
-    }
+  function endLine(): void {
+    startLine("");
+  }
 
-    const controller = new AbortController();
-    current = controller;
+  function classify(text: string, controller: AbortController): void {
     const isCurrent = () => current === controller;
 
     // Wrapping the call routes a synchronous throw or a non-promise return
     // through the same path as a rejection, so neither escapes say()/done().
     new Promise<AvatarDecision>((resolve) => {
       resolve(classifier({ text, catalog, signal: controller.signal }));
-    }).then(
-      (decision) => {
-        apply(decision, isCurrent);
-      },
-      (error: unknown) => {
-        // A superseded or cancelled line's failure, including the AbortError
-        // its own aborted signal caused, belongs to a line that is over.
-        if (isCurrent()) {
-          reportError(error);
-        }
-      },
-    );
+    })
+      .then(
+        (decision) => {
+          apply(decision, isCurrent);
+        },
+        (error: unknown) => {
+          // A superseded or cancelled line's failure, including the AbortError
+          // its own aborted signal caused, belongs to a line that is over.
+          if (isCurrent()) {
+            // Returned so an async onError's rejection reaches the handler below.
+            return reportError(error);
+          }
+        },
+      )
+      .catch((error: unknown) => {
+        // A throwing emitter or onError would otherwise be an unhandled
+        // rejection; onError is not invoked again, as it may be what threw.
+        console.warn("[charivo/avatar] Avatar director failed:", error);
+      });
   }
 
   // The single enforcement point for the catalog: a classifier may return
@@ -131,20 +145,25 @@ export function createAvatarDirector(
 
   return {
     say(text) {
-      endLine();
-      classify(text);
+      startLine(text);
     },
     push(chunk) {
       if (buffer === null) {
-        endLine();
-        buffer = "";
+        const previous = current;
+        current = null;
+        buffer = chunk;
+        previous?.abort();
+        return;
       }
       buffer += chunk;
     },
     done() {
-      const text = buffer ?? "";
-      buffer = null;
-      classify(text);
+      // No open stream: a duplicate done(), or one after say(), must not
+      // abort the line already being classified.
+      if (buffer === null) {
+        return;
+      }
+      startLine(buffer);
     },
     cancel() {
       endLine();
@@ -154,17 +173,17 @@ export function createAvatarDirector(
 
 /**
  * Drive `director` from a cascade (`userSay()`) turn on `bus`; a `Charivo`
- * instance fits. Each final reply (`character:speak`) is classified as one
+ * instance fits. Each voiced reply (`tts:start`, which Charivo emits after the
+ * reply is rendered and recorded, just before speaking) is classified as one
  * line, and the line ends on `tts:audio:end`, `tts:end`, `tts:error`, or
  * `turn:cancelled`, so a decision that arrives after the speech is dropped
  * rather than applied to silence.
  *
- * Two turns end without any of those events; call `director.cancel()`
- * yourself if a late decision should be dropped there: a text-only turn (no
- * TTS manager attached), and a turn that fails after `character:speak` but
- * before TTS starts (e.g. a renderer failure that rejects `userSay()`).
- * Otherwise the decision applies whenever it is ready and the next line
- * supersedes it.
+ * A turn that fails before TTS starts, such as a renderer failure, is never
+ * classified. A text-only turn (no TTS manager) emits no `tts:start` either,
+ * so the helper does not classify it; call `director.say(text)` yourself where
+ * the app accepts the text reply. The app owns cancellation
+ * (`director.cancel()`) on that path.
  *
  * Returns a function that disconnects and drops any pending decision.
  */
@@ -173,12 +192,12 @@ export function connectAvatarDirectorToCascade(
   director: AvatarDirector,
 ): () => void {
   let active = true;
-  // Charivo emits `message:received` and then the same turn's
-  // `character:speak` synchronously, and listeners run in registration order.
-  // An earlier `character:speak` listener that interrupts or supersedes the
-  // turn therefore fires `turn:cancelled` before this helper sees that
-  // `character:speak`; the turn then skips TTS, so no `tts:end` would ever end
-  // the line. A cancellation since `message:received` marks that reply dead.
+  // Charivo emits `tts:start` for a turn and then speaks it, and listeners run
+  // in registration order. An earlier `tts:start` listener that interrupts or
+  // supersedes the turn therefore fires `turn:cancelled` before this helper
+  // sees that `tts:start`; the turn then skips TTS, so no `tts:end` would ever
+  // end the line. A cancellation since `message:received` marks that reply
+  // dead.
   let cancelledSinceReceived = false;
 
   // Every listener checks `active` first: the bus dispatches from a snapshot,
@@ -189,7 +208,7 @@ export function connectAvatarDirectorToCascade(
     }
     cancelledSinceReceived = false;
   };
-  const onSpeak = ({ text }: EventMap["character:speak"]) => {
+  const onTTSStart = ({ text }: EventMap["tts:start"]) => {
     if (!active || cancelledSinceReceived) {
       return;
     }
@@ -210,7 +229,7 @@ export function connectAvatarDirectorToCascade(
   };
 
   bus.on("message:received", onReceived);
-  bus.on("character:speak", onSpeak);
+  bus.on("tts:start", onTTSStart);
   bus.on("tts:audio:end", onLineEnd);
   bus.on("tts:end", onLineEnd);
   bus.on("tts:error", onLineEnd);
@@ -222,7 +241,7 @@ export function connectAvatarDirectorToCascade(
     }
     active = false;
     bus.off("message:received", onReceived);
-    bus.off("character:speak", onSpeak);
+    bus.off("tts:start", onTTSStart);
     bus.off("tts:audio:end", onLineEnd);
     bus.off("tts:end", onLineEnd);
     bus.off("tts:error", onLineEnd);

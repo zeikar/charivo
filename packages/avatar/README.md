@@ -139,9 +139,10 @@ sources, such as an adapter you write.
 ### Line Lifecycle
 
 `connectAvatarDirectorToCascade(bus, director)` returns a disconnect function.
-It sends each `character:speak` to `say()` and treats `tts:audio:end`,
+It sends each voiced reply to `say()` on `tts:start` (Charivo emits it after the
+reply is rendered and recorded, just before speaking) and treats `tts:audio:end`,
 `tts:end`, `tts:error`, and `turn:cancelled` as the end of the line, calling
-`cancel()`. It ignores a `character:speak` whose turn was already cancelled.
+`cancel()`. It ignores a `tts:start` whose turn was already cancelled.
 
 - A pending decision is stale, and its signal aborted, when a new line begins
   (`say()` or the first `push()`) or on `cancel()`. Currency is rechecked before
@@ -154,11 +155,12 @@ It sends each `character:speak` to `say()` and treats `tts:audio:end`,
   not reported.
 - `say()`, `push()`, `done()`, and `cancel()` never throw.
 
-Two cases emit none of the four line-over events: a text-only turn (no TTS
-manager attached) and a turn that fails after `character:speak` but before TTS
-starts, such as a renderer failure. Call `director.cancel()` yourself there if a
-late decision should be dropped; otherwise it applies when ready, and the next
-line supersedes it.
+The helper reacts to voiced lines only. A turn that fails before TTS starts,
+such as a renderer failure, is never classified. A text-only turn (no TTS
+manager attached) emits no `tts:start`, so the helper does not classify it; call
+`director.say(text)` yourself where your app accepts the text reply. Your app
+owns cancellation on that path: call `director.cancel()` if the reply is later
+withdrawn.
 
 ### Classifier
 
@@ -181,7 +183,8 @@ const keywordClassifier: AvatarClassifier = async ({ text, catalog }) =>
 a system message listing every expression id and motion group index range
 (groups with zero clips are left out), with the catalog descriptions as hints,
 and the line as the user message. It passes
-the director's `signal` and parses the first JSON object in the reply.
+the director's `signal` and parses the first top-level JSON object in the reply that has an `expression`
+or `motion` key (any first top-level object if none does).
 
 ### Cost
 

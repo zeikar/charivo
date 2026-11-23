@@ -105,28 +105,36 @@ function parseDecision(reply: string): AvatarDecision {
 
 // Models wrap JSON in code fences or prose despite being told not to, so each
 // `{` is tried as the start of an object, scanned to its balanced close (braces
-// inside strings don't count), and the first span that parses wins.
+// inside strings don't count). Only top-level objects count: after one parses,
+// scanning resumes past its end, so an object nested inside it (say, an example
+// field) is never read as the decision. The first parsed object with an
+// `expression` or `motion` key wins, so a stray leading `{}` in prose is
+// skipped; if none has either key, the first parsed object is returned.
 function readFirstJsonObject(text: string): Record<string, unknown> | null {
-  for (
-    let start = text.indexOf("{");
-    start !== -1;
-    start = text.indexOf("{", start + 1)
-  ) {
+  let fallback: Record<string, unknown> | null = null;
+  let start = text.indexOf("{");
+  while (start !== -1) {
     const end = findObjectEnd(text, start);
-    if (end === -1) {
-      continue;
-    }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(text.slice(start, end + 1));
+      parsed = end === -1 ? undefined : JSON.parse(text.slice(start, end + 1));
     } catch {
       // Not valid JSON, e.g. a brace in prose; the next `{` may still start
       // the object, so this span is skipped rather than reported.
+      parsed = undefined;
+    }
+    if (typeof parsed !== "object" || parsed === null) {
+      start = text.indexOf("{", start + 1);
       continue;
     }
-    return parsed as Record<string, unknown>;
+    const object = parsed as Record<string, unknown>;
+    if ("expression" in object || "motion" in object) {
+      return object;
+    }
+    fallback ??= object;
+    start = text.indexOf("{", end + 1);
   }
-  return null;
+  return fallback;
 }
 
 function findObjectEnd(text: string, start: number): number {

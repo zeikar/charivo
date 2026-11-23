@@ -437,6 +437,87 @@ describe("createAvatarDirector", () => {
     });
   });
 
+  describe("done() without an open stream", () => {
+    it("keeps the pending classification on a duplicate done()", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.push("Hello.");
+      director.done();
+      director.done();
+      calls[0]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(calls).toHaveLength(1);
+      expect(emissions).toEqual([
+        ["avatar:expression", { expressionId: "happy" }],
+      ]);
+    });
+
+    it("keeps the pending classification when say() is followed by done()", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.say("Hello.");
+      director.done();
+      calls[0]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(emissions).toEqual([
+        ["avatar:expression", { expressionId: "happy" }],
+      ]);
+    });
+  });
+
+  describe("abort listener", () => {
+    it("does not overwrite a line an abort listener started during say()", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.say("First.");
+      calls[0]?.signal.addEventListener("abort", () => {
+        director.say("Second.");
+      });
+      director.say("Third.");
+      await flush();
+
+      expect(calls.map((call) => call.text)).toEqual(["First.", "Second."]);
+      calls[1]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(emissions).toEqual([
+        ["avatar:expression", { expressionId: "happy" }],
+      ]);
+    });
+
+    it("keeps a chunk an abort listener pushes during the first push()", async () => {
+      const { director, calls } = setup();
+
+      director.say("First.");
+      calls[0]?.signal.addEventListener("abort", () => {
+        director.push(" extra");
+      });
+      director.push("Hello");
+      director.done();
+
+      expect(calls[1]?.text).toBe("Hello extra");
+    });
+
+    it("keeps a line an abort listener starts during cancel()", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.say("First.");
+      calls[0]?.signal.addEventListener("abort", () => {
+        director.say("Second.");
+      });
+      director.cancel();
+      calls[1]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(calls[1]?.text).toBe("Second.");
+      expect(emissions).toEqual([
+        ["avatar:expression", { expressionId: "happy" }],
+      ]);
+    });
+  });
+
   describe("failure", () => {
     it("reports a rejecting classifier once, emits nothing, and recovers", async () => {
       const onError = vi.fn();
@@ -500,6 +581,42 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]).toContain(failure);
+    });
+
+    it("logs a throwing emitter without rejecting or calling onError", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onError = vi.fn();
+      const failure = new Error("emitter broke");
+      const director = createAvatarDirector({
+        catalog: CATALOG,
+        classifier: async () => ({ expressionId: "happy" }),
+        emitter: {
+          emit() {
+            throw failure;
+          },
+        },
+        onError,
+      });
+
+      director.say("Hello.");
+      await flush();
+
+      expect(onError).not.toHaveBeenCalled();
+      expect(warn.mock.calls[0]).toContain(failure);
+    });
+
+    it("logs an async onError that rejects instead of leaving it unhandled", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const failure = new Error("onError broke");
+      const { director, calls } = setup({
+        onError: () => Promise.reject(failure) as unknown as void,
+      });
+
+      director.say("Hello.");
+      calls[0]?.result.reject(new Error("classifier failed"));
+      await flush();
+
       expect(warn.mock.calls[0]).toContain(failure);
     });
 

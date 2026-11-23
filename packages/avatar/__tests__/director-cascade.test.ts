@@ -118,11 +118,11 @@ const LINE_ENDINGS: {
 };
 
 function speak(charivo: Charivo, text: string): void {
-  charivo.emit("character:speak", { character: CHARACTER, text });
+  charivo.emit("tts:start", { text, characterId: CHARACTER.id });
 }
 
 describe("connectAvatarDirectorToCascade", () => {
-  it("classifies character:speak and emits the decision on the same instance", async () => {
+  it("classifies tts:start and emits the decision on the same instance", async () => {
     const { charivo, director, classifier, calls, emissions } = setup();
     connectAvatarDirectorToCascade(charivo, director);
 
@@ -186,13 +186,41 @@ describe("connectAvatarDirectorToCascade", () => {
     expect(emissions).toEqual([]);
   });
 
-  it("skips a turn interrupted by an earlier character:speak listener", async () => {
+  it("does not classify a turn whose renderer rejects", async () => {
+    const { charivo, director, classifier } = setup({
+      llm: new StubLLMManager(),
+      tts: new StubTTSManager(),
+    });
+    charivo.attachRenderer({
+      initialize: async () => undefined,
+      destroy: async () => undefined,
+      setCharacter: () => undefined,
+      render: async (message) => {
+        if (message.type === "character") {
+          throw new Error("render failed");
+        }
+      },
+      setLocalGaze: () => false,
+      setEventBus: () => undefined,
+      disconnect: () => undefined,
+      loadModel: async () => undefined,
+      setMessageCallback: () => undefined,
+    });
+    connectAvatarDirectorToCascade(charivo, director);
+
+    await expect(charivo.userSay("Hi!")).rejects.toThrow("render failed");
+    await flush();
+
+    expect(classifier).not.toHaveBeenCalled();
+  });
+
+  it("skips a turn interrupted by an earlier tts:start listener", async () => {
     const { charivo, director, classifier, calls } = setup({
       llm: new StubLLMManager(),
       tts: new StubTTSManager(),
     });
     let interrupted: Promise<void> | undefined;
-    charivo.on("character:speak", () => {
+    charivo.on("tts:start", () => {
       interrupted ??= charivo.interrupt();
     });
     connectAvatarDirectorToCascade(charivo, director);
@@ -241,7 +269,7 @@ describe("connectAvatarDirectorToCascade", () => {
   it("does not classify an event whose dispatch disconnected it", () => {
     const { charivo, director, classifier } = setup();
     let disconnect = () => {};
-    charivo.on("character:speak", () => {
+    charivo.on("tts:start", () => {
       disconnect();
     });
     disconnect = connectAvatarDirectorToCascade(charivo, director);

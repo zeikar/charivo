@@ -156,13 +156,15 @@ const director = createAvatarDirector({
 const disconnect = connectAvatarDirectorToCascade(charivo, director);
 ```
 
-Only cascade wiring ships: each `character:speak` is one line. The director also
-has `push(chunk)` and `done()` for streaming text, but nothing wires them yet.
-The line ends on `tts:audio:end`, `tts:end`, `tts:error`, or `turn:cancelled`,
-and a decision that arrives after that is dropped. A new line also supersedes a
-pending decision. Two cases emit none of those events: a text-only turn (no TTS manager) and a
-turn that fails after `character:speak` but before TTS starts. Call
-`director.cancel()` yourself there if a late decision should be dropped.
+Only cascade wiring ships: each voiced reply (`tts:start`) is one line. The
+director also has `push(chunk)` and `done()` for streaming text, but nothing
+wires them yet. The line ends on `tts:audio:end`, `tts:end`, `tts:error`, or
+`turn:cancelled`, and a decision that arrives after that is dropped. A new line
+also supersedes a pending decision. A turn that fails before TTS starts is never
+classified. A text-only turn (no TTS manager) emits no `tts:start`, so the helper does not
+classify it; call `director.say(text)` yourself where your app accepts the text
+reply. Your app owns cancellation on that path: call `director.cancel()` if the
+reply is later withdrawn.
 
 The classifier is pluggable: an `AvatarClassifier` is a function from
 `{ text, catalog, signal }` to a decision, so a rule-based or local classifier

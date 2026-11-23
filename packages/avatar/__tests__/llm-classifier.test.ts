@@ -176,6 +176,18 @@ describe("createLLMAvatarClassifier reply parsing", () => {
     ).resolves.toEqual(DECISION);
   });
 
+  it("skips a leading object that holds no decision keys", async () => {
+    await expect(
+      classify('{} {"expression": "happy", "motion": null}'),
+    ).resolves.toEqual({ expressionId: "happy" });
+  });
+
+  it("ignores an object nested inside an earlier top-level object", async () => {
+    await expect(
+      classify('{"example": {"expression": "happy"}} {"expression": "sad"}'),
+    ).resolves.toEqual({ expressionId: "sad" });
+  });
+
   it("reads braces inside string values without losing the object", async () => {
     await expect(
       classify('{"expression": "a}b", "motion": null}', {

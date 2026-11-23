@@ -161,7 +161,7 @@ once when the show ends.
 
 **The head and the body are split.** The talker, Charivo's LLM manager, has no
 tools and writes only the line. The avatar director listens for
-`character:speak`, classifies the line with a second LLM call in parallel with
+`tts:start`, classifies the line with a second LLM call in parallel with
 the speech, and emits `avatar:expression` and `avatar:motion`; a result that
 arrives after its line is no longer current is dropped. If a classification
 fails, the line still finishes and the avatar keeps its current state. The
@@ -358,8 +358,10 @@ text cannot be told apart from them.
 
 After the avatar moved from LLM tools to the text-driven director. Production
 build, headless Chromium with `fetch` and `speechSynthesis` instrumented, both
-scripted sources on, `gemini-3.5-flash-lite`. Two runs; the second came after one
-prompt change and is the final state. "Selected" below means the event was
+scripted sources on, `gemini-3.5-flash-lite`. Two runs, the second after one
+prompt change. Both classified on `character:speak`; the trigger later moved to
+`tts:start` (emitted after render and history, just before speaking), and no run
+was repeated after that. "Selected" below means the event was
 emitted on the bus; it is not confirmed playback, because the render manager can
 still decline a selection at its catalog or debounce checks.
 
@@ -370,7 +372,11 @@ still decline a selection at its catalog or debounce checks.
   the utterance started.
 - **Silence between lines.** Median about 4.1 s (run 2: 4.07 s; idle gaps 4.05
   to 4.55 s; lines already queued followed about 1 to 2 s after the previous one),
-  against about 11.5 s for the tool build.
+  against about 11.5 s for the tool build. This is a combined measurement: the
+  builds differ in idle wait (8 s to 3 s), in the pacing floor, and in requests
+  per line, and the runs did not isolate them. Most of the drop likely comes
+  from the shorter idle wait. It is not a measure of the director alone; the
+  request-to-speech latency above is the direct talker comparison.
 - **Requests.** At most 12 `/api/chat` requests in any 60 s window, in both runs,
   beside the key's stated 15 per minute. This is observed browser traffic, not
   proof that the limit holds.
