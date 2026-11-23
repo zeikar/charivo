@@ -47,7 +47,6 @@ import { FAKE_VIEWER_SCRIPT } from "../lib/fake-viewers";
 import { withEnvelopeTagGuard } from "../lib/guarded-llm-client";
 import { createScriptedSource } from "../lib/scripted-source";
 import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../lib/show-plan";
-import { withSpeechDeadline } from "../lib/speech-deadline";
 import { appendToShowLog, EMPTY_SHOW_LOG, type ShowLog } from "../lib/show-log";
 
 export type ShowLifecycle = "idle" | "starting" | "running" | "stopping";
@@ -234,8 +233,10 @@ export function useVtuberShow({
         // demo key (10 requests a day for gemini-3.1-flash-tts, measured
         // 2026-11-22), far short of one show; that is not a free-tier fact. The player declares
         // playbackMode "web-speech", so the manager simulates lip sync from
-        // the text instead of analyzing audio it never sees.
-        const tts = createTTSManager(withSpeechDeadline(createWebTTSPlayer()));
+        // the text instead of analyzing audio it never sees. The player itself
+        // times out an utterance the browser never finishes, so one stuck line
+        // fails instead of holding the show.
+        const tts = createTTSManager(createWebTTSPlayer());
         const instance = createCharivo({
           renderer: renderManager,
           llm,

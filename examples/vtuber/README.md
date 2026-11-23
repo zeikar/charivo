@@ -93,9 +93,10 @@ Speech is the browser's Web Speech API (`@charivo/tts/web`), so it costs
 nothing and has no quota. Voice quality and the available voices depend on the
 browser and OS, and the example does not pick one: the browser's default voice
 speaks. Lip sync is simulated from the text, because Web Speech gives no audio to
-analyze. Each speak has a deadline (10 s plus 150 ms per character); if the
-browser never reports the end of an utterance, the speech is cancelled and the
-line fails, so the next one can start.
+analyze. The Web Speech player gives each utterance a deadline (10 s plus 300 ms
+per character at the default rate); if the browser never reports the end of an
+utterance, the player cancels the speech and the line fails, so the next one can
+start.
 
 This is a change from an earlier design that used Gemini TTS. On the demo key,
 Gemini TTS answered 429 with a free-tier limit of 10 requests per day for

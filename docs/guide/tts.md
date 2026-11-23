@@ -57,6 +57,12 @@ const charivo = createCharivo({
 - built on the Web Speech API
 - useful for prototypes and zero-server flows
 - voice behavior depends on browser and OS support
+- each utterance has a hang-guard deadline of 10 s plus 300 ms per character,
+  the per-character part divided by the utterance's rate: some browsers never
+  fire `end` or `error`, so past it the player cancels the speech and
+  `speak()` rejects with a timeout error instead of never settling. It keeps
+  counting while speech is paused (`speechSynthesis.pause()`, or iOS pausing a
+  background tab)
 
 ## What `@charivo/tts` Owns
 

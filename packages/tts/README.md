@@ -26,6 +26,14 @@ player declares `"audio"` mode with neither. Players that only implement
 `speak()` (no `generateAudio()` or `generateAudioStream()`, e.g. the Web
 Speech API) must use `"web-speech"` mode instead.
 
+The Web Speech player (`@charivo/tts/web`) gives each utterance a deadline of
+10 s plus 300 ms per character (the per-character part divided by the
+utterance's rate), because some browsers never fire `end` or `error` for it:
+past the deadline it cancels the speech and `speak()` rejects with a timeout
+error instead of never settling. It is a hang guard, deliberately generous
+(about twice what CJK text needs at rate 1), and it keeps counting while speech
+is paused (`speechSynthesis.pause()`, or iOS pausing a background tab).
+
 ## Install
 
 ```bash
