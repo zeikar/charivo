@@ -1,5 +1,13 @@
 # @charivo/llm
 
+## 0.13.4
+
+### Patch Changes
+
+- b4bc9f3: Describe each package on npm by what it does for Live2D and Iki AI characters and which providers it supports, instead of only naming it as part of Charivo.
+- Updated dependencies [b4bc9f3]
+  - @charivo/core@0.38.1
+
 ## 0.13.3
 
 ### Patch Changes

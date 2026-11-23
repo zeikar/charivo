@@ -1,5 +1,20 @@
 # @charivo/tts
 
+## 0.11.0
+
+### Minor Changes
+
+- ebc4c1b: `@charivo/tts/web`: `speak()` now rejects with a timeout error if the browser never reports the end of an utterance (some browsers, such as Chrome with some voices, never fire `end` or `error`). Previously `speak()` never settled in that case. The deadline is a deliberately generous hang guard: 10 s plus 300 ms per character, with the per-character part divided by the utterance's rate (so rate 0.5 allows 600 ms per character). It keeps counting while speech is paused (`speechSynthesis.pause()`, or iOS pausing a background tab). On timeout the speech is cancelled before `speak()` rejects.
+
+  A `speak()` that is superseded by a newer `speak()` or ended by `stop()` now resolves, and a late `end` or `error` event from it is ignored. Previously, on Chrome, it could reject with `TTS Error: interrupted` or `TTS Error: canceled`.
+
+### Patch Changes
+
+- b4bc9f3: Describe each package on npm by what it does for Live2D and Iki AI characters and which providers it supports, instead of only naming it as part of Charivo.
+- 7eb2f54: `@charivo/tts/web`: `stop()` now also cancels an utterance the browser is still holding before it starts speaking (for example while Firefox loads voices). Previously it cancelled only while `speechSynthesis.speaking` was true, so a queued line could play after a stop.
+- Updated dependencies [b4bc9f3]
+  - @charivo/core@0.38.1
+
 ## 0.10.3
 
 ### Patch Changes
