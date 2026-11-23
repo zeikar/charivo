@@ -20,6 +20,7 @@ const canvas = document.getElementById("avatar") as HTMLCanvasElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const expressionsEl = document.getElementById("expressions") as HTMLDivElement;
 const motionsEl = document.getElementById("motions") as HTMLDivElement;
+const claimsEl = document.getElementById("claims") as HTMLDivElement;
 const catalogEl = document.getElementById("catalog") as HTMLDListElement;
 const modelsEl = document.getElementById("models") as HTMLDivElement;
 const setStatus = (m: string): void => {
@@ -109,8 +110,8 @@ async function main(): Promise<void> {
   document.getElementById("gazeC")!.addEventListener("click", () => gaze(0, 0));
 
   // Expression and motion buttons come from the catalog the model file
-  // declares, and go through the bus so RenderManager's catalog filter,
-  // debounce and expression release all run.
+  // declares, and go through the bus so RenderManager's catalog filter and
+  // claim arbitration run.
   const catalog = renderer.getAvatarControlCatalog();
 
   for (const id of catalog.expressions) {
@@ -119,20 +120,61 @@ async function main(): Promise<void> {
       makeButton(id, description, () => {
         charivo.emit("avatar:expression", { expressionId: id });
         setStatus(
-          `avatar:expression → ${id} (released on tts:audio:end, or after ~8 s)`,
+          `avatar:expression → ${id} (held for the next speech, or ~8 s if none starts)`,
         );
       }),
     );
   }
-  // RenderManager has no stop event: it releases an expression when speech
-  // ends, so Stop sends the same tts:audio:end.
+  // The buttons above claim as the default source, "app"; releasing that
+  // source drops their claim without touching any other writer's.
   expressionsEl.append(
-    makeButton("■ Stop", "Release the expression via tts:audio:end", () => {
-      if (speechTimer) endSpeech();
-      else charivo.emit("tts:audio:end", {});
-      setStatus("tts:audio:end → expression released");
+    makeButton("■ Stop", "Release the app's expression claim", () => {
+      charivo.emit("avatar:release", { source: "app", channel: "expression" });
+      setStatus("avatar:release → app expression released");
     }),
   );
+
+  // Two writers on one face: a held "inferred" pick, as a text director would
+  // make, and a short "reflex" a game event would fire. The reflex wins while
+  // it lasts, then the face falls back to the inferred one.
+  const [calm, startled] = pickClaimPair(catalog.expressions);
+  if (calm && startled) {
+    claimsEl.append(
+      makeButton(
+        `Inferred: ${calm}`,
+        "director, inferred, until release",
+        () => {
+          charivo.emit("avatar:expression", {
+            expressionId: calm,
+            source: "director",
+            priority: "inferred",
+            hold: "until-release",
+          });
+          setStatus(`director (inferred) holds ${calm}`);
+        },
+      ),
+      makeButton(`Reflex: ${startled} 1.5 s`, "game, reflex, 1.5 s", () => {
+        charivo.emit("avatar:expression", {
+          expressionId: startled,
+          source: "game",
+          priority: "reflex",
+          hold: { ms: 1500 },
+        });
+        charivo.emit("avatar:gaze", {
+          x: 0.8,
+          y: 0.2,
+          source: "game",
+          priority: "reflex",
+          hold: { ms: 1500 },
+        });
+        setStatus(`game (reflex) ${startled} + glance for 1.5 s`);
+      }),
+      makeButton("Release director", "avatar:release director", () => {
+        charivo.emit("avatar:release", { source: "director" });
+        setStatus("avatar:release → director released");
+      }),
+    );
+  }
 
   for (const [group, count] of Object.entries(catalog.motions)) {
     for (let index = 0; index < count; index++) {
@@ -159,6 +201,16 @@ async function main(): Promise<void> {
       );
     }
   }
+}
+
+// The demo pair: the model's first expression as the calm pick, and one whose
+// id or description reads as surprise as the reflex, else the second one.
+function pickClaimPair(ids: string[]): [string?, string?] {
+  const calm = ids[0];
+  const startled =
+    ids.find((id) => id !== calm && /surpris|shock|startl/i.test(id)) ??
+    ids.find((id) => id !== calm);
+  return [calm, startled];
 }
 
 function makeButton(
