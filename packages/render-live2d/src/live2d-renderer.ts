@@ -3,6 +3,7 @@ import {
   type Character,
   type GazeCoordinates,
   type Message,
+  type MotionPriority,
   type Renderer,
 } from "@charivo/core";
 import {
@@ -22,6 +23,12 @@ import { loadCubismCore } from "./utils/cubism-core";
 import { playSafe } from "./utils/motion";
 import { setupResponsiveResize, type ResizeTeardown } from "./utils/resize";
 import { type Live2DRenderer, type Live2DRendererOptions } from "./renderer";
+
+const CUBISM_MOTION_PRIORITY: Record<MotionPriority, number> = {
+  idle: LAppDefine.PriorityIdle,
+  normal: LAppDefine.PriorityNormal,
+  force: LAppDefine.PriorityForce,
+};
 
 export class Live2DRendererImpl
   implements Renderer, MouseTrackable, Live2DRenderer
@@ -163,23 +170,21 @@ export class Live2DRendererImpl
   playMotionByGroup(
     group: string,
     index: number,
-    options?: { muteSound?: boolean },
+    options?: { muteSound?: boolean; priority?: MotionPriority },
   ): void {
     if (!this.model?.isReady()) return;
     if (this.model.hasMotion(group, index)) {
+      // Whether the motion may start is decided by LAppModel.startMotion,
+      // against the motion Cubism is actually running.
+      const priority = CUBISM_MOTION_PRIORITY[options?.priority ?? "normal"];
       // An unmuted call keeps the exact three-argument shape it has always
       // had, so nothing changes for callers that never pass options.
       if (options?.muteSound) {
-        this.model.startMotion(
-          group,
-          index,
-          LAppDefine.PriorityNormal,
-          undefined,
-          undefined,
-          { muteSound: true },
-        );
+        this.model.startMotion(group, index, priority, undefined, undefined, {
+          muteSound: true,
+        });
       } else {
-        this.model.startMotion(group, index, LAppDefine.PriorityNormal);
+        this.model.startMotion(group, index, priority);
       }
     }
   }

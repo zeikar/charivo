@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MotionPriority } from "@charivo/core";
 import type { IkiModel, IkiParameter } from "@ikijs/format";
 import { StandardParameter } from "@ikijs/format";
 
@@ -162,7 +163,11 @@ const FIXTURE: IkiModel = {
       {
         description: "Shakes the head no.",
         duration: 1,
-        curves: [{ parameter: StandardParameter.AngleX, keys: [[0, 0]] }],
+        // Instant and held at 15°, so the frame after a play shows whether
+        // this clip took the head.
+        fadeIn: 0,
+        fadeOut: 0,
+        curves: [{ parameter: StandardParameter.AngleX, keys: [[0, 15]] }],
       },
       {
         description: "Shakes it twice, harder.",
@@ -612,6 +617,84 @@ describe("IkiRenderer / IkiMotion integration", () => {
     // gaze follow included, for as long as it runs.
     expect(store.get(StandardParameter.AngleY)).toBeCloseTo(-10);
     expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(0.5, 2);
+  });
+
+  describe("motion priority against the running clip", () => {
+    // Nod runs 0..1 s and drives AngleY (-10° at 0.5 s, -8° at 0.6 s); Shake
+    // clip 0 holds AngleX at 15° from its first frame. Each case starts Nod
+    // at t = 0 and asks for Shake halfway through it.
+    async function nodThenShake(
+      nod: MotionPriority | undefined,
+      shake: MotionPriority | undefined,
+    ) {
+      await renderer.loadModel("/x.iki");
+      const store = playerRegistry.instances[0]!.store;
+      pump(0);
+      renderer.playMotionByGroup("Nod", 0, nod && { priority: nod });
+      pumpTo(100, 500);
+      renderer.playMotionByGroup("Shake", 0, shake && { priority: shake });
+      pump(600);
+      return store;
+    }
+
+    it("leaves a normal clip running under an idle request, which plays once it is over", async () => {
+      const store = await nodThenShake(undefined, "idle");
+
+      expect(store.get(StandardParameter.AngleY)).toBeCloseTo(-8);
+      expect(store.get(StandardParameter.AngleX)).toBeLessThan(1);
+
+      pumpTo(700, 1100);
+      renderer.playMotionByGroup("Shake", 0, { priority: "idle" });
+      pump(1200);
+
+      expect(store.get(StandardParameter.AngleX)).toBeCloseTo(15);
+    });
+
+    it("declines a normal request while a force clip runs", async () => {
+      const store = await nodThenShake("force", "normal");
+
+      expect(store.get(StandardParameter.AngleY)).toBeCloseTo(-8);
+      expect(store.get(StandardParameter.AngleX)).toBeLessThan(1);
+    });
+
+    it("lets a force request cut a normal clip", async () => {
+      const store = await nodThenShake("normal", "force");
+
+      expect(store.get(StandardParameter.AngleX)).toBeCloseTo(15);
+    });
+
+    it("still lets a normal request replace a normal clip", async () => {
+      const store = await nodThenShake(undefined, undefined);
+
+      expect(store.get(StandardParameter.AngleX)).toBeCloseTo(15);
+    });
+
+    it("does not count a request for a clip the model lacks as running", async () => {
+      await renderer.loadModel("/x.iki");
+      const store = playerRegistry.instances[0]!.store;
+      pump(0);
+
+      renderer.playMotionByGroup("Missing", 0, { priority: "force" });
+      renderer.playMotionByGroup("Shake", 0, { priority: "idle" });
+      pump(100);
+
+      expect(store.get(StandardParameter.AngleX)).toBeCloseTo(15);
+    });
+
+    it("keeps the running clip's priority when a request for a missing clip is rejected", async () => {
+      await renderer.loadModel("/x.iki");
+      const store = playerRegistry.instances[0]!.store;
+      pump(0);
+      renderer.playMotionByGroup("Nod", 0, { priority: "force" });
+      pumpTo(100, 500);
+
+      renderer.playMotionByGroup("Nod", 5, { priority: "force" });
+      renderer.playMotionByGroup("Shake", 0);
+      pump(600);
+
+      expect(store.get(StandardParameter.AngleY)).toBeCloseTo(-8);
+      expect(store.get(StandardParameter.AngleX)).toBeLessThan(1);
+    });
   });
 
   it("moves the eyes by the engine under a model's Idle loop, and leaves it the head", async () => {

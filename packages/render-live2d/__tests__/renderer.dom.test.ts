@@ -512,6 +512,57 @@ describe("Live2DRenderer", () => {
     );
   });
 
+  it("maps the motion priority onto Cubism's own priorities", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+    await renderer.loadModel("/models/hiyori.model3.json");
+
+    const model = rendererMocks.MockModel.instances[0]!;
+    model.ready = true;
+
+    renderer.playMotionByGroup("Tap", 0, { priority: "force" });
+    expect(model.startMotion.mock.calls.at(-1)).toEqual([
+      "Tap",
+      0,
+      LAppDefine.PriorityForce,
+    ]);
+
+    renderer.playMotionByGroup("Tap", 0, { priority: "idle" });
+    expect(model.startMotion.mock.calls.at(-1)).toEqual([
+      "Tap",
+      0,
+      LAppDefine.PriorityIdle,
+    ]);
+
+    // "normal" and an omitted priority keep today's three-argument call.
+    renderer.playMotionByGroup("Tap", 0, { priority: "normal" });
+    expect(model.startMotion.mock.calls.at(-1)).toEqual([
+      "Tap",
+      0,
+      LAppDefine.PriorityNormal,
+    ]);
+
+    renderer.playMotionByGroup("Tap", 0);
+    expect(model.startMotion.mock.calls.at(-1)).toEqual([
+      "Tap",
+      0,
+      LAppDefine.PriorityNormal,
+    ]);
+
+    renderer.playMotionByGroup("Tap", 0, {
+      priority: "force",
+      muteSound: true,
+    });
+    expect(model.startMotion.mock.calls.at(-1)).toEqual([
+      "Tap",
+      0,
+      LAppDefine.PriorityForce,
+      undefined,
+      undefined,
+      { muteSound: true },
+    ]);
+  });
+
   it("delegates expression release to the model once it is ready", async () => {
     const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
 

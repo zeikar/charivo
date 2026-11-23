@@ -10,6 +10,7 @@ import type {
   Character,
   GazeCoordinates,
   Message,
+  MotionPriority,
   Renderer,
 } from "@charivo/core";
 import type {
@@ -32,6 +33,12 @@ import type { IkiRenderer, IkiRendererOptions } from "./renderer";
 /** Amplify RMS→mouth-open so quiet speech still opens the mouth. */
 const MOUTH_GAIN = 1.8;
 
+const MOTION_RANK: Record<MotionPriority, number> = {
+  idle: 0,
+  normal: 1,
+  force: 2,
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
@@ -42,6 +49,12 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
   /** The loaded model; set together with `motion` once a load completes. */
   private model?: IkiModel;
   private motion?: IkiMotion;
+  /**
+   * The one-shot this adapter last started and the priority it was asked
+   * with. It describes the running clip only while `motion.activeMotion()`
+   * still reports the same group and index; the engine owns the clock.
+   */
+  private oneShot?: { group: string; index: number; priority: MotionPriority };
   /** Counts loadModel() calls, so one a later call overtook can tell. */
   private loadCount = 0;
   private motionRafId?: number;
@@ -104,6 +117,7 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
 
     const player = this.player;
     this.model = model;
+    this.oneShot = undefined;
     this.motion = new IkiMotion(
       model,
       (id) => player.getParameter(id),
@@ -245,9 +259,33 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
     this.motion?.stopExpression();
   }
 
-  // No `muteSound` option: Iki motion clips carry no audio.
-  playMotionByGroup(group: string, index: number): void {
-    this.motion?.playMotion(group, index);
+  // `muteSound` is ignored: Iki motion clips carry no audio.
+  playMotionByGroup(
+    group: string,
+    index: number,
+    options?: { muteSound?: boolean; priority?: MotionPriority },
+  ): void {
+    const motion = this.motion;
+    if (!motion) return;
+    const priority = options?.priority ?? "normal";
+
+    const running = motion.activeMotion();
+    const oneShot = this.oneShot;
+    if (
+      running &&
+      oneShot &&
+      running.group === oneShot.group &&
+      running.index === oneShot.index &&
+      MOTION_RANK[priority] < MOTION_RANK[oneShot.priority]
+    ) {
+      return;
+    }
+
+    // Recorded only once the engine accepts the clip: a rejected request
+    // leaves the running one, and its priority, in place.
+    if (motion.playMotion(group, index)) {
+      this.oneShot = { group, index, priority };
+    }
   }
 
   getAvailableExpressions(): string[] {

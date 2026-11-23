@@ -1,6 +1,7 @@
 import type {
   AvatarControlCatalog,
   GazeCoordinates,
+  MotionPriority,
   Renderer,
 } from "@charivo/core";
 import type { GazeOrigin, MouseTrackable } from "@charivo/render";
@@ -18,11 +19,18 @@ export interface IkiRenderer extends Renderer, MouseTrackable {
   loadModel(modelPath: string): Promise<void>;
   playExpression(expressionId: string): void;
   stopExpression(): void;
-  /** `options.muteSound` is accepted for the `Renderer` contract and ignored: Iki motion clips carry no audio. */
+  /**
+   * `options.priority` (default `"normal"`) is weighed against the clip this
+   * renderer started, for as long as the engine still runs it: a request of
+   * lower priority is declined, an equal or higher one replaces the clip.
+   * `"force"` therefore always plays, and `"idle"` is declined (not queued)
+   * while a `"normal"` or `"force"` clip runs. `options.muteSound` is accepted for the `Renderer`
+   * contract and ignored: Iki motion clips carry no audio.
+   */
   playMotionByGroup(
     group: string,
     index: number,
-    options?: { muteSound?: boolean },
+    options?: { muteSound?: boolean; priority?: MotionPriority },
   ): void;
   lookAt(coords: GazeCoordinates): void;
   setGazeOrigin(origin?: GazeOrigin): void;
