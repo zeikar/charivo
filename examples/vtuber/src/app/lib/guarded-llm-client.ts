@@ -1,5 +1,5 @@
 import type { LLMClient, LLMMessage } from "@charivo/core";
-import { hasEnvelopeTag } from "../../director";
+import { DIRECTOR_TAG, hasEnvelopeTag } from "../../director";
 
 export const ENVELOPE_TAG_REPLY_MESSAGE =
   "Reply withheld: it contained an envelope tag";
@@ -7,7 +7,6 @@ export const ENVELOPE_TAG_REPLY_MESSAGE =
 export const STAGE_DIRECTION_REPLY_MESSAGE =
   "Reply withheld: it repeated a stage direction";
 
-const CUE_TAG = "[DIRECTOR]";
 // A cue shorter than this must appear whole; a longer one is matched by any
 // run of this many characters, so a partial quote is caught too.
 const CUE_MATCH_CHARS = 30;
@@ -23,8 +22,8 @@ function normalize(text: string): string {
 // reuses its words, but a cue is private and must never be repeated.
 function directorCues(messages: LLMMessage[]): string[] {
   return messages
-    .filter((m) => m.role === "user" && m.content.startsWith(CUE_TAG))
-    .map((m) => normalize(m.content.slice(CUE_TAG.length)))
+    .filter((m) => m.role === "user" && m.content.startsWith(DIRECTOR_TAG))
+    .map((m) => normalize(m.content.slice(DIRECTOR_TAG.length)))
     .filter((cue) => cue !== "");
 }
 

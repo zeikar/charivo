@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createGeminiLLMProvider } from "@charivo/server/gemini";
-import { parseChatRequest, requiresToolCallingPath } from "../chat-request";
+import { parseChatRequest } from "../chat-request";
 import { CHAT_GEMINI_MODEL, TOOL_CALLS_PER_ROUND } from "../demo-limits";
 import { boundReply } from "../reply-budget";
 
@@ -53,28 +53,15 @@ export async function POST(request: NextRequest) {
     });
 
     const { messages, tools } = parsed.value;
-
-    if (requiresToolCallingPath(parsed.value)) {
-      const result = await llmProvider.generateResponseWithTools(
-        messages,
-        tools ?? [],
-      );
-
-      return NextResponse.json({
-        success: true,
-        message: boundReply(result.content),
-        // The request budgets assume at most TOOL_CALLS_PER_ROUND calls per
-        // round; more would push the next request past the message cap, so
-        // the extra calls are dropped.
-        toolCalls: result.toolCalls?.slice(0, TOOL_CALLS_PER_ROUND),
-      });
-    }
-
-    const assistantMessage = await llmProvider.generateResponse(messages);
+    const result = await llmProvider.generateResponseWithTools(messages, tools);
 
     return NextResponse.json({
       success: true,
-      message: boundReply(assistantMessage),
+      message: boundReply(result.content),
+      // The request budgets assume at most TOOL_CALLS_PER_ROUND calls per
+      // round; more would push the next request past the message cap, so
+      // the extra calls are dropped.
+      toolCalls: result.toolCalls?.slice(0, TOOL_CALLS_PER_ROUND),
     });
   } catch (error) {
     console.error("Gemini LLM Provider Error:", error);

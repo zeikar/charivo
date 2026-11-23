@@ -2,6 +2,7 @@
 // message. The envelope tags each input so the model can tell a private cue
 // and a world event from something a viewer actually said.
 
+export const DIRECTOR_TAG = "[DIRECTOR]";
 export const MAX_NAME_LENGTH = 40;
 export const MAX_TEXT_LENGTH = 280;
 
@@ -25,7 +26,7 @@ function sanitize(value: string, maxLength: number): string {
 
 /** Cues are written by the app, not by viewers, so they are not sanitized. */
 export function formatDirectorCue(text: string): string {
-  return `[DIRECTOR] ${text}`;
+  return `${DIRECTOR_TAG} ${text}`;
 }
 
 export function formatViewerChat(viewer: string, text: string): string {

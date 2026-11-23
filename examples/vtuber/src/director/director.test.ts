@@ -954,10 +954,7 @@ describe("createDirector: segments", () => {
     director.start();
 
     expect(prompts(port)).toEqual(["[DIRECTOR] Open."]);
-    expect(director.getSnapshot()).toMatchObject({
-      segmentIndex: 0,
-      segment: showPlan.segments[0],
-    });
+    expect(director.getSnapshot().segmentIndex).toBe(0);
     expect(log).toContainEqual({
       kind: "segment",
       at: 0,
@@ -974,10 +971,7 @@ describe("createDirector: segments", () => {
     director.start();
 
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(director.getSnapshot()).toMatchObject({
-      segmentIndex: 1,
-      segment: showPlan.segments[1],
-    });
+    expect(director.getSnapshot().segmentIndex).toBe(1);
     expect(port.calls).toHaveLength(1);
     expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
       "[DIRECTOR] Talk games.",

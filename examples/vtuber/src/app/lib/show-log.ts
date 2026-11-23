@@ -6,7 +6,7 @@ import type {
   SpeakResult,
 } from "../../director";
 
-export const SHOW_LOG_LIMIT = 200;
+const SHOW_LOG_LIMIT = 200;
 
 /** The Director's log for the current show, keeping only the latest entries. */
 export interface ShowLog {
@@ -38,7 +38,6 @@ const IGNORE_REASON_LABELS: Record<IgnoreReason, string> = {
   "queue-full": "queue full",
   "not-silent": "not silent",
   "show-ending": "show ending",
-  stale: "stale",
 };
 
 export function describeDecision(decision: Decision): string {

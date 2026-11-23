@@ -93,9 +93,9 @@ Speech is the browser's Web Speech API (`@charivo/tts/web`), so it costs
 nothing and has no quota. Voice quality and the available voices depend on the
 browser and OS, and the example does not pick one: the browser's default voice
 speaks. Lip sync is simulated from the text, because Web Speech gives no audio to
-analyze. Each speak has a deadline (10 s plus 150 ms per character, capped at
-2 minutes); if the browser never reports the end of an utterance, the speech is
-cancelled and the line fails, so the next one can start.
+analyze. Each speak has a deadline (10 s plus 150 ms per character); if the
+browser never reports the end of an utterance, the speech is cancelled and the
+line fails, so the next one can start.
 
 This is a change from an earlier design that used Gemini TTS. On the demo key,
 Gemini TTS answered 429 with a free-tier limit of 10 requests per day for
@@ -270,9 +270,12 @@ message. They do not show how a real model handles cues, or anything about
 browser audio. Those need a live run.
 
 The Director panel counts cue leaks on every spoken reply: a reply that contains
-an envelope tag or the word "director". It cannot catch a paraphrase, and it also
-flags an innocent "film director". Every reply in the live runs is also read by
-hand for cue disclosure and for treating a cue or event as a viewer's words.
+an envelope tag or the word "director". In this app a reply with an envelope tag
+or a verbatim cue never gets that far: the reply guard withholds it, and it shows
+up as a failed line ("Reply withheld: ..."). So the leak counter here mostly
+catches the word "director". It cannot catch a paraphrase, and it also flags an
+innocent "film director". Every reply in the live runs is also read by hand for
+cue disclosure and for treating a cue or event as a viewer's words.
 
 ### Results
 

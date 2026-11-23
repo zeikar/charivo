@@ -70,8 +70,6 @@ export interface PolicyView {
   ending: boolean;
 }
 
-// "stale" is never returned here: a line goes stale while it waits, so the
-// Director reports it when the queue drops it at dequeue.
 export function decide(
   event: ShowEvent,
   view: PolicyView,
@@ -157,8 +155,8 @@ function decideIdle(view: PolicyView): Decision {
   if (view.inFlightSource !== null || waiting) {
     return { kind: "ignore", reason: "not-silent" };
   }
-  // The Director can run before any segment has started (no scheduler, or
-  // a plan-less test), so the cue must not depend on one.
+  // The Director can run with no segment started (an empty plan), so the cue
+  // must not depend on one.
   const cue = view.segment
     ? `Chat is quiet. Keep the current topic, "${view.segment.title}", going with one short new thought.`
     : "Chat is quiet. Keep the stream going with one short new thought.";

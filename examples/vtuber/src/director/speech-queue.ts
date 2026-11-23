@@ -1,6 +1,6 @@
 import type { Line, LineSource } from "./types";
 
-export interface ShiftResult {
+interface ShiftResult {
   /** The next line to speak, or null when nothing fresh is left. */
   line: Line | null;
   /** Expired lines skipped on the way, oldest first. */

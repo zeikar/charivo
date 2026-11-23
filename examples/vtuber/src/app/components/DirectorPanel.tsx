@@ -14,14 +14,6 @@ import { FOCUS_RING } from "./focus-ring";
 
 const DARK_FOCUS_RING = `${FOCUS_RING} focus-visible:ring-offset-slate-950`;
 
-const STATUS_STYLES: Record<DirectorStatus, { label: string; pill: string }> = {
-  ready: { label: "Ready", pill: "bg-slate-400/15 text-slate-300" },
-  running: { label: "Running", pill: "bg-emerald-400/15 text-emerald-300" },
-  finished: { label: "Finished", pill: "bg-sky-400/15 text-sky-300" },
-  stopped: { label: "Stopped", pill: "bg-slate-400/15 text-slate-300" },
-  failed: { label: "Failed", pill: "bg-red-400/15 text-red-300" },
-};
-
 const TONES = {
   neutral: "bg-slate-400/15 text-slate-300",
   info: "bg-sky-400/15 text-sky-300",
@@ -31,6 +23,14 @@ const TONES = {
 } as const;
 
 type Tone = keyof typeof TONES;
+
+const STATUS_STYLES: Record<DirectorStatus, { label: string; tone: Tone }> = {
+  ready: { label: "Ready", tone: "neutral" },
+  running: { label: "Running", tone: "good" },
+  finished: { label: "Finished", tone: "info" },
+  stopped: { label: "Stopped", tone: "neutral" },
+  failed: { label: "Failed", tone: "bad" },
+};
 
 const SOURCE_LABELS: Record<Line["source"], string> = {
   chat: "Chat line",
@@ -209,10 +209,19 @@ export function DirectorPanel({
     ["Cue leaks", counters?.cueLeaks ?? 0],
   ];
   const queue = snapshot?.queue ?? [];
+  const segmentIndex = snapshot?.segmentIndex ?? null;
   // Newest first, so the latest decision is in view without scrolling.
-  const recent = log.entries
-    .map((entry, i) => ({ entry, key: log.dropped + i }))
-    .reverse();
+  const recent = useMemo(
+    () =>
+      log.entries
+        .map((entry, i) => ({
+          entry,
+          key: log.dropped + i,
+          view: describeEntry(entry, events, plan),
+        }))
+        .reverse(),
+    [log, events, plan],
+  );
 
   return (
     <section
@@ -223,7 +232,7 @@ export function DirectorPanel({
         <h2 className="text-sm font-semibold tracking-wide">Director</h2>
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-            status?.pill ?? TONES.neutral
+            TONES[status?.tone ?? "neutral"]
           }`}
         >
           {status?.label ?? "Not started"}
@@ -235,9 +244,8 @@ export function DirectorPanel({
           <div className="min-w-0 space-y-1">
             <Label>Current segment</Label>
             <div className="text-sm font-medium text-slate-100">
-              {snapshot?.segmentIndex !== null &&
-              snapshot?.segmentIndex !== undefined
-                ? describeSegment(plan, snapshot.segmentIndex)
+              {segmentIndex !== null
+                ? describeSegment(plan, segmentIndex)
                 : "None"}
             </div>
           </div>
@@ -277,32 +285,29 @@ export function DirectorPanel({
                 tabIndex={0}
                 className={`max-h-64 space-y-1.5 overflow-y-auto rounded pr-1 ${DARK_FOCUS_RING}`}
               >
-                {recent.map(({ entry, key }) => {
-                  const view = describeEntry(entry, events, plan);
-                  return (
-                    <li key={key} className="flex gap-2">
-                      <time className="shrink-0 tabular-nums text-slate-500">
-                        {new Date(entry.at).toLocaleTimeString()}
-                      </time>
-                      <div className="min-w-0 break-words text-slate-200">
-                        {view.tags.map((tag) => (
-                          <span
-                            key={tag.label}
-                            className={`mr-1.5 inline-block rounded-full px-1.5 py-px text-[10px] font-medium ${TONES[tag.tone]}`}
-                          >
-                            {tag.label}
-                          </span>
-                        ))}
-                        {view.text}
-                        {view.failure !== undefined && (
-                          <div className="text-red-300">
-                            Failure: {view.failure}
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
+                {recent.map(({ entry, key, view }) => (
+                  <li key={key} className="flex gap-2">
+                    <time className="shrink-0 tabular-nums text-slate-500">
+                      {new Date(entry.at).toLocaleTimeString()}
+                    </time>
+                    <div className="min-w-0 break-words text-slate-200">
+                      {view.tags.map((tag) => (
+                        <span
+                          key={tag.label}
+                          className={`mr-1.5 inline-block rounded-full px-1.5 py-px text-[10px] font-medium ${TONES[tag.tone]}`}
+                        >
+                          {tag.label}
+                        </span>
+                      ))}
+                      {view.text}
+                      {view.failure !== undefined && (
+                        <div className="text-red-300">
+                          Failure: {view.failure}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
               </ol>
             )}
           </div>

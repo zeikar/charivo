@@ -2,7 +2,6 @@ import type { TTSPlayer } from "@charivo/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   SPEECH_BASE_MS,
-  SPEECH_MAX_MS,
   SPEECH_PER_CHAR_MS,
   speechDeadlineMs,
   withSpeechDeadline,
@@ -25,12 +24,11 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("speechDeadlineMs", () => {
-  it("is a base plus time per character, capped", () => {
+  it("is a base plus time per character", () => {
     expect(speechDeadlineMs("")).toBe(SPEECH_BASE_MS);
     expect(speechDeadlineMs("x".repeat(100))).toBe(
       SPEECH_BASE_MS + 100 * SPEECH_PER_CHAR_MS,
     );
-    expect(speechDeadlineMs("x".repeat(10_000))).toBe(SPEECH_MAX_MS);
   });
 });
 
@@ -43,7 +41,7 @@ describe("withSpeechDeadline", () => {
     const done = wrapped.speak("hello");
     await vi.advanceTimersByTimeAsync(3_000);
     await expect(done).resolves.toBeUndefined();
-    await vi.advanceTimersByTimeAsync(SPEECH_MAX_MS);
+    await vi.advanceTimersByTimeAsync(speechDeadlineMs("hello"));
     expect(player.stop).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -75,7 +73,7 @@ describe("withSpeechDeadline", () => {
 
     expect(order).toEqual([
       "stop",
-      "reject: Speech timed out after 11 s without finishing",
+      `reject: Speech timed out after ${Math.round(speechDeadlineMs("hello") / 1000)} s without finishing`,
     ]);
   });
 
@@ -90,7 +88,7 @@ describe("withSpeechDeadline", () => {
     const assertion = expect(done).rejects.toThrow(
       /stopping it failed: synthesis gone/,
     );
-    await vi.advanceTimersByTimeAsync(SPEECH_MAX_MS);
+    await vi.advanceTimersByTimeAsync(speechDeadlineMs("hi"));
     await assertion;
   });
 

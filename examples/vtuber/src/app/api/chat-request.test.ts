@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChatRequest, requiresToolCallingPath } from "./chat-request";
+import { parseChatRequest } from "./chat-request";
 import {
   CHAT_MAX_MESSAGE_CHARS,
   CHAT_MAX_MESSAGES,
@@ -167,47 +167,14 @@ describe("parseChatRequest shape validation", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts a plain chat with no tools", () => {
+  it("defaults an omitted tools key to an empty list", () => {
     const result = parseChatRequest({
       messages: [{ role: "user", content: "hi" }],
     });
-    expect(result.success).toBe(true);
-  });
-});
-
-describe("requiresToolCallingPath", () => {
-  it("is false for a tools-less plain conversation", () => {
-    expect(
-      requiresToolCallingPath({ messages: [{ role: "user", content: "Hi" }] }),
-    ).toBe(false);
-  });
-
-  it("is true for an empty tools array", () => {
-    expect(
-      requiresToolCallingPath({
-        messages: [{ role: "user", content: "Hi" }],
-        tools: [],
-      }),
-    ).toBe(true);
-  });
-
-  it("is true for tool-ish history without a tools key", () => {
-    expect(
-      requiresToolCallingPath({
-        messages: [{ role: "tool", content: "{}", toolCallId: "call_1" }],
-      }),
-    ).toBe(true);
-    expect(
-      requiresToolCallingPath({
-        messages: [
-          {
-            role: "assistant",
-            content: "",
-            toolCalls: [{ id: "call_1", name: "noop", arguments: {} }],
-          },
-        ],
-      }),
-    ).toBe(true);
+    expect(result).toEqual({
+      success: true,
+      value: { messages: [{ role: "user", content: "hi" }], tools: [] },
+    });
   });
 });
 

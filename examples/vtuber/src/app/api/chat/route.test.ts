@@ -2,13 +2,9 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_REPLY_MAX_CHARS, TOOL_CALLS_PER_ROUND } from "../demo-limits";
 
-const generateResponse = vi.fn();
 const generateResponseWithTools = vi.fn();
 vi.mock("@charivo/server/gemini", () => ({
-  createGeminiLLMProvider: () => ({
-    generateResponse,
-    generateResponseWithTools,
-  }),
+  createGeminiLLMProvider: () => ({ generateResponseWithTools }),
 }));
 
 import { POST } from "./route";
@@ -31,7 +27,7 @@ const JSON_HEADERS = { "content-type": "application/json" };
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("GEMINI_API_KEY", "test-key");
-  generateResponse.mockResolvedValue("Hello!");
+  generateResponseWithTools.mockResolvedValue({ content: "Hello!" });
 });
 
 describe("POST /api/chat: caller checks", () => {
@@ -42,7 +38,7 @@ describe("POST /api/chat: caller checks", () => {
         contentType ? { "content-type": contentType } : {},
       );
       expect(response.status).toBe(415);
-      expect(generateResponse).not.toHaveBeenCalled();
+      expect(generateResponseWithTools).not.toHaveBeenCalled();
     },
   );
 
@@ -51,7 +47,7 @@ describe("POST /api/chat: caller checks", () => {
     async (origin) => {
       const response = await post({ ...JSON_HEADERS, origin });
       expect(response.status).toBe(403);
-      expect(generateResponse).not.toHaveBeenCalled();
+      expect(generateResponseWithTools).not.toHaveBeenCalled();
     },
   );
 
@@ -70,27 +66,26 @@ describe("POST /api/chat: caller checks", () => {
 });
 
 describe("POST /api/chat: reply bound", () => {
-  it("truncates an over-budget reply on both paths", async () => {
+  it("truncates an over-budget reply", async () => {
     const long = "Word. ".repeat(CHAT_REPLY_MAX_CHARS);
-    generateResponse.mockResolvedValue(long);
     generateResponseWithTools.mockResolvedValue({ content: long });
 
-    const plain = await (await post(JSON_HEADERS)).json();
-    const tools = await (
-      await post(JSON_HEADERS, {
-        messages: [{ role: "user", content: "hi" }],
-        tools: [],
-      })
-    ).json();
+    const { message } = await (await post(JSON_HEADERS)).json();
 
-    for (const { message } of [plain, tools]) {
-      expect(message.length).toBeLessThanOrEqual(CHAT_REPLY_MAX_CHARS);
-      expect(message.endsWith("Word.")).toBe(true);
-    }
+    expect(message.length).toBeLessThanOrEqual(CHAT_REPLY_MAX_CHARS);
+    expect(message.endsWith("Word.")).toBe(true);
   });
 });
 
 describe("POST /api/chat: tool calls", () => {
+  it("passes an omitted tools key to the provider as an empty list", async () => {
+    await post(JSON_HEADERS);
+    expect(generateResponseWithTools).toHaveBeenCalledWith(
+      [{ role: "user", content: "hi" }],
+      [],
+    );
+  });
+
   it("keeps only the first TOOL_CALLS_PER_ROUND calls of a round", async () => {
     const calls = Array.from({ length: 6 }, (_, i) => ({
       id: `c${i}`,

@@ -1,23 +1,23 @@
-import type { TTSOptions, TTSPlayer } from "@charivo/core";
+import {
+  getErrorMessage,
+  type TTSOptions,
+  type TTSPlayer,
+} from "@charivo/core";
 
 /**
  * Web Speech can leave `speak()` pending forever (an `end` or `error` event
  * that never fires, a voice that stalls), and the Director waits for each
  * line, so one stall would hold the whole show. Each speak gets a deadline:
  * a fixed 10 s for startup and slow voices, plus 150 ms per character, which
- * is about twice the time a slow voice (~13 characters a second) needs. The
- * cap of 2 minutes stays above a full-length reply, since replies are asked
- * to be one to three sentences.
+ * is about twice the time a slow voice (~13 characters a second) needs. It has
+ * no cap of its own: the chat route already bounds a reply's length
+ * (CHAT_REPLY_MAX_CHARS).
  */
 export const SPEECH_BASE_MS = 10_000;
 export const SPEECH_PER_CHAR_MS = 150;
-export const SPEECH_MAX_MS = 120_000;
 
 export function speechDeadlineMs(text: string): number {
-  return Math.min(
-    SPEECH_MAX_MS,
-    SPEECH_BASE_MS + text.length * SPEECH_PER_CHAR_MS,
-  );
+  return SPEECH_BASE_MS + text.length * SPEECH_PER_CHAR_MS;
 }
 
 /**
@@ -43,46 +43,37 @@ export function withSpeechDeadline(player: TTSPlayer): TTSPlayer {
       const deadlineMs = speechDeadlineMs(text);
       return new Promise<void>((resolve, reject) => {
         let settled = false;
-        const utterance = {
-          disarm() {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            if (active === utterance) active = null;
-            resolve();
-          },
-        };
-        const finish = (settle: () => void) => {
+        // Every way an utterance ends goes through here once: it clears the
+        // deadline and the utterance's claim on `active`, then settles.
+        const settle = (then: () => void) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
           if (active === utterance) active = null;
-          settle();
+          then();
         };
-        const timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          if (active === utterance) active = null;
-          const seconds = Math.round(deadlineMs / 1000);
-          const timedOut = `Speech timed out after ${seconds} s without finishing`;
-          player.stop().then(
-            () => reject(new Error(timedOut)),
-            (stopError: unknown) =>
-              reject(
-                new Error(
-                  `${timedOut}; stopping it failed: ${
-                    stopError instanceof Error
-                      ? stopError.message
-                      : String(stopError)
-                  }`,
-                ),
-              ),
-          );
-        }, deadlineMs);
+        const utterance = { disarm: () => settle(resolve) };
+        const timer = setTimeout(
+          () =>
+            settle(() => {
+              const seconds = Math.round(deadlineMs / 1000);
+              const timedOut = `Speech timed out after ${seconds} s without finishing`;
+              player.stop().then(
+                () => reject(new Error(timedOut)),
+                (stopError: unknown) =>
+                  reject(
+                    new Error(
+                      `${timedOut}; stopping it failed: ${getErrorMessage(stopError)}`,
+                    ),
+                  ),
+              );
+            }),
+          deadlineMs,
+        );
         active = utterance;
         player.speak(text, options).then(
-          () => finish(resolve),
-          (error: unknown) => finish(() => reject(error)),
+          () => settle(resolve),
+          (error: unknown) => settle(() => reject(error)),
         );
       });
     },

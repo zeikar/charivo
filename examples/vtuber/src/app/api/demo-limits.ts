@@ -18,6 +18,10 @@ export const SHOW_MAX_HISTORY_TURNS = 20;
  * One tool round is an assistant message carrying the calls plus one `tool`
  * message per call; `LLMManager` runs at most three rounds. Four calls per
  * round is generous for an avatar that sets an expression and plays a motion.
+ *
+ * TOOL_LOOP_ROUNDS mirrors `MAX_TOOL_ROUNDS` in @charivo/llm
+ * (packages/llm/src/llm-manager.ts), which is private, so it is copied here:
+ * when that changes, change this with it.
  */
 export const TOOL_LOOP_ROUNDS = 3;
 export const TOOL_CALLS_PER_ROUND = 4;
@@ -68,7 +72,8 @@ export const CHAT_REPLY_MAX_CHARS = Math.min(
       REPLIES_PER_REQUEST,
   ),
 );
-export const CHAT_MAX_TOOL_CALLS_PER_MESSAGE = 16;
+/** The route trims each reply to TOOL_CALLS_PER_ROUND calls, so history never holds more. */
+export const CHAT_MAX_TOOL_CALLS_PER_MESSAGE = TOOL_CALLS_PER_ROUND;
 export const CHAT_MAX_TOOLS_BYTES = 32_768;
 export const CHAT_MAX_TOOL_CALLS_BYTES = 16_384;
 export const CHAT_MAX_TOOL_CALL_ID_CHARS = 256;

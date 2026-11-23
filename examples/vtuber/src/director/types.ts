@@ -62,8 +62,7 @@ export type IgnoreReason =
   | "source-cooldown"
   | "queue-full"
   | "not-silent"
-  | "show-ending"
-  | "stale";
+  | "show-ending";
 
 export type Decision =
   | { kind: "ignore"; reason: IgnoreReason }
@@ -166,8 +165,8 @@ export interface DirectorCounters {
 
 export interface DirectorSnapshot {
   status: DirectorStatus;
+  /** Index into `plan.segments`, or null before the first segment starts. */
   segmentIndex: number | null;
-  segment: Segment | null;
   inFlight: Line | null;
   queue: readonly Line[];
   counters: DirectorCounters;

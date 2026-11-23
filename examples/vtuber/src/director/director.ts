@@ -328,11 +328,9 @@ export function createDirector({
   }
 
   function buildSnapshot(): DirectorSnapshot {
-    const current = scheduler.current();
     return Object.freeze({
       status,
-      segmentIndex: current?.index ?? null,
-      segment: current?.segment ?? null,
+      segmentIndex: scheduler.current()?.index ?? null,
       inFlight,
       queue: Object.freeze(queue.snapshot()),
       counters: Object.freeze({ ...counters }),

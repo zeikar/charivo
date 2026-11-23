@@ -93,7 +93,7 @@ export function useVtuberShow({
 }): VtuberShow {
   const [portReady, setPortReady] = useState(false);
   const [lifecycle, setLifecycleState] = useState<ShowLifecycle>("idle");
-  const [needsReload, setNeedsReloadState] = useState(false);
+  const [needsReload, setNeedsReload] = useState(false);
   const [snapshot, setSnapshot] = useState<DirectorSnapshot | null>(null);
   const [log, setLog] = useState<ShowLog>(EMPTY_SHOW_LOG);
   const [scriptedViewers, setScriptedViewersState] = useState(true);
@@ -106,7 +106,6 @@ export function useVtuberShow({
   // The single claim on the port: startShow and stopShow read it
   // synchronously, so a double click cannot slip past a pending state update.
   const lifecycleRef = useRef<ShowLifecycle>("idle");
-  const needsReloadRef = useRef(false);
   const directorRef = useRef<Director | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const chatSourceRef = useRef<PushSource | null>(null);
@@ -118,11 +117,6 @@ export function useVtuberShow({
   const setLifecycle = useCallback((next: ShowLifecycle) => {
     lifecycleRef.current = next;
     setLifecycleState(next);
-  }, []);
-
-  const setNeedsReload = useCallback((next: boolean) => {
-    needsReloadRef.current = next;
-    setNeedsReloadState(next);
   }, []);
 
   const setScriptedViewers = useCallback((enabled: boolean) => {
@@ -137,14 +131,11 @@ export function useVtuberShow({
 
   // A port stays unusable for good, so this only ever turns needsReload on;
   // the setup effect turns it off when it builds a new port.
-  const checkUsable = useCallback(
-    (session: Session) => {
-      if (sessionRef.current === session && !session.port.isUsable()) {
-        setNeedsReload(true);
-      }
-    },
-    [setNeedsReload],
-  );
+  const checkUsable = useCallback((session: Session) => {
+    if (sessionRef.current === session && !session.port.isUsable()) {
+      setNeedsReload(true);
+    }
+  }, []);
 
   // Gives up the claim, but only for the Director that still holds it: a
   // continuation that resumes after a newer show started must not end that one.
@@ -306,11 +297,15 @@ export function useVtuberShow({
         console.error("Failed to dispose Charivo:", disposeError);
       });
     };
-  }, [canvasContainerRef, releaseDirector, setNeedsReload]);
+  }, [canvasContainerRef, releaseDirector]);
 
   const startShow = useCallback(async () => {
     const session = sessionRef.current;
-    if (!session || needsReloadRef.current || lifecycleRef.current !== "idle") {
+    if (
+      !session ||
+      !session.port.isUsable() ||
+      lifecycleRef.current !== "idle"
+    ) {
       return;
     }
     setLifecycle("starting");

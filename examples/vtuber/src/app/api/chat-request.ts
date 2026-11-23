@@ -24,11 +24,8 @@ import {
 
 export interface ParsedChatRequest {
   messages: LLMMessage[];
-  /**
-   * `undefined` when the request body omitted `tools` entirely. An empty
-   * array is a distinct, valid value - see `requiresToolCallingPath`.
-   */
-  tools?: ToolDefinition[];
+  /** `[]` when the request body omitted `tools`. */
+  tools: ToolDefinition[];
 }
 
 export type ParseResult<T> =
@@ -69,7 +66,7 @@ export function parseChatRequest(
   }
 
   if (tools === undefined) {
-    return ok({ messages: parsedMessages });
+    return ok({ messages: parsedMessages, tools: [] });
   }
 
   const toolsResult = parseTools(tools);
@@ -78,32 +75,6 @@ export function parseChatRequest(
   }
 
   return ok({ messages: parsedMessages, tools: toolsResult.value });
-}
-
-/**
- * The terminal round of a tool loop sends `tools: []` while `messages` still
- * carries the tool-call history (assistant `toolCalls` turns and `role:
- * "tool"` results). Both `generateResponse` and `generateResponseWithTools`
- * take the same `LLMMessage[]` and forward those turns identically, so this
- * routing is not about what each call can accept - it is about which reply
- * shape the caller needs. Only `generateResponseWithTools` returns
- * `toolCalls`, so any request that carries a `tools` key at all (even empty)
- * or a tool-ish turn in `messages` - i.e. one already mid tool loop - must use
- * it instead, to keep the reply shape a tool-looping client expects. Only a
- * `tools`-less request built entirely from plain `{role, content}` turns
- * takes the `generateResponse` path.
- */
-export function requiresToolCallingPath(parsed: ParsedChatRequest): boolean {
-  return parsed.tools !== undefined || parsed.messages.some(isToolishMessage);
-}
-
-function isToolishMessage(message: LLMMessage): boolean {
-  return (
-    message.role === "tool" ||
-    (message.role === "assistant" &&
-      !!message.toolCalls &&
-      message.toolCalls.length > 0)
-  );
 }
 
 function parseChatMessage(
