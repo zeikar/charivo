@@ -135,7 +135,14 @@ describe("connectAvatarDirectorToCascade", () => {
     await flush();
 
     expect(emissions).toEqual([
-      ["avatar:expression", { expressionId: "happy" }],
+      [
+        "avatar:expression",
+        {
+          expressionId: "happy",
+          source: "avatar-director",
+          priority: "inferred",
+        },
+      ],
     ]);
   });
 
@@ -159,7 +166,14 @@ describe("connectAvatarDirectorToCascade", () => {
     await flush();
 
     expect(emissions).toEqual([
-      ["avatar:expression", { expressionId: "happy" }],
+      [
+        "avatar:expression",
+        {
+          expressionId: "happy",
+          source: "avatar-director",
+          priority: "inferred",
+        },
+      ],
     ]);
 
     speech.resolve(undefined);

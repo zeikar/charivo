@@ -380,6 +380,8 @@ describe("realtime-core", () => {
     );
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "exp_happy",
+      source: "tool",
+      priority: "explicit",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("tool:call", {
       name: "setExpression",
@@ -884,6 +886,8 @@ describe("realtime-core", () => {
 
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:expression", {
       expressionId: "Smile",
+      source: "tool",
+      priority: "explicit",
     });
     // muteSound rides along because this went through a tool call: the avatar
     // result projector marks those so a motion's baked-in sample clip does not
@@ -892,10 +896,13 @@ describe("realtime-core", () => {
       group: "Idle",
       index: 0,
       muteSound: true,
+      priority: "explicit",
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith("avatar:gaze", {
       x: 0.4,
       y: -0.2,
+      source: "tool",
+      priority: "explicit",
     });
 
     const toolResultIndex = (

@@ -253,7 +253,11 @@ export function createAvatarResultProjector(): ToolResultProjector {
       case SET_EXPRESSION_TOOL_NAME: {
         const expressionId = output.expressionId;
         if (typeof expressionId === "string") {
-          emit("avatar:expression", { expressionId });
+          emit("avatar:expression", {
+            expressionId,
+            source: "tool",
+            priority: "explicit",
+          });
         }
         return;
       }
@@ -271,6 +275,7 @@ export function createAvatarResultProjector(): ToolResultProjector {
             group,
             index: index as number,
             muteSound: true,
+            priority: "explicit",
           });
         }
         return;
@@ -279,7 +284,11 @@ export function createAvatarResultProjector(): ToolResultProjector {
       case LOOK_AT_TOOL_NAME: {
         const coords = readGazeCoordinates(output);
         if (coords) {
-          emit("avatar:gaze", coords);
+          emit("avatar:gaze", {
+            ...coords,
+            source: "tool",
+            priority: "explicit",
+          });
         }
       }
     }

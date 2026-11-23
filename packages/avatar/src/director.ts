@@ -20,7 +20,11 @@ export type AvatarClassifier = (input: {
 export interface AvatarDirectorOptions {
   catalog: AvatarControlCatalog;
   classifier: AvatarClassifier;
-  /** Receives `avatar:expression` and `avatar:motion`; a `Charivo` instance fits. */
+  /**
+   * Receives `avatar:expression` and `avatar:motion`; a `Charivo` instance
+   * fits. The expression is an `inferred` claim, so an `explicit` expression
+   * claim (a tool call, an app event) outranks it.
+   */
   emitter: CharivoEventEmitter;
   /** Defaults to `console.warn`. */
   onError?: (error: unknown) => void;
@@ -37,6 +41,10 @@ export interface AvatarDirector {
   cancel(): void;
 }
 
+/**
+ * Text-driven avatar control. Its expression is an `inferred` claim from the
+ * `avatar-director` source, so an `explicit` expression claim outranks it.
+ */
 export function createAvatarDirector(
   options: AvatarDirectorOptions,
 ): AvatarDirector {
@@ -121,7 +129,11 @@ export function createAvatarDirector(
       typeof expressionId === "string" &&
       catalog.expressions.includes(expressionId)
     ) {
-      emitter.emit("avatar:expression", { expressionId });
+      emitter.emit("avatar:expression", {
+        expressionId,
+        source: "avatar-director",
+        priority: "inferred",
+      });
     }
 
     if (isCurrent() && motion && isValidMotion(motion)) {
@@ -131,6 +143,7 @@ export function createAvatarDirector(
         group: motion.group,
         index: motion.index,
         muteSound: true,
+        priority: "inferred",
       });
     }
   }

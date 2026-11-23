@@ -123,8 +123,18 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
-        ["avatar:motion", { group: "Tap", index: 0, muteSound: true }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
+        [
+          "avatar:motion",
+          { group: "Tap", index: 0, muteSound: true, priority: "inferred" },
+        ],
       ]);
     });
 
@@ -136,7 +146,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "sad" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "sad",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -148,7 +165,10 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:motion", { group: "Idle", index: 1, muteSound: true }],
+        [
+          "avatar:motion",
+          { group: "Idle", index: 1, muteSound: true, priority: "inferred" },
+        ],
       ]);
     });
 
@@ -220,7 +240,10 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:motion", { group: "Tap", index: 0, muteSound: true }],
+        [
+          "avatar:motion",
+          { group: "Tap", index: 0, muteSound: true, priority: "inferred" },
+        ],
       ]);
     });
 
@@ -235,7 +258,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
   });
@@ -338,7 +368,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "sad" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "sad",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -411,7 +448,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -431,7 +475,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
       expect(calls[1]?.text).toBe("Next line.");
     });
@@ -449,7 +500,14 @@ describe("createAvatarDirector", () => {
 
       expect(calls).toHaveLength(1);
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -462,7 +520,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
   });
@@ -483,7 +548,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -513,7 +585,14 @@ describe("createAvatarDirector", () => {
 
       expect(calls[1]?.text).toBe("Second.");
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
   });
@@ -537,7 +616,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "happy" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 
@@ -567,7 +653,14 @@ describe("createAvatarDirector", () => {
       await flush();
 
       expect(emissions).toEqual([
-        ["avatar:expression", { expressionId: "sad" }],
+        [
+          "avatar:expression",
+          {
+            expressionId: "sad",
+            source: "avatar-director",
+            priority: "inferred",
+          },
+        ],
       ]);
     });
 

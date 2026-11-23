@@ -408,12 +408,21 @@ describe("avatar", () => {
     });
 
     expect(emit.mock.calls).toEqual([
-      ["avatar:expression", { expressionId: "Smile" }],
+      [
+        "avatar:expression",
+        { expressionId: "Smile", source: "tool", priority: "explicit" },
+      ],
       // muteSound marks the tool-call origin: the projector only runs for a
       // successful playMotion call, and a tool-triggered motion must not play
       // its baked-in sample clip over the character's own voice.
-      ["avatar:motion", { group: "Idle", index: 0, muteSound: true }],
-      ["avatar:gaze", { x: 0.2, y: -0.3 }],
+      [
+        "avatar:motion",
+        { group: "Idle", index: 0, muteSound: true, priority: "explicit" },
+      ],
+      [
+        "avatar:gaze",
+        { x: 0.2, y: -0.3, source: "tool", priority: "explicit" },
+      ],
     ]);
   });
 });
