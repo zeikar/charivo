@@ -1,6 +1,6 @@
 {
   "name": "@charivo/server",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Server-side providers for Charivo: OpenAI and Gemini for LLM, TTS, STT, and realtime session bootstrap, plus an OpenClaw LLM provider",
   "exports": {
     "./openai": {

@@ -1,6 +1,6 @@
 {
   "name": "@charivo/avatar",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Expression, motion, and gaze control tools for Charivo AI characters in LLM and realtime sessions",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
