@@ -6,6 +6,7 @@ import type {
 } from "@charivo/core";
 
 export {
+  connectAvatarDirectorToCascade,
   createAvatarDirector,
   type AvatarClassifier,
   type AvatarDecision,

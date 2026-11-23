@@ -1,4 +1,9 @@
-import type { AvatarControlCatalog, CharivoEventEmitter } from "@charivo/core";
+import type {
+  AvatarControlCatalog,
+  CharivoEventBus,
+  CharivoEventEmitter,
+  EventMap,
+} from "@charivo/core";
 import type { MotionArgs } from "./index";
 
 export interface AvatarDecision {
@@ -141,5 +146,84 @@ export function createAvatarDirector(
     cancel() {
       endLine();
     },
+  };
+}
+
+/**
+ * Drive `director` from a cascade (`userSay()`) turn on `bus`; a `Charivo`
+ * instance fits. Each final reply (`character:speak`) is classified as one
+ * line, and the line ends on `tts:audio:end`, `tts:end`, `tts:error`, or
+ * `turn:cancelled`, so a decision that arrives after the speech is dropped
+ * rather than applied to silence.
+ *
+ * Two turns end without any of those events; call `director.cancel()`
+ * yourself if a late decision should be dropped there: a text-only turn (no
+ * TTS manager attached), and a turn that fails after `character:speak` but
+ * before TTS starts (e.g. a renderer failure that rejects `userSay()`).
+ * Otherwise the decision applies whenever it is ready and the next line
+ * supersedes it.
+ *
+ * Returns a function that disconnects and drops any pending decision.
+ */
+export function connectAvatarDirectorToCascade(
+  bus: CharivoEventBus,
+  director: AvatarDirector,
+): () => void {
+  let active = true;
+  // Charivo emits `message:received` and then the same turn's
+  // `character:speak` synchronously, and listeners run in registration order.
+  // An earlier `character:speak` listener that interrupts or supersedes the
+  // turn therefore fires `turn:cancelled` before this helper sees that
+  // `character:speak`; the turn then skips TTS, so no `tts:end` would ever end
+  // the line. A cancellation since `message:received` marks that reply dead.
+  let cancelledSinceReceived = false;
+
+  // Every listener checks `active` first: the bus dispatches from a snapshot,
+  // so one removed by a disconnect mid-dispatch can still be called.
+  const onReceived = () => {
+    if (!active) {
+      return;
+    }
+    cancelledSinceReceived = false;
+  };
+  const onSpeak = ({ text }: EventMap["character:speak"]) => {
+    if (!active || cancelledSinceReceived) {
+      return;
+    }
+    director.say(text);
+  };
+  const onLineEnd = () => {
+    if (!active) {
+      return;
+    }
+    director.cancel();
+  };
+  const onCancelled = () => {
+    if (!active) {
+      return;
+    }
+    cancelledSinceReceived = true;
+    director.cancel();
+  };
+
+  bus.on("message:received", onReceived);
+  bus.on("character:speak", onSpeak);
+  bus.on("tts:audio:end", onLineEnd);
+  bus.on("tts:end", onLineEnd);
+  bus.on("tts:error", onLineEnd);
+  bus.on("turn:cancelled", onCancelled);
+
+  return () => {
+    if (!active) {
+      return;
+    }
+    active = false;
+    bus.off("message:received", onReceived);
+    bus.off("character:speak", onSpeak);
+    bus.off("tts:audio:end", onLineEnd);
+    bus.off("tts:end", onLineEnd);
+    bus.off("tts:error", onLineEnd);
+    bus.off("turn:cancelled", onCancelled);
+    director.cancel();
   };
 }
