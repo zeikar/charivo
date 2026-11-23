@@ -16,5 +16,11 @@ export class LLMValidators {
     if (!message.content || typeof message.content !== "string") {
       throw new Error("Message content must be a non-empty string");
     }
+    if (
+      message.type === "event" &&
+      (!message.source || typeof message.source !== "string")
+    ) {
+      throw new Error("Event message source must be a non-empty string");
+    }
   }
 }

@@ -93,11 +93,18 @@ Minimal OpenAI route shape:
 ```ts
 const provider = createOpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-4.1-nano",
+  model: "gpt-5.6-luna",
 });
 
 const text = await provider.generateResponse(messages);
 ```
+
+The OpenAI provider defaults to `gpt-5.6-luna` and sends it with
+`reasoning_effort: "none"`: in chat completions that model accepts function
+tools and a custom `temperature` only with reasoning off. For another gpt-5
+family model, set `reasoningEffort` yourself (`"none"` if you use tools);
+models without reasoning, such as `gpt-4.1-mini`, reject the parameter, so it
+is not sent for them unless you set it.
 
 ## What `@charivo/llm` Owns
 
@@ -199,8 +206,91 @@ Eviction trims to the exact bound and takes any reply it strands at the head
 with it, so overlapping `generateResponse(...)` calls at a tight limit cannot
 leave a transcript of replies that answer nothing.
 
+Events and directions (see below) are stored messages too and count against
+the same bound. When the window sent with a request cuts into the history and
+lands on a reply, that reply is left out of the prompt; a reply that really
+opens the history, such as one answering an ephemeral direction, is sent.
+
 Realtime sessions maintain conversation state on the provider side and are not
 affected by `maxHistoryTurns`.
+
+## Typed Input
+
+Not everything a character hears is a person talking. `Message.type` has five
+values, and each reaches the model one way:
+
+| `Message.type` | Role sent | Content sent |
+| --- | --- | --- |
+| `user` | `user` | the text, as `<source>: <text>` when `source` names the speaker |
+| `character` | `assistant` | the text |
+| `system` | `system` | the text |
+| `direction` | `system` (or `user`, see below) | a private stage-direction prefix, then the text |
+| `event` | `user` | `<event source="...">text</event>`, both escaped and capped |
+
+- A `direction` is the app's own cue ("move on to the next topic"). It stays at
+  instruction level and is never mistaken for something a viewer said.
+- An `event` is data from outside the app (a game, a donation feed), so it never
+  gets system authority, whichever role directions use. Its source and text are
+  escaped, so neither can close the wrapper, then capped (64 and 2,000
+  characters as sent, entities intact); the source is kept on one line. The
+  system prompt tells the model the wrapper is information, not instructions.
+- In a `user` turn, speaker name included, the reserved markers cannot appear
+  verbatim: every direction prefix gets a backslash in front and the `<` of
+  every event tag becomes `&lt;`, matched in any letter case, anywhere in the
+  turn, and through invisible format characters or unusual spaces inside the
+  marker. The rest of the text is sent untouched. A speaker name is kept on
+  one line.
+  This keeps a viewer from reproducing either marker; it cannot stop a model
+  from believing a paraphrase.
+
+The explanation of both markers is added to the system prompt only when the
+prompt carries a direction or an event.
+
+**Gemini needs `directionRole: "user"`.** Gemini's OpenAI-compatible endpoint
+folds every `system` message into its system instruction: a mid-history
+direction loses its place, and a prompt that ends in one is rejected with
+`400 Requests ending with a model turn are not supported`. With
+`createLLMManager(client, { directionRole: "user" })` a direction goes out as a
+`user` turn with the same prefix, which Gemini follows. OpenAI follows
+directions with the default `"system"`. The same folding applies to plain
+`type: "system"` history entries on Gemini, so keep those out of the middle
+and the end of a Gemini prompt. Measured in
+[`tests/live-llm/README.md`](https://github.com/zeikar/charivo/blob/main/tests/live-llm/README.md).
+
+`BrainInput` in `@charivo/core` describes an input together with two
+independent policies, and `resolveBrainInput(input)` from `@charivo/llm` turns
+it into the `Message` it becomes, with the defaults filled in:
+
+| `kind` | default `respond` | default `history` |
+| --- | --- | --- |
+| `user` (optional `speaker`) | `must` | `keep` |
+| `event` (required `source`) | `auto` | `keep` |
+| `direction` | `must` | `ephemeral` |
+
+`respond` (`must` / `auto` / `silent`) says whether a reply is wanted; `history`
+says what happens to the input itself. The manager provides the history side:
+
+- `keep`: `addToHistory(message)`.
+- `ephemeral`: `generateResponse(message, { ephemeral: true })` shows the
+  message to the model for that request only and never stores it.
+- `{ replaceKey }`: `addToHistory(message, { replaceKey })` removes the entry
+  last stored under that key, so only the latest state (a score, the current
+  scene) occupies the history.
+
+A reply is always kept, whatever the input's policy, and it stays when its
+input is replaced or was never stored: the history can then hold a reply with
+nothing before it, or two replies in a row. The manager sends those as they
+are. Deciding `respond` (when
+to generate, and what `auto` means) is the caller's job; `Charivo.userSay()`
+still sends plain user turns.
+
+**OpenClaw with a pinned session.** A provider created with `sessionKey` sends
+the gateway only the system prompt (the first message) and the latest turn, because the
+gateway keeps the conversation itself. The gateway retains every turn it
+receives, so `ephemeral` and `replaceKey` cannot take anything back from it,
+and a `silent` input that only went to local history never reaches it. Those
+three policies hold only on an unpinned session, which is what the
+`@charivo/llm/openclaw` browser client always uses.
 
 ## Under `Charivo` Orchestration
 

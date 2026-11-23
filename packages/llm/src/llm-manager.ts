@@ -9,6 +9,7 @@ import {
   toCharivoError,
   validateToolArguments,
   withToolTimeout,
+  type AddToHistoryOptions,
   type CharivoEventEmitter,
   type GenerateResponseOptions,
   type HistoryRollback,
@@ -22,7 +23,11 @@ import {
 } from "@charivo/core";
 import { MessageHistoryManager } from "./message-history-manager";
 import { CharacterPromptBuilder } from "./character-prompt-builder";
-import { MessageConverter, type LLMApiMessage } from "./message-converter";
+import {
+  MessageConverter,
+  type DirectionRole,
+  type LLMApiMessage,
+} from "./message-converter";
 import { LLMValidators } from "./validators";
 import { ResponseMessageBuilder } from "./response-message-builder";
 
@@ -44,6 +49,14 @@ export interface LLMManagerOptions {
   /** Appended to the character system prompt, tools path only. */
   toolInstructions?: string;
   defaultToolTimeoutMs?: number;
+  /**
+   * Role a `direction` message is sent with. `"system"` (default) keeps it at
+   * instruction level. Use `"user"` with providers that fold every `system`
+   * message into the system instruction, which Gemini does (measured in
+   * tests/live-llm/README.md): there a direction loses its place, and a
+   * prompt ending in one is rejected.
+   */
+  directionRole?: DirectionRole;
 }
 
 /**
@@ -65,6 +78,9 @@ export class LLMManager {
   private character: Character | null = null;
   private eventEmitter?: CharivoEventEmitter;
   private toolInstructions: string | null;
+  private readonly directionRole: DirectionRole;
+  /** The entry most recently stored under each `replaceKey`. */
+  private readonly keyedEntries = new Map<string, Message>();
 
   constructor(
     private llmClient: LLMClient,
@@ -78,6 +94,7 @@ export class LLMManager {
     this.defaultToolTimeoutMs =
       options.defaultToolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
     this.toolInstructions = options.toolInstructions ?? null;
+    this.directionRole = options.directionRole ?? "system";
 
     for (const tool of options.tools ?? []) {
       this.registerTool(tool);
@@ -115,7 +132,7 @@ export class LLMManager {
   setCharacter(character: Character): void {
     // Clear the history only when the character changes
     if (this.character?.id !== character.id) {
-      this.historyManager.clear();
+      this.clearHistory();
     }
     this.character = character;
   }
@@ -132,6 +149,7 @@ export class LLMManager {
    */
   clearHistory(): void {
     this.historyManager.clear();
+    this.keyedEntries.clear();
   }
 
   /**
@@ -170,10 +188,13 @@ export class LLMManager {
    * they present and the transcript the next prompt is built from are the
    * same one.
    */
-  addToHistory(message: Message): HistoryRollback {
-    // Only user messages are validated: the reply commit has never been, so
-    // an empty model response is still stored exactly as produced.
-    if (message.type === "user") {
+  addToHistory(
+    message: Message,
+    options: AddToHistoryOptions = {},
+  ): HistoryRollback {
+    // Character replies are not validated: the reply commit has never been,
+    // so an empty model response is still stored exactly as produced.
+    if (message.type !== "character") {
       try {
         LLMValidators.validateMessage(message);
       } catch (error) {
@@ -183,6 +204,23 @@ export class LLMManager {
 
     if (this.historyManager.contains(message)) {
       return () => {};
+    }
+
+    const { replaceKey } = options;
+    const previousKeyed =
+      replaceKey === undefined ? undefined : this.keyedEntries.get(replaceKey);
+    // The replaced entry is put back at its old index on rollback. Pruning
+    // only removes from the head, and rollback restores that head first, so
+    // the index is valid again by then.
+    const replacedIndex =
+      previousKeyed === undefined
+        ? -1
+        : this.historyManager.indexOf(previousKeyed);
+    if (replacedIndex !== -1) {
+      this.historyManager.remove(previousKeyed!);
+    }
+    if (replaceKey !== undefined) {
+      this.keyedEntries.set(replaceKey, message);
     }
 
     this.historyManager.add(message, { prune: false });
@@ -200,10 +238,28 @@ export class LLMManager {
       // written since: a clearHistory() plus re-append can leave the array
       // looking untouched while the app deliberately discarded everything.
       const untouched = this.historyManager.getWriteCount() === writeCount;
-      this.historyManager.remove(message);
+      // A rollback counts as a write even when its message is already gone,
+      // so an earlier handle's restore cannot revive what this one undid.
+      if (!this.historyManager.remove(message)) {
+        this.historyManager.markWrite();
+      }
 
       if (untouched) {
         this.historyManager.restoreToHead(evicted);
+        if (replacedIndex !== -1) {
+          this.historyManager.insertAt(replacedIndex, previousKeyed!);
+        }
+      }
+
+      if (
+        replaceKey !== undefined &&
+        this.keyedEntries.get(replaceKey) === message
+      ) {
+        if (untouched && previousKeyed !== undefined) {
+          this.keyedEntries.set(replaceKey, previousKeyed);
+        } else {
+          this.keyedEntries.delete(replaceKey);
+        }
       }
     };
   }
@@ -225,16 +281,21 @@ export class LLMManager {
     // The caller placed the message itself and commits the reply itself, so
     // this call writes nothing - not even a rollback on failure.
     const callerOwnsHistory = options.callerOwnsHistory === true;
+    // An ephemeral message rides along in this prompt only and is never
+    // written, whoever owns the history.
+    const ephemeral = options.ephemeral === true;
 
     // Defer pruning until the assistant message is appended. On failure we
     // only remove this call's own user message, so older history must remain
     // intact during the API call.
-    if (!callerOwnsHistory) {
+    if (!callerOwnsHistory && !ephemeral) {
       this.historyManager.add(message, { prune: false });
     }
 
     // Get the history messages
-    const historyMessages = this.getHistoryForApiCall();
+    const historyMessages = ephemeral
+      ? [...this.getHistoryForApiCall(), message]
+      : this.getHistoryForApiCall();
 
     // Convert to LLM API format (including the system prompt)
     const apiMessages = this.prepareApiMessages(historyMessages);
@@ -252,7 +313,7 @@ export class LLMManager {
       // Build the AI response message and add it to the history.
       // Only the final assistant text is persisted: tool-call and tool-result
       // turns stay inside the loop so the stored history remains a plain
-      // user/character transcript that other modalities can reuse.
+      // transcript, free of tool turns, that other modalities can reuse.
       if (!callerOwnsHistory) {
         const responseMessage = ResponseMessageBuilder.create(
           assistantMessage,
@@ -266,7 +327,7 @@ export class LLMManager {
     } catch (error) {
       // Remove this call's own message by identity: an overlapping turn may
       // have appended after it, and duplicate ids make a lookup ambiguous.
-      if (!callerOwnsHistory) {
+      if (!callerOwnsHistory && !ephemeral) {
         this.historyManager.remove(message);
       }
       throw toCharivoError("provider", error);
@@ -508,22 +569,34 @@ export class LLMManager {
    * Prepare messages for the LLM API call
    */
   private prepareApiMessages(messages: Message[]): LLMApiMessage[] {
+    const convertOptions = { directionRole: this.directionRole };
     if (!this.character) {
-      return MessageConverter.toOpenAIFormat(messages);
+      return MessageConverter.toOpenAIFormat(messages, convertOptions);
     }
 
     const systemPrompt = CharacterPromptBuilder.buildSystemPrompt(
       this.character,
     );
-    return MessageConverter.combineWithSystemPrompt(systemPrompt, messages);
+    return MessageConverter.combineWithSystemPrompt(
+      systemPrompt,
+      messages,
+      convertOptions,
+    );
   }
 
+  /**
+   * The window of history sent with a request. When the window cuts into
+   * the history and lands on a reply, that reply loses what prompted it, so
+   * it is dropped. A reply that really opens the history - one answering an
+   * ephemeral direction, or committed after clearHistory() - is kept.
+   */
   private getHistoryForApiCall(): Message[] {
     const historyMessages = this.historyManager.getRecent(
       this.maxHistoryMessages,
     );
+    const cut = historyMessages.length < this.historyManager.size();
 
-    if (historyMessages[0]?.type === "character") {
+    if (cut && historyMessages[0]?.type === "character") {
       return historyMessages.slice(1);
     }
 
