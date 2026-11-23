@@ -195,6 +195,13 @@ export class Live2DRendererImpl
     this.model.setDragging(clamp(coords.x, -1, 1), clamp(coords.y, -1, 1));
   }
 
+  /** Cubism has no stored gaze target to drop; the neutral drag is centre. */
+  clearGaze(): void {
+    if (!this.model?.isReady()) return;
+
+    this.model.setDragging(0, 0);
+  }
+
   async destroy(): Promise<void> {
     this.unbindCanvasLifecycle();
     this.unbindPageLifecycle();

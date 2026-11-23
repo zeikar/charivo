@@ -481,6 +481,23 @@ describe("Live2DRenderer", () => {
     expect(model.setDragging).toHaveBeenCalledWith(1, -1);
   });
 
+  it("clearGaze returns the gaze to centre, and does nothing before a model is ready", async () => {
+    const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
+    await renderer.initialize();
+    expect(() => renderer.clearGaze()).not.toThrow();
+
+    await renderer.loadModel("/models/hiyori.model3.json");
+    const model = rendererMocks.MockModel.instances[0]!;
+    model.ready = false;
+    renderer.clearGaze();
+    expect(model.setDragging).not.toHaveBeenCalled();
+
+    model.ready = true;
+    renderer.lookAt({ x: 0.5, y: -0.5 });
+    renderer.clearGaze();
+    expect(model.setDragging).toHaveBeenLastCalledWith(0, 0);
+  });
+
   it("carries muteSound through to the model, and omits it otherwise", async () => {
     const renderer = new Live2DRendererImpl({ canvas: createCanvasFixture() });
     await renderer.initialize();

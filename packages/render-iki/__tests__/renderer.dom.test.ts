@@ -15,6 +15,7 @@ const playerRegistry = vi.hoisted(() => {
     instances: [] as Array<{
       store: { get: (id: string) => number };
       pendingAtStart: number;
+      nextLoadGate?: Promise<void>;
       load: (model: IkiModel) => Promise<FakeLoadResult>;
       start: ReturnType<typeof vi.fn>;
       stop: ReturnType<typeof vi.fn>;
@@ -48,11 +49,15 @@ vi.mock("@ikijs/engine", async (importOriginal) => {
     // The engine's `cancelLoad` settles a pending load as superseded and
     // adopts nothing; with none pending it does nothing.
     private pendingLoad?: { cancelled: boolean };
+    /** Set by a test to hold the next load() until it settles this promise. */
+    nextLoadGate?: Promise<void>;
 
     async load(model: IkiModel): Promise<FakeLoadResult> {
       const load = { cancelled: false };
       this.pendingLoad = load;
-      await Promise.resolve();
+      const gate = this.nextLoadGate ?? Promise.resolve();
+      this.nextLoadGate = undefined;
+      await gate;
       if (this.pendingLoad === load) this.pendingLoad = undefined;
       if (load.cancelled) return { failedTextures: [], superseded: true };
       this.store = new actual.ParameterStore(model.parameters);
@@ -714,6 +719,52 @@ describe("IkiRenderer / IkiMotion integration", () => {
     expect(store.get(StandardParameter.AngleY)).toBe(0);
   });
 
+  describe("clearGaze", () => {
+    it("does not hand a cleared target to the next model, and lookAt still works", async () => {
+      await renderer.loadModel("/x.iki");
+      renderer.lookAt({ x: 0.8, y: 0 });
+      renderer.clearGaze();
+      await renderer.loadModel("/x.iki");
+      const store = playerRegistry.instances[0]!.store;
+
+      pumpTo(0, 1000);
+      // Math.random pinned at 0.5: the idle's own pick is the centre.
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0, 2);
+
+      renderer.lookAt({ x: 0.8, y: 0 });
+      pumpTo(1100, 2000);
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.8, 2);
+    });
+
+    it("springs the eyes back to their defaults under an Idle loop that leaves them unwritten", async () => {
+      served = IDLE_FIXTURE;
+      await renderer.loadModel("/x.iki");
+      const store = playerRegistry.instances[0]!.store;
+      renderer.lookAt({ x: 0.8, y: 0 });
+      pumpTo(0, 1000);
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(0.8, 2);
+
+      renderer.clearGaze();
+      pumpTo(1100, 2000);
+
+      const defaultOf = (id: string) =>
+        IDLE_FIXTURE.parameters.find((parameter) => parameter.id === id)!
+          .default;
+      expect(store.get(StandardParameter.EyeballX)).toBeCloseTo(
+        defaultOf(StandardParameter.EyeballX),
+        2,
+      );
+      expect(store.get(StandardParameter.EyeballY)).toBeCloseTo(
+        defaultOf(StandardParameter.EyeballY),
+        2,
+      );
+    });
+
+    it("is inert before a model is ready", () => {
+      expect(() => renderer.clearGaze()).not.toThrow();
+    });
+  });
+
   it("forwards a view to the player, and no view restores the box", () => {
     const player = playerRegistry.instances[0];
     const view = { x: 0, y: 0, width: 250, height: 100 };
@@ -808,6 +859,37 @@ describe("IkiRenderer / IkiMotion integration", () => {
     await slowLoad;
 
     expect(loadSpy).toHaveBeenCalledTimes(1);
+    expect(renderer.getAvailableExpressions()).toEqual(["smile", "surprised"]);
+  });
+
+  it("keeps the installed model when a newer load fails while an older one is being adopted", async () => {
+    await renderer.loadModel("/x.iki");
+    const player = playerRegistry.instances[0]!;
+    const other = { ...FIXTURE, expressions: undefined };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/a.iki"
+          ? ({ ok: true, text: async () => JSON.stringify(other) } as Response)
+          : ({ ok: false, status: 404 } as Response),
+      ),
+    );
+    let releaseLoad!: () => void;
+    player.nextLoadGate = new Promise((resolve) => {
+      releaseLoad = resolve;
+    });
+    const loadSpy = vi.spyOn(player, "load");
+
+    const first = renderer.loadModel("/a.iki");
+    await vi.waitFor(() => expect(loadSpy).toHaveBeenCalledTimes(1));
+    await expect(renderer.loadModel("/b.iki")).rejects.toThrow("404");
+    releaseLoad();
+
+    await expect(first).resolves.toBeUndefined();
+    await expect(loadSpy.mock.results[0]!.value).resolves.toEqual({
+      failedTextures: [],
+      superseded: true,
+    });
     expect(renderer.getAvailableExpressions()).toEqual(["smile", "surprised"]);
   });
 

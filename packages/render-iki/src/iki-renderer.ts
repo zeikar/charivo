@@ -83,6 +83,9 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
       throw new Error("Iki renderer is not initialized");
     }
     const load = ++this.loadCount;
+    // An older load the engine is still adopting would otherwise land after
+    // this call, even if this call fails at its fetch and never reaches it.
+    this.player.cancelLoad();
 
     const res = await fetch(modelPath);
     if (!res.ok) {
@@ -233,6 +236,15 @@ export class IkiRendererImpl implements Renderer, MouseTrackable, IkiRenderer {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this.gaze = { x: clamp(x, -1, 1), y: clamp(y, -1, 1) };
     this.motion?.setGazeTarget(this.gaze.x, this.gaze.y);
+  }
+
+  /**
+   * Forget the host target, so a load does not hand it to the next model, and
+   * let the engine spring the eyes back to its own idle gaze.
+   */
+  clearGaze(): void {
+    this.gaze = undefined;
+    this.motion?.clearGazeTarget();
   }
 
   /**

@@ -33,6 +33,13 @@ export interface IkiRenderer extends Renderer, MouseTrackable {
     options?: { muteSound?: boolean; priority?: MotionPriority },
   ): void;
   lookAt(coords: GazeCoordinates): void;
+  /**
+   * Drop the target a `lookAt` or the mouse set: the eyes spring back to the
+   * engine's idle gaze (under an `Idle` motion group, to what its clips
+   * write, else to their resting values), and the next model loaded is not
+   * handed it.
+   */
+  clearGaze(): void;
   setGazeOrigin(origin?: GazeOrigin): void;
   getAvailableExpressions(): string[];
   getAvailableMotionGroups(): Record<string, number>;

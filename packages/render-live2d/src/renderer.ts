@@ -27,6 +27,8 @@ export interface Live2DRenderer extends Renderer, MouseTrackable {
     options?: { muteSound?: boolean; priority?: MotionPriority },
   ): void;
   lookAt(coords: GazeCoordinates): void;
+  /** Return the gaze to centre, dropping the target a `lookAt` set. */
+  clearGaze(): void;
   setGazeOrigin(origin?: GazeOrigin): void;
   getAvailableExpressions(): string[];
   getAvailableMotionGroups(): Record<string, number>;
