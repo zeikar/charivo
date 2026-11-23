@@ -1,8 +1,10 @@
 import {
+  type AvatarClaimPriority,
   type Character,
   type EventMap,
   type GazeCoordinates,
   type Message,
+  type MotionPriority,
   type MotionSelection,
   type Renderer,
   type RenderManager as IRenderManager,
@@ -21,6 +23,12 @@ import {
 const GAZE_HOLD_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
 const MOTION_DEBOUNCE_MS = 1_000;
+const MOTION_PRIORITY: Record<AvatarClaimPriority, MotionPriority> = {
+  reflex: "force",
+  explicit: "normal",
+  inferred: "normal",
+  ambient: "idle",
+};
 // The pre-speech window: how long a speech-scoped expression waits for the
 // speech it accompanies to start. Text-only setups never emit
 // tts:audio:start/end, so this is what drops their face back. It is NOT a
@@ -202,7 +210,11 @@ export class RenderManager implements IRenderManager {
   ): void => {
     // muteSound is carried, not inferred: this event is public, so an
     // application may emit it too and an unflagged emit must stay audible.
-    this.applyMotion({ group: data.group, index: data.index }, data.muteSound);
+    this.applyMotion(
+      { group: data.group, index: data.index },
+      data.muteSound,
+      data.priority ?? "explicit",
+    );
   };
 
   private readonly handleAvatarGaze = (data: EventMap["avatar:gaze"]): void => {
@@ -477,7 +489,16 @@ export class RenderManager implements IRenderManager {
     });
   }
 
-  private applyMotion(motion: MotionSelection, muteSound?: boolean): boolean {
+  private applyMotion(
+    motion: MotionSelection,
+    muteSound: boolean | undefined,
+    claimPriority: AvatarClaimPriority,
+  ): boolean {
+    // A motion checked against a catalog that is about to change could name
+    // a clip the incoming model lacks.
+    if (this.pendingLoad !== undefined) {
+      return false;
+    }
     if (!this.hasMotionControl(this.renderer)) {
       return false;
     }
@@ -494,7 +515,11 @@ export class RenderManager implements IRenderManager {
     }
 
     const now = Date.now();
+    // The debounce runs before the renderer and cannot tell a declined motion
+    // from a played one, so a reflex skips it: it must always reach the
+    // renderer, which alone knows what clip is running.
     if (
+      claimPriority !== "reflex" &&
       this.lastMotion?.group === motion.group &&
       this.lastMotion.index === index &&
       now - this.lastMotion.at < MOTION_DEBOUNCE_MS
@@ -503,13 +528,22 @@ export class RenderManager implements IRenderManager {
     }
 
     // Unflagged calls keep today's exact two-argument shape, so a renderer that
-    // never learned about the option sees no change at all.
-    if (muteSound) {
-      this.renderer.playMotionByGroup(motion.group, index, { muteSound: true });
+    // never learned about the options sees no change at all. The priority is
+    // forwarded, never tracked here: admission is the renderer's call.
+    const priority = MOTION_PRIORITY[claimPriority];
+    if (muteSound || priority !== "normal") {
+      this.renderer.playMotionByGroup(motion.group, index, {
+        ...(muteSound ? { muteSound: true } : {}),
+        ...(priority !== "normal" ? { priority } : {}),
+      });
     } else {
       this.renderer.playMotionByGroup(motion.group, index);
     }
-    this.lastMotion = { group: motion.group, index, at: now };
+    // An idle-priority motion is often declined while any clip runs, so
+    // recording it would debounce a following ordinary request for that clip.
+    if (priority !== "idle") {
+      this.lastMotion = { group: motion.group, index, at: now };
+    }
     return true;
   }
 
@@ -598,7 +632,7 @@ export class RenderManager implements IRenderManager {
     playMotionByGroup(
       group: string,
       index: number,
-      options?: { muteSound?: boolean },
+      options?: { muteSound?: boolean; priority?: MotionPriority },
     ): void;
   } {
     return (

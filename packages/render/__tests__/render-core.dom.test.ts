@@ -5,6 +5,7 @@ import {
   type EventMap,
   type GazeCoordinates,
   type Message,
+  type MotionPriority,
   type Renderer,
 } from "@charivo/core";
 import { createRenderManager } from "../src";
@@ -56,8 +57,11 @@ class StubRenderer implements Renderer {
   playExpression = vi.fn((_expressionId: string) => undefined);
   stopExpression = vi.fn(() => undefined);
   playMotionByGroup = vi.fn(
-    (_group: string, _index: number, _options?: { muteSound?: boolean }) =>
-      undefined,
+    (
+      _group: string,
+      _index: number,
+      _options?: { muteSound?: boolean; priority?: MotionPriority },
+    ) => undefined,
   );
   lookAt = vi.fn((_coords: GazeCoordinates) => undefined);
   getAvailableExpressions = vi.fn(() => ["exp_happy", "exp_sad"]);
@@ -180,6 +184,164 @@ describe("RenderManager", () => {
     bus.emit("avatar:motion", { group: "TapBody", index: 1, muteSound: false });
 
     expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
+  });
+
+  describe("motion priority", () => {
+    function boundManager() {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+      manager.setEventBus(bus);
+      return { renderer, bus };
+    }
+
+    it("maps reflex to force and ambient to idle", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 0,
+        priority: "reflex",
+      });
+      bus.emit("avatar:motion", {
+        group: "Idle",
+        index: 0,
+        priority: "ambient",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 0, { priority: "force" }],
+        ["Idle", 0, { priority: "idle" }],
+      ]);
+    });
+
+    it("forwards both options for a muted reflex motion", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        muteSound: true,
+        priority: "reflex",
+      });
+
+      expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1, {
+        muteSound: true,
+        priority: "force",
+      });
+    });
+
+    it("keeps the two-argument call for explicit and inferred motions", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 0,
+        priority: "explicit",
+      });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "inferred",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 0],
+        ["TapBody", 1],
+      ]);
+    });
+
+    it("forwards an inferred motion right after a reflex one: the renderer decides", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 0,
+        priority: "reflex",
+      });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "inferred",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 0, { priority: "force" }],
+        ["TapBody", 1],
+      ]);
+    });
+
+    it("still debounces a repeated explicit motion inside 1 s", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "explicit",
+      });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "explicit",
+      });
+
+      expect(renderer.playMotionByGroup).toHaveBeenCalledTimes(1);
+    });
+
+    it("debounces an explicit request for a clip a reflex request just named", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "reflex",
+      });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "explicit",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 1, { priority: "force" }],
+      ]);
+    });
+
+    it("does not debounce an explicit request after an ambient one for the same clip", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "ambient",
+      });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "explicit",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 1, { priority: "idle" }],
+        ["TapBody", 1],
+      ]);
+    });
+
+    it("lets a reflex request through for a clip an explicit request just named", () => {
+      const { renderer, bus } = boundManager();
+
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+      bus.emit("avatar:motion", {
+        group: "TapBody",
+        index: 1,
+        priority: "reflex",
+      });
+
+      expect(renderer.playMotionByGroup.mock.calls).toEqual([
+        ["TapBody", 1],
+        ["TapBody", 1, { priority: "force" }],
+      ]);
+    });
   });
 
   it("debounces repeated explicit expression and motion actions", async () => {
@@ -1222,6 +1384,29 @@ describe("RenderManager", () => {
 
       bus.emit("avatar:expression", { expressionId: "exp_sad" });
       expect(renderer.playExpression).toHaveBeenLastCalledWith("exp_sad");
+    });
+
+    it("never forwards an avatar:motion emitted while the latest load is pending", async () => {
+      const load = deferred();
+      const renderer = loadingRenderer(load.promise);
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      const loading = manager.loadModel("/models/b.model3.json");
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+      bus.emit("avatar:motion", {
+        group: "Idle",
+        index: 0,
+        priority: "reflex",
+      });
+      load.resolve();
+      await loading;
+
+      expect(renderer.playMotionByGroup).not.toHaveBeenCalled();
+
+      bus.emit("avatar:motion", { group: "TapBody", index: 1 });
+      expect(renderer.playMotionByGroup).toHaveBeenCalledWith("TapBody", 1);
     });
 
     it("an older load that never settles blocks nothing once the latest resolves", async () => {
