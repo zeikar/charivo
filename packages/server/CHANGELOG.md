@@ -1,5 +1,17 @@
 # @charivo/server
 
+## 0.12.7
+
+### Patch Changes
+
+- 3045f91: The OpenAI LLM provider's default model `gpt-4.1-nano` has been retired by OpenAI (requests answer 404). The default is now `gpt-5.6-luna`, sent with `reasoning_effort: "none"` so function tools and a custom `temperature` keep working. The new `reasoningEffort` option sets `reasoning_effort` for other models; it is not sent unless set, except on the default model. Requests now send `max_completion_tokens` instead of `max_tokens`, which gpt-5 family models require. `@charivo/server/openai` re-exports the `OpenAIReasoningEffort` type.
+- Updated dependencies [3045f91]
+- Updated dependencies [c85279f]
+  - @charivo/llm@0.14.0
+  - @charivo/core@0.41.0
+  - @charivo/stt@0.11.7
+  - @charivo/tts@0.11.3
+
 ## 0.12.6
 
 ### Patch Changes

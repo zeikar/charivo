@@ -1,6 +1,6 @@
 {
   "name": "@charivo/core",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "description": "Core orchestrator for Charivo, a modular TypeScript framework for Live2D AI characters with LLM, voice, and realtime conversation",
   "type": "module",
   "main": "dist/index.cjs",
