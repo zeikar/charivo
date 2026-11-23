@@ -6,7 +6,8 @@ const openaiMocks = vi.hoisted(() => {
     model: string;
     messages: Array<Record<string, unknown>>;
     temperature?: number;
-    max_tokens?: number;
+    max_completion_tokens?: number;
+    reasoning_effort?: string;
     tools?: Array<Record<string, unknown>>;
   };
 
@@ -82,10 +83,45 @@ describe("OpenAILLMProvider", () => {
         model: "custom",
         messages: [{ role: "user", content: "hi" }],
         temperature: 0.5,
-        max_tokens: 500,
+        max_completion_tokens: 500,
       },
       { signal: expect.any(AbortSignal) },
     );
+  });
+
+  it("defaults to gpt-5.6-luna with reasoning off, so tools and temperature are accepted", async () => {
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    await provider.generateResponse([{ role: "user", content: "hi" }]);
+
+    expect(openaiMocks.createCompletion.mock.calls[0]![0]).toMatchObject({
+      model: "gpt-5.6-luna",
+      temperature: 0.7,
+      max_completion_tokens: 1000,
+      reasoning_effort: "none",
+    });
+  });
+
+  it("sends reasoning_effort for a custom model only when it is set", async () => {
+    await new OpenAILLMProvider({
+      apiKey: "key",
+      model: "gpt-4.1-mini",
+    }).generateResponse([{ role: "user", content: "hi" }]);
+    await new OpenAILLMProvider({
+      apiKey: "key",
+      model: "gpt-5.6-luna",
+    }).generateResponse([{ role: "user", content: "hi" }]);
+    await new OpenAILLMProvider({
+      apiKey: "key",
+      model: "gpt-5.4-mini",
+      reasoningEffort: "low",
+    }).generateResponse([{ role: "user", content: "hi" }]);
+
+    const [plain, namedDefault, reasoning] =
+      openaiMocks.createCompletion.mock.calls.map((call) => call[0]);
+    expect(plain).not.toHaveProperty("reasoning_effort");
+    expect(namedDefault).toMatchObject({ reasoning_effort: "none" });
+    expect(reasoning).toMatchObject({ reasoning_effort: "low" });
   });
 
   it("maps tool turns onto the chat.completions payload", async () => {
@@ -234,6 +270,23 @@ function respondWithToolCall(toolCall: Record<string, unknown>): void {
 }
 
 describe("OpenAILLMProvider.generateResponseWithTools", () => {
+  it("sends the default model's tool requests with reasoning off", async () => {
+    // gpt-5.6-luna rejects function tools unless reasoning_effort is "none".
+    const provider = new OpenAILLMProvider({ apiKey: "key" });
+
+    await provider.generateResponseWithTools(
+      [{ role: "user", content: "weather?" }],
+      [weatherTool],
+    );
+
+    expect(openaiMocks.createCompletion.mock.calls[0]![0]).toMatchObject({
+      model: "gpt-5.6-luna",
+      reasoning_effort: "none",
+      max_completion_tokens: 1000,
+      tools: [expect.objectContaining({ type: "function" })],
+    });
+  });
+
   it("maps tool turns and definitions onto the chat.completions payload", async () => {
     const provider = new OpenAILLMProvider({ apiKey: "key" });
 

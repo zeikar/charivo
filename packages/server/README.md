@@ -25,7 +25,7 @@ import {
 
 const llm = createOpenAILLMProvider({
   apiKey: process.env.OPENAI_API_KEY!,
-  model: "gpt-4.1-nano",
+  model: "gpt-5.6-luna",
 });
 ```
 
@@ -145,6 +145,16 @@ UUID per conversation, rotated when the user resets the chat) to keep turns on o
 session; past turns are then left to the gateway instead of being resent. Rotating
 `sessionKey` is the only way to reset a pinned conversation — the gateway keeps the
 old transcript under the old key.
+
+On a pinned session the provider treats only the first message as the system
+prompt and resends it every turn; any other `system` message is a past turn the
+gateway already holds. If your route adds its own instructions, merge them into
+that one message rather than prepending a second one.
+
+Because the gateway retains every turn it receives, the `@charivo/llm` history
+policies for typed input (`ephemeral`, `replaceKey`, and a `silent` input kept
+only locally) hold only on an unpinned session. See
+[Typed Input](https://github.com/zeikar/charivo/blob/main/docs/guide/llm.md#typed-input).
 
 `generateResponseWithTools` depends on which runtime the target agent runs on.
 OpenClaw routes `openai/*` models to its Codex harness by default, and that

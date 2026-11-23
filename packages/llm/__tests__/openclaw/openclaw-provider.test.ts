@@ -204,7 +204,7 @@ describe("OpenClawLLMProvider", () => {
     ]);
   });
 
-  it("sends only system prompts when the latest message is a system message", async () => {
+  it("sends the leading system prompts and a trailing system message when it is the latest", async () => {
     const provider = new OpenClawLLMProvider({
       token: "token",
       sessionKey: "conversation-abc",
@@ -222,6 +222,53 @@ describe("OpenClawLLMProvider", () => {
     expect(payload.messages).toEqual([
       { role: "system", content: "You are Hiyori" },
       { role: "system", content: "Session reset notice" },
+    ]);
+  });
+
+  it("does not resend a mid-history system message on a pinned session", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "first question" },
+      { role: "system", content: "[Stage direction] be brief" },
+      { role: "assistant", content: "first answer" },
+      { role: "user", content: "latest question" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    // The gateway saw the direction when it was the latest turn; resending it
+    // every turn would pile copies onto the session.
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "latest question" },
+    ]);
+  });
+
+  it("does not resend a system-role entry heading the history window", async () => {
+    const provider = new OpenClawLLMProvider({
+      token: "token",
+      sessionKey: "conversation-abc",
+      dangerouslyAllowBrowser: true,
+    });
+
+    await provider.generateResponse([
+      { role: "system", content: "You are Hiyori" },
+      {
+        role: "system",
+        content: "[Stage direction] you are opening the stream",
+      },
+      { role: "user", content: "latest question" },
+    ]);
+
+    const payload = openaiMocks.createCompletion.mock.calls[0]![0];
+    expect(payload.messages).toEqual([
+      { role: "system", content: "You are Hiyori" },
+      { role: "user", content: "latest question" },
     ]);
   });
 

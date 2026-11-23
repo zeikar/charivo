@@ -95,13 +95,86 @@ export interface Character {
   };
 }
 
+/**
+ * What a history entry is, which decides how it reaches the model:
+ * - `user`: a person speaking to the character.
+ * - `character`: the character's own reply.
+ * - `system`: an instruction at system level.
+ * - `event`: something that happened (a game event, a donation), reported by
+ *   `source`. It is data from outside the app, so it is never projected at
+ *   system authority.
+ * - `direction`: a private stage direction from the app (a show director's
+ *   cue). It is not speech by anyone in the conversation.
+ */
+export type MessageType =
+  | "user"
+  | "character"
+  | "system"
+  | "event"
+  | "direction";
+
 export interface Message {
   id: string;
   content: string;
   timestamp: Date;
   characterId?: string;
-  type: "user" | "character" | "system";
+  type: MessageType;
+  /**
+   * Who produced the entry: the speaker's name on a `user` message (several
+   * viewers can share one conversation), the reporting source on an `event`
+   * (required there). Ignored on the other types.
+   */
+  source?: string;
 }
+
+/**
+ * Whether an input asks the character to reply:
+ * - `must`: reply to it.
+ * - `auto`: the brain decides whether a reply is due.
+ * - `silent`: never reply; the input only informs.
+ */
+export type BrainRespond = "must" | "auto" | "silent";
+
+/**
+ * What happens to an input in the conversation history:
+ * - `keep`: stored like any other turn.
+ * - `ephemeral`: shown to the model for this request only, never stored.
+ * - `{ replaceKey }`: stored, replacing the entry kept under the same key, so
+ *   only the latest state of something (a game score, the current scene)
+ *   occupies the history.
+ *
+ * Independent of {@link BrainRespond}: a reply, when one is made, is always
+ * kept whatever the input's policy.
+ */
+export type BrainHistoryPolicy = "keep" | "ephemeral" | { replaceKey: string };
+
+/**
+ * Typed input for a character brain. Defaults when a field is omitted:
+ * `user` must/keep, `event` auto/keep, `direction` must/ephemeral.
+ */
+export type BrainInput =
+  | {
+      kind: "user";
+      text: string;
+      /** The speaker's name, shown to the model as `<speaker>: <text>`. */
+      speaker?: string;
+      respond?: BrainRespond;
+      history?: BrainHistoryPolicy;
+    }
+  | {
+      kind: "event";
+      /** Who reports the event, e.g. `"game"`. */
+      source: string;
+      text: string;
+      respond?: BrainRespond;
+      history?: BrainHistoryPolicy;
+    }
+  | {
+      kind: "direction";
+      text: string;
+      respond?: BrainRespond;
+      history?: BrainHistoryPolicy;
+    };
 
 export type RealtimeTransportKind = "webrtc" | "websocket";
 
@@ -372,6 +445,23 @@ export interface GenerateResponseOptions {
    * manager doing anything special with it.
    */
   signal?: AbortSignal;
+  /**
+   * Show the message to the model for this request without storing it. The
+   * prompt is the history plus the message; nothing about the message is
+   * written, on success or failure. The reply is still committed unless
+   * `callerOwnsHistory` is set. Pass a message that is not in history: one
+   * that already is would appear twice.
+   */
+  ephemeral?: boolean;
+}
+
+export interface AddToHistoryOptions {
+  /**
+   * Store the message as the entry for this key, removing the message
+   * previously stored under it, if that is still in history. The new entry
+   * goes to the end, where the latest state belongs.
+   */
+  replaceKey?: string;
 }
 
 // LLM manager (session management, history, character management)
@@ -386,9 +476,9 @@ export interface LLMManager {
    * events or calling back into `Charivo`.
    *
    * A message this manager cannot store is rejected with a typed state error
-   * (`CharivoStateError`). The built-in manager mirrors each of its two write
-   * paths as they behave today: a `type: "user"` message needs non-empty
-   * string content, while a `type: "character"` message is stored exactly as
+   * (`CharivoStateError`). In the built-in manager every type except
+   * `character` needs non-empty string content, and an `event` also needs a
+   * non-empty `source`; a `type: "character"` message is stored exactly as
    * produced, empty content included.
    *
    * Appends only when that exact object is not already present (reference
@@ -398,8 +488,15 @@ export interface LLMManager {
    * was appended — the object was already there — the call mutates nothing and
    * returns a no-op handle, so it can neither delete the message nor
    * invalidate an earlier handle.
+   *
+   * With `replaceKey`, the message previously stored under that key is
+   * removed too, and the handle puts it back where it was (same condition:
+   * no intervening write).
    */
-  addToHistory(message: Message): HistoryRollback;
+  addToHistory(
+    message: Message,
+    options?: AddToHistoryOptions,
+  ): HistoryRollback;
   generateResponse(
     message: Message,
     options?: GenerateResponseOptions,

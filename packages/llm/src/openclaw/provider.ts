@@ -127,11 +127,18 @@ export class OpenClawLLMProvider implements LLMProvider {
   /**
    * With a pinned session the gateway already holds the past turns, and resending
    * them would flatten a duplicate copy of the history on top of its own. Keep the
-   * system prompts (cheap persona insurance if the session was dropped) and only
-   * what the gateway has not recorded yet:
+   * leading system prompts (cheap persona insurance if the session was dropped)
+   * and only what the gateway has not recorded yet:
    * - mid tool round, that is the trailing run of tool results (the gateway
    *   generated the assistant tool-call turn that asked for them itself);
    * - otherwise, the latest turn.
+   *
+   * Only the first message counts as the system prompt: the manager sends
+   * exactly one, with tool instructions merged in. A later `system` message
+   * (a kept stage direction, even one that heads the history window) is a
+   * past turn like any other, so it is not resent. The gateway retains whatever it
+   * receives, so the manager's history policies - an ephemeral or replaced
+   * input, a silent one never sent - only hold on an unpinned session.
    */
   private selectMessages<T extends { role: string }>(messages: T[]): T[] {
     const latest = messages[messages.length - 1];
@@ -139,15 +146,13 @@ export class OpenClawLLMProvider implements LLMProvider {
       return messages;
     }
 
-    const systemMessages = messages.filter((msg) => msg.role === "system");
+    const leadingSystem = messages[0]!.role === "system" ? [messages[0]!] : [];
 
     if (latest.role === "tool") {
-      return [...systemMessages, ...trailingToolMessages(messages)];
+      return [...leadingSystem, ...trailingToolMessages(messages)];
     }
 
-    return latest.role === "system"
-      ? systemMessages
-      : [...systemMessages, latest];
+    return messages.length === 1 ? [latest] : [...leadingSystem, latest];
   }
 }
 

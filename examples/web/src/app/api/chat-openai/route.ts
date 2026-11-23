@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const llmProvider = createOpenAILLMProvider({
       apiKey: getOpenAIKey(),
-      model: "gpt-4.1-nano",
+      model: "gpt-5.6-luna",
     });
 
     const { messages, tools } = parsed.value;

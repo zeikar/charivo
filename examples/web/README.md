@@ -186,7 +186,7 @@ selects one in the request body.
 The demo ships these routes:
 
 - `POST /api/chat-openai`
-  Uses `@charivo/server/openai` with model `gpt-4.1-nano`
+  Uses `@charivo/server/openai` with model `gpt-5.6-luna`
 - `POST /api/chat-openclaw`
   Uses `@charivo/server/openclaw`. Local-only: answers 404 in a production build
 - `POST /api/chat-gemini`

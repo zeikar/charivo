@@ -5,7 +5,9 @@
 It exports:
 
 - `Charivo`: the top-level orchestrator
-- shared domain types such as `Character`, `Message`, and realtime session types
+- shared domain types such as `Character`, `Message` (`user`, `character`,
+  `system`, `direction`, `event`), the typed brain input `BrainInput` with its
+  `BrainRespond` / `BrainHistoryPolicy` policies, and realtime session types
 - interface contracts for LLM, render, TTS, STT, and realtime managers
 - the event contracts `CharivoEventBus` and `CharivoEventEmitter`: the render
   manager receives a bus via `setEventBus(...)`, while the TTS/STT/LLM/Realtime

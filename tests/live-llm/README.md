@@ -30,6 +30,26 @@ What this suite validates, per provider (`@charivo/llm/openai`,
   (assistant tool calls, then one tool result per call) until the model
   speaks. On Gemini this is the thought-signature placeholder path.
 
+- the stage-direction probe that sets the documented `directionRole` for
+  typed brain input (`@charivo/llm`, `LLMManagerOptions.directionRole`): a
+  prompt ending in a direction sent as `system` and as `user`, built by
+  `LLMManager` with the shipped prefix and system-prompt explanation, and
+  whether a mid-history `system` message is read in place. The tallies are logged, not
+  asserted (five repetitions each).
+
+Recorded result (OpenAI `gpt-5.6-luna` on 2026-11-24, Gemini
+`gemini-3.5-flash-lite` on 2026-11-23):
+
+| Probe | OpenAI | Gemini (OpenAI-compatible endpoint) |
+| --- | --- | --- |
+| Trailing direction as `system` | followed 5/5 | rejected 5/5 (`400 Requests ending with a model turn are not supported`) |
+| Trailing direction as `user` | followed 5/5 | followed 5/5 |
+| Mid-history `system` position | in place 5/5 | hoisted 5/5 |
+
+Gemini folds every `system` message into its system instruction, so a
+direction there loses its place and a cue cannot end the prompt. Use
+`directionRole: "user"` with Gemini; OpenAI works with the default `"system"`.
+
 What it does not validate:
 
 - `@charivo/llm/remote` or the `examples/web` routes
@@ -41,4 +61,9 @@ clients and server routes) use `tests/cascade-smoke/`, which can also run its
 LLM leg on Gemini with `CASCADE_LLM=gemini`.
 
 Cost note: per provider, four to six live calls — one plain chat completion,
-one empty-tools completion, and two to four for the tool round trip.
+one empty-tools completion, and two to four for the tool round trip — plus
+fifteen for the stage-direction probe. Run only the probe with
+`-t "mid-history"`, or only the rest with `-t "LLM provider"`.
+
+The OpenAI leg runs the provider default (override with
+`LIVE_OPENAI_LLM_MODEL`).

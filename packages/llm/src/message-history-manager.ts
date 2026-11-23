@@ -69,6 +69,22 @@ export class MessageHistoryManager {
     return true;
   }
 
+  /** Reference-identity position, matching remove(); -1 when absent. */
+  indexOf(message: Message): number {
+    return this.history.indexOf(message);
+  }
+
+  /** Put a removed entry back at a given index, clamped to the end. */
+  insertAt(index: number, message: Message): void {
+    this.history.splice(Math.min(index, this.history.length), 0, message);
+    this.writeCount += 1;
+  }
+
+  /** Record a write that changed nothing, such as a rollback with nothing left to undo. */
+  markWrite(): void {
+    this.writeCount += 1;
+  }
+
   /** Reference-identity membership check, matching remove(). */
   contains(message: Message): boolean {
     return this.history.includes(message);

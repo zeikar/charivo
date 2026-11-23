@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type {
+  Character,
   LLMMessage,
+  Message,
   LLMToolCall,
   LLMToolResponse,
   ToolDefinition,
@@ -10,6 +12,7 @@ import {
   buildAvatarControlInstructions,
   createAvatarControlTools,
 } from "@charivo/avatar";
+import { createLLMManager } from "@charivo/llm";
 import { createOpenAILLMProvider } from "@charivo/llm/openai";
 import { createGeminiLLMProvider } from "@charivo/llm/gemini";
 import { SMOKE_AVATAR_CATALOG } from "../avatar-catalog";
@@ -54,7 +57,12 @@ const PROVIDERS: ProviderCase[] = [
   {
     name: "openai",
     envKey: "OPENAI_API_KEY",
-    create: (apiKey) => createOpenAILLMProvider({ apiKey }),
+    // The provider default unless LIVE_OPENAI_LLM_MODEL names another model.
+    create: (apiKey) =>
+      createOpenAILLMProvider({
+        apiKey,
+        model: process.env.LIVE_OPENAI_LLM_MODEL,
+      }),
   },
   {
     name: "gemini",
@@ -183,6 +191,122 @@ for (const providerCase of PROVIDERS) {
         expect(latest.content.trim().length).toBeGreaterThan(0);
       },
       TOOL_LOOP_TEST_TIMEOUT_MS,
+    );
+  });
+}
+
+// Probe for typed brain input. A stage direction travels as a `system`
+// message between turns, so two questions decide the documented
+// `directionRole` per provider (results in tests/live-llm/README.md):
+// - trailing: a prompt that ends in the direction, which is how a cue is
+//   sent. Is it accepted, and does the reply follow it?
+// - position: is a mid-history `system` message read where it sits, or
+//   hoisted to the top? The last user turn asks the model to quote the line
+//   right before it: in place that is the note, hoisted it is "Noted!".
+// Tallies are logged, not asserted: they decide docs, not code.
+const PROBE_REPETITIONS = 5;
+const DIRECTION_NOTE = "Mention the word MANGO in your next reply.";
+const PROBE_CHARACTER: Character = {
+  id: "probe",
+  name: "Hiyori",
+  description: "A cheerful character.",
+  personality: "Keeps every reply to one short sentence.",
+};
+
+function probeMessage(type: Message["type"], content: string): Message {
+  return { id: `${type}-${content}`, content, timestamp: new Date(), type };
+}
+
+function tally(labels: string[]): string {
+  const counts = new Map<string, number>();
+  for (const label of labels) {
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts].map(([label, count]) => `${label} ${count}`).join(", ");
+}
+
+for (const providerCase of PROVIDERS) {
+  const apiKey = process.env[providerCase.envKey];
+  const liveDescribe = RUN_LIVE_LLM_TESTS && apiKey ? describe : describe.skip;
+
+  liveDescribe(`${providerCase.name} mid-history system message (live)`, () => {
+    const provider = providerCase.create(apiKey ?? "");
+
+    // Through the shipped projection: LLMManager adds the marker explanation
+    // to the system prompt and sends the direction with its prefix.
+    for (const directionRole of ["system", "user"] as const) {
+      it(
+        `follows a trailing direction sent as ${directionRole}`,
+        async () => {
+          const labels: string[] = [];
+          for (let i = 0; i < PROBE_REPETITIONS; i += 1) {
+            const manager = createLLMManager(
+              { call: (messages) => provider.generateResponse(messages) },
+              { directionRole },
+            );
+            manager.setCharacter(PROBE_CHARACTER);
+            manager.addToHistory(probeMessage("user", "Hi!"));
+            manager.addToHistory(probeMessage("character", "Hello there!"));
+            try {
+              const reply = await manager.generateResponse(
+                probeMessage("direction", DIRECTION_NOTE),
+                { ephemeral: true },
+              );
+              labels.push(
+                reply.toUpperCase().includes("MANGO") ? "followed" : "ignored",
+              );
+            } catch (error) {
+              labels.push(
+                `rejected(${error instanceof Error ? error.message.slice(0, 80) : String(error)})`,
+              );
+            }
+          }
+
+          console.log(
+            `[live-llm] ${providerCase.name} trailing ${directionRole} direction: ${tally(labels)}`,
+          );
+          expect(labels).toHaveLength(PROBE_REPETITIONS);
+        },
+        PROBE_REPETITIONS * PROVIDER_TIMEOUT_MS + 10_000,
+      );
+    }
+
+    it(
+      "reads a mid-history system message in place",
+      async () => {
+        const labels: string[] = [];
+        for (let i = 0; i < PROBE_REPETITIONS; i += 1) {
+          const reply = await provider.generateResponse([
+            {
+              role: "system",
+              content:
+                "You are a precise assistant. Follow the user's formatting request exactly.",
+            },
+            { role: "user", content: "Remember the word APPLE." },
+            { role: "assistant", content: "Noted!" },
+            { role: "system", content: "Side note: the sky is green today." },
+            {
+              role: "user",
+              content:
+                "Quote, verbatim and with nothing else, the single message that came immediately before this one.",
+            },
+          ]);
+          const text = reply.toLowerCase();
+          labels.push(
+            text.includes("sky is green")
+              ? "in-place"
+              : text.includes("noted")
+                ? "hoisted"
+                : `other(${reply.trim().slice(0, 40)})`,
+          );
+        }
+
+        console.log(
+          `[live-llm] ${providerCase.name} mid-history system position: ${tally(labels)}`,
+        );
+        expect(labels).toHaveLength(PROBE_REPETITIONS);
+      },
+      PROBE_REPETITIONS * PROVIDER_TIMEOUT_MS + 10_000,
     );
   });
 }

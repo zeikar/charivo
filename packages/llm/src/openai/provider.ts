@@ -15,12 +15,28 @@ import {
 } from "../openai-tool-format";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_MODEL = "gpt-5.6-luna";
+
+export type OpenAIReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high";
 
 export interface OpenAILLMConfig {
   apiKey: string;
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Sent as `reasoning_effort`. On gpt-5 family models, chat completions
+   * accept function tools and a custom `temperature` only with `"none"`.
+   * Models without reasoning (gpt-4.1, gpt-4o) reject the parameter, so it is
+   * sent only when set - except on the default model, `gpt-5.6-luna`, where
+   * it defaults to `"none"`. Set it yourself for other gpt-5 family models.
+   */
+  reasoningEffort?: OpenAIReasoningEffort;
   dangerouslyAllowBrowser?: boolean;
 }
 
@@ -29,6 +45,7 @@ export class OpenAILLMProvider implements LLMProvider {
   private model: string;
   private temperature: number;
   private maxTokens: number;
+  private reasoningEffort?: OpenAIReasoningEffort;
 
   constructor(config: OpenAILLMConfig) {
     if (typeof window !== "undefined" && !config.dangerouslyAllowBrowser) {
@@ -42,9 +59,26 @@ export class OpenAILLMProvider implements LLMProvider {
       dangerouslyAllowBrowser: config.dangerouslyAllowBrowser,
     });
 
-    this.model = config.model || "gpt-4.1-nano";
+    this.model = config.model || DEFAULT_MODEL;
     this.temperature = config.temperature || 0.7;
     this.maxTokens = config.maxTokens || 1000;
+    this.reasoningEffort =
+      config.reasoningEffort ??
+      (this.model === DEFAULT_MODEL ? "none" : undefined);
+  }
+
+  /** Sampling parameters shared by both request kinds. */
+  private requestParams() {
+    return {
+      model: this.model,
+      temperature: this.temperature,
+      // gpt-5 family models reject `max_tokens`; every current chat model
+      // accepts `max_completion_tokens`.
+      max_completion_tokens: this.maxTokens,
+      ...(this.reasoningEffort
+        ? { reasoning_effort: this.reasoningEffort }
+        : {}),
+    };
   }
 
   async generateResponse(messages: LLMMessage[]): Promise<string> {
@@ -53,10 +87,8 @@ export class OpenAILLMProvider implements LLMProvider {
         (signal) =>
           this.openai.chat.completions.create(
             {
-              model: this.model,
+              ...this.requestParams(),
               messages: toOpenAIChatMessages(messages),
-              temperature: this.temperature,
-              max_tokens: this.maxTokens,
             },
             { signal },
           ),
@@ -80,10 +112,8 @@ export class OpenAILLMProvider implements LLMProvider {
         (signal) =>
           this.openai.chat.completions.create(
             {
-              model: this.model,
+              ...this.requestParams(),
               messages: toOpenAIChatMessages(messages),
-              temperature: this.temperature,
-              max_tokens: this.maxTokens,
               ...(openAITools ? { tools: openAITools } : {}),
             },
             { signal },

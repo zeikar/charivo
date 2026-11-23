@@ -53,6 +53,32 @@ const manager = createLLMManager(client, {
 
 Use `maxHistoryTurns: null` to opt out and keep unbounded history.
 
+## Typed Input
+
+History entries are `user`, `character`, `system`, `direction` (a private stage
+cue from the app) or `event` (data from outside the app, with a required
+`source`). The converter sends each one with its own role, keeps events out of
+system authority, and escapes user turns that try to pose as either. Use
+`directionRole: "user"` with Gemini, which folds `system` messages into its
+system instruction:
+
+```ts
+import { createLLMManager, resolveBrainInput } from "@charivo/llm";
+
+const manager = createLLMManager(client, { directionRole: "user" });
+
+const cue = resolveBrainInput({ kind: "direction", text: "Wrap up the topic." });
+// cue.respond === "must", cue.history === "ephemeral"
+await manager.generateResponse(cue.message, { ephemeral: true });
+
+const score = resolveBrainInput({ kind: "event", source: "game", text: "2-0" });
+manager.addToHistory(score.message, { replaceKey: "score" });
+```
+
+The projection table, defaults, measured provider behavior and the OpenClaw
+pinned-session boundary are in the
+[LLM guide](https://github.com/zeikar/charivo/blob/main/docs/guide/llm.md#typed-input).
+
 ## Tool Calling
 
 `LLMManager` can run a tool-calling loop instead of a plain `call(...)` when
@@ -153,16 +179,20 @@ when calling the underlying model.
 Only the final assistant text is added to `LLMManager`'s history. Intermediate
 assistant `toolCalls` turns and `role: "tool"` result turns exist only inside
 one `generateResponse(...)` call's tool loop — `getHistory()` and the stored
-conversation always stay a plain user/character transcript that other
+conversation always stay a plain transcript, free of tool turns, that other
 modalities can reuse.
 
 ## Exports
 
 - `createLLMManager(client, options?)`
-- `LLMManagerOptions`
+- `LLMManagerOptions` (including `directionRole`)
+- `resolveBrainInput(input, options?)`, `ResolvedBrainInput`,
+  `ResolveBrainInputOptions`, `DirectionRole`
 - `@charivo/llm/openai`: `createOpenAILLMClient(config)` (browser client,
   dev/testing only) and, for server-side use, `createOpenAILLMProvider(config)`,
-  `OpenAILLMProvider`, `type OpenAILLMConfig`
+  `OpenAILLMProvider`, `type OpenAILLMConfig`, `type OpenAIReasoningEffort`.
+  The default model is `gpt-5.6-luna`, sent with `reasoning_effort: "none"`;
+  set `reasoningEffort` for other gpt-5 family models
 - `@charivo/llm/openclaw`: `createOpenClawLLMClient(config)` (browser client,
   dev/testing only) and, for server-side use, `createOpenClawLLMProvider(config)`,
   `OpenClawLLMProvider`, `type OpenClawLLMConfig`. `sessionKey` exists only on
@@ -181,7 +211,7 @@ modalities can reuse.
 
 - `setCharacter(character)`
 - `getCharacter()`
-- `addToHistory(message)`
+- `addToHistory(message, options?)` — `options.replaceKey`
 - `generateResponse(message, options?)`
 - `getHistory()`
 - `clearHistory()`
@@ -205,10 +235,14 @@ The returned handle removes its message if it is still present and restores
 what *that* call evicted, but only while nothing else has written to history
 since; a call that appended nothing returns an inert handle, so it can neither
 delete the message nor invalidate an earlier handle. A message the manager
-cannot store is rejected with a typed `CharivoStateError`: a `type: "user"`
-message needs non-empty string content, while a `type: "character"` message is
-stored as produced, empty content included — each rule matching the existing
-write path it takes over.
+cannot store is rejected with a typed `CharivoStateError`: every type except
+`character` needs non-empty string content and an `event` also needs a
+non-empty `source`, while a `type: "character"` message is stored as produced,
+empty content included.
+
+With `{ replaceKey }`, the message last stored under that key is removed (if it
+is still in history) and the new one is appended; the handle puts the replaced
+entry back at its old position under the same no-intervening-write rule.
 
 `generateResponse(message, options?)` accepts `GenerateResponseOptions`:
 
@@ -225,6 +259,10 @@ write path it takes over.
   resolves with the latest response text. It aborts neither an in-flight
   request nor an already-running handler, and it does not govern history
   writes.
+- `ephemeral` — show the message to the model for this request only: the
+  prompt is the history plus the message, and the message is never written,
+  on success or failure. The reply is still committed unless
+  `callerOwnsHistory` is set.
 - `signal` — an `AbortSignal` forwarded to the client as `LLMCallOptions.signal`
   on every `call`/`callWithTools` request the call makes, tool rounds
   included. Distinct from `isCancelled`: this is what aborts the in-flight
@@ -240,8 +278,9 @@ committing the reply, pruning the completed pair as before, and rolling back
 on failure — that rollback now works by reference identity, so overlapping
 direct calls no longer roll back each other's messages.
 
-**Migrating a custom `LLMManager`:** `addToHistory(message)` is now a required
-member. Implement it synchronously; reject what you cannot store with a typed
+**Migrating a custom `LLMManager`:** `addToHistory(message, options?)` is a
+required member; `options.replaceKey` and `GenerateResponseOptions.ephemeral`
+are optional to honor, but a brain that relies on them needs them. Implement it synchronously; reject what you cannot store with a typed
 state error; append only when the exact object is absent; return an inert
 handle when you appended nothing, and otherwise an idempotent handle that
 removes its own message and restores its own evictions only when nothing else

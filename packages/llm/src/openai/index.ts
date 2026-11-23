@@ -14,6 +14,7 @@ export {
   createOpenAILLMProvider,
   OpenAILLMProvider,
   type OpenAILLMConfig,
+  type OpenAIReasoningEffort,
 } from "./provider";
 
 // Use OpenAILLMConfig directly
