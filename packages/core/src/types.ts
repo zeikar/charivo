@@ -8,6 +8,58 @@ export interface GazeCoordinates {
   y: number;
 }
 
+/**
+ * How strongly an avatar claim competes, highest first: `reflex`, `explicit`,
+ * `inferred`, `ambient`. On a held channel the highest live claim wins and a
+ * tie goes to the newest. Defaults to `"explicit"` when a claim omits it.
+ */
+export type AvatarClaimPriority =
+  | "reflex"
+  | "explicit"
+  | "inferred"
+  | "ambient";
+
+/**
+ * How long a held claim (expression or gaze) stays live.
+ *
+ * - `{ ms }`: until the timer fires; `ms` must be a positive finite number or
+ *   the claim is ignored.
+ * - `"until-release"`: until `avatar:release` names its source or the same
+ *   source claims again.
+ * - `{ performance: id }`: until `performance:end` for that id.
+ *
+ * Omitted, the channel default applies: an expression is bound to the speech
+ * in progress (or the next one that starts soon), a gaze lasts 1,200 ms.
+ */
+export type AvatarHold =
+  | { ms: number }
+  | "until-release"
+  | { performance: string };
+
+/**
+ * Optional claim fields carried by `avatar:expression` and `avatar:gaze`.
+ * Every field is optional so existing emitters stay valid.
+ */
+export interface AvatarClaimOptions {
+  /** Who holds the claim; a new claim replaces the same source's previous one. Defaults to `"app"`. */
+  source?: string;
+  /** Defaults to `"explicit"`. */
+  priority?: AvatarClaimPriority;
+  /** Defaults to the channel's hold (see {@link AvatarHold}). */
+  hold?: AvatarHold;
+}
+
+/**
+ * Renderer-level motion priority, mapped from {@link AvatarClaimPriority}:
+ * `reflex` -> `"force"` (cuts any running motion), `explicit` / `inferred` ->
+ * `"normal"`, `ambient` -> `"idle"` (plays only when nothing else is).
+ * Absent means `"normal"`.
+ */
+export type MotionPriority = "idle" | "normal" | "force";
+
+/** How a performance ended, reported by `performance:end`. */
+export type PerformanceStatus = "completed" | "cancelled" | "failed";
+
 export interface AvatarControlCatalog {
   expressions: string[];
   motions: Record<string, number>;
@@ -384,13 +436,22 @@ export interface Renderer {
   playExpression?(expressionId: string): void;
   /** Releases the active expression so the model returns to its base face — implementations may fade it out rather than snapping; renderers without expression state omit it. */
   stopExpression?(): void;
-  /** `options.muteSound` asks for the motion without its baked-in sample clip; renderers with no motion audio may ignore it, and omitting it keeps the clip audible. */
+  /**
+   * `options.muteSound` asks for the motion without its baked-in sample clip; renderers with no motion audio may ignore it, and omitting it keeps the clip audible.
+   * `options.priority` lets the renderer decide against the motion actually running (absent means `"normal"`); a renderer without motion priorities may ignore it and play every motion.
+   */
   playMotionByGroup?(
     group: string,
     index: number,
-    options?: { muteSound?: boolean },
+    options?: { muteSound?: boolean; priority?: MotionPriority },
   ): void;
   lookAt?(coords: GazeCoordinates): void;
+  /**
+   * Drops the target a `lookAt` set so the renderer's own resting gaze resumes.
+   * `RenderManager` calls it when the last gaze claim ends; without it the last
+   * claimed target stays until the next cursor or local-gaze input.
+   */
+  clearGaze?(): void;
   getAvailableExpressions?(): string[];
   getAvailableMotionGroups?(): Record<string, number>;
   /**
@@ -696,15 +757,56 @@ export interface EventMap {
   };
   // Intentionally flat payload (no wrapper object).
   "realtime:usage": RealtimeUsageEvent;
-  "avatar:expression": { expressionId: string };
   /**
+   * A held expression claim. The claim fields are optional: with none, the
+   * claim comes from source `"app"` at `"explicit"` priority and is bound to
+   * the speech in progress or about to start.
+   */
+  "avatar:expression": { expressionId: string } & AvatarClaimOptions;
+  /**
+   * A one-shot motion: it is never held or released, so it carries a priority
+   * but no source or hold.
+   *
    * `muteSound` is a rendering request — play the motion without its baked-in
    * sample clip — not a provenance tag. Absent means audible, so every existing
    * emitter keeps today's behavior.
    */
-  "avatar:motion": { group: string; index: number; muteSound?: boolean };
+  "avatar:motion": {
+    group: string;
+    index: number;
+    muteSound?: boolean;
+    priority?: AvatarClaimPriority;
+  };
   // Intentionally flat payload (no wrapper object).
-  "avatar:gaze": GazeCoordinates;
+  "avatar:gaze": GazeCoordinates & AvatarClaimOptions;
+  /**
+   * Ends `source`'s live claim on `channel`, or on both expression and gaze
+   * when `channel` is omitted. Consumed by `RenderManager`.
+   */
+  "avatar:release": { source: string; channel?: "expression" | "gaze" };
+  /**
+   * A performance (one line of speech or a silent act) began. `RenderManager`
+   * consumes the pair to scope holds: a `voiced` performance is a speech span
+   * that binds expression claims without an explicit hold, and a
+   * `{ performance: id }` hold follows `performanceId` either way. Nothing
+   * built-in emits it yet; an app running its own speech pipeline may emit the
+   * pair. Speech not reported this way still counts as one span from
+   * `tts:audio:start` to `tts:audio:end`.
+   */
+  "performance:start": {
+    performanceId: string;
+    origin: string;
+    voiced: boolean;
+  };
+  /**
+   * The performance `performanceId` ended. Releases the claims bound to it,
+   * whether or not its `performance:start` was seen.
+   */
+  "performance:end": {
+    performanceId: string;
+    origin: string;
+    status: PerformanceStatus;
+  };
   "realtime:error": { error: Error };
   "llm:error": { error: Error };
 }
