@@ -116,7 +116,9 @@ in the catalog below — and how to establish what an expression id actually
 means — see [Avatar Control](./avatar.md). The tool loop
 turns on only when both a tool is registered and the client implements
 `callWithTools` — `@charivo/llm/remote` does, provided your route forwards
-`tools` to a provider's `generateResponseWithTools`.
+`tools` to a provider's `generateResponseWithTools`. If the tool loop's extra
+requests matter, the
+[text-driven director](./avatar.md#text-driven-director) is the alternative.
 
 ```ts
 import { createLLMManager } from "@charivo/llm";

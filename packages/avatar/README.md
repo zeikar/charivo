@@ -1,16 +1,20 @@
 # @charivo/avatar
 
-Catalog-constrained avatar control tools for Charivo LLM and realtime sessions.
+Avatar control for Charivo, in two modes: catalog-constrained tools the model
+calls, or a text-driven director that reads the spoken line.
 
-`@charivo/avatar` depends only on `@charivo/core`. It builds `setExpression`,
-`playMotion`, and `lookAt` tool definitions/handlers from your model's
-expression and motion catalog, plus a matching instruction string and a result
-projector that turns successful tool calls into `avatar:*` events.
+`@charivo/avatar` depends only on `@charivo/core`. The tool-calling mode builds
+`setExpression`, `playMotion`, and `lookAt` tool definitions/handlers from your
+model's expression and motion catalog, plus a matching instruction string and a
+result projector that turns successful tool calls into `avatar:*` events.
 
 Pair `createAvatarControlTools(...)` with `buildAvatarControlInstructions(...)`
 when you want the model to use avatar actions proactively. Keep those
 instructions in the app/session layer rather than in `@charivo/llm` or
 `@charivo/realtime` so non-avatar sessions in those packages stay generic.
+
+The other mode, the [text-driven director](#text-driven-director), leaves the
+talking model with text only and makes a separate classifier call per line.
 
 ## Install
 
@@ -28,6 +32,11 @@ pnpm add @charivo/avatar
 - `PLAY_MOTION_TOOL_NAME`
 - `LOOK_AT_TOOL_NAME`
 - `type ExpressionArgs`, `type MotionArgs`, `type LookAtArgs`
+- `createAvatarDirector(options)`
+- `connectAvatarDirectorToCascade(bus, director)`
+- `createLLMAvatarClassifier(client)`
+- `type AvatarDirector`, `type AvatarDirectorOptions`, `type AvatarClassifier`,
+  `type AvatarDecision`
 
 `createAvatarControlTools(catalog)` returns `ToolRegistration[]` from
 `@charivo/core`, so it works with both `LLMManager` (`@charivo/llm`) and
@@ -89,7 +98,101 @@ forwards tools to `generateResponseWithTools`). See the
 [LLM package README](../llm/README.md#tool-calling) for the remote request/response
 shape and the round cap.
 
+## Text-Driven Director
+
+The director is the alternative to tool calling. The talking LLM writes only
+text. The director reads each spoken line, makes one small classifier call per
+line (no history), checks the decision against the catalog, and emits
+`avatar:expression` and `avatar:motion`. It does not emit gaze.
+
+It drives only the body, not what the character says. An app that also decides
+when the character talks (like the vtuber example's show "Director") has a
+separate component for that.
+
+```ts
+import {
+  connectAvatarDirectorToCascade,
+  createAvatarDirector,
+  createLLMAvatarClassifier,
+} from "@charivo/avatar";
+
+const director = createAvatarDirector({
+  catalog,
+  classifier: createLLMAvatarClassifier(llmClient), // any LLMClient
+  emitter: charivo,
+  onError: (error) => console.error(error), // defaults to console.warn
+});
+
+const disconnect = connectAvatarDirectorToCascade(charivo, director);
+```
+
+`createAvatarDirector(options)` returns an `AvatarDirector`:
+
+- `say(text)` classifies one complete line.
+- `push(chunk)` then `done()` build a line from streaming text; the first
+  `push()` after a line ends starts a new one.
+- `cancel()` ends the line and drops the open buffer and any pending decision.
+
+Only the cascade wiring ships. `push()` / `done()` exist for streaming text
+sources, such as an adapter you write.
+
+### Line Lifecycle
+
+`connectAvatarDirectorToCascade(bus, director)` returns a disconnect function.
+It sends each `character:speak` to `say()` and treats `tts:audio:end`,
+`tts:end`, `tts:error`, and `turn:cancelled` as the end of the line, calling
+`cancel()`. It ignores a `character:speak` whose turn was already cancelled.
+
+- A pending decision is stale, and its signal aborted, when a new line begins
+  (`say()` or the first `push()`) or on `cancel()`. Currency is rechecked before
+  each emission, so a stale decision emits nothing.
+- Each field of a decision is checked against the catalog separately. An id or
+  motion the catalog does not have is dropped silently, and the other field
+  still emits, so a valid expression plays beside an invalid motion.
+- A classifier that rejects or throws emits nothing and goes to `onError`, or
+  `console.warn` without it. A failure from a superseded or cancelled line is
+  not reported.
+- `say()`, `push()`, `done()`, and `cancel()` never throw.
+
+Two cases emit none of the four line-over events: a text-only turn (no TTS
+manager attached) and a turn that fails after `character:speak` but before TTS
+starts, such as a renderer failure. Call `director.cancel()` yourself there if a
+late decision should be dropped; otherwise it applies when ready, and the next
+line supersedes it.
+
+### Classifier
+
+An `AvatarClassifier` is
+`({ text, catalog, signal }) => Promise<AvatarDecision>`, where
+`AvatarDecision` is `{ expressionId?, motion?: { group, index } }`. Anything
+that returns one works, so a rule-based or local classifier is just another
+function:
+
+```ts
+import type { AvatarClassifier } from "@charivo/avatar";
+
+const keywordClassifier: AvatarClassifier = async ({ text, catalog }) =>
+  /thank|great|haha/i.test(text) && catalog.expressions.includes("Smile")
+    ? { expressionId: "Smile" }
+    : {};
+```
+
+`createLLMAvatarClassifier(client)` uses `LLMClient.call()` with two messages:
+a system message listing every expression id and motion group index range
+(groups with zero clips are left out), with the catalog descriptions as hints,
+and the line as the user message. It passes
+the director's `signal` and parses the first JSON object in the reply.
+
+### Cost
+
+The director adds one extra LLM request per line, with no conversation history.
+The tool loop instead adds a round trip for each round of tool calls.
+
 ## Events
+
+The director emits `avatar:expression` — `{ expressionId }` and
+`avatar:motion` — `{ group, index, muteSound: true }` (muted for the same reason
+as tool-call motions), and never `avatar:gaze`.
 
 `createAvatarResultProjector()` emits, on successful tool execution:
 
@@ -134,8 +237,8 @@ appended to the `playMotion` tool's `index` parameter description and to the
 instructions.
 
 When either is absent, or when none of its keys match, the outputs are
-unchanged. The formatting is internal to this package — the Exports list above
-is unchanged.
+unchanged. The formatting is internal to this package. The director's classifier
+prompt uses the same descriptions.
 
 ## Migrating From `@charivo/realtime-avatar`
 
@@ -147,4 +250,7 @@ Replace the dependency and imports:
 s/@charivo\/realtime-avatar/@charivo\/avatar/
 ```
 
-All exports listed above are unchanged.
+Every tool-calling export listed above is unchanged. The director exports
+(`createAvatarDirector`, `connectAvatarDirectorToCascade`,
+`createLLMAvatarClassifier`) are new and were never part of
+`@charivo/realtime-avatar`.

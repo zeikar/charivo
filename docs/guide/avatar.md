@@ -6,12 +6,19 @@ sidebar_position: 10
 # Avatar Control
 
 `@charivo/avatar` is optional. It turns your model's expressions and motions
-into a catalog the model can call as tools — so the character decides when to
-smile, wave, or look somewhere — and bridges successful calls back into the
-`avatar:*` events `@charivo/render` already listens for.
+into a catalog and drives the `avatar:*` events `@charivo/render` already
+listens for, in one of two ways:
 
-It is a separate install, and the same tools serve both conversation paths:
-`LLMManager` and `RealtimeManager` take the same `ToolRegistration[]`.
+- **Tools** — the model calls the catalog as tools, so the character decides when
+  to smile, wave, or look somewhere, and successful calls bridge back into the
+  events.
+- **Text-driven director** — the model writes only text, and a separate small
+  classifier call picks the expression and motion for each spoken line. See
+  [Text-Driven Director](#text-driven-director).
+
+It is a separate install. In tool mode the same tools serve both conversation
+paths: `LLMManager` and `RealtimeManager` take the same `ToolRegistration[]`.
+The director's shipped wiring is cascade-only.
 
 ```bash
 pnpm add @charivo/avatar
@@ -19,8 +26,8 @@ pnpm add @charivo/avatar
 
 ## Do You Need It?
 
-Not if your app decides what the avatar does. A button, a sentiment pass, or any
-rule of your own can drive the avatar by emitting the events directly:
+Not if your app decides what the avatar does. A button or any rule of your own
+can drive the avatar by emitting the events directly:
 
 ```ts
 charivo.emit("avatar:expression", { expressionId: "F01" });
@@ -32,8 +39,12 @@ Emit on the bus rather than calling the renderer, so `RenderManager` stays the
 single owner of expression state — including the auto-release in
 [Rendering](./rendering.md#expression-auto-release).
 
-Reach for `@charivo/avatar` when you want the *model* to decide. What it adds
-over raw events is vocabulary and guard rails: the tool schema pins
+If you want a separate pass over the reply, that is the
+[text-driven director](#text-driven-director): it runs a classifier over each
+spoken line and emits these events for you.
+
+Reach for the tool mode when you want the *model* to decide. What it adds over
+raw events is vocabulary and guard rails: the tool schema pins
 `expressionId` and `group` to `enum`s built from your catalog, the handlers
 re-check arguments and fail the call rather than forwarding an invented id, and
 the instruction builder tells the model what those ids mean.
@@ -46,10 +57,14 @@ the instruction builder tells the model what those ids mean.
 - a result projector that turns successful calls into `avatar:expression`,
   `avatar:motion` (asking for `muteSound`, so a motion's baked-in sample clip
   does not talk over the character), and `avatar:gaze`
+- a text-driven director that classifies each spoken line against the catalog
+  and emits `avatar:expression` and `avatar:motion` (also with `muteSound`),
+  without gaze
 
 It owns no rendering and no session state. It builds on `@charivo/core`'s
-neutral `ToolRegistration` / `ToolResultProjector` contracts and sits beside the
-manager packages rather than inside either one.
+neutral contracts — `ToolRegistration` / `ToolResultProjector` for the tools,
+`CharivoEventEmitter` / `CharivoEventBus` and `LLMClient` for the director — and
+sits beside the manager packages rather than inside either one.
 
 ## Building The Catalog
 
@@ -109,9 +124,61 @@ that change or close the eyes are the ones that still read. And a motion group
 usually holds several unrelated reactions, which is why `motionDescriptions` is
 positional per index rather than one sentence per group.
 
+## Text-Driven Director
+
+Here the talking LLM writes only text. The director reads each spoken line,
+makes one classifier call per line (no history), checks the decision against the
+catalog, and emits `avatar:expression` and `avatar:motion` with
+`muteSound: true`. It emits no gaze. `RenderManager` still owns the expression
+hold and release; see
+[Expression Auto-Release](./rendering.md#expression-auto-release).
+
+The director drives only the body, not what the character says. The vtuber
+example's separate show "Director" decides when to talk.
+
+Choose it over tools when the tool loop's extra round trips matter, or when the
+talking model should not see avatar tools at all. The talker makes one request
+and the classifier adds one more per line, whereas the tool loop adds a round
+trip per tool round.
+
+```ts
+import {
+  connectAvatarDirectorToCascade,
+  createAvatarDirector,
+  createLLMAvatarClassifier,
+} from "@charivo/avatar";
+
+const director = createAvatarDirector({
+  catalog,
+  classifier: createLLMAvatarClassifier(llmClient),
+  emitter: charivo,
+});
+const disconnect = connectAvatarDirectorToCascade(charivo, director);
+```
+
+Only cascade wiring ships: each `character:speak` is one line. The director also
+has `push(chunk)` and `done()` for streaming text, but nothing wires them yet.
+The line ends on `tts:audio:end`, `tts:end`, `tts:error`, or `turn:cancelled`,
+and a decision that arrives after that is dropped. A new line also supersedes a
+pending decision. Two cases emit none of those events: a text-only turn (no TTS manager) and a
+turn that fails after `character:speak` but before TTS starts. Call
+`director.cancel()` yourself there if a late decision should be dropped.
+
+The classifier is pluggable: an `AvatarClassifier` is a function from
+`{ text, catalog, signal }` to a decision, so a rule-based or local classifier
+replaces `createLLMAvatarClassifier(...)`. The director checks each field of the
+decision against the catalog and silently drops one the model does not have, so
+a valid expression still emits beside an invalid motion. Only a classifier that
+rejects or throws reaches `onError` (default `console.warn`), and then nothing is
+emitted. See the
+[package README](https://github.com/zeikar/charivo/blob/main/packages/avatar/README.md#text-driven-director)
+for the full contract.
+
 ## Wiring It Up
 
-Both managers register the same tools, and each guide carries its own recipe:
+For the text-driven director, see [Text-Driven Director](#text-driven-director)
+above. In tool mode both managers register the same tools, and each guide carries its
+own recipe:
 
 - LLM — [Avatar Tool Calling](./llm.md#avatar-tool-calling), including the
   server route that has to forward `tools`

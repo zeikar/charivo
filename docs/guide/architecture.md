@@ -49,14 +49,16 @@ Lower layers should not take on orchestration concerns from higher layers.
 
 Each manager wraps a runtime implementation behind a stable manager-facing API.
 
-### Avatar Tool Extensions
+### Avatar Extensions
 
 - `@charivo/avatar` (optional): catalog-constrained avatar
   expression/motion/gaze tools, instructions, and a result projector, built on
   `@charivo/core`'s neutral `ToolRegistration`/`ToolResultProjector`
   contracts. It bridges tool results into both `@charivo/realtime` and
-  `@charivo/llm`, adjacent to but separate from either manager package — see
-  [Avatar Control](./avatar.md). (Formerly published as
+  `@charivo/llm`, adjacent to but separate from either manager package. It
+  also ships a text-driven director that classifies each spoken line and emits
+  expression and motion events (no gaze) without tool calls — see [Avatar Control](./avatar.md).
+  (Formerly published as
   `@charivo/realtime-avatar`.)
 
 ## Public API Contract

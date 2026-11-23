@@ -124,7 +124,9 @@ Text chat can also drive the character's face and body: register the
 catalog-constrained tools from `@charivo/avatar` on the LLM manager and the
 model calls `setExpression` / `playMotion` / `lookAt` while it replies. See the
 [LLM guide's avatar tool-calling walkthrough](./docs/guide/llm.md#avatar-tool-calling)
-for the wiring.
+for the wiring. Alternatively, a text-driven director reads each spoken line and
+picks the expression and motion with a separate classifier call; see
+[Avatar Control](./docs/guide/avatar.md#text-driven-director).
 
 ## Realtime Voice
 
@@ -378,7 +380,8 @@ Avatar:
 
 - `@charivo/avatar`: catalog-constrained avatar expression/motion/gaze tool
   definitions, instructions, and a result projector, for use with either
-  `@charivo/llm` or `@charivo/realtime`
+  `@charivo/llm` or `@charivo/realtime`, plus a text-driven director
+  (`createAvatarDirector`) that classifies each spoken line instead
 
 Rendering:
 

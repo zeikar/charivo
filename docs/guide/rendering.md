@@ -106,9 +106,9 @@ engine needs a stencil buffer that a context created for Live2D lacks. The
 - `tts:lipsync:update`
 - `avatar:expression`
 - `avatar:motion` — may carry `muteSound`, which plays the motion without its
-  baked-in sample clip. `@charivo/avatar` sets it on tool-call motions so a
-  Cubism sample's prerecorded voice never talks over the character's own;
-  without the flag the clip stays audible.
+  baked-in sample clip. `@charivo/avatar` sets it on tool-call motions and on
+  text-driven director motions so a Cubism sample's prerecorded voice never
+  talks over the character's own; without the flag the clip stays audible.
 - `avatar:gaze`
 - optional mouse tracking
 
