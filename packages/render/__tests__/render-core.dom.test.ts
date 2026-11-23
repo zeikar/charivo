@@ -1339,6 +1339,467 @@ describe("RenderManager", () => {
     });
   });
 
+  describe("gaze claims", () => {
+    function gazeRenderer() {
+      return Object.assign(new StubRenderer(), {
+        clearGaze: vi.fn(() => undefined),
+      });
+    }
+
+    function trackedCanvas() {
+      const canvas = document.createElement("canvas");
+      Object.defineProperty(canvas, "getBoundingClientRect", {
+        value: () => ({ left: 0, right: 100, top: 0, bottom: 100 }),
+        configurable: true,
+      });
+      return canvas;
+    }
+
+    function moveCursor(clientX: number, clientY: number) {
+      document.dispatchEvent(
+        new MouseEvent("pointermove", { clientX, clientY }),
+      );
+    }
+
+    it("hands the renderer only the coordinates of a claim", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 0.2,
+        y: 0.3,
+        source: "game",
+        priority: "reflex",
+        hold: { ms: 500 },
+      });
+
+      expect(renderer.lookAt.mock.calls).toStrictEqual([[{ x: 0.2, y: 0.3 }]]);
+    });
+
+    it("a repeated gaze claim for the target already showing refreshes its hold and calls no lookAt", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 0.2, y: 0.3 });
+      vi.advanceTimersByTime(1_000);
+      bus.emit("avatar:gaze", { x: 0.2, y: 0.3 });
+
+      expect(renderer.lookAt).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1_199);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("a higher claim wins, and when it expires the lower live claim is looked at again without clearGaze", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 0.9,
+        y: 0.9,
+        source: "game",
+        priority: "reflex",
+        hold: { ms: 500 },
+      });
+      bus.emit("avatar:gaze", {
+        x: 0.1,
+        y: 0.1,
+        source: "avatar-director",
+        priority: "inferred",
+        hold: "until-release",
+      });
+      expect(renderer.lookAt.mock.calls).toEqual([[{ x: 0.9, y: 0.9 }]]);
+
+      vi.advanceTimersByTime(500);
+      expect(renderer.lookAt.mock.calls).toEqual([
+        [{ x: 0.9, y: 0.9 }],
+        [{ x: 0.1, y: 0.1 }],
+      ]);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+    });
+
+    it("hold { ms: 5000 } keeps cursor tracking suspended for 5 s", async () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer, {
+        canvas: trackedCanvas(),
+        mouseTracking: "document",
+      });
+      const bus = new TestEventBus();
+
+      await manager.initialize();
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 1, y: 0, hold: { ms: 5_000 } });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      moveCursor(12, 34);
+      expect(renderer.updateViewWithMouse).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      moveCursor(56, 78);
+      expect(renderer.updateViewWithMouse).toHaveBeenCalledWith({
+        clientX: 56,
+        clientY: 78,
+      });
+    });
+
+    it("a live gaze claim that is not the winner still blocks local gaze and taps until it ends", async () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer, {
+        canvas: trackedCanvas(),
+        mouseTracking: "document",
+      });
+      const bus = new TestEventBus();
+
+      await manager.initialize();
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 0.1,
+        y: 0.1,
+        source: "avatar-director",
+        priority: "inferred",
+        hold: { ms: 3_000 },
+      });
+      bus.emit("avatar:gaze", {
+        x: 0.9,
+        y: 0.9,
+        source: "game",
+        priority: "reflex",
+        hold: "until-release",
+      });
+      bus.emit("avatar:release", { source: "game", channel: "gaze" });
+
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(false);
+      document.dispatchEvent(
+        new MouseEvent("pointerdown", { clientX: 20, clientY: 20 }),
+      );
+      expect(renderer.handleMouseTap).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      document.dispatchEvent(
+        new MouseEvent("pointerdown", { clientX: 40, clientY: 40 }),
+      );
+      expect(renderer.handleMouseTap).toHaveBeenCalledWith({
+        clientX: 40,
+        clientY: 40,
+      });
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("setLocalGaze returns false while any gaze claim is live", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 1,
+        y: 0,
+        priority: "ambient",
+        hold: { ms: 5_000 },
+      });
+
+      vi.advanceTimersByTime(3_000);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(false);
+
+      vi.advanceTimersByTime(2_000);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("an until-release gaze claim is ended by avatar:release for the gaze channel, which calls clearGaze once", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 1,
+        y: 0,
+        source: "game",
+        hold: "until-release",
+      });
+
+      vi.advanceTimersByTime(10_000);
+      bus.emit("avatar:release", { source: "app", channel: "gaze" });
+      bus.emit("avatar:release", { source: "game", channel: "expression" });
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(false);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+
+      bus.emit("avatar:release", { source: "game", channel: "gaze" });
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("avatar:release without a channel ends the gaze claim of the source it names", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 1,
+        y: 0,
+        source: "game",
+        hold: "until-release",
+      });
+      bus.emit("avatar:release", { source: "game" });
+
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("when the only gaze claim expires, clearGaze is called once", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 1, y: 0 });
+
+      vi.advanceTimersByTime(1_199);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(10_000);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("setLocalGaze and cursor moves never call clearGaze", async () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer, {
+        canvas: trackedCanvas(),
+        mouseTracking: "document",
+      });
+
+      await manager.initialize();
+      expect(manager.setLocalGaze({ x: 0.3, y: 0.3 })).toBe(true);
+      await vi.advanceTimersByTimeAsync(700);
+      moveCursor(10, 10);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(renderer.updateViewWithMouse).toHaveBeenCalled();
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+    });
+
+    it("a renderer without clearGaze does not throw when a gaze claim ends", () => {
+      vi.useFakeTimers();
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 1, y: 0 });
+      expect(() => vi.advanceTimersByTime(1_200)).not.toThrow();
+
+      bus.emit("avatar:gaze", { x: 0, y: 1, hold: "until-release" });
+      expect(() => bus.emit("avatar:release", { source: "app" })).not.toThrow();
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("a gaze claim tied to a performance holds until its end", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      bus.emit("avatar:gaze", { x: 1, y: 0, hold: { performance: "p1" } });
+
+      vi.advanceTimersByTime(10_000);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("a gaze claim tied to a performance that has already ended is dropped", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      bus.emit("avatar:gaze", { x: 1, y: 0, hold: { performance: "p1" } });
+
+      expect(renderer.lookAt).not.toHaveBeenCalled();
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("a late gaze claim for an ended performance leaves the same source's live claim in place", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 0.2,
+        y: 0.3,
+        source: "game",
+        hold: "until-release",
+      });
+      bus.emit("performance:end", {
+        performanceId: "p1",
+        origin: "test",
+        status: "completed",
+      });
+      bus.emit("avatar:gaze", {
+        x: 1,
+        y: 0,
+        source: "game",
+        hold: { performance: "p1" },
+      });
+
+      expect(renderer.lookAt.mock.calls).toEqual([[{ x: 0.2, y: 0.3 }]]);
+      bus.emit("avatar:release", { source: "game", channel: "gaze" });
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("a gaze claim bound to a performance falls back to the pre-speech window when the bus is replaced", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("performance:start", {
+        performanceId: "p1",
+        origin: "test",
+        voiced: true,
+      });
+      bus.emit("avatar:gaze", { x: 1, y: 0, hold: { performance: "p1" } });
+      manager.setEventBus(new TestEventBus());
+
+      vi.advanceTimersByTime(7_999);
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+    });
+
+    it("disconnect() ends a held gaze claim at once and leaves no timer", () => {
+      vi.useFakeTimers();
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", { x: 1, y: 0 });
+      manager.disconnect();
+
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    describe("model load", () => {
+      function loadingGazeRenderer() {
+        let resolve!: () => void;
+        const loadModel = vi.fn(
+          (_modelPath: string) =>
+            new Promise<void>((res) => {
+              resolve = res;
+            }),
+        );
+        const renderer = Object.assign(gazeRenderer(), { loadModel });
+        return { renderer, resolve: () => resolve() };
+      }
+
+      it("releases an until-release gaze claim through clearGaze before loading, freeing cursor and local gaze at once", async () => {
+        const { renderer, resolve } = loadingGazeRenderer();
+        const manager = createRenderManager(renderer, {
+          canvas: trackedCanvas(),
+          mouseTracking: "document",
+        });
+        const bus = new TestEventBus();
+
+        await manager.initialize();
+        manager.setEventBus(bus);
+        bus.emit("avatar:gaze", { x: 1, y: 0, hold: "until-release" });
+
+        const loading = manager.loadModel("/models/b.model3.json");
+        expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+        expect(renderer.clearGaze.mock.invocationCallOrder[0]).toBeLessThan(
+          renderer.loadModel.mock.invocationCallOrder[0]!,
+        );
+
+        moveCursor(56, 78);
+        expect(renderer.updateViewWithMouse).toHaveBeenCalledWith({
+          clientX: 56,
+          clientY: 78,
+        });
+        expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+
+        resolve();
+        await loading;
+      });
+
+      it("a load with no live gaze claim calls no clearGaze", async () => {
+        const { renderer, resolve } = loadingGazeRenderer();
+        const manager = createRenderManager(renderer);
+
+        const loading = manager.loadModel("/models/b.model3.json");
+        resolve();
+        await loading;
+
+        expect(renderer.clearGaze).not.toHaveBeenCalled();
+      });
+
+      it("an avatar:gaze emitted while the latest load is pending calls no lookAt and suspends nothing", async () => {
+        const { renderer, resolve } = loadingGazeRenderer();
+        const manager = createRenderManager(renderer, {
+          canvas: trackedCanvas(),
+          mouseTracking: "document",
+        });
+        const bus = new TestEventBus();
+
+        await manager.initialize();
+        manager.setEventBus(bus);
+
+        const loading = manager.loadModel("/models/b.model3.json");
+        bus.emit("avatar:gaze", { x: 1, y: 0, hold: "until-release" });
+
+        expect(renderer.lookAt).not.toHaveBeenCalled();
+        moveCursor(56, 78);
+        expect(renderer.updateViewWithMouse).toHaveBeenCalledWith({
+          clientX: 56,
+          clientY: 78,
+        });
+
+        resolve();
+        await loading;
+        expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+      });
+    });
+  });
+
   it("renders character messages without implicit avatar actions", async () => {
     const renderer = new StubRenderer();
     const manager = createRenderManager(renderer);

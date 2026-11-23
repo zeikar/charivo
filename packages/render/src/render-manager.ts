@@ -16,7 +16,9 @@ import {
   type MouseTrackingMode,
 } from "./mouse-tracking";
 
-const GAZE_MOUSE_SUSPEND_MS = 1_200;
+// The default hold of a gaze claim: how long an AI gaze target keeps the
+// cursor and local-presence gaze off the eyes.
+const GAZE_HOLD_MS = 1_200;
 const LOCAL_GAZE_SUSPEND_MS = 700;
 const MOTION_DEBOUNCE_MS = 1_000;
 // The pre-speech window: how long a speech-scoped expression waits for the
@@ -24,7 +26,9 @@ const MOTION_DEBOUNCE_MS = 1_000;
 // tts:audio:start/end, so this is what drops their face back. It is NOT a
 // ceiling on speech: once bound to a span, the claim lasts until that span
 // ends, because a reply longer than the window would otherwise reset the
-// expression mid-sentence. Internal constant, no public knob by design.
+// expression mid-sentence. It is also how long a `{ performance }` hold, on
+// the expression and the gaze channel alike, waits for that performance to
+// start. Internal constant, no public knob by design.
 const EXPRESSION_HOLD_MS = 8_000;
 // How many ended performance ids are remembered, so a claim or start that
 // arrives after its performance:end is recognised as late.
@@ -55,8 +59,6 @@ export class RenderManager implements IRenderManager {
   private character: Character | null = null;
   private messageCallback?: (message: Message, character?: Character) => void;
   private cleanupMouseTracking?: MouseTrackingCleanup;
-  private resumeMouseTrackingTimer?: ReturnType<typeof setTimeout>;
-  private mouseTrackingSuspendedUntil = 0;
   private localGazeSuspendUntil = 0;
   /** The expression last handed to the renderer and not since stopped. */
   private shownExpression?: string;
@@ -81,6 +83,18 @@ export class RenderManager implements IRenderManager {
     defaultHold: "speech",
     preSpeechWindowMs: EXPRESSION_HOLD_MS,
   });
+  private readonly gaze: ClaimChannel<GazeCoordinates> = createClaimChannel({
+    show: (coords) => this.renderer.lookAt?.(coords),
+    // Without this the renderer would keep the released target (Iki even
+    // reapplies it to the next model it loads) until the next cursor or
+    // local-gaze input.
+    clear: () => this.renderer.clearGaze?.(),
+    defaultHold: { ms: GAZE_HOLD_MS },
+    preSpeechWindowMs: EXPRESSION_HOLD_MS,
+    equals: (a, b) => a.x === b.x && a.y === b.y,
+  });
+  /** The channels that hold claims: spans, releases and loads reach each one. */
+  private readonly heldChannels = [this.expressions, this.gaze];
   /**
    * The open tts:audio session, reported as an anonymous speech span. A fresh
    * symbol per session, so no claim can bind to an earlier session by id.
@@ -105,7 +119,9 @@ export class RenderManager implements IRenderManager {
     // and audio inside a voiced performance is that performance's speech.
     if (!this.audioSpan && this.openVoicedPerformances.size === 0) {
       this.audioSpan = Symbol("tts:audio");
-      this.expressions.spanStarted(this.audioSpan, { speech: true });
+      for (const channel of this.heldChannels) {
+        channel.spanStarted(this.audioSpan, { speech: true });
+      }
     }
     this.renderer.setRealtimeLipSync?.(true);
   };
@@ -118,7 +134,9 @@ export class RenderManager implements IRenderManager {
     const span = this.audioSpan;
     this.audioSpan = undefined;
     if (span) {
-      this.expressions.spanEnded(span);
+      for (const channel of this.heldChannels) {
+        channel.spanEnded(span);
+      }
     }
   };
 
@@ -140,6 +158,9 @@ export class RenderManager implements IRenderManager {
     if (data.channel === undefined || data.channel === "expression") {
       this.expressions.release(data.source);
     }
+    if (data.channel === undefined || data.channel === "gaze") {
+      this.gaze.release(data.source);
+    }
   };
 
   private readonly handlePerformanceStart = (
@@ -156,7 +177,9 @@ export class RenderManager implements IRenderManager {
     } else {
       this.openVoicedPerformances.delete(data.performanceId);
     }
-    this.expressions.spanStarted(data.performanceId, { speech: data.voiced });
+    for (const channel of this.heldChannels) {
+      channel.spanStarted(data.performanceId, { speech: data.voiced });
+    }
   };
 
   private readonly handlePerformanceEnd = (
@@ -169,7 +192,9 @@ export class RenderManager implements IRenderManager {
       this.endedPerformances.delete(oldest!);
     }
     this.openVoicedPerformances.delete(data.performanceId);
-    this.expressions.spanEnded(data.performanceId);
+    for (const channel of this.heldChannels) {
+      channel.spanEnded(data.performanceId);
+    }
   };
 
   private readonly handleAvatarMotion = (
@@ -206,7 +231,7 @@ export class RenderManager implements IRenderManager {
 
     // Defensive self-clear: avoid double-registering if called again. Uses
     // the listener-only unbind (not disconnect()) so a rewire keeps the
-    // expression claims instead of dropping them.
+    // claims instead of dropping them.
     this.unbindEventBus();
 
     const binding = { bus: eventBus, off: [] as Array<() => void> };
@@ -240,8 +265,8 @@ export class RenderManager implements IRenderManager {
   }
 
   /**
-   * Remove the event bus listeners, keeping the expression claims. Does
-   * nothing if no bus is connected.
+   * Remove the event bus listeners, keeping the claims. Does nothing if no
+   * bus is connected.
    */
   private unbindEventBus(): void {
     if (!this.binding) {
@@ -258,7 +283,9 @@ export class RenderManager implements IRenderManager {
     // goes back to the pre-speech window instead.
     this.audioSpan = undefined;
     this.openVoicedPerformances.clear();
-    this.expressions.spansLost();
+    for (const channel of this.heldChannels) {
+      channel.spansLost();
+    }
     // The ended ids belong to the bus they were heard on: the next bus may
     // start a performance under the same id.
     this.endedPerformances.clear();
@@ -272,9 +299,9 @@ export class RenderManager implements IRenderManager {
   /**
    * Disconnect from the event bus and relinquish the renderer: unbinds the bus
    * listeners and, since the manager is giving up ownership of the renderer,
-   * synchronously releases any held expression rather than leaving it to a
-   * timer that may now outlive that ownership. Does nothing if no bus is
-   * connected, and is safe to call multiple times.
+   * synchronously releases any held expression and gaze rather than leaving
+   * them to a timer that may now outlive that ownership. Does nothing if no
+   * bus is connected, and is safe to call multiple times.
    */
   disconnect(): void {
     if (!this.binding) {
@@ -282,7 +309,9 @@ export class RenderManager implements IRenderManager {
     }
 
     this.unbindEventBus();
-    this.expressions.releaseAll();
+    for (const channel of this.heldChannels) {
+      channel.releaseAll();
+    }
   }
 
   /**
@@ -343,8 +372,11 @@ export class RenderManager implements IRenderManager {
     }
 
     // A claim carried across the swap would count as showing on a model
-    // that never received it, so a repeat of it would never be played.
-    this.expressions.releaseAll();
+    // that never received it: a repeated expression would never be played,
+    // and a gaze target would keep cursor and local gaze suspended.
+    for (const channel of this.heldChannels) {
+      channel.releaseAll();
+    }
     // Only the latest call gates: once it settles the renderer can no longer
     // install an earlier one, so an older call blocks and resumes nothing.
     const load = ++this.loadSeq;
@@ -375,8 +407,8 @@ export class RenderManager implements IRenderManager {
     this.messageCallback?.(message, targetCharacter);
   }
 
-  /** Local-presence gaze (webcam), a peer of mouse-tracking. Yields to the AI
-   *  gaze window (isAiGazeActive); while applying, suspends mouse CURSOR tracking
+  /** Local-presence gaze (webcam), a peer of mouse-tracking. Yields to a live
+   *  AI gaze claim (isAiGazeActive); while applying, suspends mouse CURSOR tracking
    *  (updateViewWithMouse, NOT taps) via a separate local-gaze window so the
    *  static document mouse cursor target does not fight the webcam. Returns true
    *  when applied, false on no-op (AI owns the avatar, or the renderer has no lookAt). */
@@ -395,11 +427,6 @@ export class RenderManager implements IRenderManager {
     this.disconnect();
     this.cleanupMouseTracking?.();
     this.cleanupMouseTracking = undefined;
-
-    if (this.resumeMouseTrackingTimer) {
-      clearTimeout(this.resumeMouseTrackingTimer);
-      this.resumeMouseTrackingTimer = undefined;
-    }
 
     await this.renderer.destroy();
   }
@@ -438,16 +465,7 @@ export class RenderManager implements IRenderManager {
       return false;
     }
 
-    const hold: unknown = data.hold;
-    // A straggler for a performance that already ended. It is ignored rather
-    // than replacing the source's claim, which may belong to a newer line.
-    if (
-      typeof hold === "object" &&
-      hold !== null &&
-      "performance" in hold &&
-      typeof hold.performance === "string" &&
-      this.endedPerformances.has(hold.performance)
-    ) {
+    if (this.isEndedPerformanceHold(data.hold)) {
       return false;
     }
 
@@ -495,32 +513,43 @@ export class RenderManager implements IRenderManager {
     return true;
   }
 
-  private applyGaze(coords: GazeCoordinates): boolean {
+  private applyGaze(data: EventMap["avatar:gaze"]): boolean {
+    // A target is applied to the current model only, so a claim made now
+    // would suspend cursor and local gaze on a model that never received it.
+    if (this.pendingLoad !== undefined) {
+      return false;
+    }
     if (!this.hasGazeControl(this.renderer)) {
       return false;
     }
-
-    this.renderer.lookAt(coords);
-    this.suspendMouseTracking(GAZE_MOUSE_SUSPEND_MS);
-
-    return true;
-  }
-
-  private suspendMouseTracking(durationMs: number): void {
-    this.mouseTrackingSuspendedUntil = Date.now() + durationMs;
-
-    if (this.resumeMouseTrackingTimer) {
-      clearTimeout(this.resumeMouseTrackingTimer);
+    if (this.isEndedPerformanceHold(data.hold)) {
+      return false;
     }
 
-    this.resumeMouseTrackingTimer = setTimeout(() => {
-      this.mouseTrackingSuspendedUntil = 0;
-      this.resumeMouseTrackingTimer = undefined;
-    }, durationMs);
+    return this.gaze.claim({
+      source: data.source ?? "app",
+      priority: data.priority ?? "explicit",
+      value: { x: data.x, y: data.y },
+      hold: data.hold,
+    });
+  }
+
+  /**
+   * A straggler for a performance that already ended. It is ignored rather
+   * than replacing the source's claim, which may belong to a newer line.
+   */
+  private isEndedPerformanceHold(hold: unknown): boolean {
+    return (
+      typeof hold === "object" &&
+      hold !== null &&
+      "performance" in hold &&
+      typeof hold.performance === "string" &&
+      this.endedPerformances.has(hold.performance)
+    );
   }
 
   private isAiGazeActive(): boolean {
-    return Date.now() < this.mouseTrackingSuspendedUntil;
+    return this.gaze.isActive();
   }
 
   private isMouseTrackingSuspended(): boolean {
