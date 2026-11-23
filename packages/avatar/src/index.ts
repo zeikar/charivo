@@ -5,6 +5,14 @@ import type {
   ToolResultProjector,
 } from "@charivo/core";
 
+export {
+  createAvatarDirector,
+  type AvatarClassifier,
+  type AvatarDecision,
+  type AvatarDirector,
+  type AvatarDirectorOptions,
+} from "./director";
+
 const MIN_GAZE = -1;
 const MAX_GAZE = 1;
 
