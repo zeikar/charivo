@@ -29,6 +29,9 @@ const config: Config = {
   // there is one file per model in the repo (served at /charivo/<name>.iki).
   staticDirectories: ["static", "../examples/web/public/iki"],
 
+  // scripts doesn't get baseUrl prepended, so the path is written out.
+  scripts: [{ src: "/charivo/ga.js", async: true }],
+
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
   // may want to replace "en" with "zh-Hans".

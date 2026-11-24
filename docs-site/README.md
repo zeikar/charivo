@@ -56,3 +56,10 @@ recording. Re-record a line by replacing its file and updating its `text`.
 Deployment is automated: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
 builds this site and publishes it to GitHub Pages on every push to `main`. There
 is no manual deploy step to run.
+
+## Analytics
+
+`static/ga.js` loads zeikar.dev's GA4 tag, the same property as zeikar.dev
+and Iki's pages, and only when the hostname is `zeikar.dev`, so local and
+preview builds send nothing. A browser that once opened `zeikar.dev/?internal`
+is reported as internal traffic.
