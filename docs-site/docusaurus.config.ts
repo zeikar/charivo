@@ -31,6 +31,7 @@ const config: Config = {
 
   // scripts doesn't get baseUrl prepended, so the path is written out.
   scripts: [{ src: "/charivo/ga.js", async: true }],
+  clientModules: ["./src/ga.ts"],
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you

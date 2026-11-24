@@ -62,4 +62,6 @@ is no manual deploy step to run.
 `static/ga.js` loads zeikar.dev's GA4 tag, the same property as zeikar.dev
 and Iki's pages, and only when the hostname is `zeikar.dev`, so local and
 preview builds send nothing. A browser that once opened `zeikar.dev/?internal`
-is reported as internal traffic.
+is reported as internal traffic. `src/ga.ts` sends a page view on each
+client-side route change, since the property doesn't count history changes on
+its own.

@@ -1,8 +1,8 @@
 // Page views on the published site only, in zeikar.dev's own GA4 property,
 // the same tag as zeikar.dev and Iki's pages. A browser that once opened
 // zeikar.dev/?internal is tagged so the property's internal-traffic filter
-// drops it. Docusaurus changes pages client-side; GA4's enhanced measurement
-// counts those history changes as page views.
+// drops it. Page views after the first come from src/ga.ts, on each
+// client-side route change.
 if (window.location.hostname === "zeikar.dev") {
   const gaScript = document.createElement("script");
   gaScript.async = true;
