@@ -77,14 +77,14 @@ serves two callers: the talker, and the avatar classifier that picks an
 expression and motion for each line. Neither sends tools. Its
 limits are about the shape of a request, not its rate:
 
-- a request carries at most 56 messages. The app pins `maxHistoryTurns` to 20
+- a request carries at most 57 messages. The app pins `maxHistoryTurns` to 20
   (40 messages), and the route's cap is derived from the same constant plus
-  headroom for tool messages, so a long show does not outgrow the route
-  (Charivo's default of 40 turns would)
+  the input sent on top of that window and headroom for tool messages, so a
+  long show does not outgrow the route (Charivo's default of 40 turns would)
 - per-message, total-size, tool-count, and tool-argument size caps bound what one
   request can make you pay for
 - the model is chosen by the route, never by the request
-- a reply is cut to 1,878 characters (at a sentence or word end), so a full
+- a reply is cut to 1,190 characters (at a sentence or word end), so a full
   history of replies still fits the request limits; the arithmetic is in
   `demo-limits.ts`
 - a request must be `application/json` (else 415), and a browser request must
