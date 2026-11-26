@@ -21,8 +21,9 @@ It is local-only: it has no live demo, and its scripts bind to `127.0.0.1`.
 
 - A Director that decides what the character says next from four inputs: viewer
   chat, external agent events, an idle timer, and a segment schedule
-- A priority queue with pacing, cooldowns, and interrupts in front of
-  `Charivo.userSay()`, which is latest-wins on its own
+- A priority queue with pacing, cooldowns, and interrupts in front of a
+  [conversation brain](./llm.md), which is latest-wins on its own: every line
+  is one typed `brain.submit(...)` turn
 - A portable Director module that reaches the character only through two small
   contracts (`CharacterPort` and `ShowEventSource`), so the same module could sit
   in front of a different adapter
@@ -31,9 +32,25 @@ It is local-only: it has no live demo, and its scripts bind to `127.0.0.1`.
   [text-driven director](./avatar.md#text-driven-director) picks the expression
   and motion from that line with a second LLM call, so a failed classification
   does not stop the line
-- An envelope that tags viewer chat, stage directions, and game events, because
-  `userSay()` treats every input as a viewer message, and a record of how well
-  that holds
+- Typed inputs for the three kinds of cue (`user` for viewer chat, `direction`
+  for stage directions, `event` for game events) instead of text tags, and a
+  `review` hook on the brain that withholds a reply echoing a stage direction,
+  with a record of how the earlier tag-based workaround held
+
+## How The Pieces Connect
+
+```text
+Director (queue, pacing) -> CharacterPort -> brain.submit(typed input)
+  -> cascade brain (LLM, `review`) -> body.perform() -> TTS and render
+```
+
+The Director never talks to Charivo. The cascade adapter passes each line's
+typed input to the brain and maps the settled `BrainTurnResult` onto the port:
+`completed` and `cancelled` carry over, `failed` and `silent` both fail the
+line. The brain's `review` receives the reply together with the request's
+stage directions, and a reply that repeats one verbatim throws, so the line
+fails and nothing is spoken. See [LLM](./llm.md) for the brain and
+[Architecture](./architecture.md) for the body.
 
 ## Package List
 
@@ -76,16 +93,19 @@ in the README.
 - [`examples/vtuber/src/director/`](https://github.com/zeikar/charivo/tree/main/examples/vtuber/src/director)
   for the portable Director, its policy, and its tests
 - [`examples/vtuber/src/adapters/charivo-cascade-port.ts`](https://github.com/zeikar/charivo/blob/main/examples/vtuber/src/adapters/charivo-cascade-port.ts)
-  for how a settled `userSay()` becomes the end of a line
+  for how a settled brain turn becomes the end of a line
 - [`examples/vtuber/src/app/hooks/useVtuberShow.ts`](https://github.com/zeikar/charivo/blob/main/examples/vtuber/src/app/hooks/useVtuberShow.ts)
   for the wiring
 
 Two sections of the README matter beyond this app:
 
 - [Architecture](https://github.com/zeikar/charivo/blob/main/examples/vtuber/README.md#architecture)
-  maps the Director onto a talker plus skill agents, and says what is not built
+  maps the Director, through the brain, onto a talker plus skill agents, and
+  says what is not built
 - [Findings: non-user input](https://github.com/zeikar/charivo/blob/main/examples/vtuber/README.md#findings-non-user-input)
-  records what feeding a character stage directions through `userSay()` costs
+  records what feeding a character stage directions cost before typed inputs,
+  and which API now answers each of the three findings: typed inputs, the
+  brain's `review`, and `performance:*` / `floor:changed`
 
 ## Run It
 

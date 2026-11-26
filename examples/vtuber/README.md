@@ -10,7 +10,8 @@ The point is the part Charivo deliberately does not do: **deciding when to
 speak**. Charivo gives the character a voice, a face and a conversation, and
 [leaves scheduling to the app](../../docs/guide/architecture.md#what-charivo-does-not-do).
 This example is one way to build that layer, and it records what the missing
-core primitives cost (see [Findings](#findings-non-user-input)).
+core primitives cost, and how the brain/body split answered each (see
+[Findings](#findings-non-user-input)).
 
 It is local-only: there is no live demo, and the scripts bind to
 `127.0.0.1`.
@@ -21,8 +22,8 @@ It is a worked example of:
 
 - a Director that decides what the character says next from four inputs (viewer
   chat, external agent events, an idle timer, and a segment schedule)
-- a priority queue with pacing, cooldowns, and interrupts in front of
-  `Charivo.userSay()`
+- a priority queue with pacing, cooldowns, and interrupts in front of a
+  conversation brain: every line is one typed `brain.submit(...)` turn
 - a cascade stack (Gemini chat through a server route, browser speech) driving a
   Live2D character, with `@charivo/avatar`'s
   [text-driven director](../../packages/avatar/README.md#text-driven-director)
@@ -136,7 +137,7 @@ into another app:
 | Layer | Path | May import |
 | --- | --- | --- |
 | Director (portable) | `src/director/` | its own files only (tests also `vitest`, `node:*`) |
-| Charivo cascade adapter | `src/adapters/` | `@charivo/core` (types and `getErrorMessage`), `../director` |
+| Charivo cascade adapter | `src/adapters/` | `@charivo/core` (types), `../director` |
 | App | `src/app/` | Next.js, React, `@charivo/*`, both of the above |
 
 `src/director/boundary.test.ts` enforces the Director's rule only; the other two
@@ -145,7 +146,8 @@ rows are convention. The Director uses the global
 
 **Two contracts**, both defined in `src/director/types.ts`:
 
-- `CharacterPort`: `speak(prompt)` settles when the line is over, with a status of
+- `CharacterPort`: `speak(input)` takes the line's typed input (`LineInput`, the
+  shape of a brain input) and settles when the line is over, with a status of
   `"completed"`, `"cancelled"` or `"failed"`; `interrupt()` resolves once the
   audio has stopped and rejects if it could not be stopped.
 - `ShowEventSource`: `start(emit)` and `stop()`. A source calls `emit(event)`
@@ -159,10 +161,11 @@ a drain finds nothing to say) and the segment scheduler (`segment`, at each
 segment start). The Director starts every source on `start()` and stops each one
 once when the show ends.
 
-**The head and the body are split.** The talker, Charivo's LLM manager, has no
-tools and writes only the line. The avatar director listens for
-`tts:start`, classifies the line with a second LLM call in parallel with
-the speech, and emits `avatar:expression` and `avatar:motion`; a result that
+**The head and the body are split.** The talker, the cascade brain over
+Charivo's LLM manager, has no tools and writes only the line. The avatar
+director listens for `performance:start` (through
+`connectAvatarDirectorToPerformances`), classifies the line with a second LLM
+call in parallel with the speech, and emits `avatar:expression` and `avatar:motion`; a result that
 arrives after its line is no longer current is dropped. If a classification
 fails, the line still finishes and the avatar keeps its current state. The
 classifier is a second remote LLM client to the same route, so its requests
@@ -175,13 +178,16 @@ share the talker's quota. Gaze is not an LLM decision: it follows the mouse
 is busy from calling `port.speak()` until that promise settles, and it starts a
 line only when it is not busy. (The stage's status indicator is separate: it
 shows "speaking" while TTS audio is active, between `tts:audio:start` and
-`tts:audio:end`, and "thinking" while a line is in flight with no audio.) The cascade adapter makes that true:
-`Charivo.userSay()` awaits the TTS manager's `speak()`, which resolves when the
-utterance finishes, so a settled `userSay()` is the end of playback. The adapter
-classifies the outcome: `turn:cancelled` for its own turn is `"cancelled"`, a
-`tts:error` or a rejected `userSay()` is `"failed"`, anything else is
-`"completed"`. The adapter is the only caller of `userSay()`, so a cancelled turn
-can only come from the Director's own `interrupt()`.
+`tts:audio:end`, and "thinking" while a line is in flight with no audio.) The
+cascade adapter makes that true: a brain turn settles once its reply has been
+spoken, cut or has failed, and `brain.submit(input).done` never rejects. The
+adapter maps the turn's `BrainTurnResult` onto the port: `completed` and
+`cancelled` carry over with the reply's text, `failed` (a generation, render
+or TTS failure, or a reply that `review` withheld) is `"failed"` with the
+error's message, and `silent` is also `"failed"`, because every line asks for
+a reply (`respond: "must"` on events, the default on chat and cues). The
+adapter is the only submitter, so a cancelled turn can only come from the
+Director's own `interrupt()`, which is `brain.interrupt()`.
 
 If `interrupt()` rejects, audio may still be playing, so the show ends as
 `failed` and the adapter refuses every later line. The only recovery is a page
@@ -207,18 +213,33 @@ discards queued idle filler. The ending cue ranks last: once it is accepted, new
 chat and agent events are ignored (`show-ending`), what was already queued is
 spoken first, and the show finishes when the ending line settles.
 
-**The envelope.** Charivo's only input is `userSay()`, which stores everything as
-a viewer message. So each input is tagged, and the character's system prompt
-explains the tags (`SHOW_PROTOCOL_INSTRUCTIONS`, appended to
-`Character.personality`):
+**Typed inputs.** The brain takes three kinds of input, so no text has to carry
+a tag and the character's prompt needs no protocol (`src/director/line-input.ts`
+builds them):
 
-- `[CHAT] <viewer>: <text>`: a viewer said this; answer them
-- `[DIRECTOR] <text>`: a private stage direction; act on it, never mention it
-- `[EVENT] <source>: <text>`: something happened in the character's world; react
-  to it in character
+- `{ kind: "user", speaker, text }`: a viewer said this; answer them. Kept in
+  history.
+- `{ kind: "direction", text }`: a private stage direction; act on it, never
+  mention it. A direction defaults to ephemeral: it rides on the request that
+  answers it and is never stored.
+- `{ kind: "event", source, text, respond: "must" }`: something happened in the
+  character's world; react to it in character. The brain would answer an event
+  by default only when no turn is under way and the character is free, but the Director starts a line
+  only when it should be spoken, so it asks for the reply.
 
-Viewer names and text, and agent source names and text, are flattened to one line, length
-capped, and have square brackets replaced, so none of them can forge a tag.
+Viewer names and text, and agent source names and text, are still flattened to
+one line and length capped, because they come from outside the show. The route
+is Gemini, which folds every system message into its system instruction, so
+the app creates the LLM manager with `directionRole: "user"` and a direction
+reaches the model as a user turn (see the [LLM guide](../../docs/guide/llm.md)).
+
+**The cue-echo review.** The brain hands `review` the reply and a snapshot of
+the request's `direction` entries before anything is shown or spoken
+(`src/app/lib/reply-review.ts`). A reply that repeats a stage direction
+verbatim (30 characters or more of it, ignoring case and spacing) makes
+`review` throw, so the turn ends `failed` at `generate`, the line is reported
+failed ("Reply withheld: it repeated a stage direction") and nothing is spoken.
+A paraphrase of a cue is still spoken and can only be counted afterwards.
 
 **A realtime adapter** would satisfy the same port without touching the
 Director. `speak()` would send the prompt over the session and settle when the
@@ -235,16 +256,16 @@ The module follows a simple model of an agent that appears to act on its own:
 | --- | --- |
 | Perception | the event sources |
 | Reflex (cheap, immediate decisions) | `policy.ts`, which decides without calling a model |
-| Conscious (deliberate, in character) | Charivo's LLM |
-| Action | `CharacterPort`, plus the avatar director (expression, motion) |
+| Conscious (deliberate, in character) | the cascade brain over Charivo's LLM |
+| Action | `CharacterPort`, then the brain's `perform()` on the body, plus the avatar director (expression, motion) |
 
 The talker is the character. Skill agents are separate processes that do work
 the talker should not, such as playing a game. They exchange information with it
 like this:
 
 ```text
-skill agent --- events --------------------> Director --> talker (Charivo + LLM)
-skill agent <-- commands (LLM tools) --------------------- talker
+skill agent --- events ---------------> Director --> brain (cascade + LLM) --> body (perform)
+skill agent <-- commands (LLM tools) ----------------- brain
 skill agent --- async results, as events --> Director
 ```
 
@@ -266,42 +287,50 @@ an agent's event arrow only.
 
 ## Findings: non-user input
 
-Charivo's `userSay()` is the only way to give the character input, and it stores
-every input as a `user` message. A stage direction or a game event therefore
-looks like something a viewer said. This example works around it with the
-envelope above and measures how well that holds. The question is whether Charivo
-needs a core primitive for non-user input.
+Before the brain/body split, Charivo's one way to give the character input
+stored every input as a `user` message. A stage
+direction or a game event therefore looked like something a viewer said, and
+this example worked around it with an envelope of text tags
+(`[CHAT]`, `[DIRECTOR]`, `[EVENT]`), a protocol in the system prompt and a
+wrapper around the LLM client. The question was whether Charivo needed a core
+primitive for non-user input. The three findings below were the answer's
+inputs; each is now answered by the API the example runs on:
 
-Known limits of the workaround, from reading the code:
+- **Cues and events were stored as `user` turns.** They counted against
+  `maxHistoryTurns`, pushed real chat out of the window, and an interrupted
+  cue stayed in history as a direction the model never finished. Answered by
+  typed inputs: a `direction` is ephemeral and never stored, a viewer's `user`
+  input keeps its place, and an unheard reply is taken back out of history.
+- **There was no hook between the LLM reply and the speech.** The app had to
+  wrap the LLM client to withhold a reply that repeated a cue. Answered by the
+  brain's `review`: it sees the reply and the request's directions before
+  anything is presented, and can replace the reply, drop it, or throw.
+- **The app could not see a line's life.** It derived "speaking" from a settled
+  input call and a handful of speech events. Answered by `performance:*` and
+  `floor:changed`, plus the `BrainTurnResult` a turn settles with. This app
+  uses `performance:start` for the caption and the avatar director.
 
-- cues and events are stored as `user` turns in the conversation history
-- they count against `maxHistoryTurns`, so they push real chat out of the window
-- a cue that was interrupted stays in history, and the model sees a direction it
-  never finished
-- Charivo has no hook between the LLM reply and the speech, so the app wraps the
-  LLM client: a final reply containing an envelope tag (`[DIRECTOR]`, `[CHAT]`,
-  `[EVENT]`), or repeating a `[DIRECTOR]` cue verbatim (30 characters or more of
-  it, ignoring case and spacing), is withheld: the line is reported failed and
-  nothing is spoken. A paraphrase of a cue is still spoken and can only be
-  counted afterwards
+What stays true is that a cue the model paraphrases is still spoken: `review`
+catches a verbatim echo, not a paraphrase.
 
-The automated tests cover sequencing and envelope placement against scripted
-replies: one line at a time, nothing cut, the show reaches its ending, and the
-cue sits in the request as `[DIRECTOR] ...` with the protocol in the system
-message. They do not show how a real model handles cues, or anything about
-browser audio. Those need a live run.
+The automated tests cover sequencing and input typing against scripted
+replies: one line at a time, nothing cut, the show reaches its ending, a
+direction sits in the request as an ephemeral `direction` entry and is never
+stored, and `review` withholds a verbatim echo. They do not show how a real
+model handles cues, or anything about browser audio. Those need a live run.
 
-The Director panel counts cue leaks on every spoken reply: a reply that contains
-an envelope tag or the word "director". In this app a reply with an envelope tag
-or a verbatim cue never gets that far: the reply guard withholds it, and it shows
-up as a failed line ("Reply withheld: ..."). So the leak counter here mostly
-catches the word "director". It cannot catch a paraphrase, and it also flags an
-innocent "film director". Every reply in the live runs is also read by hand for
-cue disclosure and for treating a cue or event as a viewer's words.
+The Director panel counts cue leaks on every spoken reply: a reply that
+contains the word "director". A reply that repeats a cue verbatim never gets
+that far: `review` withholds it, and it shows up as a failed line ("Reply
+withheld: ..."). So the leak counter mostly catches the word "director". It
+cannot catch a paraphrase, and it also flags an innocent "film director".
+Every reply in the live runs is also read by hand for cue disclosure and for
+treating a cue or event as a viewer's words.
 
 ### Results
 
-Measured 2026-11-22 on the demo key, with the production build (`next start`) in
+Measured 2026-11-22 on the demo key, on the earlier envelope build (before the
+brain; the typed-input build has not been re-run live), with the production build (`next start`) in
 Chromium driven by Playwright on macOS. Speech used the default Web Speech voice
 (Samantha, en-US). Nobody listened: "spoken" below means the browser reported
 `speechSynthesis.speaking` for the line and the Director logged it completed.
@@ -347,21 +376,21 @@ event as if a viewer had said it.
 
 **Is a core non-user-input primitive warranted? Not yet.** On the cascade path
 the envelope held: 0 leaks in run 1 (24 lines, driven only by cues) and in run 2's
-transcript (16 lines spoken, 2 cancelled). What the workaround cannot fix is structural
-rather than behavioral: cues still sit in history as `user` turns and use up
-`maxHistoryTurns`, and an interrupted cue stays there. Neither broke this show.
-Revisit when the Director moves to Companion's realtime path, where the
-provider owns the history and a person speaks too, so a cue sent as `user`
-text cannot be told apart from them.
+transcript (16 lines spoken, 2 cancelled). What the workaround could not fix was
+structural rather than behavioral: cues sat in history as `user` turns and used
+up `maxHistoryTurns`, and an interrupted cue stayed there. Neither broke this
+show, and typed inputs have since removed both. Revisit when the Director moves
+to Companion's realtime path, where the provider owns the history and a person
+speaks too, so a cue sent as `user` text cannot be told apart from them.
 
 ### Avatar director, measured 2026-11-23
 
 After the avatar moved from LLM tools to the text-driven director. Production
 build, headless Chromium with `fetch` and `speechSynthesis` instrumented, both
 scripted sources on, `gemini-3.5-flash-lite`. Two runs, the second after one
-prompt change. Both classified on `character:speak`; the trigger later moved to
-`tts:start` (emitted after render and history, just before speaking), and no run
-was repeated after that. "Selected" below means the event was
+prompt change. Both classified on the reply's first speech event; the trigger later moved to
+the performance's start (emitted after the line is rendered, just before
+speaking), and no run was repeated after that. "Selected" below means the event was
 emitted on the bus; it is not confirmed playback, because the render manager can
 still decline a selection at its catalog or debounce checks.
 

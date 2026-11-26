@@ -48,6 +48,30 @@ The current hook split is deliberate:
 This keeps renderer lifecycle separate from conversation lifecycle, and both separate
 from realtime session lifecycle.
 
+## Chat On The Brain
+
+`useCharivoChat` builds the LLM manager with the avatar tools, wraps it in
+`createCascadeBrain(llmManager)` from `@charivo/llm`, and passes that to
+`createCharivo({ renderer, brain })`. Sending a message is
+`charivo.getBrain()?.submit({ kind: "user", text }).done`; the result's
+`status` and `stage` say whether generation or render failed, and `done` never
+rejects.
+
+- **Transcript.** The render manager's message callback delivers the
+  character's lines only. The user's own message arrives once from the brain as
+  `message:sent`, which the hook filters on `message.type === "user"`.
+- **Speaking indicator.** It follows `floor:changed`: the character is speaking
+  while `floor.state` is `"speaking"`.
+- **Reactions.** The reaction buttons call `charivo.react(...)` with a reflex
+  priority, a hold and a gaze. A reaction never takes the floor, so it plays
+  over a reply in progress and then falls back to it.
+- **Realtime toggle order.** Entering realtime awaits `charivo.interrupt()`
+  and then calls `attachRealtime(manager)`, because `attachRealtime()` throws
+  while a performance holds the floor or cancelled speech is still unsettled.
+  While the session is attached, `perform()` is refused and the floor reads
+  `{ state: "realtime" }`; `react()` still works. Leaving realtime stops the
+  session first and then calls `detachRealtime()`.
+
 ## API Routes
 
 The current reference app ships:

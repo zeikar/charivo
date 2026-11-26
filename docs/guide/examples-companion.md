@@ -33,6 +33,11 @@ package list is:
 One consequence worth noting: the character's speech drives lip-sync straight
 from the realtime audio stream rather than through a TTS player.
 
+It also uses none of the cascade API: no brain is attached and nothing calls
+`perform()`. The app calls `attachRealtime(manager)` when the session starts,
+and while it is attached `perform()` is refused, because the realtime session
+owns playback and `getFloor()` reads `{ state: "realtime" }`.
+
 ## API Routes
 
 The only server route is the realtime bootstrap:

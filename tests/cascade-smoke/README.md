@@ -51,12 +51,16 @@ leg switched to gemini via `CASCADE_STT` / `CASCADE_LLM` / `CASCADE_TTS`).
 What it proves:
 
 - `RemoteSTTTranscriber` records the fake mic, posts it, and gets a transcript
-- `brain.submit({ kind: "user", text })` runs the transcript through the LLM and produces a reply
+- `brain.submit({ kind: "user", text }).done` runs the transcript through the
+  cascade brain and the LLM, produces a reply and hands it to the body to
+  speak; a `failed` result is rethrown as its typed error, so a failed turn is
+  recorded like any other failure
 - the TTS manager synthesizes audio and plays it through its full lifecycle
   (`tts:audio:start` → `tts:audio:end`) — on the Gemini leg this is the
   streaming path: PCM chunks scheduled into Web Audio as they arrive, not one
   finished blob played through an `<audio>` element. The logged
-  `ttsFirstAudioMs` (`performance:start` → `tts:audio:start`) is what shows the
+  `ttsFirstAudioMs` (the body's `performance:start`, which fires when the floor is
+  taken, before the line is rendered and spoken, to `tts:audio:start`) is what shows the
   streaming branch actually fired — small if it did, close to the full
   synthesis time if the route silently fell back to the buffered path
 - the browser audio→lip-sync loop — the TTS manager analyzes its playing audio
