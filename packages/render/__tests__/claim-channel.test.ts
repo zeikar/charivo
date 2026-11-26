@@ -263,6 +263,76 @@ describe("claim channel", () => {
     });
   });
 
+  describe("claim ids", () => {
+    const held = (value: string, claimId?: string) => ({
+      source: "a",
+      priority: "explicit" as const,
+      value,
+      hold: "until-release" as const,
+      claimId,
+    });
+
+    it("a release naming the live claim's id ends it", () => {
+      const { channel, clear } = setup();
+
+      channel.claim(held("smile", "c1"));
+      channel.release("a", "c1");
+
+      expect(clear).toHaveBeenCalledTimes(1);
+      expect(channel.isActive()).toBe(false);
+    });
+
+    it("a release naming another id leaves the live claim showing", () => {
+      const { channel, shown, clear } = setup();
+
+      channel.claim(held("smile", "c1"));
+      channel.claim(held("frown", "c2"));
+      channel.release("a", "c1");
+
+      expect(shown).toEqual(["smile", "frown"]);
+      expect(clear).not.toHaveBeenCalled();
+      expect(channel.isActive()).toBe(true);
+    });
+
+    it("a release naming an id leaves a live claim that carries none", () => {
+      const { channel, clear } = setup();
+
+      channel.claim(held("smile", "c1"));
+      channel.claim(held("frown"));
+      channel.release("a", "c1");
+
+      expect(clear).not.toHaveBeenCalled();
+      expect(channel.isActive()).toBe(true);
+    });
+
+    it("a release with no id ends the source's claim whatever id it carries", () => {
+      const { channel, clear } = setup();
+
+      channel.claim(held("smile", "c1"));
+      channel.release("a");
+
+      expect(clear).toHaveBeenCalledTimes(1);
+      expect(channel.isActive()).toBe(false);
+    });
+
+    it("an ignored claim leaves the stored id in place", () => {
+      const { channel, clear } = setup();
+
+      channel.claim(held("smile", "c1"));
+      expect(
+        channel.claim({
+          ...held("frown", "c2"),
+          hold: "until-released" as AvatarHold,
+        }),
+      ).toBe(false);
+      channel.release("a", "c2");
+      expect(clear).not.toHaveBeenCalled();
+
+      channel.release("a", "c1");
+      expect(clear).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("span-tied holds", () => {
     it("expires a default-hold claim at the window when no speech starts", () => {
       const { channel, clear, claim } = setup("speech");

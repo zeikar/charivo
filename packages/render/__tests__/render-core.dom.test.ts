@@ -1244,6 +1244,87 @@ describe("RenderManager", () => {
       expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
     });
 
+    it("avatar:release with a claimId ends the expression claim carrying that id only", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "game",
+        hold: "until-release",
+        claimId: "c1",
+      });
+      bus.emit("avatar:release", {
+        source: "game",
+        channel: "expression",
+        claimId: "c2",
+      });
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("avatar:release", {
+        source: "game",
+        channel: "expression",
+        claimId: "c1",
+      });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
+    it("a release naming an old claimId leaves a newer expression from the same source showing", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "game",
+        hold: "until-release",
+        claimId: "c1",
+      });
+      bus.emit("avatar:expression", {
+        expressionId: "exp_sad",
+        source: "game",
+        hold: "until-release",
+      });
+      bus.emit("avatar:release", { source: "game", claimId: "c1" });
+
+      expect(renderer.playExpression.mock.calls).toEqual([
+        ["exp_happy"],
+        ["exp_sad"],
+      ]);
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+    });
+
+    it("an expression the model lacks does not take the claimId away from the one showing", () => {
+      const renderer = new StubRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+
+      bus.emit("avatar:expression", {
+        expressionId: "exp_happy",
+        source: "game",
+        hold: "until-release",
+        claimId: "c1",
+      });
+      bus.emit("avatar:expression", {
+        expressionId: "exp_missing",
+        source: "game",
+        hold: "until-release",
+        claimId: "c2",
+      });
+      bus.emit("avatar:release", { source: "game", claimId: "c2" });
+      expect(renderer.stopExpression).not.toHaveBeenCalled();
+
+      bus.emit("avatar:release", { source: "game", claimId: "c1" });
+      expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
+    });
+
     it("an explicit performance hold follows an unvoiced performance to its end", () => {
       vi.useFakeTimers();
 
@@ -1839,6 +1920,35 @@ describe("RenderManager", () => {
       });
       bus.emit("avatar:release", { source: "game" });
 
+      expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
+      expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it("avatar:release with a claimId ends the gaze claim carrying that id only", () => {
+      const renderer = gazeRenderer();
+      const manager = createRenderManager(renderer);
+      const bus = new TestEventBus();
+
+      manager.setEventBus(bus);
+      bus.emit("avatar:gaze", {
+        x: 1,
+        y: 0,
+        source: "game",
+        hold: "until-release",
+        claimId: "c1",
+      });
+      bus.emit("avatar:release", {
+        source: "game",
+        channel: "gaze",
+        claimId: "c2",
+      });
+      expect(renderer.clearGaze).not.toHaveBeenCalled();
+
+      bus.emit("avatar:release", {
+        source: "game",
+        channel: "gaze",
+        claimId: "c1",
+      });
       expect(renderer.clearGaze).toHaveBeenCalledTimes(1);
       expect(manager.setLocalGaze({ x: 0.5, y: 0.5 })).toBe(true);
     });

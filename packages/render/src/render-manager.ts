@@ -165,10 +165,10 @@ export class RenderManager implements IRenderManager {
     data: EventMap["avatar:release"],
   ): void => {
     if (data.channel === undefined || data.channel === "expression") {
-      this.expressions.release(data.source);
+      this.expressions.release(data.source, data.claimId);
     }
     if (data.channel === undefined || data.channel === "gaze") {
-      this.gaze.release(data.source);
+      this.gaze.release(data.source, data.claimId);
     }
   };
 
@@ -495,6 +495,7 @@ export class RenderManager implements IRenderManager {
       priority: data.priority ?? "explicit",
       value: data.expressionId,
       hold: data.hold,
+      claimId: data.claimId,
     });
   }
 
@@ -582,6 +583,7 @@ export class RenderManager implements IRenderManager {
       priority: data.priority ?? "explicit",
       value: { x: data.x, y: data.y },
       hold: data.hold,
+      claimId: data.claimId,
     });
   }
 
