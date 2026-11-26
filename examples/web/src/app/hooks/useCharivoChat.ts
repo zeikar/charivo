@@ -598,20 +598,23 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       try {
         const initialCharacter = currentCharacterRef.current;
         // Only the selected character's engine is downloaded.
-        const [renderer, { createRenderManager }, { createLLMManager }] =
-          await Promise.all([
-            canvasEngine === "iki"
-              ? import("@charivo/render-iki").then(
-                  ({ createIkiRenderer }): AvatarRendererHandle =>
-                    createIkiRenderer({ canvas }),
-                )
-              : import("@charivo/render-live2d").then(
-                  ({ createLive2DRenderer }): AvatarRendererHandle =>
-                    createLive2DRenderer({ canvas }),
-                ),
-            import("@charivo/render"),
-            import("@charivo/llm"),
-          ]);
+        const [
+          renderer,
+          { createRenderManager },
+          { createLLMManager, createCascadeBrain },
+        ] = await Promise.all([
+          canvasEngine === "iki"
+            ? import("@charivo/render-iki").then(
+                ({ createIkiRenderer }): AvatarRendererHandle =>
+                  createIkiRenderer({ canvas }),
+              )
+            : import("@charivo/render-live2d").then(
+                ({ createLive2DRenderer }): AvatarRendererHandle =>
+                  createLive2DRenderer({ canvas }),
+              ),
+          import("@charivo/render"),
+          import("@charivo/llm"),
+        ]);
 
         // A character on the other engine was picked while the chunk loaded,
         // and that run may already own the shared refs: nothing is built yet,
@@ -680,7 +683,10 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
           toolInstructions: buildAvatarControlInstructions(initialCatalog),
         });
         llmManagerRef.current = llmManager;
-        instance = createCharivo({ renderer: renderManager, llm: llmManager });
+        instance = createCharivo({
+          renderer: renderManager,
+          brain: createCascadeBrain(llmManager),
+        });
 
         const nextTtsPlayer = await createTTSPlayer(selectedTTSPlayer);
         if (nextTtsPlayer) {
@@ -701,22 +707,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         instance.setCharacter(initialCharacter);
         syncedCharacterIdRef.current = initialCharacter.id;
 
-        instance.on("tts:start", () => {
+        instance.on("floor:changed", ({ floor }) => {
           if (!disposed) {
-            setIsSpeaking(true);
+            setIsSpeaking(floor.state === "speaking");
           }
         });
 
-        instance.on("tts:end", () => {
-          if (!disposed) {
-            setIsSpeaking(false);
+        // The render callback delivers the character's lines only; the user's
+        // own message arrives here, once, from the brain.
+        instance.on("message:sent", ({ message }) => {
+          if (disposed || message.type !== "user") {
+            return;
           }
-        });
-
-        instance.on("tts:error", () => {
-          if (!disposed) {
-            setIsSpeaking(false);
-          }
+          addMessage(message);
         });
 
         instance.on("stt:start", () => {
@@ -1068,7 +1071,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         resetRealtimeUiState();
         resetAvatarDebug();
         setRealtimeError(null);
-        charivo.clearHistory();
+        charivo.getBrain()?.clearHistory();
         charivo.setCharacter(resolvedCharacter);
         await renderManagerRef.current?.loadModel(
           getModelPath(resolvedCharacter.id),
@@ -1182,11 +1185,19 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     // context warms under sticky activation -- skipping this is what makes a
     // streaming speak() reject with CharivoStateError on Safari (see
     // docs/guide/tts.md). Best-effort only: a real failure surfaces from
-    // speak() itself once charivo.userSay() gets there.
+    // speak() itself once the brain's reply gets there.
     ttsManagerRef.current?.prepareAudio?.().catch(() => {});
 
     try {
-      await charivo.userSay(userMessage);
+      const result = await charivo
+        .getBrain()
+        ?.submit({ kind: "user", text: userMessage }).done;
+      if (
+        result?.status === "failed" &&
+        (result.stage === "generate" || result.stage === "render")
+      ) {
+        setLlmError(result.error.message);
+      }
     } catch (error) {
       setLlmError(
         error instanceof Error ? error.message : "Failed to send message",
@@ -1211,15 +1222,13 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
       // A reflex claim outranks the AI's own expression/gaze for its hold, so
       // the face visibly overrides a reply in progress, then falls back to it.
       const { holdMs, gaze } = REACTIONS[kind];
-      const claim = {
+      charivo?.react({
+        expression: expressionId,
+        gaze,
         source: "reaction",
         priority: "reflex",
         hold: { ms: holdMs },
-      } as const;
-      charivo?.emit("avatar:expression", { expressionId, ...claim });
-      if (gaze) {
-        charivo?.emit("avatar:gaze", { ...gaze, ...claim });
-      }
+      });
     },
     [charivo],
   );
