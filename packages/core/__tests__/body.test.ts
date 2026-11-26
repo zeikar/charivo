@@ -4,6 +4,7 @@ import {
   CharivoError,
   CharivoProviderError,
   CharivoStateError,
+  createCharivo,
 } from "@charivo/core";
 import type {
   Character,
@@ -14,7 +15,11 @@ import type {
   GazeCoordinates,
   Message,
   PerformanceHandle,
+  RealtimeManager,
+  RealtimeState,
   RenderManager,
+  ToolDefinition,
+  ToolRegistration,
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
@@ -2293,5 +2298,308 @@ describe("a text stream's edges (S3, S5, P10)", () => {
       text: "One. Two. ",
       heardText: "",
     });
+  });
+});
+
+/** Records every call; the body must never call `interrupt` or `sendMessage` (R3). */
+class StubRealtimeManager implements RealtimeManager {
+  setCharacter = vi.fn((_character: Character) => undefined);
+  getState = vi.fn(
+    (): RealtimeState => ({
+      connection: "idle",
+      session: { status: "idle", config: null },
+      response: { status: "idle", text: "" },
+      audioPlaying: false,
+      awaitingResponse: false,
+      lastError: null,
+    }),
+  );
+  startSession = vi.fn(async () => undefined);
+  updateSession = vi.fn(async () => undefined);
+  stopSession = vi.fn(async () => undefined);
+  sendMessage = vi.fn(async (_text: string) => undefined);
+  sendAudioChunk = vi.fn(async (_audio: ArrayBuffer) => undefined);
+  interrupt = vi.fn(async () => undefined);
+  registerTool = vi.fn((_tool: ToolRegistration) => undefined);
+  unregisterTool = vi.fn((_name: string) => undefined);
+  getRegisteredTools = vi.fn((): ToolDefinition[] => []);
+  setEventEmitter = vi.fn((_emitter: CharivoEventEmitter) => undefined);
+}
+
+describe("playback reserved for realtime (R1)", () => {
+  it("holds the floor from attachRealtime() to detachRealtime() and refuses perform() meanwhile", async () => {
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    const events = recordFloorEvents(charivo);
+
+    charivo.attachRealtime(new StubRealtimeManager());
+
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+    expect(charivo.isRealtimeModeEnabled()).toBe(true);
+    expect(events).toEqual([
+      { event: "floor:changed", data: { floor: { state: "realtime" } } },
+    ]);
+    expect(() => charivo.perform({ text: "Hello there." })).toThrow(
+      CharivoStateError,
+    );
+    expect(events).toHaveLength(1);
+
+    charivo.detachRealtime();
+
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+    expect(charivo.isRealtimeModeEnabled()).toBe(false);
+    expect(events.slice(1)).toEqual([
+      { event: "floor:changed", data: { floor: { state: "idle" } } },
+    ]);
+    const handle = charivo.perform({ text: "Hello there." });
+    expect(charivo.getFloor()).toEqual({
+      state: "speaking",
+      performanceId: handle.id,
+      origin: "app",
+    });
+  });
+
+  it("reports a floor:changed listener the attached manager", () => {
+    const charivo = new Charivo();
+    const realtime = new StubRealtimeManager();
+    const seen: Array<RealtimeManager | undefined> = [];
+    charivo.on("floor:changed", () => {
+      seen.push(charivo.getRealtimeManager());
+    });
+
+    charivo.attachRealtime(realtime);
+    charivo.detachRealtime();
+
+    expect(seen).toEqual([realtime, undefined]);
+  });
+
+  it("emits nothing for detachRealtime() while not attached or a repeated attachRealtime()", () => {
+    const charivo = new Charivo();
+    const events = recordFloorEvents(charivo);
+
+    charivo.detachRealtime();
+    expect(events).toEqual([]);
+
+    charivo.attachRealtime(new StubRealtimeManager());
+    const replacement = new StubRealtimeManager();
+    charivo.attachRealtime(replacement);
+
+    expect(events).toEqual([
+      { event: "floor:changed", data: { floor: { state: "realtime" } } },
+    ]);
+    expect(charivo.getRealtimeManager()).toBe(replacement);
+  });
+
+  it("does not wire a manager that a floor:changed listener detached or replaced mid-attach", () => {
+    const charivo = new Charivo();
+    charivo.setCharacter(character);
+    const detached = new StubRealtimeManager();
+    let detachOnce = true;
+    charivo.on("floor:changed", ({ floor }) => {
+      if (floor.state === "realtime" && detachOnce) {
+        detachOnce = false;
+        charivo.detachRealtime();
+      }
+    });
+
+    charivo.attachRealtime(detached);
+
+    expect(detached.setEventEmitter).not.toHaveBeenCalled();
+    expect(detached.setCharacter).not.toHaveBeenCalled();
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+
+    const original = new StubRealtimeManager();
+    const other = new StubRealtimeManager();
+    let swapOnce = true;
+    charivo.on("floor:changed", ({ floor }) => {
+      if (floor.state === "realtime" && swapOnce) {
+        swapOnce = false;
+        charivo.attachRealtime(other);
+      }
+    });
+
+    charivo.attachRealtime(original);
+
+    expect(original.setEventEmitter).not.toHaveBeenCalled();
+    expect(original.setCharacter).not.toHaveBeenCalled();
+    expect(other.setEventEmitter).toHaveBeenCalledTimes(1);
+    expect(charivo.getRealtimeManager()).toBe(other);
+  });
+
+  it("frees the floor with floor:changed when dispose() detaches realtime", async () => {
+    const charivo = new Charivo();
+    charivo.attachRealtime(new StubRealtimeManager());
+    const events = recordFloorEvents(charivo);
+
+    await charivo.dispose();
+
+    expect(events).toEqual([
+      { event: "floor:changed", data: { floor: { state: "idle" } } },
+    ]);
+  });
+
+  it("refuses a perform() made from a listener of the state the manager emits while attaching", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    charivo.setCharacter(character);
+    // As the built-in manager does, setCharacter() emits realtime:state.
+    const realtime = new StubRealtimeManager();
+    let emitter: CharivoEventEmitter | undefined;
+    realtime.setEventEmitter.mockImplementation((next) => {
+      emitter = next;
+    });
+    realtime.setCharacter.mockImplementation(() => {
+      emitter?.emit("realtime:state", { state: realtime.getState() });
+    });
+    const refusals: unknown[] = [];
+    charivo.on("realtime:state", () => {
+      try {
+        charivo.perform({ text: "Hello there." });
+      } catch (error) {
+        refusals.push(error);
+      }
+    });
+
+    charivo.attachRealtime(realtime);
+    await flush();
+
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toBeInstanceOf(CharivoStateError);
+    expect(tts.speak).not.toHaveBeenCalled();
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+  });
+
+  it.each(["setEventEmitter", "setCharacter"] as const)(
+    "leaves realtime detached and the floor idle when the manager's %s() throws",
+    (member) => {
+      const charivo = new Charivo();
+      charivo.setCharacter(character);
+      const realtime = new StubRealtimeManager();
+      const failure = new Error(`${member} failed`);
+      realtime[member].mockImplementation(() => {
+        throw failure;
+      });
+      const events = recordFloorEvents(charivo);
+
+      expect(() => charivo.attachRealtime(realtime)).toThrow(failure);
+
+      expect(charivo.getRealtimeManager()).toBeUndefined();
+      expect(charivo.isRealtimeModeEnabled()).toBe(false);
+      expect(charivo.getFloor()).toEqual({ state: "idle" });
+      expect(events.at(-1)).toEqual({
+        event: "floor:changed",
+        data: { floor: { state: "idle" } },
+      });
+      expect(() => charivo.perform({ text: "Hello there." })).not.toThrow();
+    },
+  );
+
+  it("starts in realtime when createCharivo() is given a realtime manager", () => {
+    const charivo = createCharivo({ realtime: new StubRealtimeManager() });
+
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+    expect(() => charivo.perform({ text: "Hello there." })).toThrow(
+      CharivoStateError,
+    );
+  });
+});
+
+describe("attaching realtime after cascade speech (R2, R3)", () => {
+  it("throws while a performance holds the floor and attaches nothing", async () => {
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    const events = recordFloorEvents(charivo);
+    const realtime = new StubRealtimeManager();
+
+    expect(() => charivo.attachRealtime(realtime)).toThrow(CharivoStateError);
+
+    expect(charivo.getFloor()).toEqual({
+      state: "speaking",
+      performanceId: handle.id,
+      origin: "app",
+    });
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.isRealtimeModeEnabled()).toBe(false);
+    expect(realtime.setEventEmitter).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it("throws after cancel() while its stop is pending, and attaches after an awaited interrupt()", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+
+    void handle.cancel();
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+    expect(() => charivo.attachRealtime(new StubRealtimeManager())).toThrow(
+      CharivoStateError,
+    );
+
+    const interrupting = charivo.interrupt();
+    tts.stops[0]!.resolve();
+    await interrupting;
+    const realtime = new StubRealtimeManager();
+    charivo.attachRealtime(realtime);
+
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+    expect(charivo.getRealtimeManager()).toBe(realtime);
+  });
+
+  it("keeps refusing after an interrupt() that rejected, even once the old speak() settled, until one resolves", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    charivo.perform({ text: "Hello there." });
+    await flush();
+
+    const stopError = charivo.interrupt().catch((error: unknown) => error);
+    tts.stops[0]!.reject(new Error("device busy"));
+    const error = await stopError;
+    expect(error).toBeInstanceOf(CharivoProviderError);
+    expect(() => charivo.attachRealtime(new StubRealtimeManager())).toThrow(
+      expect.objectContaining({ name: "CharivoStateError", cause: error }),
+    );
+
+    tts.speaks[0]!.resolve();
+    await flush();
+    expect(() => charivo.attachRealtime(new StubRealtimeManager())).toThrow(
+      CharivoStateError,
+    );
+
+    const interrupting = charivo.interrupt();
+    tts.stops[1]!.resolve();
+    await interrupting;
+    charivo.attachRealtime(new StubRealtimeManager());
+
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+  });
+
+  it("never calls the realtime manager's interrupt() or sendMessage()", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const realtime = new StubRealtimeManager();
+    charivo.attachRealtime(realtime);
+
+    const interrupting = charivo.interrupt();
+    tts.stops[0]!.resolve();
+    await interrupting;
+    expect(() => charivo.perform({ text: "Hello there." })).toThrow(
+      CharivoStateError,
+    );
+    charivo.detachRealtime();
+    charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.finishSpeech(0);
+    await flush();
+
+    expect(realtime.interrupt).not.toHaveBeenCalled();
+    expect(realtime.sendMessage).not.toHaveBeenCalled();
   });
 });

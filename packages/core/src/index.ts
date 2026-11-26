@@ -726,23 +726,53 @@ export class Charivo {
   /**
    * Attach a Realtime manager to handle real-time conversation.
    * Automatically connects the event emitter and enables Realtime mode.
+   *
+   * Realtime holds playback until {@link Charivo.detachRealtime}: the floor is
+   * `realtime` and `perform()` is refused. Throws `CharivoStateError` while a
+   * performance holds the floor or cancelled speech has not been confirmed
+   * stopped; await {@link Charivo.interrupt} first, and when that rejects,
+   * attaching stays refused until a later stop succeeds.
+   *
+   * When the manager's `setEventEmitter()` or `setCharacter()` throws, the
+   * error is rethrown with realtime detached and the floor idle, as after
+   * {@link Charivo.detachRealtime}; a manager attached before is not restored.
    */
   attachRealtime(manager: import("./types").RealtimeManager): void {
+    this.floor.assertRealtimeAdmissible();
     this.realtimeManager = manager;
     this.isRealtimeMode = true;
-    this.connectRealtimeManagerEventEmitter(manager);
+    // Reserved before the manager is wired: its setCharacter() emits state on
+    // the bus, and a perform() from a listener must already be refused (R1).
+    this.floor.setRealtime(true);
 
-    if (this.character) {
-      manager.setCharacter(this.character);
+    // A floor:changed listener may have detached or replaced this manager;
+    // wiring it then would connect a manager that is no longer attached.
+    if (this.realtimeManager !== manager) {
+      return;
+    }
+
+    try {
+      this.connectRealtimeManagerEventEmitter(manager);
+
+      if (this.character) {
+        manager.setCharacter(this.character);
+      }
+    } catch (error) {
+      if (this.realtimeManager === manager) {
+        this.detachRealtime();
+      }
+      throw error;
     }
   }
 
   /**
-   * Detach the Realtime manager and disable Realtime mode.
+   * Detach the Realtime manager and disable Realtime mode, freeing the floor.
+   * The session is not touched: stop it first.
    */
   detachRealtime(): void {
     this.realtimeManager = undefined;
     this.isRealtimeMode = false;
+    this.floor.setRealtime(false);
   }
 
   /**

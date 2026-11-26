@@ -138,6 +138,8 @@ interface StopAttempt {
 /** The single holder of playback, and the runs of the performances it admits. */
 export class Floor {
   private holder?: PerformanceRecord;
+  /** A realtime manager is attached and holds playback (R1). */
+  private realtime = false;
   private performanceSeq = 0;
   /** The stop in progress on each manager. */
   private readonly stops = new Map<TTSManager, StopAttempt>();
@@ -161,6 +163,9 @@ export class Floor {
   ) {}
 
   getFloor(): FloorState {
+    if (this.realtime) {
+      return { state: "realtime" };
+    }
     return this.holder
       ? {
           state: "speaking",
@@ -176,6 +181,12 @@ export class Floor {
     if (typeof text !== "string" && !isAsyncIterable(text)) {
       throw new CharivoStateError(
         "perform() takes a string or an async iterable of strings as text",
+      );
+    }
+
+    if (this.realtime) {
+      throw new CharivoStateError(
+        "perform() was called while realtime holds playback",
       );
     }
 
@@ -252,6 +263,39 @@ export class Floor {
       },
       cancel: () => (record.cancelOutcome ??= this.cancel(record)),
     };
+  }
+
+  /**
+   * R2: realtime may take playback only once the floor is free and every
+   * manager with cancelled speech has confirmed its stop (P5). Throws before
+   * anything changes, so `attachRealtime()` can check first.
+   */
+  assertRealtimeAdmissible(): void {
+    if (this.holder) {
+      throw new CharivoStateError(
+        "attachRealtime() was called while a performance holds the floor",
+      );
+    }
+    if (this.unsettled.size > 0) {
+      // The stop that failed, when one has: the old voice may still be audible.
+      const failure = [...this.unsettled.values()].find(
+        (error) => error !== undefined,
+      );
+      throw new CharivoStateError(
+        "attachRealtime() was called while cancelled speech has not been stopped; await interrupt() first",
+        failure ? { cause: failure } : {},
+      );
+    }
+  }
+
+  /** Reserves playback for realtime, or frees it, reporting a change (R1, P8). */
+  setRealtime(attached: boolean): void {
+    if (this.realtime === attached) {
+      return;
+    }
+    this.realtime = attached;
+    this.produce("floor:changed", { floor: this.getFloor() });
+    this.deliver();
   }
 
   /**

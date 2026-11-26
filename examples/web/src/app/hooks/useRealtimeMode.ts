@@ -105,10 +105,15 @@ export function useRealtimeMode() {
     // Starting another session answers the previous cap notice.
     setCapNotice(null);
 
+    // What a failure has to undo depends on how far this attempt got.
+    let realtimeClient: ReturnType<typeof createRemoteRealtimeClient> | null =
+      null;
+    let attached = false;
+
     try {
       console.log("🌐 Enabling Realtime mode...");
 
-      const realtimeClient = createRemoteRealtimeClient({
+      realtimeClient = createRemoteRealtimeClient({
         apiEndpoint: "/api/realtime",
         debug: REALTIME_DEBUG,
       });
@@ -124,7 +129,6 @@ export function useRealtimeMode() {
           .getRegisteredTools()
           .map((tool) => tool.name),
       });
-      charivo.attachRealtime(realtimeManager);
 
       // One character decides the whole session. The store is what the
       // character sync in `useCharivoChat` resolves from; the instance is only
@@ -164,7 +168,14 @@ export function useRealtimeMode() {
       // Both calls must land on the same adapter, which they do by carrying
       // the same provider/transport values -- the manager rebuilds the config
       // on its way to startSession, so object identity is not what matches.
+      // It stays ahead of every other await: it has to run under the click.
       await realtimeManager.prepareAudio?.(sessionConfig);
+
+      // attachRealtime() refuses while cascade speech holds the floor or has
+      // not been confirmed stopped, so stop it first.
+      await charivo.interrupt();
+      charivo.attachRealtime(realtimeManager);
+      attached = true;
 
       await realtimeManager.startSession(sessionConfig);
 
@@ -179,6 +190,18 @@ export function useRealtimeMode() {
       console.log("✅ Realtime mode enabled");
     } catch (error) {
       console.error("❌ Failed to enable Realtime mode:", error);
+      if (attached) {
+        // A failed start must not leave playback reserved for realtime.
+        charivo.detachRealtime();
+      } else if (realtimeClient) {
+        // Releases the audio prepareAudio warmed.
+        void realtimeClient.disconnect().catch((cleanupError: unknown) => {
+          console.error(
+            "❌ Failed to release the realtime client:",
+            cleanupError,
+          );
+        });
+      }
       setIsRealtimeMode(false);
       setIsConnected(false);
       resetRealtimeUiState();
