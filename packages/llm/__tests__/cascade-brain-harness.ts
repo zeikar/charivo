@@ -16,7 +16,11 @@ import type {
   TTSManager,
   TTSOptions,
 } from "@charivo/core";
-import { createCascadeBrain, createLLMManager } from "@charivo/llm";
+import {
+  createCascadeBrain,
+  createLLMManager,
+  type CascadeBrainOptions,
+} from "@charivo/llm";
 
 // ---------------------------------------------------------------------------
 // Cascade brain turns: gates for every phase of a turn, ported from the
@@ -594,10 +598,11 @@ export interface HarnessOptions {
   maxHistoryTurns?: number;
   /** A manager of the test's own; `client` then goes unused. */
   manager?: LLMManager;
+  review?: CascadeBrainOptions["review"];
 }
 
 /**
- * `createCharivo({ brain: createCascadeBrain(llm), renderer, tts, character })`
+ * `createCharivo({ brain: createCascadeBrain(llm, { review }), renderer, tts, character })`
  * with the gateable stubs. The recorder is subscribed before any turn runs.
  */
 export function createHarness(options: HarnessOptions = {}): Harness {
@@ -611,7 +616,7 @@ export function createHarness(options: HarnessOptions = {}): Harness {
       client,
       maxHistoryTurns === undefined ? undefined : { maxHistoryTurns },
     );
-  const brain = createCascadeBrain(manager);
+  const brain = createCascadeBrain(manager, { review: options.review });
   const charivo = createCharivo({
     brain,
     renderer: renderer ? render : null,

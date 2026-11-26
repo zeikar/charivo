@@ -19,7 +19,16 @@ import type {
   ToolRegistration,
   TTSManager,
 } from "@charivo/core";
-import { createCascadeBrain, createLLMManager } from "@charivo/llm";
+import {
+  createAvatarControlTools,
+  createAvatarResultProjector,
+} from "@charivo/avatar";
+import {
+  createCascadeBrain,
+  createLLMManager,
+  type CascadeReply,
+  type CascadeReviewInput,
+} from "@charivo/llm";
 import {
   GateableLLMClient,
   RecordingLLMManager,
@@ -1982,5 +1991,437 @@ describe("cascade brain: history", () => {
     await expect(silent!.done).resolves.toEqual({ status: "silent" });
     expect(manager.generatedContents()).toEqual(["A"]);
     expect(manager.addedContents()).toEqual(["A", "reply-A", "S"]);
+  });
+});
+
+describe("cascade brain: review", () => {
+  /** Records what review was handed and returns `answer` for it. */
+  function reviewing(
+    answer: (
+      input: CascadeReviewInput,
+    ) => ReturnType<NonNullable<HarnessOptions["review"]>> = ({ reply }) =>
+      reply,
+  ) {
+    const seen: Array<{ reply: CascadeReply; directions: string[] }> = [];
+    const review = vi.fn((input: CascadeReviewInput) => {
+      seen.push({
+        reply: input.reply,
+        directions: transcript(input.directions),
+      });
+      return answer(input);
+    });
+    return { review, seen };
+  }
+
+  it("hands review the reply and the request's directions, and no user or event entry", async () => {
+    const { review, seen } = reviewing();
+    const { brain } = policyHarness({ review });
+    await brain.submit({ kind: "user", text: "hi" }).done;
+    await brain.submit({
+      kind: "direction",
+      text: "calm",
+      respond: "silent",
+      history: "keep",
+    }).done;
+    await brain.submit({
+      kind: "event",
+      source: "game",
+      text: "goal",
+      respond: "silent",
+    }).done;
+
+    await expect(
+      brain.submit({ kind: "direction", text: "wave" }).done,
+    ).resolves.toMatchObject({ status: "completed", text: "reply-wave" });
+
+    expect(seen.at(-1)).toEqual({
+      reply: { text: "reply-wave" },
+      directions: ["direction:calm", "direction:wave"],
+    });
+  });
+
+  it("lists a kept direction that is the turn's own input once", async () => {
+    const { review, seen } = reviewing();
+    const { brain } = policyHarness({ review });
+
+    await brain.submit({ kind: "direction", text: "wave", history: "keep" })
+      .done;
+
+    expect(seen).toEqual([
+      { reply: { text: "reply-wave" }, directions: ["direction:wave"] },
+    ]);
+  });
+
+  it("leaves out a silent direction stored while the request is in flight", async () => {
+    const { review, seen } = reviewing();
+    const harness = policyHarness({ review });
+    const { brain, client } = harness;
+    const turnA = parkA(harness);
+    await client.waitForCalls(1);
+
+    await brain.submit({
+      kind: "direction",
+      text: "later",
+      respond: "silent",
+      history: "keep",
+    }).done;
+    client.resolveCall("A", "reply-A");
+
+    await expect(turnA.done).resolves.toMatchObject({ status: "completed" });
+    expect(seen).toEqual([{ reply: { text: "reply-A" }, directions: [] }]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "direction:later",
+      "character:reply-A",
+    ]);
+  });
+
+  it("performs and commits the reply review returns", async () => {
+    const { review } = reviewing(() => ({
+      text: "edited",
+      affect: { expression: "smile" },
+    }));
+    const { charivo, brain, tts, recorder } = createHarness({
+      review,
+      tts: true,
+    });
+    const expressions: string[] = [];
+    charivo.on("avatar:expression", ({ expressionId, source }) => {
+      expressions.push(`${expressionId}:${source}`);
+    });
+    const starts: Array<boolean | undefined> = [];
+    charivo.on("performance:start", ({ affectResolved }) => {
+      starts.push(affectResolved);
+    });
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toEqual({
+      status: "completed",
+      text: "edited",
+      heardText: "edited",
+    });
+    expect(recorder.log).toEqual([
+      "sent:A",
+      "received:edited",
+      "start:cascade:edited",
+      "end:cascade:completed",
+    ]);
+    expect(starts).toEqual([true]);
+    expect(expressions).toEqual(["smile:performance"]);
+    expect(tts.spokenTexts()).toEqual(["edited"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "character:edited",
+    ]);
+  });
+
+  it("settles silent on null with nothing presented and the input kept", async () => {
+    const { review } = reviewing(() => null);
+    const { brain, render, tts, recorder } = createHarness({
+      review,
+      tts: true,
+    });
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toEqual({ status: "silent" });
+    expect(recorder.log).toEqual(["sent:A"]);
+    expect(render.rendered()).toEqual([]);
+    expect(tts.spokenTexts()).toEqual([]);
+    expect(transcript(brain.getHistory())).toEqual(["user:A"]);
+  });
+
+  it.each([
+    {
+      label: "throws",
+      review: () => {
+        throw new Error("review failed");
+      },
+    },
+    {
+      label: "rejects",
+      review: async () => {
+        throw new Error("review failed");
+      },
+    },
+    {
+      label: "returns undefined",
+      // A JS caller is not held to the declared type.
+      review: () => undefined as unknown as CascadeReply,
+    },
+    {
+      label: "returns a reply without string text",
+      review: () => ({ text: 42 }) as unknown as CascadeReply,
+    },
+  ])(
+    "fails at generate with the input rolled back when review $label",
+    async ({ review }) => {
+      const { brain, recorder } = createHarness({ review });
+
+      const result = await brain.submit({ kind: "user", text: "A" }).done;
+
+      // The draft review never approved is not handed back.
+      expect(result).toMatchObject({
+        status: "failed",
+        stage: "generate",
+        text: "",
+      });
+      expect(result.status === "failed" && result.error).toBeInstanceOf(
+        CharivoProviderError,
+      );
+      expect(recorder.log).toEqual(["sent:A"]);
+      expect(brain.getHistory()).toEqual([]);
+    },
+  );
+
+  it("awaits an async review before presenting", async () => {
+    const reached = createDeferred();
+    const answer = createDeferred<CascadeReply | null>();
+    const { review } = reviewing(() => {
+      reached.resolve();
+      return answer.promise;
+    });
+    const { brain, recorder } = createHarness({ review });
+
+    const turn = brain.submit({ kind: "user", text: "A" });
+    await reached.promise;
+    await Promise.resolve();
+
+    expect(recorder.log).toEqual(["sent:A"]);
+    answer.resolve({ text: "later" });
+
+    await expect(turn.done).resolves.toMatchObject({
+      status: "completed",
+      text: "later",
+    });
+    expect(recorder.log).toEqual([
+      "sent:A",
+      "received:later",
+      "start:cascade:later",
+      "end:cascade:completed",
+    ]);
+  });
+
+  it("presents nothing, and hands back no draft, for a turn superseded during review", async () => {
+    const reachedA = createDeferred();
+    const answerA = createDeferred<CascadeReply | null>();
+    const { review } = reviewing(({ reply }) => {
+      if (reply.text !== "reply-A") {
+        return reply;
+      }
+      reachedA.resolve();
+      return answerA.promise;
+    });
+    const { brain, render, recorder } = createHarness({ review });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await reachedA.promise;
+    const turnB = brain.submit({ kind: "user", text: "B" });
+    answerA.resolve({ text: "edited-A" });
+
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "",
+    });
+    await expect(turnB.done).resolves.toMatchObject({ status: "completed" });
+    expect(recorder.log).toEqual([
+      "sent:A",
+      "sent:B",
+      "cancelled:A",
+      "received:reply-B",
+      "start:cascade:reply-B",
+      "end:cascade:completed",
+    ]);
+    expect(render.rendered()).toEqual(["character:reply-B"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "character:reply-B",
+    ]);
+  });
+});
+
+/**
+ * Answers each request with the avatar tool calls `toolCalls` picks for its
+ * input, then with `after-tool` once the tool results are in. A follow-up
+ * parks on `followUp` when the test sets it.
+ */
+class AvatarToolClient implements LLMClient {
+  toolCalls: (
+    content: string,
+  ) => Array<{ name: string; arguments: Record<string, unknown> }> = () => [];
+  followUp?: Promise<void>;
+  readonly followUpReached = createDeferred();
+  private seq = 0;
+
+  call = vi.fn(async (_messages: LLMMessage[]) => "unused");
+  callWithTools = vi.fn(
+    async (messages: LLMMessage[]): Promise<LLMToolResponse> => {
+      const content = lastContentOf(messages);
+      if (messages[messages.length - 1]?.role === "tool") {
+        this.followUpReached.resolve();
+        await this.followUp;
+        return { content: "after-tool" };
+      }
+      const calls = this.toolCalls(content);
+      if (calls.length === 0) {
+        return { content: `reply-${content}` };
+      }
+      return {
+        content: "",
+        toolCalls: calls.map((call) => {
+          this.seq += 1;
+          return { id: `call-${this.seq}`, ...call };
+        }),
+      };
+    },
+  );
+}
+
+describe("cascade brain: tool-chosen expressions", () => {
+  function avatarHarness(options: HarnessOptions = {}) {
+    const client = new AvatarToolClient();
+    const harness = createHarness({
+      renderer: false,
+      ...options,
+      manager: createLLMManager(client, {
+        tools: createAvatarControlTools({
+          expressions: ["smile", "sad"],
+          motions: { Idle: 2 },
+        }),
+        resultProjectors: [createAvatarResultProjector()],
+      }),
+    });
+    const log: string[] = [];
+    const { charivo } = harness;
+    charivo.on("avatar:expression", ({ expressionId, source }) => {
+      log.push(`expression:${expressionId}:${source}`);
+    });
+    charivo.on("avatar:gaze", ({ x, y, source }) => {
+      log.push(`gaze:${x},${y}:${source}`);
+    });
+    charivo.on("avatar:motion", ({ group, index, muteSound }) => {
+      log.push(`motion:${group}:${index}:${muteSound ? "muted" : "audible"}`);
+    });
+    charivo.on("message:received", ({ message }) => {
+      log.push(`received:${message.content}`);
+    });
+    charivo.on("performance:start", ({ affectResolved }) => {
+      log.push(`start:${String(affectResolved)}`);
+    });
+    return { ...harness, avatarClient: client, log };
+  }
+
+  const smile = { name: "setExpression", arguments: { expressionId: "smile" } };
+
+  it("shows a setExpression choice with the reply's performance, not during generation", async () => {
+    const { brain, avatarClient, log } = avatarHarness();
+    avatarClient.toolCalls = (content) => (content === "A" ? [smile] : []);
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toMatchObject({ status: "completed", text: "after-tool" });
+    expect(log).toEqual([
+      "received:after-tool",
+      "start:true",
+      "expression:smile:performance",
+    ]);
+  });
+
+  it("shows the last of two setExpression calls in one request", async () => {
+    const { brain, avatarClient, log } = avatarHarness();
+    avatarClient.toolCalls = () => [
+      smile,
+      { name: "setExpression", arguments: { expressionId: "sad" } },
+    ];
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+
+    expect(log).toEqual([
+      "received:after-tool",
+      "start:true",
+      "expression:sad:performance",
+    ]);
+  });
+
+  it("keeps the tool's expression when review returns a reply without affect", async () => {
+    const { brain, avatarClient, log } = avatarHarness({
+      review: () => ({ text: "edited" }),
+    });
+    avatarClient.toolCalls = () => [smile];
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+
+    expect(log).toEqual([
+      "received:edited",
+      "start:true",
+      "expression:smile:performance",
+    ]);
+  });
+
+  it("lets lookAt and a muted playMotion through during generation", async () => {
+    const { brain, avatarClient, log } = avatarHarness();
+    avatarClient.toolCalls = () => [
+      { name: "lookAt", arguments: { x: 0.5, y: 0 } },
+      { name: "playMotion", arguments: { group: "Idle", index: 1 } },
+    ];
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+
+    expect(log).toEqual([
+      "gaze:0.5,0:tool",
+      "motion:Idle:1:muted",
+      "received:after-tool",
+      "start:false",
+    ]);
+  });
+
+  it("shows no expression for a reply review withholds", async () => {
+    const { brain, avatarClient, log } = avatarHarness({ review: () => null });
+    avatarClient.toolCalls = () => [smile];
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toEqual({ status: "silent" });
+    expect(log).toEqual([]);
+  });
+
+  it("shows no expression for a superseded turn", async () => {
+    const { brain, avatarClient, log } = avatarHarness();
+    avatarClient.toolCalls = (content) => (content === "A" ? [smile] : []);
+    const followUp = createDeferred();
+    avatarClient.followUp = followUp.promise;
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await avatarClient.followUpReached.promise;
+    const turnB = brain.submit({ kind: "user", text: "B" });
+    followUp.resolve();
+
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnB.done).resolves.toMatchObject({ status: "completed" });
+    expect(log).toEqual(["received:reply-B", "start:false"]);
+  });
+
+  it("lets affect returned by review win over the tool's", async () => {
+    const seen: CascadeReply[] = [];
+    const { brain, avatarClient, log } = avatarHarness({
+      review: ({ reply }) => {
+        seen.push(reply);
+        return { ...reply, affect: { expression: "sad" } };
+      },
+    });
+    avatarClient.toolCalls = () => [smile];
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+
+    expect(seen).toEqual([
+      { text: "after-tool", affect: { expression: "smile" } },
+    ]);
+    expect(log).toEqual([
+      "received:after-tool",
+      "start:true",
+      "expression:sad:performance",
+    ]);
   });
 });

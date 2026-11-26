@@ -10,6 +10,7 @@ import {
   type CharacterBody,
   type CharivoError,
   type ConversationBrain,
+  type EventMap,
   type HistoryRollback,
   type LLMManager,
   type Message,
@@ -108,7 +109,10 @@ class CascadeBrain implements ConversationBrain {
    */
   private readonly superseded: CascadeTurn[] = [];
 
-  constructor(private readonly llm: LLMManager) {
+  constructor(
+    private readonly llm: LLMManager,
+    private readonly review: CascadeBrainOptions["review"],
+  ) {
     // One emitter for the manager's lifetime, forwarding to whichever body is
     // attached when an event is raised: tool events never reach a detached
     // body, and are dropped while none is attached.
@@ -466,6 +470,22 @@ class CascadeBrain implements ConversationBrain {
     }
   }
 
+  /** B7: a live turn's generation or review failed; its input is rolled back. */
+  private failGeneration(
+    turn: CascadeTurn,
+    error: unknown,
+    message: string,
+  ): void {
+    if (!this.isLive(turn)) {
+      return;
+    }
+    turn.inputRollback?.();
+    this.finish(
+      turn,
+      failed("generate", "", toCharivoError("provider", error, message)),
+    );
+  }
+
   private async run(turn: CascadeTurn, entry: QueueEntry): Promise<void> {
     const { body } = turn;
     const { message } = entry;
@@ -501,6 +521,30 @@ class CascadeBrain implements ConversationBrain {
       return;
     }
 
+    // B9: taken with the request, so a later history write does not change
+    // it. A kept direction of the turn's own is in history already.
+    const directions: Message[] = [];
+    if (this.review) {
+      directions.push(
+        ...llm.getHistory().filter((entry) => entry.type === "direction"),
+      );
+      if (ephemeral && message.type === "direction") {
+        directions.push(message);
+      }
+    }
+
+    // B8: the last tool-chosen expression is held back and shown with the
+    // reply, so a reply that is withheld or superseded shows no face.
+    let toolAffect: AffectCue | undefined;
+    const interceptProjection = (event: string, payload: unknown): boolean => {
+      if (event !== "avatar:expression") {
+        return false;
+      }
+      const { expressionId } = payload as EventMap["avatar:expression"];
+      toolAffect = { expression: expressionId };
+      return true;
+    };
+
     // The request is made first; only then are the inputs queued behind this
     // turn's own written, so one that does not respond never lands in this
     // turn's prompt (B4). This relies on the manager building the prompt
@@ -511,6 +555,7 @@ class CascadeBrain implements ConversationBrain {
         ephemeral,
         isCancelled: () => !this.isLive(turn),
         signal: turn.abortController.signal,
+        interceptProjection,
       }))();
     this.writeQueued(null);
 
@@ -518,26 +563,48 @@ class CascadeBrain implements ConversationBrain {
     try {
       text = await request;
     } catch (error) {
-      if (!this.isLive(turn)) {
-        return;
-      }
-      turn.inputRollback?.();
-      this.finish(
+      this.failGeneration(
         turn,
-        failed(
-          "generate",
-          "",
-          toCharivoError(
-            "provider",
-            error,
-            "Failed to generate a character response",
-          ),
-        ),
+        error,
+        "Failed to generate a character response",
       );
       return;
     }
     if (!this.isLive(turn)) {
       return;
+    }
+    let affect = toolAffect;
+
+    // `turn.text` stays unset until review has approved the reply, so a turn
+    // that ends before that never carries the unreviewed draft in `done`.
+    if (this.review) {
+      let reviewed: CascadeReply | null;
+      try {
+        const answer: unknown = await this.review({
+          reply: { text, ...(affect ? { affect } : {}) },
+          directions,
+        });
+        if (answer !== null && !isCascadeReply(answer)) {
+          throw new TypeError(
+            "review must return null or a reply with a string text",
+          );
+        }
+        reviewed = answer;
+      } catch (error) {
+        this.failGeneration(turn, error, "The reply review failed");
+        return;
+      }
+      if (!this.isLive(turn)) {
+        return;
+      }
+      if (reviewed === null) {
+        // Withheld: the input's history write stays (B9).
+        this.finish(turn, { status: "silent" });
+        return;
+      }
+      text = reviewed.text;
+      // The reviewed reply's affect, else the tool's (B10).
+      affect = reviewed.affect ?? affect;
     }
     turn.text = text;
 
@@ -555,7 +622,7 @@ class CascadeBrain implements ConversationBrain {
 
     let performance: PerformanceHandle;
     try {
-      performance = body.perform({ text, origin: "cascade" });
+      performance = body.perform({ text, origin: "cascade", affect });
     } catch (error) {
       this.finish(turn, failed("tts", text, toCharivoError("state", error)));
       return;
@@ -580,6 +647,15 @@ class CascadeBrain implements ConversationBrain {
     // Unless a newer submit() or a cancel has finished it first.
     this.finish(turn, outcome(turn, result));
   }
+}
+
+/** What `review` hands back, checked since a JS caller can return anything. */
+function isCascadeReply(value: unknown): value is CascadeReply {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { text?: unknown }).text === "string"
+  );
 }
 
 /** A retirement nobody waits on: its failed stop is reported here (P5). */
@@ -629,7 +705,7 @@ function failed(
  */
 export function createCascadeBrain(
   llm: LLMManager,
-  _options: CascadeBrainOptions = {},
+  options: CascadeBrainOptions = {},
 ): ConversationBrain {
-  return new CascadeBrain(llm);
+  return new CascadeBrain(llm, options.review);
 }
