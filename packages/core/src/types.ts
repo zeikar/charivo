@@ -684,7 +684,8 @@ export interface GenerateResponseOptions {
   /**
    * Show the message to the model for this request without storing it. The
    * prompt is the history plus the message; nothing about the message is
-   * written, on success or failure. The reply is still committed unless
+   * written, on success or failure. The reply is still committed, as a
+   * standalone reply (see `AddToHistoryOptions.standalone`), unless
    * `callerOwnsHistory` is set. Pass a message that is not in history: one
    * that already is would appear twice.
    */

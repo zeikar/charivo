@@ -81,6 +81,8 @@ export class LLMManager {
   private readonly directionRole: DirectionRole;
   /** The entry most recently stored under each `replaceKey`. */
   private readonly keyedEntries = new Map<string, Message>();
+  /** Replies stored with no input of their own; never pruned as stranded. */
+  private readonly standaloneReplies = new WeakSet<Message>();
 
   constructor(
     private llmClient: LLMClient,
@@ -175,7 +177,11 @@ export class LLMManager {
       // Pruning a user message can strand its reply at the head. Only an
       // eviction-bearing prune drops it, so a deliberately character-first
       // history - a reply committed after clearHistory() - survives.
-      evicted.push(...this.historyManager.removeLeadingCharacterMessages());
+      evicted.push(
+        ...this.historyManager.removeLeadingCharacterMessages((message) =>
+          this.standaloneReplies.has(message),
+        ),
+      );
     }
 
     return evicted;
@@ -207,6 +213,12 @@ export class LLMManager {
     }
 
     const { replaceKey } = options;
+    // Set on every append, so a re-added object takes this call's option.
+    if (options.standalone === true) {
+      this.standaloneReplies.add(message);
+    } else {
+      this.standaloneReplies.delete(message);
+    }
     const previousKeyed =
       replaceKey === undefined ? undefined : this.keyedEntries.get(replaceKey);
     // The replaced entry is put back at its old index on rollback. Pruning
@@ -307,6 +319,7 @@ export class LLMManager {
             apiMessages,
             options.isCancelled ?? (() => false),
             options.signal,
+            options.interceptProjection,
           )
         : await this.llmClient.call(apiMessages, { signal: options.signal });
 
@@ -319,6 +332,10 @@ export class LLMManager {
           assistantMessage,
           this.character!.id, // character is guaranteed non-null after validateCharacterSet
         );
+        // Its prompt was never stored, so pruning must not drop it as stranded.
+        if (ephemeral) {
+          this.standaloneReplies.add(responseMessage);
+        }
         this.historyManager.add(responseMessage, { prune: false });
         this.pruneWithoutStrandingReplies();
       }
@@ -355,6 +372,7 @@ export class LLMManager {
     apiMessages: LLMApiMessage[],
     isCancelled: () => boolean,
     signal?: AbortSignal,
+    interceptProjection?: GenerateResponseOptions["interceptProjection"],
   ): Promise<string> {
     // Guarded by shouldUseToolLoop(): callWithTools exists on this path
     const callWithTools = this.llmClient.callWithTools!.bind(this.llmClient);
@@ -383,7 +401,11 @@ export class LLMManager {
           return response.content;
         }
 
-        const outcome = await this.executeToolCall(toolCall, isCancelled);
+        const outcome = await this.executeToolCall(
+          toolCall,
+          isCancelled,
+          interceptProjection,
+        );
         if (!outcome.executed) {
           return response.content;
         }
@@ -441,6 +463,7 @@ export class LLMManager {
   private async executeToolCall(
     toolCall: LLMToolCall,
     isCancelled: () => boolean,
+    interceptProjection?: GenerateResponseOptions["interceptProjection"],
   ): Promise<ToolCallOutcome> {
     let outcome: ToolResultSnapshot;
 
@@ -507,6 +530,7 @@ export class LLMManager {
       outcome.snapshot,
       toolCall.id,
       isCancelled,
+      interceptProjection,
     );
 
     return { executed: true, output: outcome.serialized };
@@ -522,6 +546,7 @@ export class LLMManager {
     output: Record<string, unknown>,
     callId: string,
     isCancelled: () => boolean,
+    interceptProjection?: GenerateResponseOptions["interceptProjection"],
   ): void {
     const eventEmitter = this.eventEmitter;
     if (!eventEmitter) {
@@ -544,6 +569,9 @@ export class LLMManager {
             // Listeners run synchronously, so an earlier emission from this
             // same projector can supersede the turn mid-projection.
             if (isCancelled()) {
+              return;
+            }
+            if (interceptProjection?.(event, payload)) {
               return;
             }
             eventEmitter.emit(event, payload);
@@ -587,16 +615,22 @@ export class LLMManager {
   /**
    * The window of history sent with a request. When the window cuts into
    * the history and lands on a reply, that reply loses what prompted it, so
-   * it is dropped. A reply that really opens the history - one answering an
-   * ephemeral direction, or committed after clearHistory() - is kept.
+   * it is dropped, unless it is standalone and had no prompt to lose. A reply
+   * that really opens the history - one answering an ephemeral direction, or
+   * committed after clearHistory() - is kept.
    */
   private getHistoryForApiCall(): Message[] {
     const historyMessages = this.historyManager.getRecent(
       this.maxHistoryMessages,
     );
     const cut = historyMessages.length < this.historyManager.size();
+    const first = historyMessages[0];
 
-    if (cut && historyMessages[0]?.type === "character") {
+    if (
+      cut &&
+      first?.type === "character" &&
+      !this.standaloneReplies.has(first)
+    ) {
       return historyMessages.slice(1);
     }
 

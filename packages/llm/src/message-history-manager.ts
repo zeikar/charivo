@@ -153,13 +153,19 @@ export class MessageHistoryManager {
     return evicted;
   }
 
-  /** Drop the leading character messages and report them in their original order. */
-  removeLeadingCharacterMessages(): Message[] {
+  /**
+   * Drop the leading character messages, up to the first standalone one, and
+   * report them in their original order.
+   */
+  removeLeadingCharacterMessages(
+    isStandalone: (message: Message) => boolean,
+  ): Message[] {
     let count = 0;
     // Stop before the last entry: the newest message is never a stranded reply.
     while (
       count < this.history.length - 1 &&
-      this.history[count].type === "character"
+      this.history[count].type === "character" &&
+      !isStandalone(this.history[count])
     ) {
       count += 1;
     }
