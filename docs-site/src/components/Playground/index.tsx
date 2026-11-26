@@ -4,6 +4,7 @@ import type {
   AvatarControlCatalog,
   BuiltInTTSManager,
   Charivo,
+  PerformanceHandle,
   RenderManager,
 } from "@charivo/core";
 import type { IkiRenderer, IkiView } from "@charivo/render-iki";
@@ -90,10 +91,21 @@ export default function Playground(): ReactNode {
   // tts:audio:start, not on click, so it binds to its own speech rather than
   // to the line it interrupts (whose tts:audio:end comes after the click).
   const pendingLine = useRef<VoiceLine>(undefined);
+  // The performance of the line being played, so a stop or a character switch
+  // cancels it.
+  const lineHandle = useRef<PerformanceHandle>(undefined);
   const { withBaseUrl } = useBaseUrlUtils();
   const modelUrls: Record<CharacterId, string> = {
     Twin: useBaseUrl(CHARACTERS.Twin.file),
     Mint: useBaseUrl(CHARACTERS.Mint.file),
+  };
+
+  const stopLine = () => {
+    const handle = lineHandle.current;
+    lineHandle.current = undefined;
+    handle?.cancel().catch((err: unknown) => {
+      setLineError(`Couldn't stop that line: ${messageOf(err)}`);
+    });
   };
 
   // Charivo and the engine load on the client only, after mount.
@@ -211,7 +223,7 @@ export default function Playground(): ReactNode {
     return () => {
       stale = true;
       pendingLine.current = undefined;
-      void engine.tts.stop();
+      stopLine();
       setLineError(undefined);
       setClaims([]);
     };
@@ -275,17 +287,38 @@ export default function Playground(): ReactNode {
     }
     if (playing === line) {
       pendingLine.current = undefined;
-      void engine.tts.stop();
+      stopLine();
       return;
     }
     // From the click, so the lip-sync AudioContext starts under the gesture
     // (docs/guide/tts.md). Best-effort, as in examples/web: a real failure
-    // surfaces from speak() below.
+    // surfaces from the performance below.
     engine.tts.prepareAudio().catch(() => {});
-    pendingLine.current = line;
     setLineError(undefined);
-    engine.tts.speak(line.text).catch((err: unknown) => {
-      setLineError(`Couldn't play that line: ${messageOf(err)}`);
+    // A new line takes the floor from the one playing, so it interrupts.
+    let handle: PerformanceHandle;
+    try {
+      handle = engine.charivo.perform({
+        text: line.text,
+        origin: "playground",
+      });
+    } catch (error) {
+      setLineError(
+        `Couldn't play that line: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+    pendingLine.current = line;
+    lineHandle.current = handle;
+    void handle.done.then((result) => {
+      if (lineHandle.current === handle) {
+        lineHandle.current = undefined;
+      }
+      if (result.status === "failed") {
+        setLineError(
+          `Couldn't play that line: ${result.error?.message ?? "unknown error"}`,
+        );
+      }
     });
   };
 
