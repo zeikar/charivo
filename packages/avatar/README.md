@@ -33,7 +33,7 @@ pnpm add @charivo/avatar
 - `LOOK_AT_TOOL_NAME`
 - `type ExpressionArgs`, `type MotionArgs`, `type LookAtArgs`
 - `createAvatarDirector(options)`
-- `connectAvatarDirectorToCascade(bus, director)`
+- `connectAvatarDirectorToPerformances(bus, director)`
 - `createLLMAvatarClassifier(client)`
 - `type AvatarDirector`, `type AvatarDirectorOptions`, `type AvatarClassifier`,
   `type AvatarDecision`
@@ -98,6 +98,14 @@ forwards tools to `generateResponseWithTools`). See the
 [LLM package README](../llm/README.md#tool-calling) for the remote request/response
 shape and the round cap.
 
+With `createCascadeBrain(manager)`, a tool-chosen expression is not shown while
+the reply is generated: the brain holds back the last projected
+`avatar:expression` and presents it with the line, as the performance's
+affect (source `"performance"`, held for that performance when it is voiced; an
+unvoiced one gets the channel default). It arrives with the
+line instead of ahead of it. The `lookAt` gaze and the muted `playMotion` still
+play as soon as the tool runs.
+
 ## Text-Driven Director
 
 The director is the alternative to tool calling. The talking LLM writes only
@@ -111,7 +119,7 @@ separate component for that.
 
 ```ts
 import {
-  connectAvatarDirectorToCascade,
+  connectAvatarDirectorToPerformances,
   createAvatarDirector,
   createLLMAvatarClassifier,
 } from "@charivo/avatar";
@@ -123,26 +131,41 @@ const director = createAvatarDirector({
   onError: (error) => console.error(error), // defaults to console.warn
 });
 
-const disconnect = connectAvatarDirectorToCascade(charivo, director);
+const disconnect = connectAvatarDirectorToPerformances(charivo, director);
 ```
 
 `createAvatarDirector(options)` returns an `AvatarDirector`:
 
-- `say(text)` classifies one complete line.
+- `say(text, { performanceId? })` classifies one complete line. With
+  `performanceId` the expression is held until that performance ends; without
+  it the channel default applies.
 - `push(chunk)` then `done()` build a line from streaming text; the first
   `push()` after a line ends starts a new one.
 - `cancel()` ends the line and drops the open buffer and any pending decision.
 
-Only the cascade wiring ships. `push()` / `done()` exist for streaming text
+Only the performance wiring ships. `push()` / `done()` exist for streaming text
 sources, such as an adapter you write.
 
 ### Line Lifecycle
 
-`connectAvatarDirectorToCascade(bus, director)` returns a disconnect function.
-It sends each voiced reply to `say()` on `tts:start` (Charivo emits it after the
-reply is rendered and recorded, just before speaking) and treats `tts:audio:end`,
-`tts:end`, `tts:error`, and `turn:cancelled` as the end of the line, calling
-`cancel()`. It ignores a `tts:start` whose turn was already cancelled.
+`connectAvatarDirectorToPerformances(bus, director)` returns a disconnect
+function. Any `CharivoEventBus` fits; a `Charivo` instance does. It acts on
+**voiced** performances only (those with a TTS manager attached when they took
+the floor):
+
+- A string performance is sent to `say(text, { performanceId })` once, from its
+  `performance:start` text. A streamed one is sent segment by segment, from
+  `performance:segment`. The expression is held until that performance ends, and
+  `performance:end` for it calls `cancel()`, dropping a decision still pending.
+- A performance whose affect already resolved (`affectResolved` is `true` on
+  `performance:start`, so the cue showed an expression or motion) is not
+  classified: the cue speaks for it. A cue whose label mapped to nothing leaves
+  `affectResolved` false, so inference still runs.
+- An unvoiced performance is not classified.
+- The tool-calling path needs nothing here: the cascade brain holds back a
+  tool-chosen expression during generation and presents it with the line as the
+  performance's affect, so it arrives with the line, resolved, and the director
+  stays out of its way.
 
 - A pending decision is stale, and its signal aborted, when a new line begins
   (`say()` or the first `push()`) or on `cancel()`. Currency is rechecked before
@@ -155,12 +178,10 @@ reply is rendered and recorded, just before speaking) and treats `tts:audio:end`
   not reported.
 - `say()`, `push()`, `done()`, and `cancel()` never throw.
 
-The helper reacts to voiced lines only. A turn that fails before TTS starts,
-such as a renderer failure, is never classified. A text-only turn (no TTS
-manager attached) emits no `tts:start`, so the helper does not classify it; call
-`director.say(text)` yourself where your app accepts the text reply. Your app
-owns cancellation on that path: call `director.cancel()` if the reply is later
-withdrawn.
+The helper reacts to performances only. A turn that fails before it performs, or
+a reply that is never presented, is never classified. For text you show without
+`perform()`, call `director.say(text)` yourself; your app then owns
+cancellation, so call `director.cancel()` if the reply is later withdrawn.
 
 ### Classifier
 
@@ -256,6 +277,6 @@ s/@charivo\/realtime-avatar/@charivo\/avatar/
 ```
 
 Every tool-calling export listed above is unchanged. The director exports
-(`createAvatarDirector`, `connectAvatarDirectorToCascade`,
+(`createAvatarDirector`, `connectAvatarDirectorToPerformances`,
 `createLLMAvatarClassifier`) are new and were never part of
 `@charivo/realtime-avatar`.
