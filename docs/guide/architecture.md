@@ -15,15 +15,27 @@ The dependency flow is intentionally simple:
 
 ```text
 App
-  -> @charivo/core
+  -> brain adapters (@charivo/llm's cascade brain)
+  -> @charivo/core (the body)
   -> modality packages
   -> browser implementations via subpath exports
   -> optional server providers behind API routes
 ```
 
+The layers split the work of making a character talk:
+
+| Layer | Owns | Package |
+| --- | --- | --- |
+| Body | speech floor, `perform` / `react` / `interrupt`, TTS, STT, rendering, event bus | `@charivo/core` (`Charivo`) |
+| Arbiter | one winner per avatar channel, holds, release | `@charivo/render` (`RenderManager`) |
+| Brain adapters | input, history, turn logic, when to call the body | `@charivo/llm` (cascade); `@charivo/realtime` is its own brain |
+| App | queues, pacing, policy (the Director), remote brains | examples / user code |
+
 In practice:
 
-- `@charivo/core` owns the `Charivo` orchestrator, shared types, and event bus
+- `@charivo/core` owns the `Charivo` body, shared types, the event bus, and the
+  brain port (`ConversationBrain`). It never imports `@charivo/llm` or
+  `@charivo/realtime`
 - modality packages own stateful feature logic
 - browser runtime packages live on subpaths such as `@charivo/tts/remote` or `@charivo/realtime/openai`
 - server providers live on `@charivo/server/*` subpaths, which keeps credential
@@ -37,11 +49,18 @@ Lower layers should not take on orchestration concerns from higher layers.
 
 ### Core
 
-- `@charivo/core`: orchestrator, shared contracts, event bus
+- `@charivo/core`: the `Charivo` body. `perform()` shows and speaks a line,
+  `react()` makes a non-verbal reaction without taking the floor, `interrupt()`
+  stops speech, and `getFloor()` reports who holds playback (idle, a
+  performance, or realtime). It also owns shared contracts, the event bus, and
+  the brain port: `attachBrain(brain)` hosts any `ConversationBrain`.
 
 ### Manager Packages
 
-- `@charivo/llm`: conversation lifecycle and message orchestration
+- `@charivo/llm`: conversation lifecycle and message orchestration.
+  `createCascadeBrain(llm)` wraps an `LLMManager` as the text-chat brain: it
+  takes typed inputs through `submit()`, keeps history, and presents each reply
+  through the body's `perform()`
 - `@charivo/tts`: synthesis flow and lip-sync coordination
 - `@charivo/stt`: recording and transcription lifecycle
 - `@charivo/realtime`: realtime session state, tools, and in-place session updates
@@ -73,9 +92,9 @@ interfaces, not concrete classes.
   implementation classes such as `RemoteLLMClient`, `OpenAITTSPlayer`,
   `ConsoleRenderer`, `Live2DRendererImpl`, and the `*Manager`
   implementations are never exported from a public entry point.
-- `Charivo` is the single top-level orchestrator: it owns the instance
-  lifecycle — wiring managers together via `attach*`, holding the event bus,
-  and owning `dispose()`. `createCharivo(options)` is the factory-first way in,
+- `Charivo` is the single top-level body: it owns the instance
+  lifecycle — wiring managers and a brain together via `attach*`, holding the
+  event bus, and owning `dispose()`. `createCharivo(options)` is the factory-first way in,
   attaching the managers you supply and applying the character last; it returns
   an ordinary instance, so late `attach*` calls work on it just as they do on a
   hand-constructed one. The class itself remains exported — a partial exception
@@ -178,8 +197,9 @@ Charivo intentionally keeps two event contracts:
 
 - `RenderManager` uses `setEventBus(...)`
 - `TTSManager`, `STTManager`, `RealtimeManager`, and `LLMManager` use
-  `setEventEmitter(...)` (optional on `LLMManager`; wired only when it is
-  attached via `Charivo.attachLLM(...)`)
+  `setEventEmitter(...)` (optional on `LLMManager`; the cascade brain gives it
+  one forwarding emitter that passes each event to the body attached at that
+  moment)
 
 This is deliberate.
 
@@ -187,6 +207,19 @@ This is deliberate.
 - TTS, STT, realtime, and LLM managers mainly publish events back into core —
   for `LLMManager` that means `avatar:*`-style events from tool result
   projectors, not conversation events
+
+Core and the brain emit the conversation and speech events:
+
+- `floor:changed { floor }` whenever `getFloor()` changes
+- `performance:start`, `performance:segment` (one per sentence of a streamed
+  line) and `performance:end`, emitted by `perform()`. `performance:end` carries
+  `status` (`completed`, `cancelled` or `failed`), `heardText` and `error`. A
+  performance is the unit of speech; `tts:audio:start`, `tts:audio:end` and
+  `tts:lipsync:update` come from the TTS manager
+- `message:sent { message }` for every input a brain accepts (`user`, `event` or
+  `direction`; filter on `message.type`), `message:received { message }` for a
+  presented reply, and `turn:cancelled { turnId }` for each turn that settles
+  cancelled
 
 Do not normalize these contracts unless the public manager API is being
 redesigned.
@@ -225,8 +258,9 @@ that drives Charivo. These stay out of the packages on purpose:
   LLM client over IPC.
 - **Deciding when to speak**: schedulers, idle-speech timers, attention or
   priority queues that decide whether an event becomes a line. Neither input
-  path queues for you. In cascade mode, `Charivo.userSay()` is latest-wins,
-  so a newer call cancels the turn in progress. In realtime mode,
+  path queues for you. In cascade mode, `brain.submit()` is latest-wins when
+  the input responds, so a newer one cancels the turn in progress, and
+  `perform()` interrupts the current line unless you pass `whenBusy: "reject"`. In realtime mode,
   `sendMessage()` is rejected while a response is in progress (see
   [Realtime](./realtime.md)). An app that feeds the character from several
   sources needs its own queue in front of it.

@@ -103,15 +103,33 @@ automatically.
 ## Stopping and Interrupting
 
 `ttsManager.stop()` settles an in-flight `speak()` call it interrupts instead
-of leaving it pending — a deliberate stop resolves rather than rejects.
-`Charivo.userSay(text)` calls this at the start of every turn, so a reply
-that's still speaking gets stopped before the next turn's LLM response and
-TTS begin. Under the latest-wins `userSay(text)` contract that same stop is
-how a superseding turn silences the turn it replaces, and the superseded
-`userSay(text)` call resolves rather than rejecting. On the streaming path,
-stopping an in-flight utterance flushes whatever PCM is already queued in Web
-Audio and aborts the upstream request, the same way pausing and discarding an
-`<audio>` element stops the buffered path.
+of leaving it pending — a deliberate stop resolves rather than rejects. On the
+streaming path, stopping an in-flight utterance flushes whatever PCM is
+already queued in Web Audio and aborts the upstream request, the same way
+pausing and discarding an `<audio>` element stops the buffered path.
+
+Speech reaches the manager through `charivo.perform()`, which a brain calls for
+every reply, so cutting a character off is a question of which layer to stop:
+
+- `charivo.interrupt()` is speech-only. It cancels the performance on the
+  floor, stops the TTS manager, and resolves once the stop has settled. It
+  touches no brain turn: a cascade turn whose performance it cancelled settles
+  `cancelled`, but a turn still generating carries on and speaks afterward.
+- `brain.interrupt()` or `turn.cancel()` cancels a turn: the request is aborted,
+  its performance is cancelled and the turn settles `cancelled`. A newer
+  responding `submit()` does the same to the turn it replaces.
+- A direct `ttsManager.stop()` silences the audio only. The performance is not
+  told, so it carries on and ends `completed`, with the full text as
+  `heardText`.
+- A stop that fails (the stop request rejects) leaves that speech unsettled,
+  since the old voice may still be audible. No new `speak()` is issued on that
+  floor, and the performance that would have spoken ends `failed` at `tts`,
+  until a later `interrupt()` succeeds. Retry `interrupt()`; `attachRealtime()`
+  refuses meanwhile too.
+- When a line is cut, `heardText` is `""` only if playback demonstrably had not
+  begun. A TTS manager without `setEventEmitter` cannot report audio start, so
+  it reports no `heardText` for a line it was already asked to speak and that was then cut, and the cascade brain keeps that
+  reply in history.
 
 `stop()` also cancels a `speak()` call still starting up — the pre-speech
 stop, or audio synthesis. On the buffered path a cancelled call never begins
@@ -121,11 +139,7 @@ close before anything is handed to the speakers. Streamed playback cannot
 promise that much, because there `tts:audio:start` follows the first
 scheduled buffer — a stop from that listener can land after a few
 milliseconds of sound. It still settles the call and emits exactly one
-`tts:audio:end`. An app that wants to cut a character off mid-turn should
-call `charivo.interrupt()` rather than `ttsManager.stop()` directly:
-`interrupt()` stops the TTS *and* cancels the turn coherently (aborting its
-LLM request and announcing `turn:cancelled`), where a bare `ttsManager.stop()`
-silences the audio but leaves the turn running to completion behind it.
+`tts:audio:end`.
 
 ## Streaming
 

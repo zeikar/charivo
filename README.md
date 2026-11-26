@@ -74,8 +74,8 @@ pnpm add \
 ```
 
 ```ts
-import { createCharivo, isCharivoError } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import { createCharivo } from "@charivo/core";
+import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
 import { createOpenAITTSPlayer } from "@charivo/tts/openai";
@@ -96,7 +96,9 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 const charivo = createCharivo({
   renderer: renderManager,
-  llm: createLLMManager(createOpenAILLMClient({ apiKey: OPENAI_API_KEY })),
+  brain: createCascadeBrain(
+    createLLMManager(createOpenAILLMClient({ apiKey: OPENAI_API_KEY })),
+  ),
   tts: createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
   character: {
     id: "hiyori",
@@ -106,13 +108,11 @@ const charivo = createCharivo({
   },
 });
 
-try {
-  await charivo.userSay("Hello");
-} catch (error) {
-  if (isCharivoError(error)) {
-    console.error(error.code, error.message);
-  }
-  throw error;
+// `done` never rejects: a failure is a `failed` result that names the stage.
+const result = await charivo.getBrain()!.submit({ kind: "user", text: "Hello" })
+  .done;
+if (result.status === "failed") {
+  console.error(result.stage, result.error.code, result.error.message);
 }
 
 await charivo.dispose();
@@ -120,6 +120,31 @@ await charivo.dispose();
 
 For a complete app with the production server-mediated path, see
 [`examples/web`](./examples/web).
+
+### Speak or react without an LLM
+
+The body, `Charivo`, needs no brain. `perform()` shows and speaks a line, and
+`react()` moves the face without taking the floor:
+
+```ts
+// Takes the floor, renders the line and speaks it. A newer perform() interrupts it.
+const line = charivo.perform({
+  text: "Welcome back!",
+  affect: { expression: "happy", motion: { group: "Idle", index: 0 } },
+});
+const outcome = await line.done; // { status: "completed" | "cancelled" | "failed", ... }
+
+// A silent reflex that never takes the floor; release it when the moment passes.
+const { release } = charivo.react({
+  source: "my-app",
+  hold: "until-release",
+  expression: "surprised",
+  gaze: { x: 0.5, y: 0 },
+});
+release();
+
+await charivo.interrupt(); // stop speech now
+```
 
 Text chat can also drive the character's face and body: register the
 catalog-constrained tools from `@charivo/avatar` on the LLM manager and the
@@ -286,14 +311,21 @@ Browser-native packages are useful when you explicitly want no server dependency
 ## Architecture
 
 ```text
-App
-  -> @charivo/core
+App (decides when to speak; owns policy)
+  -> brain: a ConversationBrain such as the cascade brain in @charivo/llm
+  -> body: @charivo/core's Charivo (perform / react / interrupt, one floor)
   -> modality packages (@charivo/llm, @charivo/tts, @charivo/stt, @charivo/realtime, @charivo/render)
   -> browser implementations via subpath exports
   -> optional server providers behind API routes
 ```
 
-- `@charivo/core` owns shared domain types, the event bus, and the `Charivo` orchestrator.
+- `@charivo/core` owns shared domain types, the event bus, and the `Charivo` body: it
+  renders and speaks what it is told (`perform()`, `react()`, `interrupt()`) and
+  arbitrates who holds the floor. It hosts a brain through `attachBrain()` but
+  never imports one.
+- a brain decides what the character says and drives the body. `createCascadeBrain(llm)`
+  from `@charivo/llm` is the text-chat brain; the realtime manager is the voice one.
+- the app sits above both: it chooses inputs, policy and when to speak.
 - modality root packages own stateful manager logic.
 - browser adapters live on explicit subpaths such as `@charivo/llm/remote` and `@charivo/realtime/openai-agents`.
 - `@charivo/server/*` is the recommended server-side entry point: it keeps
@@ -314,11 +346,11 @@ event wiring, package roles, detailed layering, and what Charivo leaves out.
 
 Core:
 
-- `@charivo/core`: orchestrator, event bus, domain types
+- `@charivo/core`: the `Charivo` body (`perform`, `react`, `interrupt`, floor), event bus, brain port, domain types
 
 LLM:
 
-- `@charivo/llm`: stateful conversation manager
+- `@charivo/llm`: stateful conversation manager and `createCascadeBrain` (the text-chat brain)
 - `@charivo/llm/remote`: browser client for server API routes
 - `@charivo/llm/openai`: direct OpenAI browser client (dev/testing only) and the
   `createOpenAILLMProvider` server-side provider

@@ -60,7 +60,7 @@ server. The rest of the app stays the same — only the client factories change.
 
 ```ts
 import { createCharivo } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import { createOpenAILLMClient } from "@charivo/llm/openai";
 import { createTTSManager } from "@charivo/tts";
 import { createOpenAITTSPlayer } from "@charivo/tts/openai";
@@ -80,8 +80,10 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 const charivo = createCharivo({
   renderer: renderManager,
-  llm: createLLMManager(
-    createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-5.6-luna" }),
+  brain: createCascadeBrain(
+    createLLMManager(
+      createOpenAILLMClient({ apiKey: OPENAI_API_KEY, model: "gpt-5.6-luna" }),
+    ),
   ),
   tts: createTTSManager(createOpenAITTSPlayer({ apiKey: OPENAI_API_KEY })),
   character: {
@@ -92,14 +94,14 @@ const charivo = createCharivo({
   },
 });
 
-await charivo.userSay("Hello");
+await charivo.getBrain()!.submit({ kind: "user", text: "Hello" }).done;
 ```
 
 ## Minimal Browser Setup
 
 ```ts
-import { createCharivo, isCharivoError } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import { createCharivo } from "@charivo/core";
+import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import { createTTSManager } from "@charivo/tts";
 import { createRemoteTTSPlayer } from "@charivo/tts/remote";
@@ -118,7 +120,9 @@ await renderManager.loadModel("/live2d/Hiyori/Hiyori.model3.json");
 
 const charivo = createCharivo({
   renderer: renderManager,
-  llm: createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  brain: createCascadeBrain(
+    createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  ),
   tts: createTTSManager(createRemoteTTSPlayer({ apiEndpoint: "/api/tts" })),
   character: {
     id: "hiyori",
@@ -128,13 +132,12 @@ const charivo = createCharivo({
   },
 });
 
-try {
-  await charivo.userSay("Hello");
-} catch (error) {
-  if (isCharivoError(error)) {
-    console.error(error.code, error.message);
-  }
-  throw error;
+// `done` never rejects: a failure is a `failed` result that names the stage
+// (`generate`, `render` or `tts`) and carries a typed `CharivoError`.
+const result = await charivo.getBrain()!.submit({ kind: "user", text: "Hello" })
+  .done;
+if (result.status === "failed") {
+  console.error(result.stage, result.error.code, result.error.message);
 }
 
 await charivo.dispose();

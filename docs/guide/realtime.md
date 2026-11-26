@@ -107,6 +107,21 @@ const charivo = createCharivo({ realtime: manager, character });
 propagates the current character to the manager. Set the character before
 starting the session so tool handlers and instructions have access to it.
 
+Attaching a realtime manager reserves playback. From `attachRealtime(...)` to
+`detachRealtime()`, `charivo.getFloor()` is `{ state: "realtime" }` and
+`charivo.perform()` throws `CharivoStateError`, whether or not anything is
+audible; a cascade brain's reply fails at `tts` the same way. `react()` still
+works, and a `critical` reaction finds no performance to cancel. The body never
+calls the realtime manager's `interrupt()` or `sendMessage()`.
+
+`attachRealtime(...)` also throws `CharivoStateError` while a performance holds
+the floor or cancelled speech has not confirmed its stop, so cascade speech has
+ended before realtime starts. When switching from cascade, `await
+charivo.interrupt()` first; if that rejects, the speech could not be stopped
+and attaching stays refused until a later `interrupt()` succeeds. When leaving
+realtime, stop the session before `detachRealtime()`, which never touches the
+session.
+
 For iOS-safe lip-sync, prepare audio from a user gesture before the first
 realtime session. Pass the same session config to both calls — `prepareAudio`
 needs it to resolve which remote adapter to warm up:
@@ -570,17 +585,19 @@ socket close reports `cause: "connection-failed"`.
 `sendMessage(...)` also rejects while a response is already in progress; the
 app must call `interrupt()` first, because the transport allows one active
 response at a time. This deliberately diverges from the cascade path, where
-`Charivo.userSay(text)` is latest-wins: a newer call supersedes the in-flight
-turn, aborts its in-flight HTTP request (when the LLM client honors the
-optional signal — the remote client does), announces it with
-`turn:cancelled`, and the superseded call resolves. The two contracts are intentionally
-different — don't normalize them.
+`brain.submit(input)` is latest-wins for an input that responds: a newer one
+supersedes the in-flight turn, aborts its in-flight HTTP request (when the LLM
+client honors the optional signal — the remote client does), cancels its line,
+announces it with `turn:cancelled`, and the superseded turn's `done` resolves as
+`cancelled`. The two contracts are intentionally different — don't normalize
+them.
 
 The two paths also have distinct interrupt entry points, and that split is
-intentional too: `charivo.interrupt()` is the cascade counterpart — it aborts
-the in-progress turn's LLM request and stops its TTS, without touching a
-realtime session — while `realtimeManager.interrupt()` cuts off an in-progress
-realtime response instead. A realtime app calls the realtime manager's own
+intentional too: `charivo.interrupt()` is the cascade counterpart, but it is
+speech-only — it cancels the line on the floor and stops its TTS, without
+touching a realtime session or a brain turn (`brain.interrupt()` cancels the
+turn) — while `realtimeManager.interrupt()` cuts off an in-progress realtime
+response instead. A realtime app calls the realtime manager's own
 `interrupt()`, not `charivo.interrupt()`.
 
 What `realtimeManager.interrupt()` does on the wire depends on the provider.

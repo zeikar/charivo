@@ -49,6 +49,25 @@ charivo.emit("avatar:expression", {
 charivo.emit("avatar:release", { source: "game" });
 ```
 
+`charivo.react()` does the same in one call and hands back a release that
+cannot clear a newer claim. It resolves an `{ affect, intensity }` expression
+through the map set with `charivo.setAffectMap(...)`, adds a muted motion when
+the cue carries one, and never takes the speech floor:
+
+```ts
+const { resolved, release } = charivo.react({
+  source: "game",
+  hold: "until-release",
+  expression: "F03",
+  motion: { group: "TapBody", index: 0 },
+});
+// later
+release();
+```
+
+Its claim defaults to `reflex` priority. Pass `critical: true` to also cancel
+the line being spoken, as a flinch would.
+
 See [Claims And Arbitration](./rendering.md#claims-and-arbitration) for the
 priority order and the holds.
 
@@ -74,7 +93,9 @@ the instruction builder tells the model what those ids mean.
 - a result projector that turns successful calls into `avatar:expression`,
   `avatar:motion` (asking for `muteSound`, so a motion's baked-in sample clip
   does not talk over the character), and `avatar:gaze`; its claims come from
-  source `"tool"` at `explicit` priority
+  source `"tool"` at `explicit` priority; under `createCascadeBrain(...)` the
+  tool's expression is held back and re-emitted from source `"performance"`
+  when the line starts
 - a text-driven director that classifies each spoken line against the catalog
   and emits `avatar:expression` and `avatar:motion` (also with `muteSound`),
   without gaze; its claims come from source `"avatar-director"` at `inferred`
@@ -168,7 +189,7 @@ trip per tool round.
 
 ```ts
 import {
-  connectAvatarDirectorToCascade,
+  connectAvatarDirectorToPerformances,
   createAvatarDirector,
   createLLMAvatarClassifier,
 } from "@charivo/avatar";
@@ -178,18 +199,21 @@ const director = createAvatarDirector({
   classifier: createLLMAvatarClassifier(llmClient),
   emitter: charivo,
 });
-const disconnect = connectAvatarDirectorToCascade(charivo, director);
+const disconnect = connectAvatarDirectorToPerformances(charivo, director);
 ```
 
-Only cascade wiring ships: each voiced reply (`tts:start`) is one line. The
-director also has `push(chunk)` and `done()` for streaming text, but nothing
-wires them yet. The line ends on `tts:audio:end`, `tts:end`, `tts:error`, or
-`turn:cancelled`, and a decision that arrives after that is dropped. A new line
-also supersedes a pending decision. A turn that fails before TTS starts is never
-classified. A text-only turn (no TTS manager) emits no `tts:start`, so the helper does not
-classify it; call `director.say(text)` yourself where your app accepts the text
-reply. Your app owns cancellation on that path: call `director.cancel()` if the
-reply is later withdrawn.
+The helper listens to performances, so it works for any `perform()` line, a
+cascade reply or one your app speaks. Each voiced performance whose affect did
+not resolve is classified: a string line once, from `performance:start`, and a
+streamed line sentence by sentence from `performance:segment`. The expression
+is held until `performance:end`, and a decision that arrives after that is
+dropped. A new line also supersedes a pending decision. A line whose
+`affect` already resolved to an expression or motion is not classified, since
+the cue already speaks for it. An unvoiced performance (no TTS manager attached)
+is not classified either; call `director.say(text)` yourself where your app
+accepts the text reply, and `director.cancel()` if the reply is later
+withdrawn. The director also has `push(chunk)` and `done()` for streaming text,
+which the helper does not use.
 
 The classifier is pluggable: an `AvatarClassifier` is a function from
 `{ text, catalog, signal }` to a decision, so a rule-based or local classifier
