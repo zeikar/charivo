@@ -1,12 +1,16 @@
 import { EventBus } from "./bus";
+import { Floor } from "./floor";
 import {
   Character,
+  FloorState,
   HistoryRollback,
   Message,
   RenderManager,
   TTSManager,
   STTManager,
   LLMManager,
+  PerformanceHandle,
+  PerformRequest,
   RealtimeManager,
 } from "./types";
 import { toCharivoError, type CharivoError } from "./errors";
@@ -106,9 +110,15 @@ export class Charivo {
   private activeTurn?: TurnRecord;
   private readonly turnQueue: TurnEntry[] = [];
   private messageSeq = 0;
+  private readonly floor: Floor;
 
   constructor() {
     this.eventBus = new EventBus();
+    this.floor = new Floor(this.eventBus, {
+      getRenderManager: () => this.renderManager,
+      getTTSManager: () => this.ttsManager,
+      getCharacter: () => this.character,
+    });
   }
 
   /**
@@ -592,6 +602,22 @@ export class Charivo {
         this.activeTurn = undefined;
       }
     }
+  }
+
+  /**
+   * Take the floor and perform one line: render it as a character message,
+   * then speak it with the character's voice on the TTS manager attached at
+   * this call. {@link PerformRequest} says when it throws; `started` and
+   * `done` never reject, and a render or TTS failure ends the performance
+   * `failed`.
+   */
+  perform(request: PerformRequest): PerformanceHandle {
+    return this.floor.perform(request);
+  }
+
+  /** Who holds playback now; `floor:changed` reports every change. */
+  getFloor(): FloorState {
+    return this.floor.getFloor();
   }
 
   /**
