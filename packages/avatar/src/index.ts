@@ -11,6 +11,7 @@ import {
 
 export {
   connectAvatarDirectorToCascade,
+  connectAvatarDirectorToPerformances,
   createAvatarDirector,
   type AvatarClassifier,
   type AvatarDecision,

@@ -30,8 +30,11 @@ export interface AvatarDirectorOptions {
 }
 
 export interface AvatarDirector {
-  /** Classify one complete line. */
-  say(text: string): void;
+  /**
+   * Classify one complete line. With `performanceId` the expression is held
+   * until that performance ends; without it the channel default applies.
+   */
+  say(text: string, options?: { performanceId?: string }): void;
   /** Append to the open line, or start a new one if none is open. */
   push(chunk: string): void;
   /** Close the open line and classify it. */
@@ -69,7 +72,7 @@ export function createAvatarDirector(
   // Every new line state is committed before the previous controller is
   // aborted: abort listeners run synchronously and may start or extend a line
   // of their own, which must not be overwritten afterwards.
-  function startLine(text: string): void {
+  function startLine(text: string, performanceId?: string): void {
     const previous = current;
     const controller =
       hasControls && text.trim() !== "" ? new AbortController() : null;
@@ -77,7 +80,7 @@ export function createAvatarDirector(
     current = controller;
     previous?.abort();
     if (controller && current === controller) {
-      classify(text, controller);
+      classify(text, controller, performanceId);
     }
   }
 
@@ -85,7 +88,11 @@ export function createAvatarDirector(
     startLine("");
   }
 
-  function classify(text: string, controller: AbortController): void {
+  function classify(
+    text: string,
+    controller: AbortController,
+    performanceId: string | undefined,
+  ): void {
     const isCurrent = () => current === controller;
 
     // Wrapping the call routes a synchronous throw or a non-promise return
@@ -95,7 +102,7 @@ export function createAvatarDirector(
     })
       .then(
         (decision) => {
-          apply(decision, isCurrent);
+          apply(decision, isCurrent, performanceId);
         },
         (error: unknown) => {
           // A superseded or cancelled line's failure, including the AbortError
@@ -118,7 +125,11 @@ export function createAvatarDirector(
   // renderer. Listeners run synchronously inside `emit`, so one can cancel or
   // start a new line between the two emissions; currency is rechecked before
   // each.
-  function apply(decision: AvatarDecision, isCurrent: () => boolean): void {
+  function apply(
+    decision: AvatarDecision,
+    isCurrent: () => boolean,
+    performanceId: string | undefined,
+  ): void {
     // `?.` because a classifier backed by parsed model output can hand back
     // nothing at all despite its type.
     const expressionId = decision?.expressionId;
@@ -133,6 +144,9 @@ export function createAvatarDirector(
         expressionId,
         source: "avatar-director",
         priority: "inferred",
+        ...(performanceId !== undefined && {
+          hold: { performance: performanceId },
+        }),
       });
     }
 
@@ -157,8 +171,8 @@ export function createAvatarDirector(
   }
 
   return {
-    say(text) {
-      startLine(text);
+    say(text, options) {
+      startLine(text, options?.performanceId);
     },
     push(chunk) {
       if (buffer === null) {
@@ -259,6 +273,78 @@ export function connectAvatarDirectorToCascade(
     bus.off("tts:end", onLineEnd);
     bus.off("tts:error", onLineEnd);
     bus.off("turn:cancelled", onCancelled);
+    director.cancel();
+  };
+}
+
+/**
+ * Drive `director` from performances on `bus`; a `Charivo` instance fits. A
+ * voiced performance whose affect did not resolve (`affectResolved` is not
+ * `true`) is classified: a string performance once, from its
+ * `performance:start` text, a stream segment by segment from
+ * `performance:segment`. The expression is held until that performance ends,
+ * and `performance:end` for it drops a decision still pending.
+ *
+ * An unvoiced performance is not classified, and neither is one whose affect
+ * resolved: the resolved cue already speaks for it. A cue whose label mapped
+ * to nothing leaves `affectResolved` false, so inference still runs.
+ *
+ * Returns a function that disconnects and drops any pending decision.
+ */
+export function connectAvatarDirectorToPerformances(
+  bus: CharivoEventBus,
+  director: AvatarDirector,
+): () => void {
+  let active = true;
+  // The voiced performance whose text is being inferred, if any.
+  let inferring: string | null = null;
+
+  // Every listener checks `active` first: the bus dispatches from a snapshot,
+  // so one removed by a disconnect mid-dispatch can still be called.
+  const onStart = ({
+    performanceId,
+    voiced,
+    text,
+    affectResolved,
+  }: EventMap["performance:start"]) => {
+    if (!active || !voiced) {
+      return;
+    }
+    inferring = affectResolved === true ? null : performanceId;
+    if (inferring !== null && text !== undefined) {
+      director.say(text, { performanceId });
+    }
+  };
+  const onSegment = ({
+    performanceId,
+    text,
+  }: EventMap["performance:segment"]) => {
+    if (!active || performanceId !== inferring) {
+      return;
+    }
+    director.say(text, { performanceId });
+  };
+  const onEnd = ({ performanceId }: EventMap["performance:end"]) => {
+    if (!active || performanceId !== inferring) {
+      return;
+    }
+    inferring = null;
+    director.cancel();
+  };
+
+  bus.on("performance:start", onStart);
+  bus.on("performance:segment", onSegment);
+  bus.on("performance:end", onEnd);
+
+  return () => {
+    if (!active) {
+      return;
+    }
+    active = false;
+    inferring = null;
+    bus.off("performance:start", onStart);
+    bus.off("performance:segment", onSegment);
+    bus.off("performance:end", onEnd);
     director.cancel();
   };
 }
