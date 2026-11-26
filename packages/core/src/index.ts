@@ -13,7 +13,11 @@ import {
   PerformRequest,
   RealtimeManager,
 } from "./types";
-import { toCharivoError, type CharivoError } from "./errors";
+import {
+  CharivoDisposeError,
+  toCharivoError,
+  type CharivoError,
+} from "./errors";
 
 export * from "./types";
 export {
@@ -621,19 +625,21 @@ export class Charivo {
   }
 
   /**
-   * Cut off the in-progress turn and its speech now.
+   * Cut off the in-progress turn and the speech on the floor now.
    *
    * The cascade counterpart of `RealtimeManager.interrupt()`: the live turn's
    * LLM request is aborted, the turn performs and emits nothing further, and
-   * the TTS manager it is speaking on is stopped — the exact manager it handed
-   * the reply to, which a mid-turn `attachTTS()` may since have replaced.
-   * Resolving means that stop has completed, so no audio from the interrupted
-   * turn starts afterwards. The interrupted `userSay()` **resolves**, and the
-   * turn is announced as `turn:cancelled`, exactly as a supersession is.
+   * it is announced as `turn:cancelled`, exactly as a supersession is; the
+   * interrupted `userSay()` **resolves**.
    *
-   * Unlike the realtime version, which requires an active, connected session,
-   * this has no precondition: with no turn in flight it still stops the
-   * attached TTS manager, resolves, and emits nothing.
+   * The performance on the floor ends `cancelled` and the TTS manager it
+   * speaks on is stopped, which a later `attachTTS()` does not change. Speech
+   * an earlier stop failed to silence is stopped again, and a stop already in
+   * progress is joined rather than repeated. When the floor supplied no stop,
+   * the TTS manager the turn is speaking on, else the attached one, is
+   * stopped. Resolving means every one of those stops has completed, so no
+   * audio from what was interrupted starts afterwards; it rejects with the
+   * typed provider error of the first that failed.
    *
    * Realtime mode is not covered — this does not delegate to the realtime
    * manager. Use `getRealtimeManager()?.interrupt()` there.
@@ -661,19 +667,9 @@ export class Charivo {
 
     // Falls back to the attached manager for a turn that is not speaking yet
     // and for the idle case, where stopping leftover audio is still the point.
-    const stopTarget = interrupted?.speakingTTSManager ?? this.ttsManager;
-
-    if (stopTarget) {
-      try {
-        await stopTarget.stop();
-      } catch (error) {
-        throw toCharivoError(
-          "provider",
-          error,
-          "Failed to stop TTS during interrupt",
-        );
-      }
-    }
+    await this.floor.interrupt(
+      interrupted?.speakingTTSManager ?? this.ttsManager,
+    );
   }
 
   /**
@@ -814,6 +810,19 @@ export class Charivo {
       }
     };
 
+    // A TTS stop fails with the same type whichever stop failed: a dispose
+    // error whose cause is the provider error.
+    const recordStopFailure = (error: unknown): void => {
+      const message =
+        error instanceof Error ? error.message : "Failed to stop TTS";
+      recordError(new CharivoDisposeError(message, { cause: error }), message);
+    };
+
+    // The floor's performance and the speech it left unsettled go first (P9).
+    for (const failure of await this.floor.dispose(this.ttsManager)) {
+      recordStopFailure(failure);
+    }
+
     if (this.realtimeManager) {
       try {
         await this.realtimeManager.stopSession();
@@ -824,9 +833,11 @@ export class Charivo {
 
     if (this.ttsManager) {
       try {
-        await this.ttsManager.stop();
+        // Through the floor, so it joins a stop already in progress there
+        // and the floor knows when the speech it cancelled has stopped (P9).
+        await this.floor.stop(this.ttsManager);
       } catch (error) {
-        recordError(error, "Failed to stop TTS during dispose");
+        recordStopFailure(error);
       }
 
       // Runs even when stop() failed: audio resources must still be released.
@@ -873,6 +884,7 @@ export class Charivo {
     this.character = undefined;
     this.isRealtimeMode = false;
     this.turnQueue.length = 0;
+    this.floor.clear();
     this.eventBus.clear();
 
     return this.finishDispose(firstError);
