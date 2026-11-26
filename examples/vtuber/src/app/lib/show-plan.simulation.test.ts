@@ -7,7 +7,6 @@ import {
   type ExternalShowEvent,
   type ShowEventSource,
 } from "../../director";
-import { formatDirectorCue } from "../../director/envelope";
 import {
   createFakePort,
   type FakePort,
@@ -35,9 +34,8 @@ function realisticDurationMs(index: number): number {
 const { idleAfterMs, minLineIntervalMs, failedLineBackoffMs } =
   SHOW_DIRECTOR_CONFIG;
 
-const ENDING_PROMPT = formatDirectorCue(
-  DEFAULT_SHOW_PLAN.segments[DEFAULT_SHOW_PLAN.segments.length - 1].cue,
-);
+const ENDING_CUE =
+  DEFAULT_SHOW_PLAN.segments[DEFAULT_SHOW_PLAN.segments.length - 1].cue;
 
 function runShow(
   portOptions: FakePortOptions,
@@ -61,7 +59,9 @@ function runShow(
 }
 
 function endingStarted(port: FakePort): boolean {
-  return port.calls.some((call) => call.prompt === ENDING_PROMPT);
+  return port.calls.some(
+    (call) => call.input.kind === "direction" && call.input.text === ENDING_CUE,
+  );
 }
 
 // The ending starts at the latest one line plus its pacing after ten minutes
@@ -122,14 +122,20 @@ function expectSegmentsInOrder(log: DirectorLogEntry[], port: FakePort): void {
   ]);
   const cuesSpoken = log.flatMap((entry) =>
     entry.kind === "line-start" && entry.line.source === "segment"
-      ? [entry.line.prompt]
+      ? [entry.line.input]
       : [],
   );
   expect(cuesSpoken).toEqual(
-    DEFAULT_SHOW_PLAN.segments.map((segment) => formatDirectorCue(segment.cue)),
+    DEFAULT_SHOW_PLAN.segments.map((segment) => ({
+      kind: "direction",
+      text: segment.cue,
+    })),
   );
   // Nothing is spoken after the goodbye.
-  expect(port.calls[port.calls.length - 1].prompt).toBe(ENDING_PROMPT);
+  expect(port.calls[port.calls.length - 1].input).toEqual({
+    kind: "direction",
+    text: ENDING_CUE,
+  });
 }
 
 function expectNoOverlap(port: FakePort): void {

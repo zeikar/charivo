@@ -2,8 +2,8 @@
 // input arrives through a ShowEventSource and goes through decide(); the
 // character is reached only through CharacterPort, one line at a time.
 
-import { findCueLeak } from "./envelope";
 import { createIdleTimer } from "./idle-timer";
+import { findCueLeak } from "./line-input";
 import { decide, type PolicyView } from "./policy";
 import { createSegmentScheduler } from "./segment-scheduler";
 import { createSpeechQueue } from "./speech-queue";
@@ -233,7 +233,7 @@ export function createDirector({
     // deferring the call, so speak() still starts in this tick.
     let speaking: Promise<SpeakResult>;
     try {
-      speaking = port.speak(line.prompt);
+      speaking = port.speak(line.input);
     } catch (error) {
       speaking = Promise.reject(error);
     }

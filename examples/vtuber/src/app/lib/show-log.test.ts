@@ -9,7 +9,13 @@ import {
 } from "./show-log";
 
 function line(id: string, source: Line["source"]): Line {
-  return { id, source, priority: 2, prompt: `prompt ${id}`, createdAt: 0 };
+  return {
+    id,
+    source,
+    priority: 2,
+    input: { kind: "direction", text: `cue ${id}` },
+    createdAt: 0,
+  };
 }
 
 const cueLine = line("line-1", "segment");

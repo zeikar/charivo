@@ -43,13 +43,26 @@ export interface ShowEventSource<E extends ShowEvent = ExternalShowEvent> {
 
 export type LineSource = "chat" | "agent" | "idle" | "segment";
 
+/**
+ * What a line asks the character to answer, shaped as a conversation brain's
+ * typed input so a port can pass it on as is. Policies left out take the
+ * brain's defaults: a viewer's chat is answered and kept, a cue is answered
+ * and never stored. An event would default to a reply only when the
+ * character is free, but the Director starts a line only when it should be
+ * spoken, so the event asks for one.
+ */
+export type LineInput =
+  | { kind: "user"; speaker: string; text: string }
+  | { kind: "event"; source: string; text: string; respond: "must" }
+  | { kind: "direction"; text: string };
+
 export interface Line {
   id: string;
   source: LineSource;
   /** Higher is spoken first; equal priorities are spoken in arrival order. */
   priority: number;
-  /** Already enveloped (see envelope.ts). */
-  prompt: string;
+  /** Built by line-input.ts. */
+  input: LineInput;
   createdAt: number;
   /** Dropped at dequeue once passed. Accepted chat has none: it never expires. */
   expiresAt?: number;
@@ -99,7 +112,7 @@ export type SpeakResult =
 
 export interface CharacterPort {
   /** Settles when the line is over, however it ended. */
-  speak(prompt: string): Promise<SpeakResult>;
+  speak(input: LineInput): Promise<SpeakResult>;
   /** Resolves once the audio has stopped; rejects when it could not be stopped. */
   interrupt(): Promise<void>;
 }

@@ -1,12 +1,12 @@
 // A timer-driven CharacterPort for tests. Lines settle on setTimeout, so
 // vi.useFakeTimers() controls exactly when each one ends.
 
-import type { CharacterPort, SpeakResult } from "./types";
+import type { CharacterPort, LineInput, SpeakResult } from "./types";
 
 export interface FakeSpeakCall {
   /** 0 for the first speak() call. */
   index: number;
-  prompt: string;
+  input: LineInput;
   startedAt: number;
   endedAt: number | null;
   result: SpeakResult | null;
@@ -61,10 +61,10 @@ export function createFakePort(options: FakePortOptions = {}): FakePort {
       return interruptCalls;
     },
 
-    speak(prompt) {
+    speak(input) {
       const call: FakeSpeakCall = {
         index: calls.length,
-        prompt,
+        input,
         startedAt: Date.now(),
         endedAt: null,
         result: null,
