@@ -657,12 +657,26 @@ export class Floor {
       return Promise.resolve();
     }
     // Only the holder is still running.
-    this.holder = undefined;
-    this.displace(record);
-    this.produce("floor:changed", { floor: this.getFloor() });
-    const stop = this.stopCancelledSpeech(record);
-    this.deliver();
+    const stop = this.cancelHolder();
     return this.outcome(stop ? [stop] : []);
+  }
+
+  /**
+   * Cancels the holder, if any (P5), and returns the stop that issued. A
+   * critical reflex (A6) calls it without waiting, so a rejected stop is
+   * logged.
+   */
+  cancelHolder(): StopAttempt | undefined {
+    const holder = this.holder;
+    if (!holder) {
+      return undefined;
+    }
+    this.holder = undefined;
+    this.displace(holder);
+    this.produce("floor:changed", { floor: this.getFloor() });
+    const stop = this.stopCancelledSpeech(holder);
+    this.deliver();
+    return stop;
   }
 
   /**

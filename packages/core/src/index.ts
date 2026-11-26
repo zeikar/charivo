@@ -1,8 +1,10 @@
+import { resolveAffect } from "./affect";
 import { EventBus } from "./bus";
 import { Floor } from "./floor";
 import {
   AffectMap,
   Character,
+  CharacterBody,
   FloorState,
   HistoryRollback,
   Message,
@@ -12,10 +14,13 @@ import {
   LLMManager,
   PerformanceHandle,
   PerformRequest,
+  ReactionHandle,
+  ReactRequest,
   RealtimeManager,
 } from "./types";
 import {
   CharivoDisposeError,
+  CharivoStateError,
   toCharivoError,
   type CharivoError,
 } from "./errors";
@@ -102,7 +107,7 @@ interface TurnEntry {
   inProgress: boolean;
 }
 
-export class Charivo {
+export class Charivo implements CharacterBody {
   private eventBus: EventBus;
   private llmManager?: LLMManager;
   private renderManager?: RenderManager;
@@ -116,6 +121,7 @@ export class Charivo {
   private readonly turnQueue: TurnEntry[] = [];
   private messageSeq = 0;
   private affectMap: AffectMap | null = null;
+  private reactionSeq = 0;
   private readonly floor: Floor;
 
   constructor() {
@@ -620,6 +626,79 @@ export class Charivo {
    */
   perform(request: PerformRequest): PerformanceHandle {
     return this.floor.perform(request);
+  }
+
+  /**
+   * Show a non-verbal reaction without taking the floor. {@link ReactRequest}
+   * says what it emits; `critical` (priority `"reflex"` only) also cancels the
+   * performance on the floor. The handle's `release()` names this reaction's
+   * claim, so it never clears a newer one; core keeps no record of claims.
+   */
+  react(request: ReactRequest): ReactionHandle {
+    const priority = request.priority ?? "reflex";
+    if (request.critical && priority !== "reflex") {
+      throw new CharivoStateError(
+        'react() takes critical only with priority "reflex"',
+      );
+    }
+
+    const resolved = resolveAffect(request, this.affectMap);
+    // Cancelled first, so a listener of the reaction's events finds the
+    // floor already free. Called from a floor-event listener, the cancel's
+    // performance:end and floor:changed are queued behind the delivery in
+    // progress, so they arrive after the reaction's events.
+    if (request.critical) {
+      this.floor.cancelHolder();
+    }
+
+    this.reactionSeq += 1;
+    const claimId = `reaction-${Date.now()}-${this.reactionSeq}`;
+    const { source, hold, gaze } = request;
+    const claimed: Array<"expression" | "gaze"> = [];
+    if (resolved.expressionId !== undefined) {
+      claimed.push("expression");
+      this.eventBus.emit("avatar:expression", {
+        expressionId: resolved.expressionId,
+        source,
+        hold,
+        priority,
+        claimId,
+      });
+    }
+    if (gaze) {
+      claimed.push("gaze");
+      this.eventBus.emit("avatar:gaze", {
+        x: gaze.x,
+        y: gaze.y,
+        source,
+        hold,
+        priority,
+        claimId,
+      });
+    }
+    if (resolved.motion) {
+      // Decision 6: a body motion is muted.
+      this.eventBus.emit("avatar:motion", {
+        group: resolved.motion.group,
+        index: resolved.motion.index ?? 0,
+        muteSound: true,
+        priority,
+      });
+    }
+
+    let released = false;
+    return {
+      resolved,
+      release: () => {
+        if (released) {
+          return;
+        }
+        released = true;
+        for (const channel of claimed) {
+          this.eventBus.emit("avatar:release", { source, channel, claimId });
+        }
+      },
+    };
   }
 
   /**

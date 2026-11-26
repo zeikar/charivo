@@ -6,6 +6,7 @@ import {
   CharivoStateError,
   createCharivo,
 } from "@charivo/core";
+import { createRenderManager } from "@charivo/render";
 import type {
   AffectMap,
   Character,
@@ -18,6 +19,7 @@ import type {
   PerformanceHandle,
   RealtimeManager,
   RealtimeState,
+  Renderer,
   RenderManager,
   ToolDefinition,
   ToolRegistration,
@@ -2877,5 +2879,437 @@ describe("perform() affect (A2, A3)", () => {
     expect(events.filter(({ event }) => event.startsWith("avatar:"))).toEqual(
       [],
     );
+  });
+});
+
+describe("react() (A4)", () => {
+  const affectMap: AffectMap = {
+    joy: { expressionId: "smile", motion: { group: "Happy", index: 1 } },
+    calm: { expressionId: "relaxed" },
+  };
+
+  const REACTION_EVENTS = [
+    ...RECORDED_EVENTS,
+    "avatar:expression",
+    "avatar:gaze",
+    "avatar:motion",
+    "avatar:release",
+  ] as const;
+
+  function recordReactionEvents(charivo: Charivo): RecordedEvent[] {
+    const events: RecordedEvent[] = [];
+    for (const event of REACTION_EVENTS) {
+      charivo.on(event, (data) => {
+        events.push({ event, data } as RecordedEvent);
+      });
+    }
+    return events;
+  }
+
+  it("emits the expression, gaze and muted motion with the request's claim fields, priority reflex by default, and one claimId", () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    const events = recordReactionEvents(charivo);
+
+    charivo.react({
+      expression: { affect: "joy" },
+      gaze: { x: 0.2, y: -0.1 },
+      source: "game",
+      hold: "until-release",
+    });
+
+    expect(events.map(({ event }) => event)).toEqual([
+      "avatar:expression",
+      "avatar:gaze",
+      "avatar:motion",
+    ]);
+    const claimId = (events[0]!.data as EventMap["avatar:expression"]).claimId;
+    expect(claimId).toEqual(expect.any(String));
+    expect(events[0]!.data).toEqual({
+      expressionId: "smile",
+      source: "game",
+      hold: "until-release",
+      priority: "reflex",
+      claimId,
+    });
+    expect(events[1]!.data).toEqual({
+      x: 0.2,
+      y: -0.1,
+      source: "game",
+      hold: "until-release",
+      priority: "reflex",
+      claimId,
+    });
+    expect(events[2]!.data).toEqual({
+      group: "Happy",
+      index: 1,
+      muteSound: true,
+      priority: "reflex",
+    });
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+  });
+
+  it("carries a given priority and hold", () => {
+    const charivo = new Charivo();
+    const events = recordReactionEvents(charivo);
+
+    charivo.react({
+      expression: "wink",
+      motion: { group: "Nod" },
+      gaze: { x: 0, y: 1 },
+      source: "director",
+      hold: { ms: 500 },
+      priority: "inferred",
+    });
+
+    expect(events.map(({ data }) => data)).toEqual([
+      expect.objectContaining({
+        expressionId: "wink",
+        hold: { ms: 500 },
+        priority: "inferred",
+      }),
+      expect.objectContaining({ hold: { ms: 500 }, priority: "inferred" }),
+      { group: "Nod", index: 0, muteSound: true, priority: "inferred" },
+    ]);
+  });
+
+  it("returns what the cue resolved to: a raw id, a mapped label, or nothing for an unmapped one", () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    const events = recordReactionEvents(charivo);
+    const hold = "until-release" as const;
+
+    expect(
+      charivo.react({ expression: "wink", source: "a", hold }).resolved,
+    ).toEqual({ expressionId: "wink" });
+    expect(
+      charivo.react({ expression: { affect: "calm" }, source: "a", hold })
+        .resolved,
+    ).toEqual({ expressionId: "relaxed" });
+    expect(events).toHaveLength(2);
+
+    expect(
+      charivo.react({ expression: { affect: "grief" }, source: "a", hold })
+        .resolved,
+    ).toEqual({});
+    expect(events).toHaveLength(2);
+  });
+
+  it("leaves the floor and a running performance alone, and the performance completes", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    const floor = charivo.getFloor();
+    const events = recordReactionEvents(charivo);
+
+    charivo.react({
+      expression: "startled",
+      source: "game",
+      hold: "until-release",
+    });
+
+    expect(events.map(({ event }) => event)).toEqual(["avatar:expression"]);
+    expect(charivo.getFloor()).toEqual(floor);
+    expect(tts.stop).not.toHaveBeenCalled();
+    tts.finishSpeech(0);
+    expect((await handle.done).status).toBe("completed");
+  });
+
+  it.each(["explicit", "inferred", "ambient"] as const)(
+    "throws CharivoStateError for critical at priority %s before anything is emitted",
+    async (priority) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+      const handle = charivo.perform({ text: "Hello there." });
+      await flush();
+      const events = recordReactionEvents(charivo);
+
+      expect(() =>
+        charivo.react({
+          expression: "startled",
+          gaze: { x: 0, y: 0 },
+          source: "game",
+          hold: "until-release",
+          priority,
+          critical: true,
+        }),
+      ).toThrow(CharivoStateError);
+
+      expect(events).toEqual([]);
+      expect(handle.result).toBeUndefined();
+      expect(tts.stop).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("ReactionHandle.release() (A5)", () => {
+  function recordReleases(charivo: Charivo): EventMap["avatar:release"][] {
+    const releases: EventMap["avatar:release"][] = [];
+    charivo.on("avatar:release", (data) => releases.push(data));
+    return releases;
+  }
+
+  it("emits, once, one avatar:release per claimed channel with the reaction's claimId", () => {
+    const charivo = new Charivo();
+    let claimId: string | undefined;
+    charivo.on("avatar:expression", (data) => {
+      claimId = data.claimId;
+    });
+    const releases = recordReleases(charivo);
+
+    const reaction = charivo.react({
+      expression: "startled",
+      gaze: { x: 1, y: 0 },
+      motion: { group: "Flinch" },
+      source: "game",
+      hold: "until-release",
+    });
+    expect(releases).toEqual([]);
+
+    reaction.release();
+    reaction.release();
+
+    expect(releases).toEqual([
+      { source: "game", channel: "expression", claimId },
+      { source: "game", channel: "gaze", claimId },
+    ]);
+  });
+
+  it("releases only the channels it claimed", () => {
+    const charivo = new Charivo();
+    const releases = recordReleases(charivo);
+    const hold = "until-release" as const;
+
+    charivo.react({ gaze: { x: 1, y: 0 }, source: "a", hold }).release();
+    charivo.react({ expression: "wink", source: "b", hold }).release();
+    charivo.react({ motion: { group: "Nod" }, source: "c", hold }).release();
+    charivo
+      .react({ expression: { affect: "joy" }, source: "d", hold })
+      .release();
+
+    expect(releases).toEqual([
+      expect.objectContaining({ source: "a", channel: "gaze" }),
+      expect.objectContaining({ source: "b", channel: "expression" }),
+    ]);
+  });
+
+  it("gives two reactions from one source different claimIds", () => {
+    const charivo = new Charivo();
+    const releases = recordReleases(charivo);
+    const request = {
+      expression: "startled",
+      source: "game",
+      hold: "until-release" as const,
+    };
+
+    const first = charivo.react(request);
+    const second = charivo.react(request);
+    first.release();
+    second.release();
+
+    expect(releases).toHaveLength(2);
+    expect(releases[0]!.claimId).toEqual(expect.any(String));
+    expect(releases[1]!.claimId).toEqual(expect.any(String));
+    expect(releases[0]!.claimId).not.toBe(releases[1]!.claimId);
+  });
+});
+
+describe("a critical reflex (A6)", () => {
+  it.each([
+    ["a resolved cue", { expression: "startled" }],
+    ["a cue that resolved to nothing", { expression: { affect: "grief" } }],
+  ])(
+    "ends the floor's performance cancelled and stops its TTS, with %s",
+    async (_label, cue) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+      const events = recordFloorEvents(charivo);
+      const handle = charivo.perform({ text: "Hello there." });
+      await flush();
+      expect(tts.speak).toHaveBeenCalledTimes(1);
+
+      charivo.react({
+        ...cue,
+        source: "game",
+        hold: "until-release",
+        critical: true,
+      });
+
+      expect(handle.result).toEqual(
+        expect.objectContaining({ status: "cancelled" }),
+      );
+      expect(charivo.getFloor()).toEqual({ state: "idle" });
+      expect(tts.stop).toHaveBeenCalledTimes(1);
+      expect(events.slice(-2).map(({ event }) => event)).toEqual([
+        "performance:end",
+        "floor:changed",
+      ]);
+      tts.stops[0]!.resolve();
+      await expect(handle.done).resolves.toEqual(
+        expect.objectContaining({ status: "cancelled" }),
+      );
+    },
+  );
+
+  it("cancels the performance before its reaction is shown", async () => {
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    const seen: Array<PerformanceHandle["result"]> = [];
+    charivo.on("avatar:expression", () => seen.push(handle.result));
+
+    charivo.react({
+      expression: "startled",
+      source: "game",
+      hold: "until-release",
+      critical: true,
+    });
+
+    expect(seen).toEqual([expect.objectContaining({ status: "cancelled" })]);
+  });
+
+  it("reports a rejected stop with console.error, as no caller waits for it", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+      charivo.perform({ text: "Hello there." });
+      await flush();
+
+      charivo.react({ source: "game", hold: "until-release", critical: true });
+      tts.stops[0]!.reject(new Error("device busy"));
+      await flush();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Failed to stop cancelled speech:",
+        expect.any(CharivoProviderError),
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("cancels nothing in realtime mode, and still emits the reaction (R1)", () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    const realtime = new StubRealtimeManager();
+    charivo.attachTTS(tts);
+    charivo.attachRealtime(realtime);
+    const floorEvents = recordFloorEvents(charivo);
+    const expressions: string[] = [];
+    charivo.on("avatar:expression", ({ expressionId }) => {
+      expressions.push(expressionId);
+    });
+
+    charivo.react({
+      expression: "startled",
+      source: "game",
+      hold: "until-release",
+      critical: true,
+    });
+
+    expect(expressions).toEqual(["startled"]);
+    expect(floorEvents).toEqual([]);
+    expect(charivo.getFloor()).toEqual({ state: "realtime" });
+    expect(tts.stop).not.toHaveBeenCalled();
+    expect(realtime.interrupt).not.toHaveBeenCalled();
+  });
+});
+
+describe("react() through a real RenderManager (A5)", () => {
+  class StubRenderer implements Renderer {
+    initialize = vi.fn(async () => undefined);
+    destroy = vi.fn(async () => undefined);
+    render = vi.fn(
+      async (_message: Message, _character?: Character) => undefined,
+    );
+    playExpression = vi.fn((_expressionId: string) => undefined);
+    stopExpression = vi.fn(() => undefined);
+    getAvailableExpressions = vi.fn(() => [
+      "exp_happy",
+      "exp_sad",
+      "exp_startled",
+    ]);
+  }
+
+  function setup() {
+    const charivo = new Charivo();
+    const renderer = new StubRenderer();
+    charivo.attachRenderer(createRenderManager(renderer));
+    return { charivo, renderer };
+  }
+
+  it("shows the reflex over the line's expression and falls back to it on release()", async () => {
+    const { charivo, renderer } = setup();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+
+    const handle = charivo.perform({
+      text: "Hello there.",
+      affect: { expression: "exp_happy" },
+    });
+    await flush();
+    const reaction = charivo.react({
+      expression: "exp_startled",
+      source: "game",
+      hold: "until-release",
+    });
+    reaction.release();
+
+    expect(renderer.playExpression.mock.calls).toEqual([
+      ["exp_happy"],
+      ["exp_startled"],
+      ["exp_happy"],
+    ]);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+    tts.finishSpeech(0);
+    await handle.done;
+  });
+
+  it("leaves a newer expression from the reaction's source showing on an old handle's release()", () => {
+    const { charivo, renderer } = setup();
+
+    const reaction = charivo.react({
+      expression: "exp_startled",
+      source: "game",
+      hold: "until-release",
+    });
+    charivo.emit("avatar:expression", {
+      expressionId: "exp_sad",
+      source: "game",
+      hold: "until-release",
+    });
+    reaction.release();
+
+    expect(renderer.playExpression.mock.calls).toEqual([
+      ["exp_startled"],
+      ["exp_sad"],
+    ]);
+    expect(renderer.stopExpression).not.toHaveBeenCalled();
+  });
+
+  it("still releases its own expression after a direct one naming an expression the model lacks", () => {
+    const { charivo, renderer } = setup();
+
+    const reaction = charivo.react({
+      expression: "exp_startled",
+      source: "game",
+      hold: "until-release",
+    });
+    charivo.emit("avatar:expression", {
+      expressionId: "exp_missing",
+      source: "game",
+      hold: "until-release",
+    });
+    reaction.release();
+
+    expect(renderer.playExpression.mock.calls).toEqual([["exp_startled"]]);
+    expect(renderer.stopExpression).toHaveBeenCalledTimes(1);
   });
 });
