@@ -23,8 +23,7 @@ import {
 } from "@charivo/llm";
 
 // ---------------------------------------------------------------------------
-// Cascade brain turns: gates for every phase of a turn, ported from the
-// userSay() turn suites of packages/core/__tests__/core.test.ts.
+// Cascade brain turns: gates for every phase of a turn.
 //
 // Everything below is settled by hand -- no timers, no elapsed-time
 // assumptions. A stub parks the turn wherever the test needs it and the test

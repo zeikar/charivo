@@ -724,7 +724,7 @@ export interface LLMManager {
   /**
    * Ensure `message` is present in this manager's history, synchronously —
    * it appends and returns a handle, never a promise — and without emitting
-   * events or calling back into `Charivo`.
+   * events or calling back into the caller (the cascade brain).
    *
    * A message this manager cannot store is rejected with a typed state error
    * (`CharivoStateError`). In the built-in manager every type except
@@ -1039,17 +1039,13 @@ export interface EventMap {
   "message:received": { message: Message };
   /**
    * A turn settled `cancelled`: a newer input superseded it, or `turn.cancel()`
-   * or `interrupt()` cut it off. Emitted exactly once for every turn that
-   * settles cancelled, on the cascade path only; the realtime path keeps its
-   * own contract and never emits this. `turnId` is the id of the turn's
+   * or the brain's `interrupt()` cut it off. Emitted exactly once for every
+   * turn that settles cancelled, on the cascade path only; the realtime path
+   * keeps its own contract and never emits this. `turnId` is the id of the turn's
    * input message, and the `message:sent` carrying that id always precedes
    * this event.
    */
   "turn:cancelled": { turnId: string };
-  "character:speak": { character: Character; text: string };
-  "tts:start": { text: string; characterId?: string };
-  "tts:end": { characterId?: string };
-  "tts:error": { error: Error };
   "tts:audio:start": { characterId?: string };
   "tts:audio:end": { characterId?: string };
   "tts:lipsync:update": { rms: number; characterId?: string };

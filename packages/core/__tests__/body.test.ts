@@ -9,9 +9,14 @@ import {
 import { createRenderManager } from "@charivo/render";
 import type {
   AffectMap,
+  BrainInput,
+  BrainTurn,
+  BrainTurnResult,
   Character,
+  CharacterBody,
   CharivoEventBus,
   CharivoEventEmitter,
+  ConversationBrain,
   EventMap,
   FloorState,
   GazeCoordinates,
@@ -1384,6 +1389,50 @@ describe("Charivo.interrupt() on the floor (P7)", () => {
     await expect(next.done).resolves.toEqual(
       expect.objectContaining({ status: "completed" }),
     );
+  });
+
+  it("stops the attached manager and calls nothing on a brain whose turn is generating", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    // Its submit() leaves the turn generating: `done` never settles.
+    const brain = {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(async () => undefined),
+    } satisfies ConversationBrain;
+    charivo.attachBrain(brain);
+    const turn = brain.submit({ kind: "user", text: "Hello" });
+    const brainCalls = () =>
+      [
+        brain.setBody,
+        brain.setCharacter,
+        brain.submit,
+        brain.interrupt,
+        brain.clearHistory,
+        brain.getHistory,
+        brain.dispose,
+        turn.cancel,
+      ].map((method) => vi.mocked(method).mock.calls.length);
+    const before = brainCalls();
+
+    const interrupting = charivo.interrupt();
+
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    tts.stops[0]!.resolve();
+    await expect(interrupting).resolves.toBeUndefined();
+    expect(brainCalls()).toEqual(before);
+    expect(charivo.getBrain()).toBe(brain);
   });
 });
 
