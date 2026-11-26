@@ -16,14 +16,19 @@ import type {
   RealtimeState,
   ToolDefinition,
   ToolRegistration,
+  TTSManager,
 } from "@charivo/core";
 import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import {
+  GateableLLMClient,
   RecordingLLMManager,
   SignalRecordingLLMManager,
+  buildMessage,
   character,
+  createDeferred,
   createHarness,
   transcript,
+  type Harness,
 } from "./cascade-brain-harness";
 
 class StubRealtimeManager implements RealtimeManager {
@@ -86,6 +91,20 @@ function userMessage(content: string): Message {
     timestamp: new Date(),
     type: "user",
   };
+}
+
+/** The history part of a request: everything but the system prompt. */
+function promptContents(prompt: LLMMessage[]): string[] {
+  return prompt
+    .filter((message) => message.role !== "system")
+    .map((message) => message.content);
+}
+
+/** The recorder's announcements and cancellations, in order. */
+function sentAndCancelled(log: string[]): string[] {
+  return log.filter(
+    (entry) => entry.startsWith("sent:") || entry.startsWith("cancelled:"),
+  );
 }
 
 describe("cascade brain: a completed turn", () => {
@@ -371,37 +390,89 @@ describe.each([
 });
 
 describe("cascade brain: a turn submitted while one is retired", () => {
-  it("retires a turn submitted from the retired performance's end", async () => {
-    const manager = new SignalRecordingLLMManager();
-    manager.hold = (content) => content === "B";
-    const { charivo, brain, tts } = createHarness({
-      manager,
+  it("lets a turn submitted from the retired performance's end win", async () => {
+    const { charivo, brain, tts, client, recorder } = createHarness({
       renderer: false,
       tts: true,
     });
     tts.holdSpeak = (text) => text === "reply-A";
-
-    const chained: BrainTurn[] = [];
-    charivo.on("performance:end", () => {
-      if (chained.length === 0) {
-        chained.push(brain.submit({ kind: "user", text: "B" }));
-      }
-    });
-
-    const first = brain.submit({ kind: "user", text: "A" });
+    const turnA = brain.submit({ kind: "user", text: "A" });
     await tts.waitForSpeaks(1);
-    const latest = brain.submit({ kind: "user", text: "C" });
 
-    expect(chained).toHaveLength(1);
-    expect(manager.signalFor("B")?.aborted).toBe(true);
-    await expect(chained[0]!.done).resolves.toMatchObject({
-      status: "cancelled",
+    let started = false;
+    let turnN: BrainTurn | undefined;
+    charivo.on("performance:end", () => {
+      if (started) return;
+      started = true;
+      turnN = brain.submit({ kind: "user", text: "N" });
     });
-    await expect(first.done).resolves.toMatchObject({ status: "cancelled" });
-    await expect(latest.done).resolves.toMatchObject({
+    const turnO = brain.submit({ kind: "user", text: "O" });
+
+    await expect(turnN!.done).resolves.toMatchObject({
       status: "completed",
-      text: "reply-C",
+      text: "reply-N",
     });
+    await expect(turnO.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "reply-A",
+      heardText: "",
+    });
+    expect(client.calledFor("O")).toBe(false);
+    // Call order, and the unheard reply rolled back before N's request.
+    expect(promptContents(client.promptFor("N"))).toEqual(["A", "O", "N"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:O",
+      "user:N",
+      "character:reply-N",
+    ]);
+    expect(sentAndCancelled(recorder.log)).toEqual([
+      "sent:A",
+      "sent:O",
+      "sent:N",
+      "cancelled:O",
+      "cancelled:A",
+    ]);
+  });
+
+  it("lets a turn:cancelled listener's submit win over a turn an app perform() cut", async () => {
+    const { charivo, brain, tts, client, recorder } = createHarness({
+      renderer: false,
+      tts: true,
+    });
+    tts.holdSpeak = (text) => text === "reply-A";
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await tts.waitForSpeaks(1);
+
+    let started = false;
+    let turnN: BrainTurn | undefined;
+    charivo.on("turn:cancelled", () => {
+      if (started) return;
+      started = true;
+      turnN = brain.submit({ kind: "user", text: "N" });
+    });
+    charivo.perform({ text: "app line" });
+    const turnO = brain.submit({ kind: "user", text: "O" });
+
+    await expect(turnN!.done).resolves.toMatchObject({ status: "completed" });
+    await expect(turnO.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    expect(client.calledFor("O")).toBe(false);
+    expect(promptContents(client.promptFor("N"))).toEqual(["A", "O", "N"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:O",
+      "user:N",
+      "character:reply-N",
+    ]);
+    expect(sentAndCancelled(recorder.log)).toEqual([
+      "sent:A",
+      "sent:O",
+      "cancelled:A",
+      "sent:N",
+      "cancelled:O",
+    ]);
   });
 });
 
@@ -473,5 +544,943 @@ describe("cascade brain: the manager and the body", () => {
     await brain.dispose?.();
 
     expect(manager.getHistory()).toEqual([]);
+  });
+});
+
+describe("cascade brain: retention and ordering", () => {
+  it("writes a superseded turn's input before announcing its cancellation", async () => {
+    const { charivo, brain } = createHarness({ renderer: false });
+    const snapshots: string[][] = [];
+    charivo.on("turn:cancelled", () => {
+      snapshots.push(transcript(brain.getHistory()));
+    });
+    // A is superseded inside its own announcement, before it writes anything.
+    let turnB: BrainTurn | undefined;
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "A" && !turnB) {
+        turnB = brain.submit({ kind: "user", text: "B" });
+      }
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+
+    expect(snapshots).toEqual([["user:A"]]);
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnB!.done).resolves.toMatchObject({ status: "completed" });
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "character:reply-B",
+    ]);
+  });
+
+  it("keeps history in call order when a message:sent listener starts a nested turn", async () => {
+    const { charivo, brain, client, recorder } = createHarness({
+      renderer: false,
+    });
+    client.responder = (content) =>
+      content === "A" ? null : `reply-${content}`;
+    let turnC: BrainTurn | undefined;
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "B" && !turnC) {
+        turnC = brain.submit({ kind: "user", text: "C" });
+      }
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await client.waitForCalls(1);
+    const turnB = brain.submit({ kind: "user", text: "B" });
+
+    await expect(turnC!.done).resolves.toMatchObject({ status: "completed" });
+    client.resolveCall("A", "reply-A");
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnB.done).resolves.toMatchObject({ status: "cancelled" });
+
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "user:C",
+      "character:reply-C",
+    ]);
+    expect(promptContents(client.promptFor("C"))).toEqual(["A", "B", "C"]);
+    expect(client.calledFor("B")).toBe(false);
+    expect(sentAndCancelled(recorder.log)).toEqual([
+      "sent:A",
+      "sent:B",
+      "sent:C",
+      "cancelled:B",
+      "cancelled:A",
+    ]);
+  });
+
+  it("makes a nested turn wait for older queued entries before appending its own", async () => {
+    const manager = new RecordingLLMManager();
+    const { charivo, brain, recorder } = createHarness({
+      manager,
+      renderer: false,
+    });
+    const turns: Record<string, BrainTurn> = {};
+    const submitOnce = (text: string) => {
+      turns[text] ??= brain.submit({ kind: "user", text });
+    };
+    // A is superseded by B and B by C inside their announcements, so A, B
+    // and C are all queued when C's flush writes A; D enters from that write.
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "A") submitOnce("B");
+      if (message.content === "B") submitOnce("C");
+    });
+    manager.onAdd = (message) => {
+      if (message.content === "A") submitOnce("D");
+    };
+    const addedWhenGenerating = new Map<string, string[]>();
+    manager.onGenerate = (message) => {
+      addedWhenGenerating.set(message.content, manager.addedContents());
+    };
+
+    submitOnce("A");
+
+    await expect(turns.D!.done).resolves.toMatchObject({
+      status: "completed",
+      text: "reply-D",
+    });
+    for (const text of ["A", "B", "C"]) {
+      await expect(turns[text]!.done).resolves.toMatchObject({
+        status: "cancelled",
+      });
+    }
+    expect(manager.addedContents()).toEqual(["A", "B", "C", "D", "reply-D"]);
+    expect([...addedWhenGenerating.keys()]).toEqual(["D"]);
+    expect(addedWhenGenerating.get("D")).toEqual(["A", "B", "C", "D"]);
+    expect(recorder.cancelled).toEqual(["C", "B", "A"]);
+  });
+
+  it("keeps the newest turn when the manager reenters submit() from the input's write", async () => {
+    const manager = new RecordingLLMManager();
+    const { brain, tts, recorder } = createHarness({
+      manager,
+      renderer: false,
+      tts: true,
+    });
+    let turnC: BrainTurn | undefined;
+    manager.onAdd = (message) => {
+      if (message.content === "A" && !turnC) {
+        turnC = brain.submit({ kind: "user", text: "C" });
+      }
+    };
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+
+    await expect(turnC!.done).resolves.toMatchObject({ status: "completed" });
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    expect(manager.generatedContents()).toEqual(["C"]);
+    expect(manager.addedContents()).toEqual(["A", "C", "reply-C"]);
+    expect(tts.spokenTexts()).toEqual(["reply-C"]);
+    expect(recorder.cancelled).toEqual(["A"]);
+  });
+
+  it("keeps flushing to its own entry when the manager refuses an older queued input", async () => {
+    const manager = new RecordingLLMManager();
+    manager.addToHistory.mockImplementation((message: Message) => {
+      manager.added.push(message);
+      if (message.content === "A") {
+        throw new CharivoStateError("refused");
+      }
+      return () => undefined;
+    });
+    const { charivo, brain, recorder } = createHarness({
+      manager,
+      renderer: false,
+    });
+    let turnC: BrainTurn | undefined;
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "A" && !turnC) {
+        turnC = brain.submit({ kind: "user", text: "C" });
+      }
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+
+    await expect(turnC!.done).resolves.toMatchObject({ status: "completed" });
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    expect(manager.addedContents()).toEqual(["A", "C", "reply-C"]);
+    expect(recorder.cancelled).toEqual(["A"]);
+  });
+
+  it("emits message:sent before any turn:cancelled naming that turn, and each once", async () => {
+    const { charivo, brain, client, recorder } = createHarness({
+      renderer: false,
+    });
+    client.responder = (content) =>
+      content === "A" ? null : `reply-${content}`;
+    // The recorder registered first, so it sees each event before this
+    // listener starts another turn from inside it.
+    let started = false;
+    let turnC: BrainTurn | undefined;
+    charivo.on("turn:cancelled", () => {
+      if (started) return;
+      started = true;
+      turnC = brain.submit({ kind: "user", text: "C" });
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await client.waitForCalls(1);
+    brain.submit({ kind: "user", text: "B" });
+
+    await expect(turnC!.done).resolves.toMatchObject({ status: "completed" });
+    client.resolveCall("A", "reply-A");
+    await turnA.done;
+
+    expect(sentAndCancelled(recorder.log)).toEqual([
+      "sent:A",
+      "sent:B",
+      "cancelled:A",
+      "sent:C",
+      "cancelled:B",
+    ]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "user:C",
+      "character:reply-C",
+    ]);
+  });
+
+  it("announces a turn once however often it is cancelled", async () => {
+    const { brain, tts, recorder } = createHarness({
+      renderer: false,
+      tts: true,
+    });
+    tts.holdSpeak = (text) => text === "reply-A";
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await tts.waitForSpeaks(1);
+
+    await Promise.all([turnA.cancel(), turnA.cancel(), brain.interrupt()]);
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    expect(recorder.cancelled).toEqual(["A"]);
+  });
+
+  it("announces no cancellation for a turn that failed on its own", async () => {
+    const { brain, client, recorder } = createHarness({ renderer: false });
+    client.responder = () => {
+      throw new Error("upstream failed");
+    };
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toMatchObject({ status: "failed", stage: "generate" });
+
+    client.responder = (content) => `reply-${content}`;
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    expect(recorder.cancelled).toEqual([]);
+  });
+
+  it("announces no cancellation for sequential turns", async () => {
+    const { brain, recorder } = createHarness({ tts: true });
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    expect(recorder.cancelled).toEqual([]);
+    expect(sentAndCancelled(recorder.log)).toEqual(["sent:A", "sent:B"]);
+  });
+
+  it("announces a superseded empty-content turn without storing it", async () => {
+    const { charivo, brain, recorder } = createHarness({ renderer: false });
+    let turnB: BrainTurn | undefined;
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "" && !turnB) {
+        turnB = brain.submit({ kind: "user", text: "B" });
+      }
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "" });
+
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnB!.done).resolves.toMatchObject({ status: "completed" });
+    expect(recorder.cancelled).toEqual([""]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:B",
+      "character:reply-B",
+    ]);
+  });
+
+  it("gives every message a unique id inside one frozen millisecond", async () => {
+    const { charivo, brain } = createHarness({ renderer: false });
+    const ids: string[] = [];
+    charivo.on("message:sent", ({ message }) => ids.push(message.id));
+    charivo.on("message:received", ({ message }) => ids.push(message.id));
+
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    try {
+      await brain.submit({ kind: "user", text: "A" }).done;
+      await brain.submit({ kind: "user", text: "B" }).done;
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    expect(ids).toHaveLength(4);
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  it("keeps the bound after a cancellation without stranding a reply", async () => {
+    const { brain, client, manager } = createHarness({
+      renderer: false,
+      maxHistoryTurns: 1,
+    });
+    manager.addToHistory(buildMessage("prior", "user"));
+    manager.addToHistory(buildMessage("reply-prior", "character"));
+    client.responder = (content) =>
+      content === "A" ? null : `reply-${content}`;
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await client.waitForCalls(1);
+    expect(transcript(brain.getHistory())).toEqual(["user:A"]);
+
+    await brain.submit({ kind: "user", text: "B" }).done;
+    client.resolveCall("A", "reply-A");
+    await turnA.done;
+
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:B",
+      "character:reply-B",
+    ]);
+  });
+});
+
+describe("cascade brain: a turn superseded in each phase", () => {
+  interface Phase {
+    name: string;
+    /** Parks A in this phase, or calls `supersede` from inside it. */
+    arm: (harness: Harness, supersede: () => void) => void;
+    /** Resolves once A is parked; absent when `arm` supersedes from inside. */
+    reached?: (harness: Harness) => Promise<void>;
+    settle?: (harness: Harness, outcome: "resolve" | "reject") => void;
+    /** What A had done when it was superseded. */
+    generates: boolean;
+    received: boolean;
+    started: boolean;
+    spoke: boolean;
+  }
+
+  const failure = new Error("phase failure");
+
+  /** Calls `supersede` right after the manager stores `content`. */
+  function supersedeAfterWriting(
+    harness: Harness,
+    content: string,
+    supersede: () => void,
+  ): void {
+    const addToHistory = harness.manager.addToHistory.bind(harness.manager);
+    vi.spyOn(harness.manager, "addToHistory").mockImplementation(
+      (message, options) => {
+        const rollback = addToHistory(message, options);
+        if (message.content === content) {
+          supersede();
+        }
+        return rollback;
+      },
+    );
+  }
+
+  const phases: Phase[] = [
+    {
+      name: "the input's history write",
+      arm: (harness, supersede) =>
+        supersedeAfterWriting(harness, "A", supersede),
+      generates: false,
+      received: false,
+      started: false,
+      spoke: false,
+    },
+    {
+      name: "generation",
+      arm: ({ client }) => {
+        client.responder = (content) =>
+          content === "A" ? null : `reply-${content}`;
+      },
+      reached: ({ client }) => client.waitForCalls(1),
+      settle: ({ client }, outcome) =>
+        outcome === "resolve"
+          ? client.resolveCall("A", "reply-A")
+          : client.rejectCall("A", failure),
+      generates: true,
+      received: false,
+      started: false,
+      spoke: false,
+    },
+    {
+      name: "message:received",
+      arm: ({ charivo }, supersede) => {
+        charivo.on("message:received", ({ message }) => {
+          if (message.content === "reply-A") supersede();
+        });
+      },
+      generates: true,
+      received: true,
+      started: false,
+      spoke: false,
+    },
+    {
+      name: "the performance's render",
+      arm: ({ render }) => {
+        render.hold = (message) => message.content === "reply-A";
+      },
+      reached: ({ render }) => render.waitForCalls(1),
+      settle: ({ render }, outcome) =>
+        outcome === "resolve" ? render.settle() : render.fail(failure),
+      generates: true,
+      received: true,
+      started: true,
+      spoke: false,
+    },
+    {
+      name: "the reply commit",
+      arm: (harness, supersede) =>
+        supersedeAfterWriting(harness, "reply-A", supersede),
+      generates: true,
+      received: true,
+      started: true,
+      spoke: false,
+    },
+    {
+      name: "speech",
+      arm: ({ tts }) => {
+        tts.holdSpeak = (text) => text === "reply-A";
+      },
+      reached: ({ tts }) => tts.waitForSpeaks(1),
+      settle: ({ tts }, outcome) =>
+        outcome === "resolve"
+          ? tts.settleSpeak((text) => text === "reply-A")
+          : tts.failSpeak((text) => text === "reply-A", failure),
+      generates: true,
+      received: true,
+      started: true,
+      spoke: true,
+    },
+  ];
+
+  const cases = phases.flatMap(
+    (
+      phase,
+    ): Array<{ phase: Phase; outcome?: "resolve" | "reject"; how: string }> =>
+      phase.settle
+        ? (["resolve", "reject"] as const).map((outcome) => ({
+            phase,
+            outcome,
+            how: outcome === "resolve" ? "then resolved" : "then rejected",
+          }))
+        : [{ phase, how: "from inside it" }],
+  );
+
+  it.each(cases)(
+    "abandons a turn superseded during $phase.name, $how",
+    async ({ phase, outcome }) => {
+      const harness = createHarness({ tts: true });
+      const { brain, render, tts, client, recorder } = harness;
+      let turnB: BrainTurn | undefined;
+      const supersede = () => {
+        turnB ??= brain.submit({ kind: "user", text: "B" });
+      };
+      phase.arm(harness, supersede);
+
+      const turnA = brain.submit({ kind: "user", text: "A" });
+      if (phase.reached) {
+        await phase.reached(harness);
+        supersede();
+      }
+      if (outcome) {
+        phase.settle!(harness, outcome);
+      }
+
+      await expect(turnA.done).resolves.toMatchObject({
+        status: "cancelled",
+      });
+      await expect(turnB!.done).resolves.toMatchObject({
+        status: "completed",
+        text: "reply-B",
+      });
+
+      const count = (entry: string) =>
+        recorder.log.filter((logged) => logged === entry).length;
+      expect(recorder.cancelled).toEqual(["A"]);
+      expect(count("received:reply-A")).toBe(phase.received ? 1 : 0);
+      expect(count("start:cascade:reply-A")).toBe(phase.started ? 1 : 0);
+      expect(count("end:cascade:cancelled")).toBe(phase.started ? 1 : 0);
+      expect(count("end:cascade:completed")).toBe(1);
+      expect(client.calledFor("A")).toBe(phase.generates);
+      expect(render.rendered().includes("character:reply-A")).toBe(
+        phase.started,
+      );
+      expect(tts.spokenTexts()).toEqual(
+        phase.spoke ? ["reply-A", "reply-B"] : ["reply-B"],
+      );
+      // The unheard reply was rolled back before B's request was built.
+      expect(promptContents(client.promptFor("B"))).toEqual(["A", "B"]);
+      // The input stays; a reply nobody heard does not.
+      expect(transcript(brain.getHistory())).toEqual([
+        "user:A",
+        "user:B",
+        "character:reply-B",
+      ]);
+    },
+  );
+});
+
+describe("cascade brain: the superseded request", () => {
+  function signalHarness(): {
+    charivo: Harness["charivo"];
+    brain: Harness["brain"];
+    manager: SignalRecordingLLMManager;
+    recorder: Harness["recorder"];
+  } {
+    const manager = new SignalRecordingLLMManager();
+    const { charivo, brain, recorder } = createHarness({
+      manager,
+      renderer: false,
+    });
+    return { charivo, brain, manager, recorder };
+  }
+
+  it("aborts the request signal of a turn superseded during generation", async () => {
+    const { brain, manager } = signalHarness();
+    manager.hold = (content) => content === "A";
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await manager.waitForCalls(1);
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    expect(manager.signalFor("A")?.aborted).toBe(true);
+    expect(manager.signalFor("B")?.aborted).toBe(false);
+    manager.settleCall("A", "reply-A");
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+  });
+
+  it("settles cancelled when the request rejects with its abort reason", async () => {
+    const { brain, manager, recorder } = signalHarness();
+    manager.hold = (content) => content === "A";
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await manager.waitForCalls(1);
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    const reason = manager.signalFor("A")?.reason as Error | undefined;
+    expect(reason?.name).toBe("AbortError");
+    manager.rejectCall("A", reason);
+
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "",
+    });
+    expect(recorder.cancelled).toEqual(["A"]);
+  });
+
+  it("never aborts the signal of a turn that runs to completion", async () => {
+    const { brain, manager } = signalHarness();
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+    await brain.submit({ kind: "user", text: "B" }).done;
+
+    expect(manager.signalFor("A")?.aborted).toBe(false);
+    expect(manager.signalFor("B")?.aborted).toBe(false);
+  });
+
+  it("aborts a superseded turn only once the newer turn is announced and queued", async () => {
+    const { brain, manager, recorder } = signalHarness();
+    manager.hold = (content) => content === "A";
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await manager.waitForCalls(1);
+    let observed: string[] | undefined;
+    let turnC: BrainTurn | undefined;
+    manager.signalFor("A")!.addEventListener("abort", () => {
+      observed = [...recorder.log];
+      turnC = brain.submit({ kind: "user", text: "C" });
+    });
+
+    const turnB = brain.submit({ kind: "user", text: "B" });
+
+    await expect(turnC!.done).resolves.toMatchObject({ status: "completed" });
+    await expect(turnB.done).resolves.toMatchObject({ status: "cancelled" });
+    manager.settleCall("A", "reply-A");
+    await turnA.done;
+
+    expect(observed).toEqual(["sent:A", "sent:B"]);
+    expect(sentAndCancelled(recorder.log)).toEqual([
+      "sent:A",
+      "sent:B",
+      "sent:C",
+      "cancelled:B",
+      "cancelled:A",
+    ]);
+    // C entered from the abort listener, so its input queued behind B's.
+    expect(manager.addedContents()).toEqual(["A", "B", "C", "reply-C"]);
+  });
+
+  it("skips the tool handler of a turn superseded from tool:call", async () => {
+    const handlerCalls: Array<string | undefined> = [];
+    const tool: ToolRegistration = {
+      definition: {
+        type: "function",
+        name: "toy",
+        description: "records that it ran",
+        parameters: { type: "object", properties: {} },
+      },
+      handler: vi.fn(async (_args, context) => {
+        handlerCalls.push(context.callId);
+        return { ok: true };
+      }),
+    };
+    let round = 0;
+    const client: LLMClient = {
+      call: vi.fn(async () => "unused"),
+      callWithTools: vi.fn(
+        async (_messages: LLMMessage[], tools: ToolDefinition[]) => {
+          round += 1;
+          if (tools.length > 0 && round <= 2) {
+            return {
+              content: `round-${round}`,
+              toolCalls: [{ id: `call-${round}`, name: "toy", arguments: {} }],
+            };
+          }
+          return { content: "final", toolCalls: [] };
+        },
+      ),
+    };
+    const { charivo, brain } = createHarness({
+      manager: createLLMManager(client, { tools: [tool] }),
+      renderer: false,
+    });
+    let turnB: BrainTurn | undefined;
+    charivo.on("tool:call", () => {
+      turnB ??= brain.submit({ kind: "user", text: "B" });
+    });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnB!.done).resolves.toMatchObject({ status: "completed" });
+    // call-1 belongs to the superseded turn: announced, never executed.
+    expect(handlerCalls).toEqual(["call-2"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "character:final",
+    ]);
+  });
+});
+
+describe.each([{ method: "brain.interrupt()" }, { method: "turn.cancel()" }])(
+  "cascade brain: $method",
+  ({ method }) => {
+    const cancel = (harness: Harness, turn: BrainTurn) =>
+      method === "brain.interrupt()"
+        ? harness.brain.interrupt()
+        : turn.cancel();
+
+    it("cancels the generating turn", async () => {
+      const manager = new SignalRecordingLLMManager();
+      manager.hold = (content) => content === "A";
+      const harness = createHarness({ manager, renderer: false });
+
+      const turnA = harness.brain.submit({ kind: "user", text: "A" });
+      await manager.waitForCalls(1);
+      await expect(cancel(harness, turnA)).resolves.toBeUndefined();
+
+      expect(manager.signalFor("A")?.aborted).toBe(true);
+      expect(harness.recorder.cancelled).toEqual(["A"]);
+      await expect(turnA.done).resolves.toEqual({
+        status: "cancelled",
+        text: "",
+      });
+      manager.settleCall("A", "reply-A");
+      await Promise.resolve();
+      expect(harness.recorder.log).not.toContain("received:reply-A");
+      // The input stays.
+      expect(manager.addedContents()).toEqual(["A"]);
+    });
+
+    it("resolves only once the performance's stop has", async () => {
+      const harness = createHarness({ renderer: false, tts: true });
+      const { tts, recorder } = harness;
+      tts.holdSpeak = (text) => text === "reply-A";
+      tts.holdStop = (index) => index === 0;
+      const turnA = harness.brain.submit({ kind: "user", text: "A" });
+      await tts.waitForSpeaks(1);
+
+      let settled = false;
+      const cancelling = cancel(harness, turnA).then(() => {
+        settled = true;
+      });
+      await tts.waitForStops(1);
+
+      // The cancellation itself is synchronous; only the stop is outstanding.
+      expect(recorder.cancelled).toEqual(["A"]);
+      await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+      expect(settled).toBe(false);
+
+      tts.settleStop(0);
+      await cancelling;
+      expect(settled).toBe(true);
+    });
+
+    it("rejects with a typed error when the stop fails, after the turn is cancelled", async () => {
+      const harness = createHarness({ renderer: false, tts: true });
+      const { tts, recorder } = harness;
+      tts.holdSpeak = (text) => text === "reply-A";
+      const turnA = harness.brain.submit({ kind: "user", text: "A" });
+      await tts.waitForSpeaks(1);
+      tts.stop.mockRejectedValueOnce(new Error("stop failed"));
+
+      await expect(cancel(harness, turnA)).rejects.toBeInstanceOf(
+        CharivoProviderError,
+      );
+      expect(recorder.cancelled).toEqual(["A"]);
+      await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    });
+
+    it("does nothing for a finished turn", async () => {
+      const harness = createHarness({ renderer: false, tts: true });
+      const turnA = harness.brain.submit({ kind: "user", text: "A" });
+      await expect(turnA.done).resolves.toMatchObject({ status: "completed" });
+
+      await expect(cancel(harness, turnA)).resolves.toBeUndefined();
+
+      expect(harness.tts.stop).not.toHaveBeenCalled();
+      expect(harness.recorder.cancelled).toEqual([]);
+      expect(transcript(harness.brain.getHistory())).toEqual([
+        "user:A",
+        "character:reply-A",
+      ]);
+    });
+  },
+);
+
+describe("cascade brain: a cancelled reply", () => {
+  it("is removed from history when cancelled before tts:audio:start", async () => {
+    const { brain, tts } = createHarness({ renderer: false, tts: true });
+    tts.holdSpeak = (text) => text === "reply-A";
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await tts.waitForSpeaks(1);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "character:reply-A",
+    ]);
+
+    await brain.interrupt();
+
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "reply-A",
+      heardText: "",
+    });
+    expect(transcript(brain.getHistory())).toEqual(["user:A"]);
+  });
+
+  it("stays in history when its manager cannot report audio start", async () => {
+    const speaking = createDeferred();
+    let finishSpeech = () => {};
+    // No setEventEmitter: once asked to speak, it may have been heard.
+    const tts: TTSManager = {
+      speak: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSpeech = resolve;
+            speaking.resolve();
+          }),
+      ),
+      stop: vi.fn(async () => finishSpeech()),
+      setVoice: vi.fn(),
+      isSupported: vi.fn(() => true),
+    };
+    const brain = createCascadeBrain(createLLMManager(new GateableLLMClient()));
+    createCharivo({ brain, tts, character });
+
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await speaking.promise;
+    await brain.interrupt();
+
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "reply-A",
+    });
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "character:reply-A",
+    ]);
+  });
+
+  it("settles cancelled with one turn:cancelled when an app perform() cuts it", async () => {
+    const { charivo, brain, tts, recorder } = createHarness({
+      renderer: false,
+      tts: true,
+    });
+    tts.holdSpeak = (text) => text === "reply-A";
+    const turnA = brain.submit({ kind: "user", text: "A" });
+    await tts.waitForSpeaks(1);
+
+    const line = charivo.perform({ text: "app line" });
+
+    await expect(turnA.done).resolves.toEqual({
+      status: "cancelled",
+      text: "reply-A",
+      heardText: "",
+    });
+    expect(recorder.cancelled).toEqual(["A"]);
+    await expect(line.done).resolves.toMatchObject({ status: "completed" });
+    await brain.submit({ kind: "user", text: "B" }).done;
+    expect(recorder.cancelled).toEqual(["A"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:B",
+      "character:reply-B",
+    ]);
+  });
+
+  it("fails the newer turn at tts when the retired performance's stop rejects", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { brain, tts } = createHarness({ renderer: false, tts: true });
+      tts.holdSpeak = (text) => text === "reply-A";
+      brain.submit({ kind: "user", text: "A" });
+      await tts.waitForSpeaks(1);
+      tts.stop.mockRejectedValueOnce(new Error("stop failed"));
+
+      const result = await brain.submit({ kind: "user", text: "B" }).done;
+
+      expect(result).toMatchObject({
+        status: "failed",
+        stage: "tts",
+        text: "reply-B",
+      });
+      expect(result.status === "failed" && result.error).toBeInstanceOf(
+        CharivoProviderError,
+      );
+      expect(tts.spokenTexts()).toEqual(["reply-A"]);
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+describe("cascade brain: the order of an unheard reply's rollback", () => {
+  /**
+   * History `[one, reply-one, A, reply-A]` at a bound of two turns, with A's
+   * reply speaking unheard and its stop held pending.
+   */
+  async function speakingA(): Promise<Harness> {
+    const harness = createHarness({
+      renderer: false,
+      tts: true,
+      maxHistoryTurns: 2,
+    });
+    const { brain, tts, client } = harness;
+    await brain.submit({ kind: "user", text: "one" }).done;
+    tts.holdSpeak = (text) => text === "reply-A";
+    tts.holdStop = () => true;
+    brain.submit({ kind: "user", text: "A" });
+    await tts.waitForSpeaks(2);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:one",
+      "character:reply-one",
+      "user:A",
+      "character:reply-A",
+    ]);
+    client.responder = (content) =>
+      content === "one" || content === "A" ? `reply-${content}` : null;
+    return harness;
+  }
+
+  it("rolls the reply back before the newer turn's write and request", async () => {
+    const { brain, client } = await speakingA();
+
+    brain.submit({ kind: "user", text: "B" });
+
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:one",
+      "character:reply-one",
+      "user:A",
+      "user:B",
+    ]);
+    expect(promptContents(client.promptFor("B"))).toEqual([
+      "one",
+      "reply-one",
+      "A",
+      "B",
+    ]);
+  });
+
+  it("rolls it back first when the newer turn is itself superseded in the same tick", async () => {
+    const harness = await speakingA();
+    const { charivo, brain, client, manager } = harness;
+    const afterWrite = new Map<string, string[]>();
+    const addToHistory = manager.addToHistory.bind(manager);
+    vi.spyOn(manager, "addToHistory").mockImplementation((message, options) => {
+      const rollback = addToHistory(message, options);
+      afterWrite.set(message.content, transcript(manager.getHistory()));
+      return rollback;
+    });
+    let turnC: BrainTurn | undefined;
+    charivo.on("message:sent", ({ message }) => {
+      if (message.content === "B") {
+        turnC ??= brain.submit({ kind: "user", text: "C" });
+      }
+    });
+
+    const turnB = brain.submit({ kind: "user", text: "B" });
+
+    expect(turnC).toBeDefined();
+    await expect(turnB.done).resolves.toMatchObject({ status: "cancelled" });
+    expect(afterWrite.get("B")).toEqual([
+      "user:one",
+      "character:reply-one",
+      "user:A",
+      "user:B",
+    ]);
+    expect(client.calledFor("B")).toBe(false);
+    expect(promptContents(client.promptFor("C"))).toEqual(["A", "B", "C"]);
+  });
+});
+
+describe("cascade brain: a turn superseded from its own reply commit", () => {
+  function reenterOnCommit(throwAfter: boolean) {
+    const manager = new RecordingLLMManager();
+    const harness = createHarness({ manager, renderer: false, tts: true });
+    let turnC: BrainTurn | undefined;
+    manager.onAdd = (message) => {
+      if (message.type !== "character" || turnC) return;
+      turnC = harness.brain.submit({ kind: "user", text: "C" });
+      if (throwAfter) {
+        throw new Error("commit boom");
+      }
+    };
+    return { harness, turnC: () => turnC };
+  }
+
+  it("never speaks the retired reply", async () => {
+    const { harness, turnC } = reenterOnCommit(false);
+
+    const turnB = harness.brain.submit({ kind: "user", text: "B" });
+
+    await expect(turnB.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnC()!.done).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(harness.tts.spokenTexts()).toEqual(["reply-C"]);
+    expect(harness.recorder.cancelled).toEqual(["B"]);
+  });
+
+  it("leaves it cancelled and unspoken when the commit also throws", async () => {
+    const { harness, turnC } = reenterOnCommit(true);
+
+    const turnB = harness.brain.submit({ kind: "user", text: "B" });
+
+    await expect(turnB.done).resolves.toMatchObject({ status: "cancelled" });
+    await expect(turnC()!.done).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(harness.tts.spokenTexts()).toEqual(["reply-C"]);
+    expect(harness.recorder.cancelled).toEqual(["B"]);
   });
 });

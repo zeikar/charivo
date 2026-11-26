@@ -9,6 +9,7 @@ import {
   type CharacterBody,
   type CharivoError,
   type ConversationBrain,
+  type HistoryRollback,
   type LLMManager,
   type Message,
   type PerformanceHandle,
@@ -48,20 +49,55 @@ export interface CascadeBrainOptions {
 /**
  * One submitted input. It is live while it is `CascadeBrain.live` and its
  * performance, once it has one, has not ended.
+ *
+ * Retiring it (B6): a newer turn takes its place and its queue position
+ * first. After that turn's `message:sent`, the retired one's performance is
+ * cancelled, an unheard reply rolled back and `done` settled; then queued
+ * inputs are written, its request aborted and its `turn:cancelled` emitted.
  */
 interface CascadeTurn {
+  id: string;
+  /** The body it was submitted on, which hears its `turn:cancelled`. */
+  body: CharacterBody;
   abortController: AbortController;
+  /** Undoes the input's own write, for a live generation failure (B7). */
+  inputRollback?: HistoryRollback;
   /** The reply, once generated. */
   text?: string;
   performance?: PerformanceHandle;
+  /** Undoes the reply's commit, for a cancellation nobody heard (B11). */
+  replyRollback?: HistoryRollback;
   /** Set when committing the reply threw; the turn then fails at `generate`. */
   commitFailure?: CharivoError;
+  /** The cancel of its performance, when retiring it cancelled one. */
+  cancelling?: Promise<void>;
+  /** How it settled, once it has. */
+  result?: BrainTurnResult;
   settle(result: BrainTurnResult): void;
+}
+
+/**
+ * An input's place in the write queue, taken when it is submitted, so
+ * history order is call order at any reentrancy depth. `inProgress` marks
+ * the entry being written, which stops a reentrant flush from jumping it.
+ */
+interface QueueEntry {
+  message: Message;
+  turn: CascadeTurn;
+  inProgress: boolean;
 }
 
 class CascadeBrain implements ConversationBrain {
   private body: CharacterBody | null = null;
   private live?: CascadeTurn;
+  private readonly queue: QueueEntry[] = [];
+  /**
+   * Turns that stopped being live and are not retired yet, oldest first.
+   * Several can wait here: a `message:sent` listener may supersede the
+   * newer turn before that turn has retired its predecessor, and the
+   * nested call retires both before it writes anything.
+   */
+  private readonly superseded: CascadeTurn[] = [];
 
   constructor(private readonly llm: LLMManager) {
     // One emitter for the manager's lifetime, forwarding to whichever body is
@@ -78,9 +114,9 @@ class CascadeBrain implements ConversationBrain {
     this.body = body;
     // Only detaching retires the live turn; moving to another body does not
     // (B2), and the turn presents what remains of it on the body it started on.
-    const live = this.liveTurn();
+    const live = this.live;
     if (body === null && live) {
-      this.retireUnwaited(live);
+      this.cancelTurn(live).catch(logStopFailure);
     }
   }
 
@@ -110,52 +146,62 @@ class CascadeBrain implements ConversationBrain {
       settle = resolve;
     });
     const turn: CascadeTurn = {
+      id: message.id,
+      body,
       abortController: new AbortController(),
       settle,
     };
 
-    // Retiring a turn ends its performance, and a listener of that end may
-    // submit a turn of its own; that one is retired too, so this call wins
-    // and no turn is overwritten unsettled.
-    for (
-      let superseded = this.liveTurn();
-      superseded;
-      superseded = this.liveTurn()
-    ) {
-      this.retireUnwaited(superseded);
-    }
+    // The newer turn is installed and queued before anything reentrant can
+    // run, so a submit() from any listener below comes later in call order,
+    // wins, and queues its input behind this one.
+    const previous = this.live;
     this.live = turn;
+    const entry: QueueEntry = { message, turn, inProgress: false };
+    this.queue.push(entry);
+    if (previous) {
+      this.superseded.push(previous);
+    }
     body.emit("message:sent", { message });
-    // Every expected failure is settled inside run(); this keeps `done` from
-    // hanging on one that is not.
-    this.run(turn, body, message).catch((error: unknown) => {
-      this.finish(
-        turn,
-        failed(
-          "generate",
-          turn.text ?? "",
-          toCharivoError("state", error, "The turn failed unexpectedly"),
-        ),
-      );
-    });
+    this.retireSuperseded();
+    if (previous) {
+      previous.cancelling?.catch(logStopFailure);
+      this.announce(previous);
+    }
+
+    if (this.isLive(turn)) {
+      // Every expected failure is settled inside run(); this keeps `done`
+      // from hanging on one that is not.
+      this.run(turn, entry).catch((error: unknown) => {
+        this.finish(
+          turn,
+          failed(
+            "generate",
+            turn.text ?? "",
+            toCharivoError("state", error, "The turn failed unexpectedly"),
+          ),
+        );
+      });
+    }
 
     return {
       id: message.id,
       done,
-      cancel: () => this.retire(turn),
+      cancel: () =>
+        this.isLive(turn) ? this.cancelTurn(turn) : Promise.resolve(),
     };
   }
 
   interrupt(): Promise<void> {
-    const live = this.liveTurn();
-    return live ? this.retire(live) : Promise.resolve();
+    const live = this.live;
+    return live ? this.cancelTurn(live) : Promise.resolve();
   }
 
   async dispose(): Promise<void> {
-    const live = this.liveTurn();
+    const live = this.live;
     try {
       if (live) {
-        await this.retire(live);
+        await this.cancelTurn(live);
       }
     } finally {
       this.llm.clearHistory();
@@ -163,73 +209,178 @@ class CascadeBrain implements ConversationBrain {
   }
 
   /**
-   * The live turn. The body ends a performance and delivers its
-   * `performance:end` before `done` resolves, so a turn whose performance has
-   * ended is finished here from that result, synchronously: a listener of
-   * that end never finds it live, and never retires a turn that is over.
+   * Whether `turn` is the live one. A live turn whose performance has ended
+   * is finished after `performance.done`, or by the retirement of a newer
+   * submit() or a cancel when one comes first.
    */
-  private liveTurn(): CascadeTurn | undefined {
-    const turn = this.live;
-    const result = turn?.performance?.result;
-    if (turn && result) {
-      this.finish(turn, outcome(turn, result));
-    }
-    return this.live;
-  }
-
   private isLive(turn: CascadeTurn): boolean {
-    return this.liveTurn() === turn;
-  }
-
-  /** The turn ends with `result`, and stops being live. */
-  private finish(turn: CascadeTurn, result: BrainTurnResult): void {
-    if (this.live === turn) {
-      this.live = undefined;
-    }
-    turn.settle(result);
+    return this.live === turn;
   }
 
   /**
-   * Ends a live turn `cancelled`: its request is aborted, its performance
-   * cancelled. Resolves when that cancel has, rejecting with its stop's error.
-   * A turn whose performance already ended is not live: `isLive()` settles it
-   * from that result instead, and nothing is cancelled.
+   * The live turn ended on its own with `result`. Its performance cancelled
+   * by someone else (an app `perform()`, the body's `interrupt()`) ends it
+   * `cancelled`, announced here.
    */
-  private retire(turn: CascadeTurn): Promise<void> {
-    if (!this.isLive(turn)) {
-      return Promise.resolve();
+  private finish(turn: CascadeTurn, result: BrainTurnResult): void {
+    if (this.live !== turn) {
+      return;
     }
     this.live = undefined;
-    turn.abortController.abort();
-    const cancelling = turn.performance?.cancel() ?? Promise.resolve();
-    const heardText = turn.performance?.result?.heardText;
-    turn.settle({
-      status: "cancelled",
-      text: turn.text ?? "",
-      ...(heardText !== undefined ? { heardText } : {}),
-    });
-    return cancelling;
+    this.conclude(turn, result);
+    if (result.status === "cancelled") {
+      turn.body.emit("turn:cancelled", { turnId: turn.id });
+    }
   }
 
-  /** `retire()` with nobody waiting on the stop: a failure is logged. */
-  private retireUnwaited(turn: CascadeTurn): void {
-    this.retire(turn).catch((error: unknown) => {
-      console.error("Failed to stop the cancelled turn's speech:", error);
-    });
+  /** Settles `turn`, rolling back its reply when it was cancelled unheard. */
+  private conclude(turn: CascadeTurn, result: BrainTurnResult): void {
+    turn.result ??= result;
+    turn.settle(turn.result);
+    if (turn.result.status === "cancelled") {
+      this.rollBackUnheard(turn);
+    }
   }
 
-  private async run(
-    turn: CascadeTurn,
-    body: CharacterBody,
-    message: Message,
-  ): Promise<void> {
+  /**
+   * The logical half of retiring (B6), for every turn that has stopped being
+   * live: a performance still running is cancelled, and the turn settles
+   * from its performance's result, `cancelled` when it had none, with an
+   * unheard reply rolled back. A listener of the cancelled performance's end
+   * may submit again; its own call here finishes the turn from the result
+   * the cancel has already set, before any write of its own.
+   */
+  private retireSuperseded(): void {
+    for (;;) {
+      const turn = this.superseded[0];
+      if (!turn) {
+        return;
+      }
+      const performance = turn.performance;
+      if (performance && !performance.result) {
+        turn.cancelling = performance.cancel();
+        if (this.superseded[0] !== turn) {
+          // Finished by a call made from a listener of that cancel.
+          continue;
+        }
+      }
+      this.superseded.shift();
+      this.conclude(
+        turn,
+        performance?.result
+          ? outcome(turn, performance.result)
+          : { status: "cancelled", text: turn.text ?? "" },
+      );
+    }
+  }
+
+  /** Retires the live turn with no successor (B12), and announces it. */
+  private cancelTurn(turn: CascadeTurn): Promise<void> {
+    this.live = undefined;
+    this.superseded.push(turn);
+    this.retireSuperseded();
+    this.announce(turn);
+    return turn.cancelling ?? Promise.resolve();
+  }
+
+  /**
+   * The rest of retiring `turn`, once its successor, if any, is announced
+   * and queued: the queued inputs are written, then a cancelled turn's
+   * request is aborted and its `turn:cancelled` emitted, in that order, since
+   * an abort listener may submit again and has to find the input written.
+   */
+  private announce(turn: CascadeTurn): void {
+    this.writeQueued(null);
+    if (turn.result?.status === "cancelled") {
+      turn.abortController.abort();
+      turn.body.emit("turn:cancelled", { turnId: turn.id });
+    }
+  }
+
+  /** B11: a committed reply whose cancelled performance nobody heard. */
+  private rollBackUnheard(turn: CascadeTurn): void {
+    const result = turn.performance?.result;
+    if (result?.status === "cancelled" && result.heardText === "") {
+      turn.replyRollback?.();
+    }
+    turn.replyRollback = undefined;
+  }
+
+  private removeEntry(entry: QueueEntry): void {
+    const index = this.queue.indexOf(entry);
+    if (index !== -1) {
+      this.queue.splice(index, 1);
+    }
+  }
+
+  /**
+   * Writes queued inputs head first, after retiring every superseded turn,
+   * so an unheard reply is rolled back before it can reach the next request
+   * or cost an older entry its place in a bounded history. Returns at an
+   * entry being written further up the stack.
+   *
+   * With `requester` null it writes the entries of turns that are no longer
+   * live and stops at the live turn's. With a requester it writes the older
+   * entries and then the requester's own, keeping that write's rollback and
+   * throwing that write's failure.
+   */
+  private writeQueued(requester: CascadeTurn | null): void {
+    this.retireSuperseded();
+    while (this.queue.length > 0) {
+      const head = this.queue[0]!;
+      if (head.inProgress) {
+        return;
+      }
+      const isOwn = head.turn === requester;
+      if (!isOwn && head.turn === this.live) {
+        return;
+      }
+
+      head.inProgress = true;
+      try {
+        const rollback = this.llm.addToHistory(head.message);
+        this.removeEntry(head);
+        if (isOwn) {
+          head.turn.inputRollback = rollback;
+          return;
+        }
+      } catch (error) {
+        this.removeEntry(head);
+        if (isOwn) {
+          throw error;
+        }
+        // A retired turn has settled `cancelled` already, so an input the
+        // manager refuses is dropped and the queue behind it still written.
+      }
+    }
+  }
+
+  private async run(turn: CascadeTurn, entry: QueueEntry): Promise<void> {
+    const { body } = turn;
+    const { message } = entry;
     const llm = this.llm;
 
-    let rollback: () => void;
     try {
-      rollback = llm.addToHistory(message);
+      // Nothing generates until the queue has reached this turn's own entry:
+      // an older one can be mid-write further up the stack, and the request
+      // must carry every input ahead of this one.
+      for (;;) {
+        this.writeQueued(turn);
+        if (!this.queue.includes(entry)) {
+          break;
+        }
+        await Promise.resolve();
+        if (!this.isLive(turn)) {
+          return;
+        }
+      }
     } catch (error) {
-      this.finish(turn, failed("generate", "", toCharivoError("state", error)));
+      if (this.isLive(turn)) {
+        this.finish(
+          turn,
+          failed("generate", "", toCharivoError("state", error)),
+        );
+      }
       return;
     }
     if (!this.isLive(turn)) {
@@ -247,7 +398,7 @@ class CascadeBrain implements ConversationBrain {
       if (!this.isLive(turn)) {
         return;
       }
-      rollback();
+      turn.inputRollback?.();
       this.finish(
         turn,
         failed(
@@ -296,9 +447,20 @@ class CascadeBrain implements ConversationBrain {
       if (!started || !this.isLive(turn)) {
         return;
       }
+      // Held at the head of the write queue while the reply is written: a
+      // manager that reenters submit() from that write leaves the newer turn
+      // waiting, so its input and request come after the rollback below.
+      const commit: QueueEntry = { message: reply, turn, inProgress: true };
+      this.queue.unshift(commit);
       try {
-        llm.addToHistory(reply);
+        turn.replyRollback = llm.addToHistory(reply);
       } catch (error) {
+        this.removeEntry(commit);
+        // A manager that reentered submit() and then threw has retired the
+        // turn: it stays cancelled, its performance already cancelled.
+        if (!this.isLive(turn)) {
+          return;
+        }
         // Recorded before the cancel, so the ended performance reads as this
         // failure rather than a cancellation.
         turn.commitFailure = toCharivoError(
@@ -311,15 +473,24 @@ class CascadeBrain implements ConversationBrain {
         performance.cancel().catch((cancelError: unknown) => {
           console.error("Failed to cancel the uncommitted reply:", cancelError);
         });
+        return;
+      }
+      this.removeEntry(commit);
+      // Retired from inside the write, when there was no reply to roll back.
+      if (!this.isLive(turn)) {
+        this.rollBackUnheard(turn);
       }
     });
 
     const result = await performance.done;
-    // Usually finished already by liveTurn(), from a listener of the end.
-    if (this.live === turn) {
-      this.finish(turn, outcome(turn, result));
-    }
+    // Unless a newer submit() or a cancel has finished it first.
+    this.finish(turn, outcome(turn, result));
   }
+}
+
+/** A retirement nobody waits on: its failed stop is reported here (P5). */
+function logStopFailure(error: unknown): void {
+  console.error("Failed to stop the cancelled turn's speech:", error);
 }
 
 /** The turn's outcome from its ended performance (B11). */
