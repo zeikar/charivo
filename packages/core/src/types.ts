@@ -1,7 +1,44 @@
+import type { CharivoError } from "./errors";
+
 export interface MotionSelection {
   group: string;
   index?: number;
 }
+
+/**
+ * What a performance or reaction should show.
+ *
+ * - `expression` as a string is an expression id, used as is.
+ * - `expression` as `{ affect, intensity? }` resolves through the
+ *   {@link AffectMap} set with `setAffectMap()`. No map, an unknown label or
+ *   no qualifying entry resolves to nothing.
+ * - `motion` is this cue's own when given, else the chosen map entry's.
+ */
+export interface AffectCue {
+  expression?:
+    | string
+    | {
+        affect: string;
+        /** Defaults to 0.5 and is clamped to 0..1. */
+        intensity?: number;
+      };
+  motion?: MotionSelection;
+}
+
+/** What one affect label shows at or above `minIntensity`. */
+export interface AffectMapEntry {
+  expressionId?: string;
+  motion?: MotionSelection;
+  /** Defaults to 0. */
+  minIntensity?: number;
+}
+
+/**
+ * Affect label -> one entry or a list of them, for the loaded model; set it
+ * again when the model changes. A cue picks, among its label's entries, the
+ * one with the highest `minIntensity` not above the cue's intensity.
+ */
+export type AffectMap = Record<string, AffectMapEntry | AffectMapEntry[]>;
 
 export interface GazeCoordinates {
   x: number;
@@ -47,6 +84,12 @@ export interface AvatarClaimOptions {
   priority?: AvatarClaimPriority;
   /** Defaults to the channel's hold (see {@link AvatarHold}). */
   hold?: AvatarHold;
+  /**
+   * Identifies this claim. `RenderManager` stores it with the claim it
+   * accepts, so an `avatar:release` naming the same id ends this claim and
+   * never a newer one from the same source.
+   */
+  claimId?: string;
 }
 
 /**
@@ -59,6 +102,137 @@ export type MotionPriority = "idle" | "normal" | "force";
 
 /** How a performance ended, reported by `performance:end`. */
 export type PerformanceStatus = "completed" | "cancelled" | "failed";
+
+/**
+ * A line for `perform()`. `perform()` throws `CharivoStateError` synchronously
+ * when `text` is neither a string nor an async iterable, while realtime holds
+ * playback, or when the floor is held and `whenBusy` is `"reject"`; otherwise
+ * it holds the floor before it returns.
+ */
+export interface PerformRequest {
+  /**
+   * A string is performed as given, the empty string included. An async
+   * iterable is cut into sentences and spoken segment by segment.
+   */
+  text: string | AsyncIterable<string>;
+  /** Who asked for the performance. Defaults to `"app"`. */
+  origin?: string;
+  /**
+   * When the floor is held: `"interrupt"` (default) cancels the holder and
+   * takes the floor; `"reject"` throws `CharivoStateError`.
+   */
+  whenBusy?: "interrupt" | "reject";
+  affect?: AffectCue;
+}
+
+/** How a performance ended; the value `PerformanceHandle.done` resolves with. */
+export interface PerformanceResult {
+  status: PerformanceStatus;
+  /** The line, for a string; for a stream, everything read from the iterator. */
+  text: string;
+  /**
+   * The full `text` on `completed`. Otherwise, for a string, `""` only when
+   * playback demonstrably had not begun: `speak()` was not yet called, or the
+   * manager it was called on takes an event emitter and no `tts:audio:start`
+   * has been heard since; in every other case it is omitted. For a stream, the
+   * part of `text` up to the end of the last segment whose speech (its render,
+   * when unvoiced) finished.
+   */
+  heardText?: string;
+  /**
+   * Set on a `failed` render or TTS step. A stream whose iterator rejected
+   * fails with `error` and no `failedAt`.
+   */
+  failedAt?: "render" | "tts";
+  error?: CharivoError;
+}
+
+/**
+ * One performance on the floor, returned by `perform()`. Named
+ * `PerformanceHandle` rather than `Performance`, which is a DOM global.
+ */
+export interface PerformanceHandle {
+  /** The id carried by the performance's events and its rendered message. */
+  id: string;
+  /**
+   * `true` once the line (for a stream, its first segment) has rendered, or
+   * reached that step with no render manager attached, before any speech and
+   * never inside the `perform()` call; `false` when the performance
+   * ended before that point. Never rejects.
+   */
+  started: Promise<boolean>;
+  /** Resolves when the performance ends. Never rejects. */
+  done: Promise<PerformanceResult>;
+  /**
+   * The value `done` resolves with, readable synchronously from the moment the
+   * performance ends; `undefined` before.
+   */
+  readonly result: PerformanceResult | undefined;
+  /**
+   * Ends the performance as `cancelled` at once and stops its speech when a
+   * `speak()` is in flight. Rejects with the typed provider error when that
+   * stop fails. A repeated call returns the first call's outcome; on a
+   * performance that ended on its own it resolves and stops nothing.
+   */
+  cancel(): Promise<void>;
+}
+
+/**
+ * A reaction for `react()`. It never takes the floor: it emits
+ * `avatar:expression` for the resolved expression and `avatar:gaze` for
+ * `gaze` (both with this `source`, `hold` and `priority`, and a `claimId`
+ * fresh for this reaction), and a muted `avatar:motion` for the resolved
+ * motion.
+ */
+export interface ReactRequest extends AffectCue {
+  gaze?: GazeCoordinates;
+  source: string;
+  hold: AvatarHold;
+  /** Defaults to `"reflex"`. */
+  priority?: AvatarClaimPriority;
+  /**
+   * Also cancels the performance on the floor, whether or not the cue
+   * resolved. Allowed with priority `"reflex"` only: any other priority throws
+   * `CharivoStateError` before anything is emitted.
+   */
+  critical?: boolean;
+}
+
+/** Returned by `react()`. */
+export interface ReactionHandle {
+  /** What the cue resolved to; empty when it resolved to nothing. */
+  resolved: { expressionId?: string; motion?: MotionSelection };
+  /**
+   * Emits, once, an `avatar:release` with this reaction's `claimId` for each
+   * held channel (expression, gaze) it claimed, so it never clears a newer
+   * claim from the same source.
+   */
+  release(): void;
+}
+
+/**
+ * Who holds playback: nobody, a performance, or a realtime manager (attached
+ * from `attachRealtime()` to `detachRealtime()`, with no performance id).
+ * `floor:changed` reports every change.
+ */
+export type FloorState =
+  | { state: "idle" }
+  | { state: "speaking"; performanceId: string; origin: string }
+  | { state: "realtime" };
+
+/** The body a conversation brain drives; `Charivo` implements it. */
+export interface CharacterBody extends CharivoEventBus {
+  perform(request: PerformRequest): PerformanceHandle;
+  react(request: ReactRequest): ReactionHandle;
+  /**
+   * Speech only: cancels the performance on the floor, stops speech that is
+   * still unsettled, and stops the attached TTS manager when that cancel
+   * supplied no stop. Rejects with the typed provider error of the first stop
+   * that failed.
+   */
+  interrupt(): Promise<void>;
+  getFloor(): FloorState;
+}
 
 export interface AvatarControlCatalog {
   expressions: string[];
@@ -679,6 +853,12 @@ export interface TTSManager {
    * degrading lip-sync.
    */
   prepareAudio?(): Promise<void>;
+  /**
+   * A manager that takes an emitter emits `tts:audio:start` when audio
+   * begins. `perform()` reads it to report `heardText`: a cancelled line
+   * reports `""` only while no audio start has been heard, and a manager
+   * without this method never yields `""` once it was asked to speak.
+   */
   setEventEmitter?(eventEmitter: CharivoEventEmitter): void;
   /** Final resource release; call stop() first - dispose() does not stop playback. */
   dispose?(): Promise<void>;
@@ -880,22 +1060,48 @@ export interface EventMap {
   "avatar:gaze": GazeCoordinates & AvatarClaimOptions;
   /**
    * Ends `source`'s live claim on `channel`, or on both expression and gaze
-   * when `channel` is omitted. Consumed by `RenderManager`.
+   * when `channel` is omitted. Consumed by `RenderManager`. With `claimId`, a
+   * claim ends only when it carries the same id, so a stale release never
+   * clears a newer claim from the same source.
    */
-  "avatar:release": { source: string; channel?: "expression" | "gaze" };
+  "avatar:release": {
+    source: string;
+    channel?: "expression" | "gaze";
+    claimId?: string;
+  };
   /**
    * A performance (one line of speech or a silent act) began. `RenderManager`
    * consumes the pair to scope holds: a `voiced` performance is a speech span
    * that binds expression claims without an explicit hold, and a
-   * `{ performance: id }` hold follows `performanceId` either way. Nothing
-   * built-in emits it yet; an app running its own speech pipeline may emit the
-   * pair. Speech not reported this way still counts as one span from
-   * `tts:audio:start` to `tts:audio:end`.
+   * `{ performance: id }` hold follows `performanceId` either way. `perform()`
+   * emits it once it holds the floor, after `floor:changed`; the affect
+   * events, the render and the speech follow, and exactly one
+   * `performance:end` closes it. Speech not reported this way still counts as
+   * one span from `tts:audio:start` to `tts:audio:end`. An app running its
+   * own speech pipeline may emit the pair itself.
    */
   "performance:start": {
     performanceId: string;
     origin: string;
+    /**
+     * A speech span. `perform()` sets it when a TTS manager was attached
+     * when it took the floor.
+     */
     voiced: boolean;
+    /** The line, for a string request only. */
+    text?: string;
+    /** True when the request's affect resolved to an expression id or a motion. */
+    affectResolved?: boolean;
+  };
+  /**
+   * One segment of a streamed performance, announced as it is handed to
+   * speech and rendered as its own message (id `<performanceId>:<index>`).
+   */
+  "performance:segment": {
+    performanceId: string;
+    origin: string;
+    index: number;
+    text: string;
   };
   /**
    * The performance `performanceId` ended. Releases the claims bound to it,
@@ -905,7 +1111,12 @@ export interface EventMap {
     performanceId: string;
     origin: string;
     status: PerformanceStatus;
+    /** As in {@link PerformanceResult}. */
+    heardText?: string;
+    error?: CharivoError;
   };
+  /** The value of `getFloor()` changed. */
+  "floor:changed": { floor: FloorState };
   "realtime:error": { error: Error };
   "llm:error": { error: Error };
 }
