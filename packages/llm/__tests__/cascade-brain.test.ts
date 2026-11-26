@@ -5,6 +5,7 @@ import {
   createCharivo,
 } from "@charivo/core";
 import type {
+  BrainInput,
   BrainTurn,
   Character,
   CharivoEventEmitter,
@@ -27,8 +28,10 @@ import {
   character,
   createDeferred,
   createHarness,
+  lastContentOf,
   transcript,
   type Harness,
+  type HarnessOptions,
 } from "./cascade-brain-harness";
 
 class StubRealtimeManager implements RealtimeManager {
@@ -1482,5 +1485,502 @@ describe("cascade brain: a turn superseded from its own reply commit", () => {
     });
     expect(harness.tts.spokenTexts()).toEqual(["reply-C"]);
     expect(harness.recorder.cancelled).toEqual(["B"]);
+  });
+});
+
+/** Content as the model got it, without the direction prefix or event wrapper. */
+function bare(content: string): string {
+  return content
+    .replace(/^\[Stage direction[^\]]*\] /, "")
+    .replace(/^<event source="[^"]*">([\s\S]*)<\/event>$/, "$1");
+}
+
+/** The request whose newest message is `text`, after the system prompt and unwrapped. */
+function requestFor(client: GateableLLMClient, text: string): string[] {
+  const prompt = client.prompts.find(
+    (candidate) => bare(lastContentOf(candidate)) === text,
+  );
+  if (!prompt) {
+    throw new Error(`No LLM request was made for "${text}"`);
+  }
+  return prompt.slice(1).map((message) => bare(message.content));
+}
+
+/** No renderer, and replies named after the unwrapped input. */
+function policyHarness(options: HarnessOptions = {}): Harness {
+  const harness = createHarness({ renderer: false, ...options });
+  harness.client.responder = (content) => `reply-${bare(content)}`;
+  return harness;
+}
+
+/** Parks the request for user input "A" until the test settles it. */
+function parkA(harness: Harness): BrainTurn {
+  harness.client.responder = (content) =>
+    content === "A" ? null : `reply-${bare(content)}`;
+  return harness.brain.submit({ kind: "user", text: "A" });
+}
+
+describe("cascade brain: respond", () => {
+  it("makes no request for a silent input and leaves the live turn running", async () => {
+    const harness = policyHarness();
+    const { brain, client, recorder } = harness;
+    const turnA = parkA(harness);
+    await client.waitForCalls(1);
+
+    const silent = brain.submit({ kind: "user", text: "S", respond: "silent" });
+
+    await expect(silent.done).resolves.toEqual({ status: "silent" });
+    expect(client.prompts).toHaveLength(1);
+    client.resolveCall("A", "reply-A");
+    await expect(turnA.done).resolves.toMatchObject({
+      status: "completed",
+      text: "reply-A",
+    });
+    expect(client.prompts).toHaveLength(1);
+    expect(recorder.cancelled).toEqual([]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:S",
+      "character:reply-A",
+    ]);
+  });
+
+  it("responds to an auto event on an idle brain and floor", async () => {
+    const { brain, client } = policyHarness();
+
+    await expect(
+      brain.submit({ kind: "event", source: "game", text: "goal" }).done,
+    ).resolves.toMatchObject({ status: "completed", text: "reply-goal" });
+    expect(requestFor(client, "goal")).toEqual(["goal"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "event:goal",
+      "character:reply-goal",
+    ]);
+  });
+
+  it("keeps an auto event silent while a turn is live", async () => {
+    const harness = policyHarness();
+    const { brain, client, recorder } = harness;
+    const turnA = parkA(harness);
+    await client.waitForCalls(1);
+
+    const event = brain.submit({ kind: "event", source: "game", text: "goal" });
+
+    await expect(event.done).resolves.toEqual({ status: "silent" });
+    client.resolveCall("A", "reply-A");
+    await expect(turnA.done).resolves.toMatchObject({ status: "completed" });
+    expect(client.prompts).toHaveLength(1);
+    expect(recorder.cancelled).toEqual([]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "event:goal",
+      "character:reply-A",
+    ]);
+  });
+
+  it("keeps an auto event silent while an app perform() holds the floor", async () => {
+    const { charivo, brain, client, tts } = policyHarness({ tts: true });
+    tts.holdSpeak = (text) => text === "app line";
+    const line = charivo.perform({ text: "app line" });
+    await tts.waitForSpeaks(1);
+
+    const event = brain.submit({ kind: "event", source: "game", text: "goal" });
+
+    await expect(event.done).resolves.toEqual({ status: "silent" });
+    expect(charivo.getFloor()).toMatchObject({
+      state: "speaking",
+      origin: "app",
+    });
+    tts.settleSpeak((text) => text === "app line");
+    await expect(line.done).resolves.toMatchObject({ status: "completed" });
+    expect(client.prompts).toEqual([]);
+    expect(transcript(brain.getHistory())).toEqual(["event:goal"]);
+  });
+
+  it("keeps an auto event silent while realtime is attached", async () => {
+    const { charivo, brain, client } = policyHarness();
+    charivo.attachRealtime(new StubRealtimeManager());
+
+    await expect(
+      brain.submit({ kind: "event", source: "game", text: "goal" }).done,
+    ).resolves.toEqual({ status: "silent" });
+    expect(client.prompts).toEqual([]);
+    expect(transcript(brain.getHistory())).toEqual(["event:goal"]);
+  });
+
+  it("responds to an auto event submitted as the previous reply's performance ends", async () => {
+    const { charivo, brain, client } = policyHarness();
+    let event: BrainTurn | undefined;
+    charivo.on("performance:end", () => {
+      event ??= brain.submit({ kind: "event", source: "game", text: "goal" });
+    });
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(event!.done).resolves.toMatchObject({
+      status: "completed",
+      text: "reply-goal",
+    });
+    expect(requestFor(client, "goal")).toEqual(["A", "reply-A", "goal"]);
+  });
+
+  it("supersedes the live turn with a must event", async () => {
+    const harness = policyHarness();
+    const { brain, client, recorder } = harness;
+    const turnA = parkA(harness);
+    await client.waitForCalls(1);
+
+    const event = brain.submit({
+      kind: "event",
+      source: "game",
+      text: "goal",
+      respond: "must",
+    });
+
+    await expect(event.done).resolves.toMatchObject({
+      status: "completed",
+      text: "reply-goal",
+    });
+    client.resolveCall("A", "reply-A");
+    await expect(turnA.done).resolves.toMatchObject({ status: "cancelled" });
+    expect(recorder.cancelled).toEqual(["A"]);
+    expect(requestFor(client, "goal")).toEqual(["A", "goal"]);
+  });
+});
+
+describe("cascade brain: history", () => {
+  it.each([
+    { label: "keep", history: "keep" as const },
+    { label: "replaceKey", history: { replaceKey: "score" } },
+  ])(
+    "stores a silent $label input and generates nothing",
+    async ({ history }) => {
+      const { brain, client, recorder } = policyHarness();
+
+      await expect(
+        brain.submit({
+          kind: "event",
+          source: "game",
+          text: "goal",
+          respond: "silent",
+          history,
+        }).done,
+      ).resolves.toEqual({ status: "silent" });
+      expect(client.prompts).toEqual([]);
+      expect(recorder.log).toEqual(["sent:goal"]);
+      expect(transcript(brain.getHistory())).toEqual(["event:goal"]);
+    },
+  );
+
+  it("leaves history untouched for a silent ephemeral input", async () => {
+    const { brain, client } = policyHarness();
+    await brain.submit({ kind: "user", text: "hi" }).done;
+
+    await expect(
+      brain.submit({
+        kind: "direction",
+        text: "smile",
+        respond: "silent",
+      }).done,
+    ).resolves.toEqual({ status: "silent" });
+    expect(client.prompts).toHaveLength(1);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:hi",
+      "character:reply-hi",
+    ]);
+  });
+
+  it("leaves history untouched for an auto ephemeral event that falls back to silent", async () => {
+    const harness = policyHarness();
+    const { brain, client } = harness;
+    const turnA = parkA(harness);
+    await client.waitForCalls(1);
+
+    await expect(
+      brain.submit({
+        kind: "event",
+        source: "game",
+        text: "goal",
+        history: "ephemeral",
+      }).done,
+    ).resolves.toEqual({ status: "silent" });
+    client.resolveCall("A", "reply-A");
+    await turnA.done;
+    expect(client.prompts).toHaveLength(1);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "character:reply-A",
+    ]);
+  });
+
+  it("sends an ephemeral direction with the request and keeps only its reply", async () => {
+    const { brain, client } = policyHarness();
+    await brain.submit({ kind: "user", text: "hi" }).done;
+
+    await expect(
+      brain.submit({ kind: "direction", text: "wave" }).done,
+    ).resolves.toMatchObject({ status: "completed", text: "reply-wave" });
+    expect(requestFor(client, "wave")).toEqual(["hi", "reply-hi", "wave"]);
+    expect(client.prompts[1]!.at(-1)).toMatchObject({
+      role: "system",
+      content: expect.stringMatching(/^\[Stage direction.* wave$/),
+    });
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:hi",
+      "character:reply-hi",
+      "character:reply-wave",
+    ]);
+  });
+
+  it.each([
+    {
+      label: "an ephemeral",
+      history: "ephemeral" as const,
+      kept: "beach",
+    },
+    {
+      label: "a replaceKey",
+      history: { replaceKey: "scene" },
+      kept: "park",
+    },
+  ])(
+    "writes $label input superseded before its write by its own policy",
+    async ({ history, kept }) => {
+      const { charivo, brain, client, recorder } = policyHarness();
+      await brain.submit({
+        kind: "direction",
+        text: "beach",
+        respond: "silent",
+        history: { replaceKey: "scene" },
+      }).done;
+      let turnB: BrainTurn | undefined;
+      charivo.on("message:sent", ({ message }) => {
+        if (message.content === "park") {
+          turnB ??= brain.submit({ kind: "user", text: "B" });
+        }
+      });
+
+      const turnD = brain.submit({ kind: "direction", text: "park", history });
+
+      await expect(turnD.done).resolves.toMatchObject({ status: "cancelled" });
+      await expect(turnB!.done).resolves.toMatchObject({
+        status: "completed",
+      });
+      expect(recorder.cancelled).toEqual(["park"]);
+      expect(client.prompts).toHaveLength(1);
+      expect(requestFor(client, "B")).toEqual([kept, "B"]);
+      expect(transcript(brain.getHistory())).toEqual([
+        `direction:${kept}`,
+        "user:B",
+        "character:reply-B",
+      ]);
+    },
+  );
+
+  it("keeps one entry per replaceKey across two events", async () => {
+    const { brain, client } = policyHarness();
+    const score = { replaceKey: "score" };
+
+    await brain.submit({
+      kind: "event",
+      source: "game",
+      text: "1-0",
+      history: score,
+    }).done;
+    await brain.submit({
+      kind: "event",
+      source: "game",
+      text: "2-0",
+      history: score,
+    }).done;
+
+    expect(requestFor(client, "2-0")).toEqual(["reply-1-0", "2-0"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "character:reply-1-0",
+      "event:2-0",
+      "character:reply-2-0",
+    ]);
+  });
+
+  it.each([{ respond: "auto" as const }, { respond: "silent" as const }])(
+    "fails an $respond event with no source at generate with no request",
+    async ({ respond }) => {
+      const { brain, client, recorder } = policyHarness();
+
+      const result = await brain.submit({
+        kind: "event",
+        text: "goal",
+        respond,
+      } as unknown as BrainInput).done;
+
+      expect(result).toMatchObject({
+        status: "failed",
+        stage: "generate",
+        text: "",
+      });
+      expect(result.status === "failed" && result.error).toBeInstanceOf(
+        CharivoStateError,
+      );
+      expect(client.prompts).toEqual([]);
+      expect(recorder.log).toEqual(["sent:goal"]);
+      expect(brain.getHistory()).toEqual([]);
+    },
+  );
+
+  it("keeps the newest replies to a run of ephemeral directions up to the bound", async () => {
+    const { brain, client } = policyHarness({ maxHistoryTurns: 2 });
+
+    for (const text of ["d1", "d2", "d3", "d4", "d5"]) {
+      await expect(
+        brain.submit({ kind: "direction", text }).done,
+      ).resolves.toMatchObject({ status: "completed" });
+    }
+    expect(transcript(brain.getHistory())).toEqual([
+      "character:reply-d2",
+      "character:reply-d3",
+      "character:reply-d4",
+      "character:reply-d5",
+    ]);
+
+    await brain.submit({ kind: "direction", text: "d6" }).done;
+    expect(requestFor(client, "d6")).toEqual([
+      "reply-d2",
+      "reply-d3",
+      "reply-d4",
+      "reply-d5",
+      "d6",
+    ]);
+  });
+
+  it.each([
+    {
+      label: "keep",
+      history: "keep" as const,
+      stored: ["user:A", "user:S", "character:reply-A"],
+    },
+    {
+      label: "a shared replaceKey",
+      history: { replaceKey: "k" },
+      stored: ["user:S", "character:reply-A"],
+    },
+    {
+      label: "ephemeral",
+      history: "ephemeral" as const,
+      stored: ["user:S", "character:reply-A"],
+    },
+  ])(
+    "keeps a silent input from A's message:sent out of A's request, with $label",
+    async ({ history, stored }) => {
+      const { charivo, brain, client } = policyHarness();
+      let silent: BrainTurn | undefined;
+      charivo.on("message:sent", ({ message }) => {
+        if (message.content === "A") {
+          silent ??= brain.submit({
+            kind: "user",
+            text: "S",
+            respond: "silent",
+            history: history === "ephemeral" ? "keep" : history,
+          });
+        }
+      });
+
+      await expect(
+        brain.submit({ kind: "user", text: "A", history }).done,
+      ).resolves.toMatchObject({ status: "completed", text: "reply-A" });
+      await expect(silent!.done).resolves.toEqual({ status: "silent" });
+      expect(client.prompts).toHaveLength(1);
+      expect(requestFor(client, "A")).toEqual(["A"]);
+      expect(transcript(brain.getHistory())).toEqual(stored);
+    },
+  );
+
+  it("keeps a silent input submitted from inside A's write out of A's request", async () => {
+    const { brain, client, manager } = policyHarness();
+    const addToHistory = manager.addToHistory.bind(manager);
+    let silent: BrainTurn | undefined;
+    vi.spyOn(manager, "addToHistory").mockImplementation((message, options) => {
+      const rollback = addToHistory(message, options);
+      if (message.content === "A") {
+        silent ??= brain.submit({ kind: "user", text: "S", respond: "silent" });
+      }
+      return rollback;
+    });
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toMatchObject({ status: "completed", text: "reply-A" });
+    await expect(silent!.done).resolves.toEqual({ status: "silent" });
+    expect(requestFor(client, "A")).toEqual(["A"]);
+    expect(transcript(brain.getHistory())).toEqual([
+      "user:A",
+      "user:S",
+      "character:reply-A",
+    ]);
+  });
+
+  it.each([
+    { label: "refused", outcome: "failed" },
+    { label: "cancelled from inside", outcome: "cancelled" },
+  ])(
+    "writes a silent input queued behind a turn whose own write is $label",
+    async ({ outcome }) => {
+      const { charivo, brain, client, manager } = policyHarness();
+      const addToHistory = manager.addToHistory.bind(manager);
+      vi.spyOn(manager, "addToHistory").mockImplementation(
+        (message, options) => {
+          if (message.content !== "A") {
+            return addToHistory(message, options);
+          }
+          if (outcome === "failed") {
+            throw new CharivoStateError("refused");
+          }
+          const rollback = addToHistory(message, options);
+          void brain.interrupt();
+          return rollback;
+        },
+      );
+      let silent: BrainTurn | undefined;
+      charivo.on("message:sent", ({ message }) => {
+        if (message.content === "A") {
+          silent ??= brain.submit({
+            kind: "user",
+            text: "S",
+            respond: "silent",
+          });
+        }
+      });
+
+      await expect(
+        brain.submit({ kind: "user", text: "A" }).done,
+      ).resolves.toMatchObject({ status: outcome });
+      await expect(silent!.done).resolves.toEqual({ status: "silent" });
+      expect(client.prompts).toEqual([]);
+      expect(transcript(brain.getHistory())).toEqual(
+        outcome === "failed" ? ["user:S"] : ["user:A", "user:S"],
+      );
+    },
+  );
+
+  it("stores a silent input submitted from inside the reply commit after the reply", async () => {
+    const manager = new RecordingLLMManager();
+    const { brain } = createHarness({ manager, renderer: false });
+    let silent: BrainTurn | undefined;
+    manager.onAdd = (message) => {
+      if (message.type === "character") {
+        silent ??= brain.submit({
+          kind: "user",
+          text: "S",
+          respond: "silent",
+        });
+      }
+    };
+
+    await expect(
+      brain.submit({ kind: "user", text: "A" }).done,
+    ).resolves.toMatchObject({ status: "completed" });
+    await expect(silent!.done).resolves.toEqual({ status: "silent" });
+    expect(manager.generatedContents()).toEqual(["A"]);
+    expect(manager.addedContents()).toEqual(["A", "reply-A", "S"]);
   });
 });

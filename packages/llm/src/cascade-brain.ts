@@ -2,6 +2,7 @@ import {
   CharivoStateError,
   toCharivoError,
   type AffectCue,
+  type BrainHistoryPolicy,
   type BrainInput,
   type BrainTurn,
   type BrainTurnResult,
@@ -47,8 +48,10 @@ export interface CascadeBrainOptions {
 }
 
 /**
- * One submitted input. It is live while it is `CascadeBrain.live` and its
- * performance, once it has one, has not ended.
+ * One submitted input that responds. It is live while it is
+ * `CascadeBrain.live` (`isLive`). A live turn whose performance has ended is
+ * finished a microtask later; until then it is live but no longer under way
+ * (`hasTurnUnderway`), which is what `auto` asks.
  *
  * Retiring it (B6): a newer turn takes its place and its queue position
  * first. After that turn's `message:sent`, the retired one's performance is
@@ -80,10 +83,16 @@ interface CascadeTurn {
  * An input's place in the write queue, taken when it is submitted, so
  * history order is call order at any reentrancy depth. `inProgress` marks
  * the entry being written, which stops a reentrant flush from jumping it.
+ * An `ephemeral` entry is removed without a write; a responding one still
+ * queues, so its request waits for every input ahead of it.
  */
 interface QueueEntry {
   message: Message;
-  turn: CascadeTurn;
+  history: BrainHistoryPolicy;
+  /** The turn of an input that responds. */
+  turn?: CascadeTurn;
+  /** Settles an input that does not respond, once its write has. */
+  settleSilent?: (result: BrainTurnResult) => void;
   inProgress: boolean;
 }
 
@@ -140,11 +149,35 @@ class CascadeBrain implements ConversationBrain {
       );
     }
 
-    const { message } = resolveBrainInput(input);
+    const { message, respond, history } = resolveBrainInput(input);
     let settle!: (result: BrainTurnResult) => void;
     const done = new Promise<BrainTurnResult>((resolve) => {
       settle = resolve;
     });
+
+    const responds =
+      respond === "must" ||
+      (respond === "auto" &&
+        !this.hasTurnUnderway() &&
+        body.getFloor().state === "idle");
+    if (!responds) {
+      // Leaves the live turn alone (B4); only its history policy applies.
+      if (history === "ephemeral") {
+        body.emit("message:sent", { message });
+        settle({ status: "silent" });
+      } else {
+        this.queue.push({
+          message,
+          history,
+          settleSilent: settle,
+          inProgress: false,
+        });
+        body.emit("message:sent", { message });
+        this.writeQueued(null);
+      }
+      return { id: message.id, done, cancel: () => Promise.resolve() };
+    }
+
     const turn: CascadeTurn = {
       id: message.id,
       body,
@@ -157,7 +190,7 @@ class CascadeBrain implements ConversationBrain {
     // wins, and queues its input behind this one.
     const previous = this.live;
     this.live = turn;
-    const entry: QueueEntry = { message, turn, inProgress: false };
+    const entry: QueueEntry = { message, history, turn, inProgress: false };
     this.queue.push(entry);
     if (previous) {
       this.superseded.push(previous);
@@ -206,6 +239,17 @@ class CascadeBrain implements ConversationBrain {
     } finally {
       this.llm.clearHistory();
     }
+  }
+
+  /**
+   * Whether a turn is under way, as `auto` asks (B4): the live turn, unless
+   * its performance has ended and it is only waiting to be finished. Unlike
+   * `isLive`, which decides whether a turn may act further, this never
+   * counts that finished-but-live turn.
+   */
+  private hasTurnUnderway(): boolean {
+    const live = this.live;
+    return live !== undefined && !live.performance?.result;
   }
 
   /**
@@ -316,13 +360,13 @@ class CascadeBrain implements ConversationBrain {
   /**
    * Writes queued inputs head first, after retiring every superseded turn,
    * so an unheard reply is rolled back before it can reach the next request
-   * or cost an older entry its place in a bounded history. Returns at an
-   * entry being written further up the stack.
+   * or cost an older entry its place in a bounded history. Stops at an
+   * entry being written further up the stack, and at the live turn's own
+   * entry unless that turn is the `requester`.
    *
-   * With `requester` null it writes the entries of turns that are no longer
-   * live and stops at the live turn's. With a requester it writes the older
-   * entries and then the requester's own, keeping that write's rollback and
-   * throwing that write's failure.
+   * A requester's own write keeps its rollback and ends the call, so the
+   * entries behind it stay queued until the requester's prompt is built
+   * (B4); its failure is thrown.
    */
   private writeQueued(requester: CascadeTurn | null): void {
     this.retireSuperseded();
@@ -331,19 +375,20 @@ class CascadeBrain implements ConversationBrain {
       if (head.inProgress) {
         return;
       }
-      const isOwn = head.turn === requester;
-      if (!isOwn && head.turn === this.live) {
+      const isOwn = requester !== null && head.turn === requester;
+      if (!isOwn && head.turn !== undefined && head.turn === this.live) {
         return;
       }
 
       head.inProgress = true;
       try {
-        const rollback = this.llm.addToHistory(head.message);
+        const rollback = this.store(head);
         this.removeEntry(head);
         if (isOwn) {
-          head.turn.inputRollback = rollback;
+          requester.inputRollback = rollback;
           return;
         }
+        head.settleSilent?.({ status: "silent" });
       } catch (error) {
         this.removeEntry(head);
         if (isOwn) {
@@ -351,13 +396,80 @@ class CascadeBrain implements ConversationBrain {
         }
         // A retired turn has settled `cancelled` already, so an input the
         // manager refuses is dropped and the queue behind it still written.
+        // An input that does not respond fails with that refusal (B5).
+        head.settleSilent?.(
+          failed("generate", "", toCharivoError("state", error)),
+        );
       }
+    }
+  }
+
+  /** Writes an entry by its history policy (B5). */
+  private store(entry: QueueEntry): HistoryRollback | undefined {
+    const { message, history } = entry;
+    if (history === "ephemeral") {
+      return undefined;
+    }
+    return history === "keep"
+      ? this.llm.addToHistory(message)
+      : this.llm.addToHistory(message, { replaceKey: history.replaceKey });
+  }
+
+  /** B10: commits the reply of the live `turn` once it has rendered. */
+  private commitReply(
+    turn: CascadeTurn,
+    reply: Message,
+    performance: PerformanceHandle,
+    ephemeral: boolean,
+  ): void {
+    const llm = this.llm;
+    // Held at the head of the write queue while the reply is written: a
+    // manager that reenters submit() from that write leaves the newer turn
+    // waiting, so its input and request come after the rollback below.
+    const commit: QueueEntry = {
+      message: reply,
+      history: "keep",
+      turn,
+      inProgress: true,
+    };
+    this.queue.unshift(commit);
+    try {
+      // A reply to an ephemeral input has no stored prompt to lose (B5).
+      turn.replyRollback = ephemeral
+        ? llm.addToHistory(reply, { standalone: true })
+        : llm.addToHistory(reply);
+    } catch (error) {
+      this.removeEntry(commit);
+      // A manager that reentered submit() and then threw has retired the
+      // turn: it stays cancelled, its performance already cancelled.
+      if (!this.isLive(turn)) {
+        return;
+      }
+      // Recorded before the cancel, so the ended performance reads as this
+      // failure rather than a cancellation.
+      turn.commitFailure = toCharivoError(
+        "provider",
+        error,
+        "Failed to commit the character response",
+      );
+      // Keeps the uncommitted reply from being spoken. Nothing is speaking
+      // yet, so no stop is issued and this should not reject.
+      performance.cancel().catch((cancelError: unknown) => {
+        console.error("Failed to cancel the uncommitted reply:", cancelError);
+      });
+      return;
+    }
+    this.removeEntry(commit);
+    // Retired from inside the write, when there was no reply to roll back.
+    if (!this.isLive(turn)) {
+      this.rollBackUnheard(turn);
     }
   }
 
   private async run(turn: CascadeTurn, entry: QueueEntry): Promise<void> {
     const { body } = turn;
     const { message } = entry;
+    const ephemeral = entry.history === "ephemeral";
     const llm = this.llm;
 
     try {
@@ -381,19 +493,30 @@ class CascadeBrain implements ConversationBrain {
           failed("generate", "", toCharivoError("state", error)),
         );
       }
+      this.writeQueued(null);
       return;
     }
     if (!this.isLive(turn)) {
+      this.writeQueued(null);
       return;
     }
 
-    let text: string;
-    try {
-      text = await llm.generateResponse(message, {
+    // The request is made first; only then are the inputs queued behind this
+    // turn's own written, so one that does not respond never lands in this
+    // turn's prompt (B4). This relies on the manager building the prompt
+    // before its first await, as the built-in LLMManager does.
+    const request = (async () =>
+      llm.generateResponse(message, {
         callerOwnsHistory: true,
+        ephemeral,
         isCancelled: () => !this.isLive(turn),
         signal: turn.abortController.signal,
-      });
+      }))();
+    this.writeQueued(null);
+
+    let text: string;
+    try {
+      text = await request;
     } catch (error) {
       if (!this.isLive(turn)) {
         return;
@@ -447,39 +570,10 @@ class CascadeBrain implements ConversationBrain {
       if (!started || !this.isLive(turn)) {
         return;
       }
-      // Held at the head of the write queue while the reply is written: a
-      // manager that reenters submit() from that write leaves the newer turn
-      // waiting, so its input and request come after the rollback below.
-      const commit: QueueEntry = { message: reply, turn, inProgress: true };
-      this.queue.unshift(commit);
-      try {
-        turn.replyRollback = llm.addToHistory(reply);
-      } catch (error) {
-        this.removeEntry(commit);
-        // A manager that reentered submit() and then threw has retired the
-        // turn: it stays cancelled, its performance already cancelled.
-        if (!this.isLive(turn)) {
-          return;
-        }
-        // Recorded before the cancel, so the ended performance reads as this
-        // failure rather than a cancellation.
-        turn.commitFailure = toCharivoError(
-          "provider",
-          error,
-          "Failed to commit the character response",
-        );
-        // Keeps the uncommitted reply from being spoken. Nothing is speaking
-        // yet, so no stop is issued and this should not reject.
-        performance.cancel().catch((cancelError: unknown) => {
-          console.error("Failed to cancel the uncommitted reply:", cancelError);
-        });
-        return;
-      }
-      this.removeEntry(commit);
-      // Retired from inside the write, when there was no reply to roll back.
-      if (!this.isLive(turn)) {
-        this.rollBackUnheard(turn);
-      }
+      this.commitReply(turn, reply, performance, ephemeral);
+      // The commit held the head of the queue, so an input submitted from
+      // inside it waited there; write it now.
+      this.writeQueued(null);
     });
 
     const result = await performance.done;
