@@ -1,6 +1,7 @@
 import { EventBus } from "./bus";
 import { Floor } from "./floor";
 import {
+  AffectMap,
   Character,
   FloorState,
   HistoryRollback,
@@ -114,6 +115,7 @@ export class Charivo {
   private activeTurn?: TurnRecord;
   private readonly turnQueue: TurnEntry[] = [];
   private messageSeq = 0;
+  private affectMap: AffectMap | null = null;
   private readonly floor: Floor;
 
   constructor() {
@@ -122,6 +124,7 @@ export class Charivo {
       getRenderManager: () => this.renderManager,
       getTTSManager: () => this.ttsManager,
       getCharacter: () => this.character,
+      getAffectMap: () => this.affectMap,
     });
   }
 
@@ -619,6 +622,14 @@ export class Charivo {
     return this.floor.perform(request);
   }
 
+  /**
+   * Replace the map `{ affect, intensity? }` cues resolve through, or clear it
+   * with `null`. Set it again when the model changes.
+   */
+  setAffectMap(map: AffectMap | null): void {
+    this.affectMap = map;
+  }
+
   /** Who holds playback now; `floor:changed` reports every change. */
   getFloor(): FloorState {
     return this.floor.getFloor();
@@ -912,6 +923,7 @@ export class Charivo {
     // bypass detachRenderer() here to avoid a second disconnect() call.
     this.renderManager = undefined;
     this.character = undefined;
+    this.affectMap = null;
     this.isRealtimeMode = false;
     this.turnQueue.length = 0;
     this.floor.clear();

@@ -1,6 +1,8 @@
+import { resolveAffect, type ResolvedAffect } from "./affect";
 import { CharivoError, CharivoStateError, toCharivoError } from "./errors";
 import { createSentenceSegmenter } from "./sentence-segmenter";
 import type {
+  AffectMap,
   Character,
   CharivoEventBus,
   EventMap,
@@ -23,6 +25,7 @@ export interface FloorHost {
   getRenderManager(): RenderManager | undefined;
   getTTSManager(): TTSManager | undefined;
   getCharacter(): Character | undefined;
+  getAffectMap(): AffectMap | null;
 }
 
 interface PerformanceRecord {
@@ -46,6 +49,8 @@ interface PerformanceRecord {
    * performance even if another is attached meanwhile (P2).
    */
   ttsManager?: TTSManager;
+  /** The request's affect, resolved through the map set when it was taken. */
+  affect: ResolvedAffect;
   /** Its `performance:start` has begun delivery, so an end must follow (P2). */
   startDelivered: boolean;
   /** A `speak()` was issued and has not settled; cancelling it needs a stop (P5). */
@@ -212,6 +217,7 @@ export class Floor {
       origin: request.origin ?? "app",
       ...(typeof text === "string" ? { text } : { text: "", heardEnd: 0 }),
       ttsManager: this.host.getTTSManager(),
+      affect: resolveAffect(request.affect, this.host.getAffectMap()),
       startDelivered: false,
       speaking: false,
       mayBeHeard: false,
@@ -238,10 +244,15 @@ export class Floor {
         origin: record.origin,
         voiced: record.ttsManager !== undefined,
         ...(typeof text === "string" ? { text } : {}),
+        affectResolved:
+          record.affect.expressionId !== undefined ||
+          record.affect.motion !== undefined,
       });
-      // The run begins only once its start has reached every listener and it
-      // still holds the floor, so a start listener can cancel it first (P10).
+      // The run, its affect first, begins only once its start has reached
+      // every listener and it still holds the floor, so a start listener can
+      // cancel it before anything is shown (P10).
       if (this.holder === record) {
+        this.produceAffect(record);
         void (typeof text === "string"
           ? this.runString(record)
           : this.runStream(record, text));
@@ -776,6 +787,38 @@ export class Floor {
       ...(heardText !== undefined ? { heardText } : {}),
       ...(error ? { error } : {}),
     });
+  }
+
+  /**
+   * A3: the resolved expression is claimed for the performance (held by it
+   * when voiced, the channel default when not) and the motion is muted
+   * (decision 6).
+   */
+  private produceAffect(record: PerformanceRecord): void {
+    const { expressionId, motion } = record.affect;
+    if (expressionId !== undefined) {
+      this.produce("avatar:expression", {
+        expressionId,
+        source: "performance",
+        priority: "explicit",
+        ...(record.ttsManager ? { hold: { performance: record.id } } : {}),
+      });
+    }
+    if (motion) {
+      // Rechecked at delivery: an expression listener may have cancelled the
+      // line, and a one-shot motion must not play for it (P4).
+      this.deliveries.push(() => {
+        if (this.holder !== record) {
+          return;
+        }
+        this.emitter.emit("avatar:motion", {
+          group: motion.group,
+          index: motion.index ?? 0,
+          muteSound: true,
+          priority: "explicit",
+        });
+      });
+    }
   }
 
   private produce<K extends keyof EventMap>(event: K, data: EventMap[K]): void {

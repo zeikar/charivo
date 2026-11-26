@@ -7,6 +7,7 @@ import {
   createCharivo,
 } from "@charivo/core";
 import type {
+  AffectMap,
   Character,
   CharivoEventBus,
   CharivoEventEmitter,
@@ -1609,6 +1610,7 @@ describe("Charivo.perform() for a text stream", () => {
       performanceId: handle.id,
       origin: "app",
       voiced: true,
+      affectResolved: false,
     });
     expect(charivo.getFloor()).toEqual({
       state: "speaking",
@@ -2601,5 +2603,279 @@ describe("attaching realtime after cascade speech (R2, R3)", () => {
 
     expect(realtime.interrupt).not.toHaveBeenCalled();
     expect(realtime.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("perform() affect (A2, A3)", () => {
+  const affectMap: AffectMap = {
+    joy: { expressionId: "smile", motion: { group: "Happy", index: 1 } },
+    calm: { expressionId: "relaxed" },
+  };
+
+  const AFFECT_EVENTS = [
+    ...RECORDED_EVENTS,
+    "avatar:expression",
+    "avatar:motion",
+  ] as const;
+
+  /** Floor and affect events, with whether a render had begun at each. */
+  function recordAffectEvents(
+    charivo: Charivo,
+    renderer?: RecordingRenderManager,
+  ) {
+    const events: Array<RecordedEvent & { rendered: boolean }> = [];
+    for (const event of AFFECT_EVENTS) {
+      charivo.on(event, (data) => {
+        events.push({
+          event,
+          data,
+          rendered: (renderer?.render.mock.calls.length ?? 0) > 0,
+        } as RecordedEvent & { rendered: boolean });
+      });
+    }
+    return events;
+  }
+
+  it("drops the motion when an expression listener cancels the line", async () => {
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    charivo.setAffectMap(affectMap);
+    const motions: unknown[] = [];
+    charivo.on("avatar:motion", (data) => motions.push(data));
+    // Delivered inside perform(), before the handle is returned.
+    charivo.on("avatar:expression", () => {
+      void charivo.interrupt();
+    });
+
+    const handle = charivo.perform({
+      text: "Hello there.",
+      affect: { expression: { affect: "joy" } },
+    });
+
+    expect((await handle.done).status).toBe("cancelled");
+    expect(motions).toEqual([]);
+  });
+
+  it("emits a held expression and a muted motion right after a voiced performance's start, before the render", async () => {
+    const charivo = new Charivo();
+    const renderer = new RecordingRenderManager();
+    const tts = new ReportingTTSManager();
+    charivo.attachRenderer(renderer);
+    charivo.attachTTS(tts);
+    charivo.setAffectMap(affectMap);
+    const events = recordAffectEvents(charivo, renderer);
+
+    const handle = charivo.perform({
+      text: "Hello there.",
+      affect: { expression: { affect: "joy" } },
+    });
+
+    expect(events.map(({ event }) => event)).toEqual([
+      "floor:changed",
+      "performance:start",
+      "avatar:expression",
+      "avatar:motion",
+    ]);
+    expect(events.every(({ rendered }) => !rendered)).toBe(true);
+    expect(events[1]!.data).toEqual(
+      expect.objectContaining({ voiced: true, affectResolved: true }),
+    );
+    expect(events[2]!.data).toEqual({
+      expressionId: "smile",
+      source: "performance",
+      priority: "explicit",
+      hold: { performance: handle.id },
+    });
+    expect(events[3]!.data).toEqual({
+      group: "Happy",
+      index: 1,
+      muteSound: true,
+      priority: "explicit",
+    });
+
+    await flush();
+    tts.finishSpeech(0);
+    await handle.done;
+    expect(events.map(({ event }) => event).slice(4)).toEqual([
+      "performance:end",
+      "floor:changed",
+    ]);
+  });
+
+  it("emits the expression with no hold for an unvoiced performance", async () => {
+    const charivo = new Charivo();
+    charivo.attachRenderer(new RecordingRenderManager());
+    charivo.setAffectMap(affectMap);
+    const events = recordAffectEvents(charivo);
+
+    const handle = charivo.perform({
+      text: "Hello there.",
+      affect: { expression: "wink", motion: { group: "Wave" } },
+    });
+    await handle.done;
+
+    expect(events[1]!.data).toEqual(
+      expect.objectContaining({ voiced: false, affectResolved: true }),
+    );
+    expect(events[2]).toEqual(
+      expect.objectContaining({
+        event: "avatar:expression",
+        data: {
+          expressionId: "wink",
+          source: "performance",
+          priority: "explicit",
+        },
+      }),
+    );
+    expect(events[3]).toEqual(
+      expect.objectContaining({
+        event: "avatar:motion",
+        data: {
+          group: "Wave",
+          index: 0,
+          muteSound: true,
+          priority: "explicit",
+        },
+      }),
+    );
+  });
+
+  it("sets affectResolved true and emits that event alone for a cue resolved to only an expression or only a motion", () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    const events = recordAffectEvents(charivo);
+
+    charivo.perform({
+      text: "One.",
+      affect: { expression: { affect: "calm" } },
+    });
+    charivo.perform({
+      text: "Two.",
+      affect: { motion: { group: "Nod", index: 2 } },
+    });
+
+    expect(events.map(({ event }) => event)).toEqual([
+      "floor:changed",
+      "performance:start",
+      "avatar:expression",
+      "performance:end",
+      "floor:changed",
+      "performance:start",
+      "avatar:motion",
+    ]);
+    expect(events[1]!.data).toEqual(
+      expect.objectContaining({ affectResolved: true }),
+    );
+    expect(events[5]!.data).toEqual(
+      expect.objectContaining({ affectResolved: true }),
+    );
+  });
+
+  it("sets affectResolved false and emits no affect for an unmapped label or no affect", () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    const events = recordAffectEvents(charivo);
+
+    charivo.perform({
+      text: "One.",
+      affect: { expression: { affect: "grief" } },
+    });
+    charivo.perform({ text: "Two." });
+
+    const starts = events.filter(({ event }) => event === "performance:start");
+    expect(starts.map(({ data }) => data)).toEqual([
+      expect.objectContaining({ affectResolved: false }),
+      expect.objectContaining({ affectResolved: false }),
+    ]);
+    expect(events.filter(({ event }) => event.startsWith("avatar:"))).toEqual(
+      [],
+    );
+  });
+
+  it("resolves through the map set last, and through none after setAffectMap(null)", () => {
+    const charivo = new Charivo();
+    const expressions: string[] = [];
+    charivo.on("avatar:expression", ({ expressionId }) => {
+      expressions.push(expressionId);
+    });
+    const joy = { expression: { affect: "joy" } };
+
+    charivo.perform({ text: "One.", affect: joy });
+    charivo.setAffectMap(affectMap);
+    charivo.perform({ text: "Two.", affect: joy });
+    charivo.setAffectMap({ joy: { expressionId: "grin" } });
+    charivo.perform({ text: "Three.", affect: joy });
+    charivo.setAffectMap(null);
+    charivo.perform({ text: "Four.", affect: joy });
+
+    expect(expressions).toEqual(["smile", "grin"]);
+  });
+
+  it("emits nothing for a performance displaced by a performance:start listener", async () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    const events = recordAffectEvents(charivo);
+    let second: PerformanceHandle | undefined;
+    charivo.on("performance:start", () => {
+      if (!second) {
+        second = charivo.perform({
+          text: "Second.",
+          affect: { expression: { affect: "calm" } },
+        });
+      }
+    });
+
+    const first = charivo.perform({
+      text: "First.",
+      affect: { expression: { affect: "joy" } },
+    });
+    await flush();
+
+    const affectEvents = events.filter(({ event }) =>
+      event.startsWith("avatar:"),
+    );
+    expect(affectEvents.map(({ data }) => data)).toEqual([
+      {
+        expressionId: "relaxed",
+        source: "performance",
+        priority: "explicit",
+      },
+    ]);
+    expect(first.result).toEqual(
+      expect.objectContaining({ status: "cancelled" }),
+    );
+    expect(
+      events.map(({ event, data }) =>
+        "performanceId" in data ? `${event}:${data.performanceId}` : event,
+      ),
+    ).toEqual([
+      "floor:changed",
+      `performance:start:${first.id}`,
+      `performance:end:${first.id}`,
+      "floor:changed",
+      `performance:start:${second!.id}`,
+      "avatar:expression",
+      `performance:end:${second!.id}`,
+      "floor:changed",
+    ]);
+  });
+
+  it("forgets the map on dispose()", async () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap(affectMap);
+    await charivo.dispose();
+    const events = recordAffectEvents(charivo);
+
+    charivo.perform({
+      text: "Hello there.",
+      affect: { expression: { affect: "joy" } },
+    });
+
+    expect(events[1]!.data).toEqual(
+      expect.objectContaining({ affectResolved: false }),
+    );
+    expect(events.filter(({ event }) => event.startsWith("avatar:"))).toEqual(
+      [],
+    );
   });
 });
