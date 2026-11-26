@@ -114,7 +114,7 @@ const LINE_ENDINGS: {
   "tts:audio:end": {},
   "tts:end": {},
   "tts:error": { error: new Error("playback failed") },
-  "turn:cancelled": { userMessageId: "msg_1" },
+  "turn:cancelled": { turnId: "msg_1" },
 };
 
 function speak(charivo: Charivo, text: string): void {

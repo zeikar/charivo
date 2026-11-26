@@ -9,6 +9,7 @@ import {
 } from "@charivo/core";
 import type {
   Character,
+  ConversationBrain,
   CharivoEventBus,
   CharivoEventEmitter,
   GazeCoordinates,
@@ -573,8 +574,8 @@ describe("Charivo", () => {
     charivo.on("message:sent", ({ message }) => {
       userMessageIds.set(message.content, message.id);
     });
-    charivo.on("turn:cancelled", ({ userMessageId }) => {
-      lifecycle.push(`cancelled:${userMessageId}`);
+    charivo.on("turn:cancelled", ({ turnId }) => {
+      lifecycle.push(`cancelled:${turnId}`);
     });
     charivo.on("tts:audio:end", () => lifecycle.push("audio:end"));
     charivo.on("tts:end", () => lifecycle.push("tts:end"));
@@ -1369,9 +1370,9 @@ class TurnRecorder {
       this.contentById.set(message.id, message.content);
       this.log.push(`sent:${message.content}`);
     });
-    charivo.on("turn:cancelled", ({ userMessageId }) => {
+    charivo.on("turn:cancelled", ({ turnId }) => {
       this.log.push(
-        `cancelled:${this.contentById.get(userMessageId) ?? `<unknown ${userMessageId}>`}`,
+        `cancelled:${this.contentById.get(turnId) ?? `<unknown ${turnId}>`}`,
       );
     });
   }
@@ -3179,5 +3180,158 @@ describe("Charivo manager getters", () => {
 
     expect(charivo.getLLMManager()).toBeUndefined();
     expect(charivo.getTTSManager()).toBeUndefined();
+  });
+});
+
+describe("Charivo brain port", () => {
+  const character: Character = { id: "c1", name: "Test", personality: "" };
+
+  const createBrain = () =>
+    ({
+      setBody: vi.fn(),
+      setCharacter: vi.fn(),
+      submit: vi.fn(),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(),
+      getHistory: vi.fn(() => []),
+      dispose: vi.fn(async () => undefined),
+    }) satisfies ConversationBrain;
+
+  it("gives an attached brain the body and, when set, the character", () => {
+    const withoutCharacter = new Charivo();
+    const first = createBrain();
+    withoutCharacter.attachBrain(first);
+    expect(first.setBody).toHaveBeenCalledWith(withoutCharacter);
+    expect(first.setCharacter).not.toHaveBeenCalled();
+
+    const withCharacter = new Charivo();
+    withCharacter.setCharacter(character);
+    const second = createBrain();
+    withCharacter.attachBrain(second);
+    expect(second.setBody).toHaveBeenCalledWith(withCharacter);
+    expect(second.setCharacter).toHaveBeenCalledWith(character);
+  });
+
+  it("detaches the first brain when another is attached", () => {
+    const charivo = new Charivo();
+    const first = createBrain();
+    const second = createBrain();
+
+    charivo.attachBrain(first);
+    charivo.attachBrain(second);
+
+    expect(first.setBody).toHaveBeenLastCalledWith(null);
+    expect(second.setBody).toHaveBeenCalledWith(charivo);
+    expect(charivo.getBrain()).toBe(second);
+  });
+
+  it("detachBrain gives the brain a null body and forgets it", () => {
+    const charivo = new Charivo();
+    const brain = createBrain();
+    charivo.attachBrain(brain);
+
+    charivo.detachBrain();
+
+    expect(brain.setBody).toHaveBeenLastCalledWith(null);
+    expect(charivo.getBrain()).toBeUndefined();
+    expect(() => charivo.detachBrain()).not.toThrow();
+  });
+
+  it("returns undefined from getBrain before one is attached", () => {
+    expect(new Charivo().getBrain()).toBeUndefined();
+  });
+
+  it("passes setCharacter on to the brain", () => {
+    const charivo = new Charivo();
+    const brain = createBrain();
+    charivo.attachBrain(brain);
+
+    charivo.setCharacter(character);
+
+    expect(brain.setCharacter).toHaveBeenCalledWith(character);
+  });
+
+  it("createCharivo attaches the brain option with the character", () => {
+    const brain = createBrain();
+
+    const charivo = createCharivo({ brain, character });
+
+    expect(charivo.getBrain()).toBe(brain);
+    expect(brain.setBody).toHaveBeenCalledWith(charivo);
+    expect(brain.setCharacter).toHaveBeenCalledWith(character);
+  });
+
+  it("dispose awaits the brain's dispose, then detaches it", async () => {
+    const charivo = new Charivo();
+    const brain = createBrain();
+    let settled = false;
+    brain.dispose.mockImplementation(async () => {
+      await Promise.resolve();
+      settled = true;
+    });
+    charivo.attachBrain(brain);
+
+    await charivo.dispose();
+
+    expect(settled).toBe(true);
+    expect(brain.setBody).toHaveBeenLastCalledWith(null);
+    expect(charivo.getBrain()).toBeUndefined();
+  });
+
+  it("reports a brain dispose failure and still finishes the teardown", async () => {
+    const tts = new StubTTSManager();
+    const charivo = createCharivo({ tts });
+    const brain = createBrain();
+    const failure = new Error("brain dispose failed");
+    brain.dispose.mockRejectedValueOnce(failure);
+    charivo.attachBrain(brain);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: failure,
+    });
+
+    expect(brain.setBody).toHaveBeenLastCalledWith(null);
+    expect(charivo.getBrain()).toBeUndefined();
+    expect(tts.stop).toHaveBeenCalled();
+    expect(charivo.getTTSManager()).toBeUndefined();
+  });
+
+  it("still finishes the teardown when the brain's setBody(null) throws", async () => {
+    const tts = new StubTTSManager();
+    const charivo = createCharivo({ tts });
+    const brain = createBrain();
+    const failure = new Error("setBody failed");
+    charivo.attachBrain(brain);
+    brain.setBody.mockImplementation((body) => {
+      if (body === null) {
+        throw failure;
+      }
+    });
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: failure,
+    });
+    expect(charivo.getBrain()).toBeUndefined();
+    expect(tts.stop).toHaveBeenCalled();
+  });
+
+  it("does not give a character to a brain that setBody() replaced", () => {
+    const charivo = new Charivo();
+    charivo.setCharacter(character);
+    const first = createBrain();
+    const second = createBrain();
+    first.setBody.mockImplementation((body) => {
+      if (body !== null) {
+        charivo.attachBrain(second);
+      }
+    });
+
+    charivo.attachBrain(first);
+
+    expect(charivo.getBrain()).toBe(second);
+    expect(first.setCharacter).not.toHaveBeenCalled();
+    expect(second.setCharacter).toHaveBeenCalledWith(character);
   });
 });

@@ -234,6 +234,68 @@ export interface CharacterBody extends CharivoEventBus {
   getFloor(): FloorState;
 }
 
+/**
+ * The conversation brain `Charivo` hosts: it decides what the character says
+ * and drives the {@link CharacterBody} to say it. Attach one with
+ * `Charivo.attachBrain()`.
+ */
+export interface ConversationBrain {
+  /** Called by `attachBrain` with the body, and by `detachBrain` with `null`. */
+  setBody(body: CharacterBody | null): void;
+  setCharacter(character: Character): void;
+  /**
+   * Hands the brain one input. Latest wins: an input that responds retires
+   * the live turn. The busy policy lives on `perform()` only. Throws
+   * `CharivoStateError` when no body is attached.
+   */
+  submit(input: BrainInput): BrainTurn;
+  /**
+   * Cancels the live turn and its performance. Resolves when the cancel of
+   * that performance has settled, and rejects with the error of its stop.
+   * Does nothing when no turn is live.
+   */
+  interrupt(): Promise<void>;
+  clearHistory(): void;
+  getHistory(): Message[];
+  dispose?(): void | Promise<void>;
+}
+
+/** One input's journey through a {@link ConversationBrain}. */
+export interface BrainTurn {
+  /** The id of the `Message` the input resolved to, as in `message:sent`. */
+  id: string;
+  /**
+   * Settles when the turn does, with its outcome. Never rejects: a failure
+   * is a `failed` result.
+   */
+  done: Promise<BrainTurnResult>;
+  /**
+   * Retires this turn, as a newer responding input would, without a
+   * successor. Resolves when the cancel of its performance has and rejects
+   * with that stop's error. Does nothing once the turn is no longer live.
+   */
+  cancel(): Promise<void>;
+}
+
+/**
+ * How a {@link BrainTurn} ended. A `failed` result names the `stage` that
+ * failed:
+ * - `generate`: producing the reply (the request, the history write, a
+ *   `review` hook) failed.
+ * - `render`: showing the reply failed; the input is kept, the reply dropped.
+ * - `tts`: speaking the reply failed (or playback was reserved by realtime);
+ *   `text` is the reply, which stays in history when it was committed.
+ */
+export type BrainTurnResult =
+  | { status: "completed" | "cancelled"; text: string; heardText?: string }
+  | { status: "silent" }
+  | {
+      status: "failed";
+      stage: "generate" | "render" | "tts";
+      text: string;
+      error: CharivoError;
+    };
+
 export interface AvatarControlCatalog {
   expressions: string[];
   motions: Record<string, number>;
@@ -627,6 +689,15 @@ export interface GenerateResponseOptions {
    * that already is would appear twice.
    */
   ephemeral?: boolean;
+  /**
+   * Takes a projected event for this request instead of emitting it:
+   * returning `true` consumes the event, returning `false` lets it through
+   * to the event emitter as usual. Called for every event the request
+   * projects (tool results shown on the avatar), in order, so the caller can
+   * hold back what it will present itself, such as the last
+   * `avatar:expression`.
+   */
+  interceptProjection?: (event: string, payload: unknown) => boolean;
 }
 
 export interface AddToHistoryOptions {
@@ -636,6 +707,11 @@ export interface AddToHistoryOptions {
    * goes to the end, where the latest state belongs.
    */
   replaceKey?: string;
+  /**
+   * The message is a reply with no stored input (the input was ephemeral or
+   * never stored). Pruning never treats it as a reply that lost its prompt.
+   */
+  standalone?: boolean;
 }
 
 // LLM manager (session management, history, character management)
@@ -961,23 +1037,14 @@ export interface EventMap {
   "message:sent": { message: Message };
   "message:received": { message: Message };
   /**
-   * An in-flight turn was cancelled: either a newer `userSay` superseded it,
-   * or `interrupt()` cut it off. Emitted exactly once for every cancelled
-   * turn, on the cascade path only — the realtime path keeps its own contract
-   * and never emits this. The payload carries no cause discriminator, and the
-   * superseded or interrupted `userSay` call still **resolves**.
-   *
-   * What the event reports is the cancellation. Retention is the separate
-   * guarantee: with an LLM manager and a character attached, the cancelled
-   * turn's valid user message is already in history when this fires — for a
-   * supersession, ahead of the superseding turn's own message; with none
-   * attached it holds its queue position and is written by the next `userSay`.
-   * Input the manager refuses to store is announced here too but never stored,
-   * exactly as today.
-   *
-   * The `message:sent` carrying the same id always precedes this event.
+   * A turn settled `cancelled`: a newer input superseded it, or `turn.cancel()`
+   * or `interrupt()` cut it off. Emitted exactly once for every turn that
+   * settles cancelled, on the cascade path only; the realtime path keeps its
+   * own contract and never emits this. `turnId` is the id of the turn's
+   * input message, and the `message:sent` carrying that id always precedes
+   * this event.
    */
-  "turn:cancelled": { userMessageId: string };
+  "turn:cancelled": { turnId: string };
   "character:speak": { character: Character; text: string };
   "tts:start": { text: string; characterId?: string };
   "tts:end": { characterId?: string };

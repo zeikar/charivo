@@ -145,7 +145,7 @@ the outcome of a tool handler that had already started: that handler's
 `tool:result`/`tool:error` still fires, because it reports work that genuinely
 happened, so `turn:cancelled` is not an event barrier. Projections still stop,
 and no new tool work or request starts.
-`turn:cancelled` (`{ userMessageId }`) fires exactly once for it. Supersession
+`turn:cancelled` (`{ turnId }`) fires exactly once for it. Supersession
 by a newer `userSay(text)` is one cause; `interrupt()` (below) is the only
 other one. What the superseded turn leaves behind is its **user message**: it
 is retained no matter which phase the cancellation landed in — ordered ahead

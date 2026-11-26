@@ -5,6 +5,7 @@ import {
   AffectMap,
   Character,
   CharacterBody,
+  ConversationBrain,
   FloorState,
   HistoryRollback,
   Message,
@@ -114,6 +115,7 @@ export class Charivo implements CharacterBody {
   private ttsManager?: TTSManager;
   private sttManager?: STTManager;
   private realtimeManager?: import("./types").RealtimeManager;
+  private brain?: ConversationBrain;
   private character?: Character;
   private isRealtimeMode = false;
   private turnEpoch = 0;
@@ -266,6 +268,33 @@ export class Charivo implements CharacterBody {
     if (this.realtimeManager) {
       this.realtimeManager.setCharacter(character);
     }
+
+    this.brain?.setCharacter(character);
+  }
+
+  /**
+   * Attach the conversation brain. It receives this instance as its body and,
+   * when a character is set, the character. A brain attached before is
+   * detached first.
+   */
+  attachBrain(brain: ConversationBrain): void {
+    this.detachBrain();
+    this.brain = brain;
+    brain.setBody(this);
+    // setBody() may have attached another brain; this one is then detached.
+    if (this.brain === brain && this.character) {
+      brain.setCharacter(this.character);
+    }
+  }
+
+  detachBrain(): void {
+    const brain = this.brain;
+    this.brain = undefined;
+    brain?.setBody(null);
+  }
+
+  getBrain(): ConversationBrain | undefined {
+    return this.brain;
   }
 
   /**
@@ -402,7 +431,7 @@ export class Charivo implements CharacterBody {
         superseded.abortController.abort();
 
         this.eventBus.emit("turn:cancelled", {
-          userMessageId: superseded.userMessageId,
+          turnId: superseded.userMessageId,
         });
       }
 
@@ -751,7 +780,7 @@ export class Charivo implements CharacterBody {
       interrupted.abortController.abort();
 
       this.eventBus.emit("turn:cancelled", {
-        userMessageId: interrupted.userMessageId,
+        turnId: interrupted.userMessageId,
       });
     }
 
@@ -938,6 +967,21 @@ export class Charivo implements CharacterBody {
       recordError(new CharivoDisposeError(message, { cause: error }), message);
     };
 
+    // The brain first: it cancels its live turn, which settles the floor's
+    // performance before the floor is torn down below.
+    if (this.brain) {
+      try {
+        await this.brain.dispose?.();
+      } catch (error) {
+        recordError(error, "Failed to dispose brain during dispose");
+      }
+      try {
+        this.detachBrain();
+      } catch (error) {
+        recordError(error, "Failed to detach brain during dispose");
+      }
+    }
+
     // The floor's performance and the speech it left unsettled go first (P9).
     for (const failure of await this.floor.dispose(this.ttsManager)) {
       recordStopFailure(failure);
@@ -1033,6 +1077,7 @@ export interface CharivoOptions {
   realtime?: RealtimeManager | null;
   renderer?: RenderManager | null;
   character?: Character | null;
+  brain?: ConversationBrain | null;
 }
 
 /**
@@ -1068,6 +1113,10 @@ export function createCharivo(options: CharivoOptions = {}): Charivo {
 
   if (options.realtime) {
     charivo.attachRealtime(options.realtime);
+  }
+
+  if (options.brain) {
+    charivo.attachBrain(options.brain);
   }
 
   if (options.character) {

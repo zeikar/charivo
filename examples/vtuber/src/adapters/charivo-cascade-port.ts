@@ -50,8 +50,8 @@ export function createCharivoCascadePort(charivo: Charivo): CharivoCascadePort {
   const onSpeak = ({ text }: { text: string }) => {
     if (latest) latest.reply = text;
   };
-  const onCancelled = ({ userMessageId }: { userMessageId: string }) => {
-    const turn = turns.get(userMessageId);
+  const onCancelled = ({ turnId }: { turnId: string }) => {
+    const turn = turns.get(turnId);
     if (turn) turn.cancelled = true;
   };
   // Charivo reports a TTS failure as an event and still resolves userSay().

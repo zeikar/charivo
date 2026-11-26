@@ -140,9 +140,7 @@ function setup(
     character: applyShowProtocol(CHARACTER),
   });
   const cancelledIds: string[] = [];
-  charivo.on("turn:cancelled", ({ userMessageId }) =>
-    cancelledIds.push(userMessageId),
-  );
+  charivo.on("turn:cancelled", ({ turnId }) => cancelledIds.push(turnId));
   const port = createCharivoCascadePort(charivo);
   return { llm, tts, charivo, port, cancelledIds };
 }
@@ -210,7 +208,7 @@ describe("createCharivoCascadePort", () => {
     const speaking = port.speak("[DIRECTOR] Say hello.");
     await vi.advanceTimersByTimeAsync(500);
 
-    charivo.emit("turn:cancelled", { userMessageId: "someone-else" });
+    charivo.emit("turn:cancelled", { turnId: "someone-else" });
     await vi.advanceTimersByTimeAsync(500);
 
     await expect(speaking).resolves.toEqual({
