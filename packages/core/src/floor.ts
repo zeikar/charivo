@@ -1,4 +1,5 @@
 import { CharivoError, CharivoStateError, toCharivoError } from "./errors";
+import { createSentenceSegmenter } from "./sentence-segmenter";
 import type {
   Character,
   CharivoEventBus,
@@ -27,7 +28,19 @@ export interface FloorHost {
 interface PerformanceRecord {
   id: string;
   origin: string;
+  /** The line; for a stream, everything read from the iterator so far (S4). */
   text: string;
+  /**
+   * A stream's: the end of the last segment whose speech (its render, when
+   * unvoiced) finished, so `heardText` is `text` up to it (S4). Unset for a
+   * string.
+   */
+  heardEnd?: number;
+  /**
+   * A stream's, while its loop runs: abandons the pending read and closes the
+   * iterator unless it ended by itself (S3). Called once, when it settles.
+   */
+  leave?: () => void;
   /**
    * The manager attached when the floor was taken. It speaks the whole
    * performance even if another is attached meanwhile (P2).
@@ -77,9 +90,38 @@ function voiceOptions(
     : undefined;
 }
 
-/** P6: `heardText: ""` while playback demonstrably has not begun. */
-function heardIfSilent(record: PerformanceRecord): { heardText?: "" } {
+/**
+ * `heardText` of a performance that did not complete. A string's is `""`
+ * while playback demonstrably has not begun, and omitted after (P6); a
+ * stream's runs to the end of its last finished segment (S4).
+ */
+function heardSoFar(record: PerformanceRecord): { heardText?: string } {
+  if (record.heardEnd !== undefined) {
+    return { heardText: record.text.slice(0, record.heardEnd) };
+  }
   return record.mayBeHeard ? {} : { heardText: "" };
+}
+
+/**
+ * Calls the iterator's `return()` when present, without awaiting it and after
+ * the floor change that left the stream, so it neither delays `done` nor runs
+ * inside the call that cancelled. A failure only warns (S3).
+ */
+function closeIterator(iterator: AsyncIterator<string>): void {
+  Promise.resolve()
+    .then(() => iterator.return?.())
+    .catch((error: unknown) => {
+      console.warn("Failed to close the text stream:", error);
+    });
+}
+
+/** What a stream's read resolves to once the stream was left. */
+const LEFT = Symbol("left");
+
+/** A line's failed step, for its run to end the performance with. */
+interface StepFailure {
+  failedAt: "render" | "tts";
+  error: CharivoError;
 }
 
 /** One `stop()` on a TTS manager. A manager never has two in progress (P7). */
@@ -131,12 +173,7 @@ export class Floor {
   perform(request: PerformRequest): PerformanceHandle {
     const { text } = request;
 
-    if (typeof text !== "string") {
-      if (isAsyncIterable(text)) {
-        throw new CharivoStateError(
-          "perform() does not take a text stream yet",
-        );
-      }
+    if (typeof text !== "string" && !isAsyncIterable(text)) {
       throw new CharivoStateError(
         "perform() takes a string or an async iterable of strings as text",
       );
@@ -162,7 +199,7 @@ export class Floor {
     const record: PerformanceRecord = {
       id: `performance-${Date.now()}-${this.performanceSeq}`,
       origin: request.origin ?? "app",
-      text,
+      ...(typeof text === "string" ? { text } : { text: "", heardEnd: 0 }),
       ttsManager: this.host.getTTSManager(),
       startDelivered: false,
       speaking: false,
@@ -189,12 +226,14 @@ export class Floor {
         performanceId: record.id,
         origin: record.origin,
         voiced: record.ttsManager !== undefined,
-        text,
+        ...(typeof text === "string" ? { text } : {}),
       });
       // The run begins only once its start has reached every listener and it
       // still holds the floor, so a start listener can cancel it first (P10).
       if (this.holder === record) {
-        void this.runString(record);
+        void (typeof text === "string"
+          ? this.runString(record)
+          : this.runStream(record, text));
       }
     });
     // The stop comes after the exchange is produced, so a perform() reentering
@@ -290,20 +329,145 @@ export class Floor {
   }
 
   private async runString(record: PerformanceRecord): Promise<void> {
-    const { text } = record;
-
     // P3: the render step, or its place, never begins inside perform().
     await Promise.resolve();
     if (this.holder !== record) {
       return;
     }
 
+    await this.present(record, record.id, record.text, () =>
+      this.finish(record, {
+        status: "completed",
+        text: record.text,
+        heardText: record.text,
+      }),
+    );
+  }
+
+  /**
+   * One loop (S2): read a chunk, then present each segment it completed
+   * before the next read, so no text queues up behind the voice. Leaving the
+   * floor abandons the read in progress and closes the iterator (S3).
+   */
+  private async runStream(
+    record: PerformanceRecord,
+    stream: AsyncIterable<string>,
+  ): Promise<void> {
+    // Nothing of the caller's iterable runs inside perform().
+    await Promise.resolve();
+    if (this.holder !== record) {
+      return;
+    }
+
+    let iterator: AsyncIterator<string>;
+    try {
+      iterator = stream[Symbol.asyncIterator]();
+    } catch (error) {
+      this.failStream(record, error);
+      return;
+    }
+    let open = true;
+    let abandonRead: (() => void) | undefined;
+    record.leave = () => {
+      abandonRead?.();
+      if (open) {
+        closeIterator(iterator);
+      }
+    };
+
+    const segmenter = createSentenceSegmenter();
+    let index = 0;
+    for (;;) {
+      let step: IteratorResult<string> | typeof LEFT;
+      try {
+        step = await new Promise<IteratorResult<string> | typeof LEFT>(
+          (resolve, reject) => {
+            // Whatever an abandoned read later yields or rejects with settles
+            // this promise no more (S3).
+            abandonRead = () => resolve(LEFT);
+            new Promise<IteratorResult<string>>((resolveRead) =>
+              resolveRead(iterator.next()),
+            ).then(resolve, reject);
+          },
+        );
+      } catch (error) {
+        open = false;
+        this.failStream(record, error);
+        return;
+      }
+      abandonRead = undefined;
+      // A read can settle and the performance still lose the floor before
+      // this continuation runs (P4).
+      if (step === LEFT || this.holder !== record) {
+        return;
+      }
+
+      let segments;
+      if (step.done) {
+        open = false;
+        segments = segmenter.flush();
+      } else {
+        record.text += step.value;
+        segments = segmenter.push(step.value);
+      }
+
+      for (const segment of segments) {
+        this.produce("performance:segment", {
+          performanceId: record.id,
+          origin: record.origin,
+          index,
+          text: segment.text,
+        });
+        this.deliver();
+        if (this.holder !== record) {
+          return;
+        }
+        // A failure settles the performance, which leaves the stream: the
+        // segments behind it are dropped and the iterator is closed (S5).
+        await this.present(
+          record,
+          `${record.id}:${index}`,
+          segment.text,
+          () => {
+            record.heardEnd = segment.end;
+          },
+        );
+        if (this.holder !== record) {
+          return;
+        }
+        index += 1;
+      }
+
+      if (step.done) {
+        this.finish(record, {
+          status: "completed",
+          text: record.text,
+          heardText: record.text,
+        });
+        return;
+      }
+    }
+  }
+
+  /**
+   * Renders `content` as message `messageId`, resolves `started`, and speaks
+   * it when voiced (P3), rechecking the floor after each step (P4). Its
+   * outcome is applied in the tick the last step settles, so a cancel that
+   * comes after never finds a presented line unheard: `presented` runs when
+   * the line was presented, and a failed step ends the performance `failed`.
+   */
+  private async present(
+    record: PerformanceRecord,
+    messageId: string,
+    content: string,
+    presented: () => void,
+  ): Promise<void> {
     const renderManager = this.host.getRenderManager();
     if (renderManager) {
       const character = this.host.getCharacter();
       const message: Message = {
-        id: record.id,
-        content: text,
+        id: messageId,
+        content,
         timestamp: new Date(),
         characterId: character?.id,
         type: "character",
@@ -312,10 +476,7 @@ export class Floor {
       try {
         await renderManager.render(message, character);
       } catch (error) {
-        this.finish(record, {
-          status: "failed",
-          text,
-          heardText: "",
+        this.fail(record, {
           failedAt: "render",
           error: toCharivoError("state", error, "Failed to render the line"),
         });
@@ -344,10 +505,7 @@ export class Floor {
       // the old voice may still be audible (P5), or awaits the stop
       // `dispose()` has yet to issue (P9).
       if (this.unsettled.size > 0) {
-        this.finish(record, {
-          status: "failed",
-          text,
-          heardText: "",
+        this.fail(record, {
           failedAt: "tts",
           error:
             [...this.unsettled.values()].find(
@@ -360,26 +518,49 @@ export class Floor {
 
       record.speaking = true;
       this.watchAudio(record, ttsManager);
+      let speechFailure: CharivoError | undefined;
       try {
-        await ttsManager.speak(text, voiceOptions(this.host.getCharacter()));
+        await ttsManager.speak(content, voiceOptions(this.host.getCharacter()));
       } catch (error) {
-        record.speaking = false;
-        this.finish(record, {
-          status: "failed",
-          text,
-          ...heardIfSilent(record),
-          failedAt: "tts",
-          error: toCharivoError("provider", error, "Failed to speak the line"),
-        });
-        return;
+        speechFailure = toCharivoError(
+          "provider",
+          error,
+          "Failed to speak the line",
+        );
       }
       record.speaking = false;
+      // A stream speaks again on the next segment, with a watch of its own.
+      record.unwatchAudio?.();
+      record.unwatchAudio = undefined;
+      if (speechFailure) {
+        this.fail(record, { failedAt: "tts", error: speechFailure });
+        return;
+      }
       if (this.holder !== record) {
         return;
       }
     }
+    presented();
+  }
 
-    this.finish(record, { status: "completed", text, heardText: text });
+  /** A step failed: the holder ends `failed` at that step. */
+  private fail(record: PerformanceRecord, failure: StepFailure): void {
+    this.finish(record, {
+      status: "failed",
+      text: record.text,
+      ...heardSoFar(record),
+      ...failure,
+    });
+  }
+
+  /** The stream's iterator failed: `failed` with no `failedAt` (S5). */
+  private failStream(record: PerformanceRecord, error: unknown): void {
+    this.finish(record, {
+      status: "failed",
+      text: record.text,
+      ...heardSoFar(record),
+      error: toCharivoError("provider", error, "The text stream failed"),
+    });
   }
 
   /** Waits until no stop is in progress on any manager. */
@@ -438,7 +619,7 @@ export class Floor {
     this.settle(record, {
       status: "cancelled",
       text: record.text,
-      ...heardIfSilent(record),
+      ...heardSoFar(record),
     });
   }
 
@@ -533,6 +714,9 @@ export class Floor {
   private settle(record: PerformanceRecord, result: PerformanceResult): void {
     record.unwatchAudio?.();
     record.unwatchAudio = undefined;
+    const leave = record.leave;
+    record.leave = undefined;
+    leave?.();
     record.result = result;
     record.resolveStarted(false);
     record.resolveDone(result);

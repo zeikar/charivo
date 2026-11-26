@@ -1096,6 +1096,7 @@ export interface EventMap {
   /**
    * One segment of a streamed performance, announced as it is handed to
    * speech and rendered as its own message (id `<performanceId>:<index>`).
+   * `index` counts the performance's segments from 0.
    */
   "performance:segment": {
     performanceId: string;

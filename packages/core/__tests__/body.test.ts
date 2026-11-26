@@ -1522,3 +1522,776 @@ describe("Charivo.dispose() and the floor (P9)", () => {
     expect(tts.stop).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * An async iterable the test feeds chunk by chunk. Each `next()` stays pending
+ * until the test feeds a chunk, ends the stream or rejects the read; feeding
+ * with no read pending throws, so a test sees when the floor is not reading.
+ */
+class FedStream implements AsyncIterable<string> {
+  nextCalls = 0;
+  returnCalls = 0;
+  private read?: Deferred<IteratorResult<string>>;
+  private returnFailure?: unknown;
+
+  [Symbol.asyncIterator](): AsyncIterator<string> {
+    return {
+      next: () => {
+        this.nextCalls += 1;
+        this.read = deferred<IteratorResult<string>>();
+        return this.read.promise;
+      },
+      return: () => {
+        this.returnCalls += 1;
+        return this.returnFailure === undefined
+          ? Promise.resolve({ done: true, value: undefined })
+          : Promise.reject(this.returnFailure);
+      },
+    };
+  }
+
+  push(chunk: string): void {
+    this.takeRead().resolve({ done: false, value: chunk });
+  }
+
+  end(): void {
+    this.takeRead().resolve({ done: true, value: undefined });
+  }
+
+  fail(error: unknown): void {
+    this.takeRead().reject(error);
+  }
+
+  failReturn(error: unknown): void {
+    this.returnFailure = error;
+  }
+
+  private takeRead(): Deferred<IteratorResult<string>> {
+    const read = this.read;
+    if (!read) {
+      throw new Error("no next() call is pending");
+    }
+    this.read = undefined;
+    return read;
+  }
+}
+
+/** Collects unhandled rejections raised while it is installed. */
+function watchUnhandledRejections() {
+  const unhandled = vi.fn();
+  process.on("unhandledRejection", unhandled);
+  return {
+    unhandled,
+    stop: () => process.off("unhandledRejection", unhandled),
+  };
+}
+
+describe("Charivo.perform() for a text stream", () => {
+  it("produces performance:start without text before reading any chunk", async () => {
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    const events = recordFloorEvents(charivo);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+
+    expect(stream.nextCalls).toBe(0);
+    expect(events.map(({ event }) => event)).toEqual([
+      "floor:changed",
+      "performance:start",
+    ]);
+    expect(events[1]!.data).toEqual({
+      performanceId: handle.id,
+      origin: "app",
+      voiced: true,
+    });
+    expect(charivo.getFloor()).toEqual({
+      state: "speaking",
+      performanceId: handle.id,
+      origin: "app",
+    });
+    await flush();
+    expect(stream.nextCalls).toBe(1);
+  });
+
+  it("announces, renders and speaks each segment in order with a rising index, then completes", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    charivo.attachTTS(tts);
+    charivo.setCharacter(character);
+    const events = recordFloorEvents(charivo);
+    const steps: string[] = [];
+    charivo.on("performance:segment", ({ index, text }) => {
+      steps.push(`segment ${index} ${text}`);
+    });
+    renderer.render.mockImplementation((message) => {
+      steps.push(`render ${message.id} ${message.content}`);
+      return Promise.resolve();
+    });
+    tts.speak.mockImplementation((text) => {
+      steps.push(`speak ${text}`);
+      const call = deferred<void>();
+      tts.speaks.push(call);
+      return call.promise;
+    });
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream, origin: "cascade" });
+    await flush();
+    stream.push("Hello there. How");
+    await flush();
+    tts.speaks[0]!.resolve();
+    await flush();
+    stream.push(" are you? Bye");
+    await flush();
+    tts.speaks[1]!.resolve();
+    await flush();
+    stream.end();
+    await flush();
+    tts.speaks[2]!.resolve();
+    const result = await handle.done;
+
+    const id = handle.id;
+    expect(steps).toEqual([
+      "segment 0 Hello there.",
+      `render ${id}:0 Hello there.`,
+      "speak Hello there.",
+      "segment 1 How are you?",
+      `render ${id}:1 How are you?`,
+      "speak How are you?",
+      "segment 2 Bye",
+      `render ${id}:2 Bye`,
+      "speak Bye",
+    ]);
+    expect(renderer.render.mock.calls[0]![0]).toEqual({
+      id: `${id}:0`,
+      content: "Hello there.",
+      timestamp: expect.any(Date),
+      characterId: "hiyori",
+      type: "character",
+    });
+    expect(renderer.render.mock.calls[0]![1]).toBe(character);
+    expect(tts.speak).toHaveBeenCalledWith("Hello there.", {
+      rate: 1.1,
+      pitch: 0.9,
+      volume: 0.8,
+      voice: "alloy",
+    });
+    expect(
+      events.find(({ event }) => event === "performance:segment")!.data,
+    ).toEqual({
+      performanceId: id,
+      origin: "cascade",
+      index: 0,
+      text: "Hello there.",
+    });
+    expect(result).toEqual({
+      status: "completed",
+      text: "Hello there. How are you? Bye",
+      heardText: "Hello there. How are you? Bye",
+    });
+    await expect(handle.started).resolves.toBe(true);
+    expect(events.map(({ event }) => event)).toEqual([
+      "floor:changed",
+      "performance:start",
+      "performance:segment",
+      "performance:segment",
+      "performance:segment",
+      "performance:end",
+      "floor:changed",
+    ]);
+    expect(events[5]!.data).toEqual({
+      performanceId: id,
+      origin: "cascade",
+      status: "completed",
+      heardText: "Hello there. How are you? Bye",
+    });
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+    expect(stream.returnCalls).toBe(0);
+  });
+
+  it("reads no chunk while a segment is speaking", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const stream = new FedStream();
+
+    charivo.perform({ text: stream });
+    await flush();
+    stream.push("One. Two. Three");
+    await flush();
+
+    expect(tts.speak).toHaveBeenCalledTimes(1);
+    expect(stream.nextCalls).toBe(1);
+    tts.speaks[0]!.resolve();
+    await flush();
+    expect(tts.speak).toHaveBeenCalledTimes(2);
+    expect(stream.nextCalls).toBe(1);
+    tts.speaks[1]!.resolve();
+    await flush();
+    expect(stream.nextCalls).toBe(2);
+  });
+
+  it("resolves started once the first segment has rendered", async () => {
+    const charivo = new Charivo();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    const stream = new FedStream();
+    const held = renderer.holdNext();
+    let started: boolean | undefined;
+
+    const handle = charivo.perform({ text: stream });
+    void handle.started.then((value) => {
+      started = value;
+    });
+    await flush();
+    stream.push("Hello there. ");
+    await flush();
+
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    expect(started).toBeUndefined();
+    held.resolve();
+    await flush();
+    expect(started).toBe(true);
+  });
+
+  it("completes an unvoiced stream after rendering each segment", async () => {
+    const charivo = new Charivo();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    const events = recordFloorEvents(charivo);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("One. Two.");
+    await flush();
+    stream.end();
+    const result = await handle.done;
+
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+    expect(events[1]!.data).toEqual(expect.objectContaining({ voiced: false }));
+    expect(result).toEqual({
+      status: "completed",
+      text: "One. Two.",
+      heardText: "One. Two.",
+    });
+  });
+
+  it.each([
+    ["the empty stream", []],
+    ["a stream with no speakable segment", ["... ", "\n"]],
+  ])(
+    "completes %s without a segment and with started false",
+    async (_label, chunks) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      const renderer = new RecordingRenderManager();
+      charivo.attachRenderer(renderer);
+      charivo.attachTTS(tts);
+      const events = recordFloorEvents(charivo);
+      const stream = new FedStream();
+
+      const handle = charivo.perform({ text: stream });
+      for (const chunk of chunks) {
+        await flush();
+        stream.push(chunk);
+      }
+      await flush();
+      stream.end();
+      const result = await handle.done;
+
+      const text = chunks.join("");
+      expect(result).toEqual({ status: "completed", text, heardText: text });
+      await expect(handle.started).resolves.toBe(false);
+      expect(renderer.render).not.toHaveBeenCalled();
+      expect(tts.speak).not.toHaveBeenCalled();
+      expect(events.map(({ event }) => event)).toEqual([
+        "floor:changed",
+        "performance:start",
+        "performance:end",
+        "floor:changed",
+      ]);
+    },
+  );
+});
+
+describe("leaving a text stream (S3, S4)", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let rejections: ReturnType<typeof watchUnhandledRejections> | undefined;
+  afterEach(() => {
+    warnSpy?.mockRestore();
+    warnSpy = undefined;
+    rejections?.stop();
+    rejections = undefined;
+  });
+
+  const exits: Array<
+    [string, (charivo: Charivo, handle: PerformanceHandle) => void]
+  > = [
+    ["cancel()", (_charivo, handle) => void handle.cancel()],
+    ["a takeover", (charivo) => void charivo.perform({ text: "Next." })],
+    ["interrupt()", (charivo) => void charivo.interrupt()],
+  ];
+
+  it.each(exits)(
+    "settles done on %s during a pending read, frees the floor and calls return() once",
+    async (_label, exit) => {
+      const charivo = new Charivo();
+      charivo.attachTTS(new ReportingTTSManager());
+      const stream = new FedStream();
+
+      const handle = charivo.perform({ text: stream });
+      await flush();
+      expect(stream.nextCalls).toBe(1);
+      exit(charivo, handle);
+
+      expect(handle.result).toEqual({
+        status: "cancelled",
+        text: "",
+        heardText: "",
+      });
+      expect(charivo.getFloor()).not.toEqual(
+        expect.objectContaining({ performanceId: handle.id }),
+      );
+      await expect(handle.done).resolves.toBe(handle.result);
+      await flush();
+      expect(stream.returnCalls).toBe(1);
+      expect(stream.nextCalls).toBe(1);
+    },
+  );
+
+  it.each([
+    ["a chunk", (stream: FedStream) => stream.push("Late line. More. ")],
+    ["a rejection", (stream: FedStream) => stream.fail(new Error("late"))],
+  ])(
+    "discards %s the abandoned read delivers afterwards",
+    async (_label, deliver) => {
+      rejections = watchUnhandledRejections();
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      const renderer = new RecordingRenderManager();
+      charivo.attachRenderer(renderer);
+      charivo.attachTTS(tts);
+      const events = recordFloorEvents(charivo);
+      const stream = new FedStream();
+
+      const handle = charivo.perform({ text: stream });
+      await flush();
+      void handle.cancel();
+      deliver(stream);
+      await flush();
+
+      expect(events.map(({ event }) => event)).not.toContain(
+        "performance:segment",
+      );
+      expect(renderer.render).not.toHaveBeenCalled();
+      expect(tts.speak).not.toHaveBeenCalled();
+      expect(handle.result).toEqual(
+        expect.objectContaining({ status: "cancelled", text: "" }),
+      );
+      expect(rejections.unhandled).not.toHaveBeenCalled();
+    },
+  );
+
+  it("leaves a segment cancelled mid-speech out of heardText", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("First. Second. ");
+    await flush();
+    tts.speaks[0]!.resolve();
+    await flush();
+    expect(tts.speak).toHaveBeenCalledTimes(2);
+    const cancelling = handle.cancel();
+
+    expect(handle.result).toEqual({
+      status: "cancelled",
+      text: "First. Second. ",
+      heardText: "First.",
+    });
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    tts.stops[0]!.resolve();
+    await cancelling;
+    tts.speaks[1]!.resolve();
+    await flush();
+    expect(stream.returnCalls).toBe(1);
+    expect(stream.nextCalls).toBe(1);
+    expect(handle.result!.heardText).toBe("First.");
+  });
+
+  it("fails with the typed error and no failedAt when the iterator rejects, without calling return()", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const events = recordFloorEvents(charivo);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("Hello. ");
+    await flush();
+    tts.speaks[0]!.resolve();
+    await flush();
+    stream.fail(new Error("stream broke"));
+    const result = await handle.done;
+    await flush();
+
+    expect(result).toEqual({
+      status: "failed",
+      text: "Hello. ",
+      heardText: "Hello.",
+      error: expect.any(CharivoError),
+    });
+    expect(result.error!.message).toContain("stream broke");
+    expect(events.at(-2)!.data).toEqual({
+      performanceId: handle.id,
+      origin: "app",
+      status: "failed",
+      heardText: "Hello.",
+      error: result.error,
+    });
+    expect(stream.returnCalls).toBe(0);
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+  });
+
+  it("fails at tts on the second segment's speak() rejection, drops the rest and calls return() once", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const events = recordFloorEvents(charivo);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("One. Two. Three. ");
+    await flush();
+    tts.speaks[0]!.resolve();
+    await flush();
+    tts.speaks[1]!.reject(new Error("quota exceeded"));
+    const result = await handle.done;
+    await flush();
+
+    expect(result).toEqual({
+      status: "failed",
+      text: "One. Two. Three. ",
+      heardText: "One.",
+      failedAt: "tts",
+      error: expect.any(CharivoProviderError),
+    });
+    expect(tts.speak).toHaveBeenCalledTimes(2);
+    expect(
+      events.filter(({ event }) => event === "performance:segment"),
+    ).toHaveLength(2);
+    expect(stream.returnCalls).toBe(1);
+    expect(stream.nextCalls).toBe(1);
+  });
+
+  it("fails at render on a segment's render failure, speaks nothing and calls return() once", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    charivo.attachTTS(tts);
+    const stream = new FedStream();
+    renderer.failNext(new Error("canvas lost"));
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("One. Two. ");
+    const result = await handle.done;
+    await flush();
+
+    expect(result).toEqual({
+      status: "failed",
+      text: "One. Two. ",
+      heardText: "",
+      failedAt: "render",
+      error: expect.any(CharivoError),
+    });
+    await expect(handle.started).resolves.toBe(false);
+    expect(renderer.render).toHaveBeenCalledTimes(1);
+    expect(tts.speak).not.toHaveBeenCalled();
+    expect(stream.returnCalls).toBe(1);
+  });
+
+  it("reports a rejecting return() with console.warn and leaves done as it was", async () => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    rejections = watchUnhandledRejections();
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const stream = new FedStream();
+    const closeFailure = new Error("close failed");
+    stream.failReturn(closeFailure);
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    stream.push("One. Two. ");
+    await flush();
+    tts.speaks[0]!.reject(new Error("quota exceeded"));
+    const result = await handle.done;
+    await flush();
+
+    expect(stream.returnCalls).toBe(1);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]).toContain(closeFailure);
+    expect(handle.result).toBe(result);
+    expect(result).toEqual(
+      expect.objectContaining({ status: "failed", failedAt: "tts" }),
+    );
+    expect(result.error!.message).toContain("quota exceeded");
+    expect(rejections.unhandled).not.toHaveBeenCalled();
+  });
+});
+
+/** Runs `run` after `turns` further microtask turns. */
+function afterMicrotasks(turns: number, run: () => void): void {
+  if (turns === 0) {
+    run();
+  } else {
+    queueMicrotask(() => afterMicrotasks(turns - 1, run));
+  }
+}
+
+describe("a cancel just after speech settles (P2, P4, S4)", () => {
+  it.each([1, 2, 3, 4])(
+    "keeps a spoken segment heard and emits nothing after the end, cancelled %i microtasks after its speak() resolved",
+    async (turns) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+      const events = recordFloorEvents(charivo);
+      const stream = new FedStream();
+
+      const handle = charivo.perform({ text: stream });
+      await flush();
+      stream.push("One. Two. ");
+      await flush();
+      tts.speaks[0]!.resolve();
+      let readsAtCancel = 0;
+      afterMicrotasks(turns, () => {
+        readsAtCancel = stream.nextCalls;
+        void handle.cancel();
+      });
+      await flush();
+
+      expect(handle.result).toEqual({
+        status: "cancelled",
+        text: "One. Two. ",
+        heardText: "One.",
+      });
+      const kinds = events.map(({ event }) => event);
+      expect(kinds.slice(kinds.indexOf("performance:end"))).not.toContain(
+        "performance:segment",
+      );
+      expect(stream.nextCalls).toBe(readsAtCancel);
+    },
+  );
+
+  it.each([1, 2, 3, 4])(
+    "reads no further chunk after a cancel %i microtasks after the last segment's speak() resolved",
+    async (turns) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+      const stream = new FedStream();
+
+      const handle = charivo.perform({ text: stream });
+      await flush();
+      stream.push("One. ");
+      await flush();
+      tts.speaks[0]!.resolve();
+      let readsAtCancel = 0;
+      afterMicrotasks(turns, () => {
+        readsAtCancel = stream.nextCalls;
+        void handle.cancel();
+      });
+      await flush();
+
+      expect(handle.result).toEqual({
+        status: "cancelled",
+        text: "One. ",
+        heardText: "One.",
+      });
+      expect(stream.nextCalls).toBe(readsAtCancel);
+      expect(stream.returnCalls).toBe(1);
+    },
+  );
+
+  it.each([1, 2, 3])(
+    "completes a string whose speak() resolved %i microtasks before the cancel",
+    async (turns) => {
+      const charivo = new Charivo();
+      const tts = new ReportingTTSManager();
+      charivo.attachTTS(tts);
+
+      const handle = charivo.perform({ text: "Hello there." });
+      await flush();
+      tts.speaks[0]!.resolve();
+      let cancelling: Promise<void> | undefined;
+      afterMicrotasks(turns, () => {
+        cancelling = handle.cancel();
+      });
+      await flush();
+
+      expect(handle.result).toEqual({
+        status: "completed",
+        text: "Hello there.",
+        heardText: "Hello there.",
+      });
+      await expect(cancelling).resolves.toBeUndefined();
+      expect(tts.stop).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("a text stream's edges (S3, S5, P10)", () => {
+  let warnSpy: ReturnType<typeof vi.spyOn> | undefined;
+  let rejections: ReturnType<typeof watchUnhandledRejections> | undefined;
+  afterEach(() => {
+    warnSpy?.mockRestore();
+    warnSpy = undefined;
+    rejections?.stop();
+    rejections = undefined;
+  });
+
+  it.each([
+    [
+      "[Symbol.asyncIterator]()",
+      (_returned: () => void): AsyncIterable<string> => ({
+        [Symbol.asyncIterator]() {
+          throw new Error("no iterator");
+        },
+      }),
+    ],
+    [
+      "next()",
+      (returned: () => void): AsyncIterable<string> => ({
+        [Symbol.asyncIterator]: () => ({
+          next() {
+            throw new Error("no iterator");
+          },
+          return() {
+            returned();
+            return Promise.resolve({ done: true, value: undefined });
+          },
+        }),
+      }),
+    ],
+  ])(
+    "fails with no failedAt when %s throws synchronously",
+    async (_label, makeStream) => {
+      const returned = vi.fn();
+      const charivo = new Charivo();
+      charivo.attachTTS(new ReportingTTSManager());
+
+      const handle = charivo.perform({ text: makeStream(returned) });
+      const result = await handle.done;
+      await flush();
+
+      expect(result).toEqual({
+        status: "failed",
+        text: "",
+        heardText: "",
+        error: expect.any(CharivoError),
+      });
+      expect(result.error!.message).toContain("no iterator");
+      expect(returned).not.toHaveBeenCalled();
+      expect(charivo.getFloor()).toEqual({ state: "idle" });
+    },
+  );
+
+  it("warns about a rejecting return() on cancel and leaves done cancelled", async () => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    rejections = watchUnhandledRejections();
+    const charivo = new Charivo();
+    charivo.attachTTS(new ReportingTTSManager());
+    const stream = new FedStream();
+    const closeFailure = new Error("close failed");
+    stream.failReturn(closeFailure);
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    await handle.cancel();
+    const result = handle.result;
+    await flush();
+
+    expect(stream.returnCalls).toBe(1);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]).toContain(closeFailure);
+    expect(handle.result).toBe(result);
+    expect(result).toEqual({ status: "cancelled", text: "", heardText: "" });
+    await expect(handle.done).resolves.toBe(result);
+    expect(rejections.unhandled).not.toHaveBeenCalled();
+  });
+
+  it("discards a chunk the abandoned read delivers after return() was called", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    charivo.attachTTS(tts);
+    const events = recordFloorEvents(charivo);
+    const stream = new FedStream();
+
+    const handle = charivo.perform({ text: stream });
+    await flush();
+    void handle.cancel();
+    await flush();
+    expect(stream.returnCalls).toBe(1);
+    stream.push("Late line. More. ");
+    await flush();
+
+    expect(events.map(({ event }) => event)).not.toContain(
+      "performance:segment",
+    );
+    expect(renderer.render).not.toHaveBeenCalled();
+    expect(tts.speak).not.toHaveBeenCalled();
+    expect(stream.nextCalls).toBe(1);
+    expect(handle.result).toEqual({
+      status: "cancelled",
+      text: "",
+      heardText: "",
+    });
+  });
+
+  it("renders and speaks nothing of a segment its own performance:segment listener cancels", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    const renderer = new RecordingRenderManager();
+    charivo.attachRenderer(renderer);
+    charivo.attachTTS(tts);
+    const stream = new FedStream();
+    const handle = charivo.perform({ text: stream });
+    charivo.on("performance:segment", () => {
+      void handle.cancel();
+    });
+    const events = recordFloorEvents(charivo);
+    await flush();
+    stream.push("One. Two. ");
+    await flush();
+
+    expect(eventIds(events)).toEqual([
+      `performance:segment:${handle.id}`,
+      `performance:end:${handle.id}`,
+      "floor:changed:idle",
+    ]);
+    expect(renderer.render).not.toHaveBeenCalled();
+    expect(tts.speak).not.toHaveBeenCalled();
+    expect(tts.stop).not.toHaveBeenCalled();
+    expect(stream.returnCalls).toBe(1);
+    expect(stream.nextCalls).toBe(1);
+    expect(handle.result).toEqual({
+      status: "cancelled",
+      text: "One. Two. ",
+      heardText: "",
+    });
+  });
+});
