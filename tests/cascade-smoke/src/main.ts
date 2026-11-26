@@ -4,7 +4,7 @@ import {
   type Character,
   type Renderer,
 } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 import {
   buildAvatarControlInstructions,
@@ -74,8 +74,8 @@ let lipsyncRmsUpdates = 0;
 let maxRms = 0;
 let lastError: string | null = null;
 let rendererReady = false;
-// Set on tts:start, consumed (and left set) on tts:audio:start; reset() clears
-// it so a turn with no tts:audio:start leaves ttsFirstAudioMs null rather than
+// Set on performance:start, consumed (and left set) on tts:audio:start; reset()
+// clears it so a turn with no tts:audio:start leaves ttsFirstAudioMs null rather than
 // a stale value from the previous turn.
 let ttsStartedAt: number | null = null;
 const avatarEvents: CascadeAvatarEvent[] = [];
@@ -131,13 +131,14 @@ const lipSyncRecordingRenderer: Renderer = {
 const charivo = new Charivo();
 const renderManager = createRenderManager(lipSyncRecordingRenderer);
 charivo.attachRenderer(renderManager);
-charivo.attachLLM(
+const brain = createCascadeBrain(
   createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" }), {
     tools: createAvatarControlTools(AVATAR_CATALOG),
     resultProjectors: [createAvatarResultProjector()],
     toolInstructions: buildAvatarControlInstructions(AVATAR_CATALOG),
   }),
 );
+charivo.attachBrain(brain);
 const ttsManager = createTTSManager(
   createRemoteTTSPlayer({
     apiEndpoint: "/api/tts",
@@ -176,9 +177,9 @@ charivo.on("avatar:gaze", (data) => {
   avatarEvents.push({ type: "gaze", x: data.x, y: data.y });
   record("avatar:gaze", data);
 });
-charivo.on("tts:start", (data) => {
+charivo.on("performance:start", (data) => {
   ttsStartedAt = performance.now();
-  record("tts:start", data);
+  record("performance:start", data);
 });
 charivo.on("tts:audio:start", () => {
   ttsAudioStarted = true;
@@ -191,11 +192,24 @@ charivo.on("tts:audio:end", () => {
   ttsAudioEnded = true;
   record("tts:audio:end", {});
 });
-charivo.on("tts:end", (data) => record("tts:end", data));
-charivo.on("tts:error", (data) => {
-  lastError = data.error.message;
-  record("tts:error", { message: data.error.message });
+charivo.on("performance:end", (data) => {
+  if (data.status === "failed" && data.error) {
+    lastError = data.error.message;
+  }
+  record("performance:end", {
+    status: data.status,
+    message: data.error?.message,
+  });
 });
+
+// Resolves after the reply has finished playing. A failed turn rethrows its
+// typed error so the callers' catch records it like any other failure.
+async function submitUserText(text: string): Promise<void> {
+  const result = await brain.submit({ kind: "user", text }).done;
+  if (result.status === "failed") {
+    throw result.error;
+  }
+}
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -223,7 +237,7 @@ async function runTextTurn(text: string): Promise<void> {
 
     transcript = text;
     status = "responding";
-    await charivo.userSay(text);
+    await submitUserText(text);
     const finishedAt = performance.now();
     timings.turnMs = Math.round(finishedAt - startedAt);
     timings.totalMs = timings.turnMs;
@@ -258,11 +272,11 @@ async function runTurn(recordMs = DEFAULT_RECORD_MS): Promise<void> {
       throw new Error("STT returned an empty transcript");
     }
 
-    // userSay orchestrates the rest: LLM (message:received) then TTS playback
-    // (tts:audio:start → lip-sync RMS updates → tts:audio:end). It resolves
-    // after the synthesized audio finishes playing.
+    // The brain turn orchestrates the rest: LLM (message:received) then TTS
+    // playback (tts:audio:start → lip-sync RMS updates → tts:audio:end). It
+    // resolves after the synthesized audio finishes playing.
     status = "responding";
-    await charivo.userSay(transcript);
+    await submitUserText(transcript);
     const finishedAt = performance.now();
     timings.turnMs = Math.round(finishedAt - transcribedAt);
     timings.totalMs = Math.round(finishedAt - startedAt);
