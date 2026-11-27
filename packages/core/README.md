@@ -8,6 +8,8 @@ It exports:
 - shared domain types such as `Character`, `Message` (`user`, `character`,
   `system`, `direction`, `event`), the typed brain input `BrainInput` with its
   `BrainRespond` / `BrainHistoryPolicy` policies, and realtime session types
+- the body API (`perform`, `react`, `interrupt`, `getFloor`, `setAffectMap`)
+  and the brain port (`ConversationBrain`, `BrainTurn`, `BrainTurnResult`)
 - interface contracts for LLM, render, TTS, STT, and realtime managers
 - the event contracts `CharivoEventBus` and `CharivoEventEmitter`: the render
   manager receives a bus via `setEventBus(...)`, while the TTS/STT/LLM/Realtime
@@ -59,8 +61,12 @@ pnpm add @charivo/core
 
 ```ts
 import { createCharivo } from "@charivo/core";
+import { createCascadeBrain } from "@charivo/llm";
 
 const charivo = createCharivo({
+  brain: createCascadeBrain(llmManager),
+  tts: ttsManager,
+  renderer: renderManager,
   character: {
     id: "hiyori",
     name: "Hiyori",
@@ -71,7 +77,15 @@ const charivo = createCharivo({
 charivo.on("message:received", ({ message }) => {
   console.log(message.content);
 });
+
+const turn = charivo.getBrain()!.submit({ kind: "user", text: "Hello" });
+const result = await turn.done; // { status: "completed", text, heardText }
 ```
+
+`@charivo/core` imports nothing from `@charivo/llm`: the brain is any
+`ConversationBrain` (see [Brain port](#brain-port)), and the cascade brain is
+one implementation. Without a brain, `Charivo` is only a body: `perform()` and
+`react()` still work.
 
 ## `Charivo`
 
@@ -81,7 +95,7 @@ Every option is optional:
 ```ts
 const charivo = createCharivo({
   renderer: renderManager,
-  llm: llmManager,
+  brain: createCascadeBrain(llmManager),
   tts: ttsManager,
   stt: sttManager,
   realtime: realtimeManager,
@@ -97,168 +111,284 @@ It is exactly `new Charivo()` plus the matching `attach*` calls followed by
 up front and keep attaching later, as when swapping a provider at runtime.
 Constructing the class directly still works and is not deprecated.
 
-The `Charivo` instance wires managers together:
+The `Charivo` instance wires managers together and is the character's body:
 
-- `attachRenderer(renderManager)`
-- `attachLLM(llmManager)`
-- `attachTTS(ttsManager)`
-- `attachSTT(sttManager)`
-- `attachRealtime(realtimeManager)`
-- `detachLLM()`
-- `detachRenderer()`
-- `detachTTS()`
-- `detachSTT()`
-- `detachRealtime()`
-- `isRealtimeModeEnabled()`
-- `getRenderManager()`
-- `getLLMManager()`
-- `getTTSManager()`
-- `getSTTManager()`
-- `getRealtimeManager()`
-- `getCurrentCharacter()`
-- `setCharacter(character)`
-- `userSay(text)`
-- `interrupt()`
+- `attachRenderer(renderManager)` / `detachRenderer()` / `getRenderManager()`
+- `attachTTS(ttsManager)` / `detachTTS()` / `getTTSManager()`
+- `attachSTT(sttManager)` / `detachSTT()` / `getSTTManager()`
+- `attachRealtime(realtimeManager)` / `detachRealtime()` /
+  `isRealtimeModeEnabled()` / `getRealtimeManager()`
+- `attachBrain(brain)` / `detachBrain()` / `getBrain()`
+- `getCurrentCharacter()` / `setCharacter(character)`
+- `perform(request)`, `react(request)`, `interrupt()`, `getFloor()` and
+  `setAffectMap(map | null)`: the [body API](#body-api)
 - `dispose()`
-- `clearHistory()`
-- `getHistory()`
-- `on(event, listener)`
-- `off(event, listener)`
-- `emit(event, payload)`
+- `on(event, listener)` / `off(event, listener)` / `emit(event, payload)`
+
+`Charivo` holds no LLM manager: generating a reply is the brain's job, and
+history lives in the brain (`brain.getHistory()`, `brain.clearHistory()`).
 
 `detachRenderer()` disconnects the render manager's event-bus listeners and
 releases any held expression, without destroying the manager, so it remains
 reusable. Calling `attachRenderer(newManager)` automatically disconnects the
 previously-attached manager before wiring the new one.
 
-`userSay(text)` is **latest-wins**: a newer call supersedes the turn still in
-flight, so only the newest turn goes on to speak. It still stops any TTS
-playing from a previous turn before generating a response, so the new turn's
-own audio/expression events can't be undone by the previous turn's speech
-ending. A failure during that stop doesn't abort the turn — it's surfaced via
-`tts:error`, like other non-fatal TTS failures during `userSay(text)`.
+`dispose()` refuses `perform()` and `attachRealtime()` with
+`CharivoStateError` from the call until its teardown is done, and overlapping
+calls share one promise. It first awaits `brain.dispose?.()` and detaches the
+brain, so the brain's live turn is cancelled before the floor is torn down. It
+then cancels the floor's performance and, for each speech whose stop is
+unconfirmed, joins the stop in progress or makes one stop attempt on the
+manager that speech is on, and runs the existing teardown. A stop issued on a
+manager during the teardown by anyone (the brain's cleanup cancelling its turn,
+an `interrupt()`) counts as dispose's attempt for that manager; if it has
+already failed when the teardown reaches the manager, `dispose()` retries it
+once. A failure goes into the first-error report as a `CharivoDisposeError`
+whose `cause` is the original error, and teardown continues. The promise
+settles a few microtasks after the teardown is done, and the instance can be
+reused from then.
 
-The superseded call **resolves**; it never rejects, and once superseded it
-does no further work for that turn and emits no further events for it, beyond
-finishing the bookkeeping of its own entry (see Ordering below) and reporting
-the outcome of a tool handler that had already started: that handler's
-`tool:result`/`tool:error` still fires, because it reports work that genuinely
-happened, so `turn:cancelled` is not an event barrier. Projections still stop,
-and no new tool work or request starts.
-`turn:cancelled` (`{ userMessageId }`) fires exactly once for it. Supersession
-by a newer `userSay(text)` is one cause; `interrupt()` (below) is the only
-other one. What the superseded turn leaves behind is its **user message**: it
-is retained no matter which phase the cancellation landed in — ordered ahead
-of the superseding turn's own message when a newer `userSay(text)` caused the
-cancellation; `interrupt()` has no superseding message to order against, so
-its retained message either enters history immediately (when an LLM manager
-and character are attached) or ahead of whichever `userSay(text)` call flushes
-it next — and from then on it is an ordinary history entry subject to normal
-`maxHistoryTurns` eviction. Input the LLM manager refuses to store — empty
-content, exactly as today — is never stored. The unspoken reply is dropped.
+### Body API
 
-A reply reaches history only at the **presentation boundary**: after its own
-character message has rendered (immediately, when no renderer is attached) and
-before playback would begin. It commits there even with no TTS manager
-attached — the boundary is presentation, not playback. So a turn superseded
-while generating, while emitting `message:received`/`character:speak`, or
-while rendering its reply never commits that reply, while a reply that is
-already speaking when the next turn arrives stays in history in full.
-(Truncating it to what was actually heard needs word-level playback alignment
-Charivo doesn't have; that's a follow-up, not a guarantee.)
+The body is what a character does: show a line, speak it, react with the face.
+It is independent of what decides the line. A brain, a script and a game event
+all drive the same `perform()`.
 
-Where the history writes happen: a live turn writes its own user message at
-the LLM step — the point where it reads the attached manager and character,
-exactly as today — so a turn that completes or fails without ever reaching an
-attached manager and character writes nothing at all. A turn superseded before
-that point has its message written by the **next** `userSay(text)`, in call
-order, ahead of that turn's own message. `attachLLM(...)` and
-`setCharacter(...)` write no history, so `getHistory()` does not change at
-attachment, and `dispose()` discards whatever is still unwritten.
+**The floor.** At most one performance holds the floor, and `getFloor()` says
+who holds playback: `{ state: "idle" }`, `{ state: "speaking", performanceId,
+origin }` or `{ state: "realtime" }` (see [Realtime](#realtime)).
+`floor:changed { floor }` fires whenever that value changes.
 
-Ordering:
+**`perform({ text, origin?, whenBusy?, affect? })`** takes the floor and returns
+a `PerformanceHandle` (named so because `Performance` is a DOM global):
+`{ id, started, done, result, cancel() }`.
 
-- History order is call order, at any reentrancy depth — including a turn
-  started synchronously from inside a `message:sent` listener.
-- The `message:sent` carrying an id always precedes any `turn:cancelled`
-  carrying that id.
-- A turn superseded during its own entry still emits its `message:sent`, still
-  announces its predecessor's cancellation, and still keeps its user message:
-  those steps run to completion before the turn checks whether it is still the
-  live one.
-- `turn:cancelled` is a per-turn fact, not an ordered log. A listener that
-  starts a turn from inside an event can observe an inner turn's cancellation
-  before an outer turn's; each superseded turn is still announced exactly once.
-- `message:sent` is now emitted **before** the pre-turn TTS stop rather than
-  after it. The stop targets the TTS manager attached when `userSay(text)` was
-  called, so a `message:sent` listener that calls `attachTTS(...)` or
-  `detachTTS()` does not change which audio is stopped — it governs that
-  turn's playback only, exactly as before.
+- `text` is a string, performed as given (the empty string included), or an
+  async iterable of chunks.
+- `origin` names who asked and defaults to `"app"`; the cascade brain uses
+  `"cascade"`.
+- `whenBusy` is `"interrupt"` (default), which cancels the holder and takes the
+  floor (the latest call wins, even from inside an event listener), or
+  `"reject"`.
+- `perform()` throws `CharivoStateError` synchronously when `text` is neither a
+  string nor an async iterable, when realtime holds playback, from a
+  `dispose()` call until its teardown is done, or when the floor is held and
+  `whenBusy` is `"reject"`. Otherwise the floor is yours before it returns.
+- `started` resolves `true` once the line (a stream's first segment) has
+  rendered, or reached that step with no renderer attached, and `false` when
+  the performance ended first. It never resolves inside the `perform()` call,
+  and a continuation you attach to it runs before any speech. `started` and
+  `done` never reject.
+- `done` resolves with `{ status: "completed" | "cancelled" | "failed", text,
+  heardText?, failedAt?, error? }`. `handle.result` is the same value, readable
+  synchronously from the moment the performance ends.
+- `cancel()` frees the floor and settles `done` as `cancelled` at once; when a
+  `speak()` is in flight it also issues one `stop()` on that TTS manager and
+  rejects with the typed provider error if the stop fails. A repeated call
+  returns the first call's outcome.
 
-Failures on a **live** turn behave as they did, with one deliberate
-divergence:
+Events, in order: `floor:changed`, `performance:start { performanceId, origin,
+voiced, text?, affectResolved }`, the affect events, the run, `performance:end {
+performanceId, origin, status, heardText?, error? }`, `floor:changed`. Every
+start has exactly one end. Events are delivered one at a time in the order they
+were produced, and one produced from inside a listener is delivered after that
+dispatch reached every listener; state (`getFloor()`, `done`) is never deferred.
+A performance's run begins only once its own `performance:start` has been
+delivered, so a start listener can cancel it before anything is shown or
+spoken. A performance displaced before its start was produced emits neither
+start nor end and settles `started: false`, `done: { status: "cancelled",
+heardText: "" }`.
 
-- A generation failure rejects and rolls the turn's user message back,
-  restoring what that write evicted at the history bound (unless history has
-  been written again meanwhile, which the rollback deliberately doesn't
-  undo). It rolls back only the manager the turn actually wrote into, even if
-  a different one was attached in the meantime.
-- A failure before the LLM step — a rejected user-message render — has written
-  nothing yet, so there is nothing to roll back.
-- A **character-render failure now rejects without committing the reply**,
-  where previously the reply was already in history by then. The turn's user
-  message stays. This is the one intentional change on the failure paths.
-- Playback failures stay non-fatal: `tts:error`, then resolve, with the
-  committed reply left in history.
-- A **superseded** turn never rolls back and never emits an error event on any
-  of these paths.
+`voiced` is whether a TTS manager was attached when the floor was taken; that
+manager speaks the whole performance.
 
-A tool handler that has already started runs to completion, and cancellation
-does not undo its side effects. What stops is new work. `Charivo` hands the
-manager a cancellation predicate, and the built-in `@charivo/llm` manager
-checks it in four places: before each further tool call, between a call's
-`tool:call` emission and its handler, before each follow-up request, and on
-every projected emission. A custom `LLMManager` should honor the same four
-checkpoints, since only the manager can enforce them. That is also why
-`tool:call` records an *attempted, dispatched* call, and can be the last event
-for a call whose handler was skipped, while `tool:result`/`tool:error` report
-a handler that actually ran. The superseded turn's in-flight LLM request is
-aborted: `Charivo` passes the turn's `AbortSignal` as
-`GenerateResponseOptions.signal`, and the built-in `@charivo/llm` manager
-forwards it to the client as `LLMCallOptions.signal` on every request the turn
-makes, tool rounds included. A client that ignores the optional `signal`
-simply keeps the old keep-running behavior — its request settles late, and the
-stale-turn check swallows the result either way. There is
-no guard interval either — a stray duplicate send is indistinguishable from a
-deliberate rapid correction, so debouncing belongs in the input layer.
+```ts
+// A string: rendered as a character message (id = performance id), then
+// spoken with the character's voice.
+const line = charivo.perform({
+  text: "Welcome back!",
+  affect: { expression: { affect: "joy", intensity: 0.8 } },
+});
+if (await line.started) {
+  console.log("on screen");
+}
+const { status, heardText } = await line.done;
+```
 
-Besides `interrupt()` (below), nothing else cancels a turn: `setCharacter(...)`,
-`attachLLM(...)`, `detachLLM(...)`, `clearHistory()` and `dispose()` neither
-cancel an in-flight turn nor move the point at which a turn reads the manager
-or the character. Message validation is unchanged — `userSay("")` still emits
-`message:sent`, still runs the pre-turn stop and renders the user message, and
-still rejects with `CharivoStateError` from the LLM step (and still resolves
-when no manager and character are attached) — and an empty assistant reply is
-still stored, presented, and spoken exactly as before.
+A string run renders the line, then waits for any stop in progress and calls
+`speak(text, options)`. A render failure ends it `failed` with `failedAt:
+"render"` and nothing is spoken; a TTS failure ends it `failed` with `failedAt:
+"tts"`, and a performance that finds cancelled speech still unsettled ends
+`failed` at `tts` without speaking.
 
-`interrupt()` cuts off the in-progress turn and its speech now: it aborts the
-live turn's LLM request through the same `AbortSignal` supersession uses, then
-stops the TTS manager that turn is actually speaking on — the manager it
-handed the reply to, which a mid-turn `attachTTS()` may have since replaced,
-or, if the turn hasn't reached that step yet, whichever manager is currently
-attached. It has no precondition: unlike `RealtimeManager.interrupt()`, which
-requires an active, connected session, calling it with no turn in flight is
-still idle-safe — it stops the attached TTS manager, resolves, and emits
-nothing. The interrupted `userSay(text)` call **resolves**, and the turn is
-announced via `turn:cancelled`, exactly as a supersession is. This is
-cascade-only: it does not delegate to the realtime manager, so a realtime app
-uses `getRealtimeManager()?.interrupt()` instead.
+```ts
+// A stream: cut into sentences, each segment rendered as its own message
+// (id `<performanceId>:<index>`) and spoken before the next chunk is read.
+charivo.on("performance:segment", ({ index, text }) => {
+  console.log(index, text);
+});
+const stream = charivo.perform({ text: tokenStream, origin: "llm" });
+```
 
-The realtime path deliberately keeps the opposite contract:
-`RealtimeManager.sendMessage(...)` rejects while a response is in progress and
-requires an explicit `interrupt()`, because the transport allows one active
-response at a time. The divergence is intentional, not an inconsistency to
-normalize.
+For a stream the floor is taken and `performance:start` (no `text`) fires at
+the call, before the first chunk is read. Each speakable segment is announced
+with `performance:segment { performanceId, origin, index, text }`, rendered,
+then spoken, and the next chunk is read only when those segments have finished,
+so no text queues up behind the voice. `started` resolves `true` once the first
+segment has rendered. `text` in the result is everything read from the iterator
+and `heardText` is the part up to the end of the last segment whose speech
+finished (its render, when unvoiced). An iterator that rejects ends the
+performance `failed` with `error` and no `failedAt`; a render or TTS failure on
+a segment ends it `failed` with that `failedAt`, drops the segments behind it
+and closes the stream. A stream with no speakable segment ends `completed` with
+`started: false`. Leaving the loop early abandons a pending `next()` and calls
+the iterator's `return()` once without awaiting it, so cancellation never waits
+for the iterator; a throw from `return()` is reported with `console.warn`.
+
+**`heardText`** is the full text on `completed`. On a cancelled string it is
+`""` only when playback demonstrably had not begun (`speak()` not yet called, or
+called on a manager that takes an event emitter and no `tts:audio:start` has
+been heard since); in every other case it is omitted, so a manager that cannot
+report audio start never yields `""` once it was asked to speak.
+
+**Cancellation and unsettled speech.** The logical half of a cancel is
+synchronous. The transport half is one `stop()` on the TTS manager the
+performance speaks on. Until a stop on that manager succeeds, that speech is
+*unsettled*, whoever holds the floor: no `speak()` is issued, and
+`attachRealtime()` refuses. A stop that rejects leaves it unsettled (the old
+voice may still be audible) and is reported to whoever waits, or with
+`console.error`; a later stop that succeeds settles it.
+
+**`interrupt()`** is speech only: it cancels the floor's performance and touches
+no brain turn (cancel the brain's turn with `turn.cancel()` or
+`brain.interrupt()`). It retries the stop of unsettled speech and, when the
+cancel supplied no stop (no holder, an unvoiced one, or one not yet speaking),
+also stops the attached TTS manager, joining a stop already in progress. No
+manager gets two concurrent stops. It resolves when those stops have settled
+and rejects with the typed provider error of the first that failed. It is
+idle-safe with nothing playing. It does not delegate to the realtime manager,
+so a realtime app uses `getRealtimeManager()?.interrupt()`.
+
+**Affect.** A cue is `{ expression?, motion? }`. A string `expression` is an
+expression id, used as is. `{ affect, intensity? }` resolves through the map
+set with `setAffectMap()`; no map, an unknown label or no qualifying entry
+resolves to nothing. `motion` is the cue's own, else the chosen entry's. An
+`AffectMap` is a record from affect label to one `AffectMapEntry` or a list of
+them; an entry has `expressionId?`, `motion?` and `minIntensity?` (default 0).
+Intensity defaults to 0.5 and is clamped to 0..1, and the entry with the
+highest `minIntensity` not above it wins. Set the map again when the model
+changes; `setAffectMap(null)` clears it.
+
+```ts
+charivo.setAffectMap({
+  joy: [
+    { expressionId: "Smile" },
+    { expressionId: "Laugh", motion: { group: "TapBody", index: 1 }, minIntensity: 0.7 },
+  ],
+});
+```
+
+A performance's affect is emitted right after `performance:start` as
+`avatar:expression` from source `"performance"` at `explicit` priority, held for
+the performance when voiced and with no hold when not, and a muted
+`avatar:motion` (`muteSound: true`) at `explicit`. `performance:start`'s
+`affectResolved` is `true` when the cue resolved to an expression id or a
+motion; whether the loaded model has that id stays `RenderManager`'s check. An
+app that wants a clip's own audio emits `avatar:motion` itself.
+
+**`react({ source, hold, priority?, expression?, motion?, gaze?, critical? })`**
+never takes the floor. It emits `avatar:expression` and `avatar:gaze` (both with
+the request's `source`, `hold` and `priority`, default `"reflex"`, and a
+`claimId` fresh for this reaction) and a muted `avatar:motion` for whatever the
+request resolved to, and returns `{ resolved, release }`. `release()` emits,
+once, an `avatar:release` carrying that `claimId` for each held channel it
+claimed, so an old handle never clears a newer claim from the same source, and
+a claim the renderer ignored never takes a handle away from the one still
+showing. `critical` also cancels the floor's performance, whether or not the
+cue resolved; it is allowed with priority `reflex` only, and any other priority
+throws `CharivoStateError` before anything is emitted.
+
+```ts
+// A reflex: look at the viewer and flinch, whatever is being said.
+const reaction = charivo.react({
+  source: "alarm",
+  hold: { ms: 1500 },
+  expression: "Surprised",
+  gaze: { x: 0, y: 0 },
+  critical: true,
+});
+reaction.release(); // optional, ends it early
+```
+
+### Realtime
+
+Playback is reserved by attachment, not by what is audible: from
+`attachRealtime()` to `detachRealtime()`, `getFloor()` is `{ state: "realtime" }`
+and `perform()` is refused. `react()` still works, and `critical` finds no
+performance to cancel.
+
+`attachRealtime()` throws `CharivoStateError` while a performance holds the
+floor, while cancelled speech is unsettled, or from a `dispose()` call until its
+teardown is done. It is allowed once the floor is free and every manager with cancelled speech has confirmed its stop: `await
+charivo.interrupt()` first, and when that rejects, attaching stays refused until
+a later stop on that manager succeeds. Leaving realtime, stop the session before
+`detachRealtime()`; detaching never touches the session. The body never calls
+the realtime manager's `interrupt()` or `sendMessage()`.
+
+The realtime path deliberately keeps its own contract: `RealtimeManager.sendMessage(...)`
+rejects while a response is in progress and requires an explicit `interrupt()`,
+because the transport allows one active response at a time. The divergence from
+the cascade's latest-wins is intentional, not an inconsistency to normalize.
+
+### Brain port
+
+The brain decides what the character says and drives the body to say it. Core
+declares the port and imports no implementation:
+
+```ts
+interface ConversationBrain {
+  setBody(body: CharacterBody | null): void;
+  setCharacter(character: Character): void;
+  submit(input: BrainInput): BrainTurn;
+  interrupt(): Promise<void>;
+  clearHistory(): void;
+  getHistory(): Message[];
+  dispose?(): void | Promise<void>;
+}
+
+interface BrainTurn {
+  id: string; // the id of the Message the input resolved to
+  done: Promise<BrainTurnResult>; // never rejects
+  cancel(): Promise<void>;
+}
+
+type BrainTurnResult =
+  | { status: "completed" | "cancelled"; text: string; heardText?: string }
+  | { status: "silent" }
+  | { status: "failed"; stage: "generate" | "render" | "tts"; text: string; error: CharivoError };
+```
+
+`CharacterBody` is what a brain is handed, and `Charivo` implements it: the
+event bus plus `perform()`, `react()`, `interrupt()` and `getFloor()`.
+
+- `attachBrain(brain)` calls `brain.setBody(this)` and, when a character is set,
+  `brain.setCharacter(character)`. Attaching another brain detaches the first.
+  `detachBrain()` calls `setBody(null)`, and `setCharacter()` reaches the brain.
+  `getBrain()` returns it. `createCharivo({ brain })` attaches one.
+- `submit()` throws `CharivoStateError` when no body is attached. Its `done`
+  never rejects: a failure is a `failed` result naming the `stage` (`generate`:
+  producing the reply; `render`: showing it, with the input kept and the reply
+  dropped; `tts`: speaking it, or realtime holding playback).
+- `BrainInput` is `{ kind: "user" | "event" | "direction", ... }` with optional
+  `respond` (`"must" | "auto" | "silent"`) and `history` (`"keep" |
+  "ephemeral" | { replaceKey }`) policies; how a brain applies them is the
+  brain's contract. `@charivo/llm`'s `resolveBrainInput()` gives each kind its
+  defaults.
+- `message:sent { message }` is emitted once for every input, and a turn's id is
+  that message's id.
+
+The cascade implementation, its policies and its history rules are in the
+[`@charivo/llm` README](../llm/README.md#cascade-brain).
 
 The current render-manager contract is explicit: a `RenderManager` must expose
 `setEventBus(eventBus)` and `disconnect()` so the core can connect and cleanly
@@ -373,10 +503,6 @@ Important event names include:
 - `message:sent`
 - `message:received`
 - `turn:cancelled`
-- `character:speak`
-- `tts:start`
-- `tts:end`
-- `tts:error`
 - `tts:audio:start`
 - `tts:audio:end`
 - `tts:lipsync:update`
@@ -401,23 +527,46 @@ Important event names include:
 - `avatar:gaze`
 - `avatar:release`
 - `performance:start`
+- `performance:segment`
 - `performance:end`
+- `floor:changed`
 - `realtime:error`
 
 `avatar:gaze` (`GazeCoordinates` plus the claim fields) and `realtime:usage` (a
 flat `RealtimeUsageEvent`) intentionally use flat payloads rather than wrapper
 objects.
 
-`avatar:expression` and `avatar:gaze` are claims. Each may carry three optional
+`message:sent { message }` is emitted once for every brain input and carries the
+resolved `Message` (`user`, `event` or `direction`), so a chat UI filters on
+`message.type`; a turn's id is that message's id. `message:received { message }`
+carries the reply about to be performed. `turn:cancelled { turnId }` fires
+exactly once for every turn that settles `cancelled` on the cascade path (never
+on the realtime path), after the `message:sent` carrying the same id. Speech
+progress is reported by the `performance:*` events and `tts:audio:*`.
+
+`avatar:expression` and `avatar:gaze` are claims. Each may carry four optional
 fields (`AvatarClaimOptions`), so an event with none is still valid: `source`
 (defaults to `"app"`), `priority` (`reflex`, `explicit`, `inferred` or
-`ambient`; defaults to `"explicit"`) and `hold` (`{ ms }`, `"until-release"` or
-`{ performance: id }`; defaults per channel). `avatar:motion` is one-shot and
-takes only `priority`. `avatar:release` — `{ source, channel? }` — ends that
-source's live claim on one channel, or on both when `channel` is omitted.
-`performance:start` (`{ performanceId, origin, voiced }`) and `performance:end`
-(`{ performanceId, origin, status }`) mark one line of speech or a silent act so
-a hold can follow it; nothing built-in emits them yet. See
+`ambient`; defaults to `"explicit"`), `hold` (`{ ms }`, `"until-release"` or
+`{ performance: id }`; defaults per channel) and `claimId`, which
+`RenderManager` stores with the claim it accepts. `avatar:motion` is one-shot and
+takes only `priority`. `avatar:release` — `{ source, channel?, claimId? }` — ends
+that source's live claim on one channel, or on both when `channel` is omitted;
+with `claimId`, it ends the claim only when that claim carries the same id, so a
+stale release never clears a newer claim from the same source.
+
+The `performance:*` events are emitted by `perform()` and mark one line of speech
+or a silent act so a hold can follow it:
+
+- `performance:start` — `{ performanceId, origin, voiced, text?, affectResolved? }`;
+  `text` is set for a string request only
+- `performance:segment` — `{ performanceId, origin, index, text }`, one per
+  segment of a streamed performance
+- `performance:end` — `{ performanceId, origin, status, heardText?, error? }`
+
+`floor:changed { floor }` reports every change of `getFloor()`. An app running
+its own speech pipeline may emit the `performance:start` / `performance:end`
+pair itself. See
 [Claims And Arbitration](../../docs/guide/rendering.md#claims-and-arbitration).
 
 The event bus isolates each listener: one that throws is reported via

@@ -62,4 +62,34 @@ describe("CHAT_REPLY_MAX_CHARS", () => {
 
     expect(parseChatRequest({ messages })).toMatchObject({ success: true });
   });
+
+  // Cues are ephemeral: a cue's reply is stored without it, so the history
+  // window can be made of replies only, with the cue riding on top.
+  it("keeps a window of max-size replies only, plus a cue and tool rounds, acceptable", () => {
+    const reply = boundReply("x ".repeat(CHAT_MAX_MESSAGE_CHARS));
+    const messages: unknown[] = [
+      { role: "system", content: "s".repeat(6_000) },
+    ];
+    for (let entry = 0; entry < SHOW_MAX_HISTORY_TURNS * 2; entry++) {
+      messages.push({ role: "assistant", content: reply });
+    }
+    messages.push({ role: "user", content: "c".repeat(400) });
+    for (let round = 0; round < TOOL_LOOP_ROUNDS; round++) {
+      const calls = Array.from({ length: 4 }, (_, i) => ({
+        id: `c${round}-${i}`,
+        name: "setExpression",
+        arguments: {},
+      }));
+      messages.push({ role: "assistant", content: reply, toolCalls: calls });
+      for (const call of calls) {
+        messages.push({
+          role: "tool",
+          content: "t".repeat(200),
+          toolCallId: call.id,
+        });
+      }
+    }
+
+    expect(parseChatRequest({ messages })).toMatchObject({ success: true });
+  });
 });

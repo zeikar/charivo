@@ -6,9 +6,10 @@
  */
 
 /**
- * `LLMManager` counts history in turns and keeps `maxHistoryTurns * 2`
- * messages (a turn is a user message plus the reply). The app passes this as
- * `maxHistoryTurns`, so the manager never sends more than the route accepts.
+ * `LLMManager` sends at most the last `maxHistoryTurns * 2` history messages,
+ * whatever their kind: a cue is never stored but its reply is, so the window
+ * can hold replies only. The app passes this as `maxHistoryTurns`, so the
+ * manager never sends more than the route accepts.
  * `LLMManager`'s default of 40 turns (80 messages) would exceed any sane route
  * cap, and a long show would then be rejected mid-run.
  */
@@ -32,12 +33,14 @@ export const TOOL_CALLS_PER_ROUND = 4;
 const TOOL_ROUNDS_TOOL_RESULTS = TOOL_LOOP_ROUNDS * TOOL_CALLS_PER_ROUND;
 
 /**
- * System message + two per history turn + tool-loop headroom:
- * 1 + 20 * 2 + 3 * (1 + 4) = 56.
+ * System message + a full history window + the input + tool-loop headroom:
+ * 1 + 20 * 2 + 1 + 3 * (1 + 4) = 57. A cue is ephemeral, so it rides on top
+ * of a full window instead of taking a place in it.
  */
 export const CHAT_MAX_MESSAGES =
   1 +
   SHOW_MAX_HISTORY_TURNS * 2 +
+  1 +
   TOOL_LOOP_ROUNDS * (1 + TOOL_CALLS_PER_ROUND);
 
 /**
@@ -54,24 +57,35 @@ export const CHAT_MAX_TOOLS = 24;
  * assistant message in the next requests, and one too long for the limits above
  * would make every following turn fail validation. The budget is what is left
  * of CHAT_MAX_TOTAL_CHARS for replies once everything else a full request
- * carries is reserved:
+ * carries is reserved. The worst case is a window of replies only: a cue is
+ * never stored but its reply is, so a run of cues leaves nothing but replies
+ * in history.
  *   system message                      6 000
- *   21 user messages (cue or chat) x 400  8 400  (a full history plus the new one)
+ *   1 input x 400                         400  (on top of the window)
  *   12 tool results x 200                2 400  (3 rounds x 4 calls)
- *   left for replies        60 000 - 16 800 = 43 200
- *   replies: 20 history + 3 tool-round assistant messages = 23
- *   43 200 / 23 = 1 878 characters each, below CHAT_MAX_MESSAGE_CHARS.
+ *   left for replies         60 000 - 8 800 = 51 200
+ *   replies: 40 in the window + 3 tool-round assistant messages = 43
+ *   51 200 / 43 = 1 190 characters each, below CHAT_MAX_MESSAGE_CHARS.
+ * A window that alternates inputs and replies holds fewer replies, so it fits too.
+ *
+ * The 400 is not a bound on every input as projected. It covers the app's own
+ * cues and scripted events with their markers (under 200 characters) and a
+ * plain typed chat (a 40-character name and 280 characters of text). A chat
+ * stuffed with `<event`, which the projection escapes, reaches about 480, and
+ * an agent event made of quotes about 1 750; this example's events are all
+ * scripted. The show sends no tools, so the unused tool-round reserve (2 400
+ * for results and 3 x 1 190 for replies) absorbs that overrun.
  */
 const SYSTEM_MESSAGE_RESERVE_CHARS = 6_000;
-const USER_MESSAGE_RESERVE_CHARS = 400;
+const INPUT_RESERVE_CHARS = 400;
 const TOOL_RESULT_RESERVE_CHARS = 200;
-const REPLIES_PER_REQUEST = SHOW_MAX_HISTORY_TURNS + TOOL_LOOP_ROUNDS;
+const REPLIES_PER_REQUEST = SHOW_MAX_HISTORY_TURNS * 2 + TOOL_LOOP_ROUNDS;
 export const CHAT_REPLY_MAX_CHARS = Math.min(
   CHAT_MAX_MESSAGE_CHARS,
   Math.floor(
     (CHAT_MAX_TOTAL_CHARS -
       SYSTEM_MESSAGE_RESERVE_CHARS -
-      (SHOW_MAX_HISTORY_TURNS + 1) * USER_MESSAGE_RESERVE_CHARS -
+      INPUT_RESERVE_CHARS -
       TOOL_ROUNDS_TOOL_RESULTS * TOOL_RESULT_RESERVE_CHARS) /
       REPLIES_PER_REQUEST,
   ),

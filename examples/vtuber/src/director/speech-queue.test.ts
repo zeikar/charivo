@@ -7,7 +7,7 @@ function line(id: string, overrides: Partial<Line> = {}): Line {
     id,
     source: "chat",
     priority: 1,
-    prompt: `[CHAT] v: ${id}`,
+    input: { kind: "user", speaker: "v", text: id },
     createdAt: 0,
     ...overrides,
   };

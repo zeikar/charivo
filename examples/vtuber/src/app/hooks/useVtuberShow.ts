@@ -13,17 +13,17 @@ import {
   type AvatarControlCatalog,
   type BuiltInTTSManager,
   type Charivo,
+  type ConversationBrain,
   type RenderManager,
 } from "@charivo/core";
 import {
-  connectAvatarDirectorToCascade,
+  connectAvatarDirectorToPerformances,
   createAvatarDirector,
   createLLMAvatarClassifier,
 } from "@charivo/avatar";
 import { createTTSManager } from "@charivo/tts";
 
 import {
-  applyShowProtocol,
   createCharivoCascadePort,
   type CharivoCascadePort,
 } from "../../adapters/charivo-cascade-port";
@@ -44,7 +44,7 @@ import {
 } from "../lib/character";
 import { FAKE_GAME_EVENT_SCRIPT } from "../lib/fake-game-events";
 import { FAKE_VIEWER_SCRIPT } from "../lib/fake-viewers";
-import { withEnvelopeTagGuard } from "../lib/guarded-llm-client";
+import { reviewReply } from "../lib/reply-review";
 import { createScriptedSource } from "../lib/scripted-source";
 import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../lib/show-plan";
 import { appendToShowLog, EMPTY_SHOW_LOG, type ShowLog } from "../lib/show-log";
@@ -55,7 +55,7 @@ export type CharacterStatus = "speaking" | "thinking" | "idle" | "failed";
 
 /** What one run of the setup effect built; replaced whole on a remount. */
 interface Session {
-  charivo: Charivo;
+  brain: ConversationBrain;
   tts: BuiltInTTSManager;
   port: CharivoCascadePort;
 }
@@ -180,7 +180,7 @@ export function useVtuberShow({
         const [
           { createLive2DRenderer },
           { createRenderManager },
-          { createLLMManager },
+          { createLLMManager, createCascadeBrain },
           { createRemoteLLMClient },
           { createWebTTSPlayer },
         ] = await Promise.all([
@@ -215,12 +215,15 @@ export function useVtuberShow({
           motionDescriptions: HARU_MOTION_DESCRIPTIONS,
         };
 
+        // The route is Gemini, which folds every system message into its
+        // system instruction, so directions go as user turns (see
+        // docs/guide/llm.md).
         const llm = createLLMManager(
-          withEnvelopeTagGuard(
-            createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
-          ),
-          { maxHistoryTurns: SHOW_MAX_HISTORY_TURNS },
+          createRemoteLLMClient({ apiEndpoint: "/api/chat" }),
+          { maxHistoryTurns: SHOW_MAX_HISTORY_TURNS, directionRole: "user" },
         );
+        // A reply that repeats a cue is withheld before it is spoken.
+        const brain = createCascadeBrain(llm, { review: reviewReply });
 
         // No await from here to the ready flag: once Charivo exists the
         // cleanup owns every manager through charivo.dispose(), and nothing
@@ -235,17 +238,16 @@ export function useVtuberShow({
         const tts = createTTSManager(createWebTTSPlayer());
         const instance = createCharivo({
           renderer: renderManager,
-          llm,
+          brain,
           tts,
-          character: applyShowProtocol(HARU_CHARACTER),
+          character: HARU_CHARACTER,
         });
         charivo = instance;
-        port = createCharivoCascadePort(instance);
+        port = createCharivoCascadePort(brain);
 
         // The talker writes only the line; the avatar director classifies it
-        // on its own request, in parallel with speech. Unguarded: the guard
-        // protects spoken text from envelope tags, and a classification
-        // reply is never spoken.
+        // on its own request, in parallel with speech. No review: a
+        // classification reply is never spoken.
         const avatarDirector = createAvatarDirector({
           catalog,
           classifier: createLLMAvatarClassifier(
@@ -256,7 +258,7 @@ export function useVtuberShow({
             console.error("[avatar] classification failed:", avatarError);
           },
         });
-        disconnectAvatar = connectAvatarDirectorToCascade(
+        disconnectAvatar = connectAvatarDirectorToPerformances(
           instance,
           avatarDirector,
         );
@@ -267,7 +269,8 @@ export function useVtuberShow({
         instance.on("tts:audio:end", () => {
           if (!disposed) setAudioActive(false);
         });
-        instance.on("character:speak", ({ text }) => {
+        instance.on("performance:start", ({ origin, text }) => {
+          if (origin !== "cascade" || text === undefined) return;
           console.log("[avatar] line:", text);
           if (!disposed) setCaption(text);
         });
@@ -280,7 +283,7 @@ export function useVtuberShow({
           console.log("[avatar] motion selected:", `${group}[${index}]`);
         });
 
-        sessionRef.current = { charivo: instance, tts, port };
+        sessionRef.current = { brain, tts, port };
         setNeedsReload(false);
         setError(null);
         setPortReady(true);
@@ -315,7 +318,6 @@ export function useVtuberShow({
       // Setup still running: it sees `disposed` at its next check and
       // destroys the render manager itself.
       if (!charivo) return;
-      port?.dispose();
       // Before dispose: a classification still in flight must not emit onto a
       // disposed instance.
       disconnectAvatar?.();
@@ -352,7 +354,7 @@ export function useVtuberShow({
     }
 
     // A new show starts from an empty conversation, not the last show's.
-    session.charivo.clearHistory();
+    session.brain.clearHistory();
     setCaption("");
     setLog(EMPTY_SHOW_LOG);
     // Fresh sources per show: the scripts replay from this Start.

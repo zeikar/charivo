@@ -105,10 +105,26 @@ export function useRealtimeMode() {
     // Starting another session answers the previous cap notice.
     setCapNotice(null);
 
+    // What a failure has to undo depends on how far this attempt got.
+    let realtimeClient: ReturnType<typeof createRemoteRealtimeClient> | null =
+      null;
+    let attached = false;
+    const ownsChat = () => useChatStore.getState().charivo === charivo;
+    const releaseClient = (
+      client: ReturnType<typeof createRemoteRealtimeClient>,
+    ) => {
+      void client.disconnect().catch((cleanupError: unknown) => {
+        console.error(
+          "❌ Failed to release the realtime client:",
+          cleanupError,
+        );
+      });
+    };
+
     try {
       console.log("🌐 Enabling Realtime mode...");
 
-      const realtimeClient = createRemoteRealtimeClient({
+      realtimeClient = createRemoteRealtimeClient({
         apiEndpoint: "/api/realtime",
         debug: REALTIME_DEBUG,
       });
@@ -124,7 +140,6 @@ export function useRealtimeMode() {
           .getRegisteredTools()
           .map((tool) => tool.name),
       });
-      charivo.attachRealtime(realtimeManager);
 
       // One character decides the whole session. The store is what the
       // character sync in `useCharivoChat` resolves from; the instance is only
@@ -164,9 +179,32 @@ export function useRealtimeMode() {
       // Both calls must land on the same adapter, which they do by carrying
       // the same provider/transport values -- the manager rebuilds the config
       // on its way to startSession, so object identity is not what matches.
+      // It stays ahead of every other await: it has to run under the click.
       await realtimeManager.prepareAudio?.(sessionConfig);
 
+      // A reply still generating would otherwise land on the realtime floor
+      // (or speak after a switch back), so cancel the brain's turn first.
+      // attachRealtime() also refuses while cascade speech holds the floor or
+      // has not been confirmed stopped, so stop that too.
+      await charivo.getBrain()?.interrupt();
+      await charivo.interrupt();
+
+      // The chat is rebuilt when the TTS setting changes. The rebuilt chat's
+      // controls cannot reach a session started on this discarded instance.
+      if (!ownsChat()) {
+        releaseClient(realtimeClient);
+        return;
+      }
+      charivo.attachRealtime(realtimeManager);
+      attached = true;
+
       await realtimeManager.startSession(sessionConfig);
+
+      if (!ownsChat()) {
+        await realtimeManager.stopSession();
+        charivo.detachRealtime();
+        return;
+      }
 
       setIsRealtimeMode(true);
 
@@ -179,12 +217,24 @@ export function useRealtimeMode() {
       console.log("✅ Realtime mode enabled");
     } catch (error) {
       console.error("❌ Failed to enable Realtime mode:", error);
-      setIsRealtimeMode(false);
-      setIsConnected(false);
-      resetRealtimeUiState();
-      setRealtimeError(toRealtimeErrorMessage(error));
+      if (attached) {
+        // A failed start must not leave playback reserved for realtime.
+        charivo.detachRealtime();
+      } else if (realtimeClient) {
+        // Releases the audio prepareAudio warmed.
+        releaseClient(realtimeClient);
+      }
+      // The store belongs to the replacement chat once this one was discarded.
+      if (ownsChat()) {
+        setIsRealtimeMode(false);
+        setIsConnected(false);
+        resetRealtimeUiState();
+        setRealtimeError(toRealtimeErrorMessage(error));
+      }
     } finally {
-      setIsConnecting(false);
+      if (ownsChat()) {
+        setIsConnecting(false);
+      }
     }
   }, [
     charivo,

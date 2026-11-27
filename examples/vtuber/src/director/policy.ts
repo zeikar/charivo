@@ -3,10 +3,10 @@
 // that state itself after acting on the decision.
 
 import {
-  formatAgentEvent,
-  formatDirectorCue,
-  formatViewerChat,
-} from "./envelope";
+  agentEventInput,
+  directorCueInput,
+  viewerChatInput,
+} from "./line-input";
 import type {
   AgentEvent,
   AgentPriority,
@@ -114,7 +114,7 @@ function decideChat(
     id: view.lineId,
     source: "chat",
     priority: highlighted ? PRIORITY.urgent : PRIORITY.normal,
-    prompt: formatViewerChat(event.viewer, event.text),
+    input: viewerChatInput(event.viewer, event.text),
     createdAt: view.now,
   };
   return highlighted ? urgent(line, view, config) : { kind: "enqueue", line };
@@ -142,7 +142,7 @@ function decideAgent(
     id: view.lineId,
     source: "agent",
     priority: AGENT_RANK[event.priority],
-    prompt: formatAgentEvent(event.source, event.text),
+    input: agentEventInput(event.source, event.text),
     createdAt: view.now,
     // An event is about a moment in the world; once old it is no longer news.
     expiresAt: view.now + config.agentMaxAgeMs,
@@ -166,7 +166,7 @@ function decideIdle(view: PolicyView): Decision {
       id: view.lineId,
       source: "idle",
       priority: PRIORITY.idle,
-      prompt: formatDirectorCue(cue),
+      input: directorCueInput(cue),
       createdAt: view.now,
     },
   };
@@ -184,7 +184,7 @@ function decideSegment(event: SegmentEvent, view: PolicyView): Decision {
         event.segment.kind === "ending"
           ? PRIORITY.endingCue
           : PRIORITY.segmentCue,
-      prompt: formatDirectorCue(event.segment.cue),
+      input: directorCueInput(event.segment.cue),
       createdAt: view.now,
     },
   };

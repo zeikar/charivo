@@ -14,7 +14,7 @@ import {
 // Feeds a canned WAV into Chromium's fake microphone, then drives the full
 // non-realtime voice chain through the recommended remote-client + server-
 // provider path:
-//   STT (whisper) → Charivo.userSay → LLM (chat) → TTS (audio) → lip-sync.
+//   STT (whisper) → cascade brain → LLM (chat) → TTS (audio) → lip-sync.
 //
 // The lip-sync RMS assertion proves the browser audio→lip-sync loop ran during
 // TTS playback — TTSManager analyzing audio through the shared core

@@ -9,6 +9,11 @@ and motion/gaze tool control,
 all wired through the `@charivo/core` `Charivo` orchestrator. There is no
 dedicated TTS/STT stack — the OpenAI Realtime API handles audio directly.
 
+The app uses none of the cascade API: no brain is attached and nothing calls
+`perform()`. `attachRealtime(manager)` reserves playback for the realtime
+session, so while it is attached `perform()` is refused and `getFloor()` reads
+`{ state: "realtime" }`.
+
 Live demo: https://charivo-companion.vercel.app/
 
 ## What it does

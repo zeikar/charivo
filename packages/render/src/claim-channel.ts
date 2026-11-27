@@ -30,6 +30,7 @@ export interface ClaimRequest<V> {
   priority: AvatarClaimPriority;
   value: V;
   hold?: AvatarHold;
+  claimId?: string;
 }
 
 export interface ClaimChannel<V> {
@@ -39,7 +40,11 @@ export interface ClaimChannel<V> {
    * number of at most 2,147,483,647 (the `setTimeout` limit). The source's live claim stays in place.
    */
   claim(request: ClaimRequest<V>): boolean;
-  release(source: string): void;
+  /**
+   * Ends `source`'s live claim. With `claimId`, only when that claim was
+   * accepted with the same id, so a stale release never ends a newer claim.
+   */
+  release(source: string, claimId?: string): void;
   /** Drops every claim; `clear` is called once if something was showing. */
   releaseAll(): void;
   spanStarted(id: SpanId, span: { speech: boolean }): void;
@@ -57,6 +62,7 @@ type SpanTie = { speech: true } | { id: SpanId };
 interface Claim<V> {
   priority: AvatarClaimPriority;
   value: V;
+  claimId?: string;
   seq: number;
   timer?: ReturnType<typeof setTimeout>;
   /** Set when the hold follows a span: any speech span, or one performance. */
@@ -163,14 +169,14 @@ export function createClaimChannel<V>(
   }
 
   return {
-    claim({ source, priority, value, hold }) {
+    claim({ source, priority, value, hold, claimId }) {
       if (hold !== undefined && !isValidHold(hold)) {
         return false;
       }
       const resolved = hold ?? options.defaultHold;
 
       drop(source);
-      const claim: Claim<V> = { priority, value, seq: nextSeq++ };
+      const claim: Claim<V> = { priority, value, claimId, seq: nextSeq++ };
       claims.set(source, claim);
       if (resolved === "speech") {
         claim.tie = { speech: true };
@@ -188,7 +194,10 @@ export function createClaimChannel<V>(
       update();
       return true;
     },
-    release(source) {
+    release(source, claimId) {
+      if (claimId !== undefined && claims.get(source)?.claimId !== claimId) {
+        return;
+      }
       drop(source);
       update();
     },

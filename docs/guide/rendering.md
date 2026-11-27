@@ -113,8 +113,11 @@ engine needs a stencil buffer that a context created for Live2D lacks. The
 - `avatar:release` — ends a source's live expression or gaze claim, or both
   when it names no channel; see [Claims And Arbitration](#claims-and-arbitration)
 - `performance:start` and `performance:end` — mark one line of speech or a
-  silent act, so a hold can follow it; nothing built-in emits them yet, and
-  an app running its own speech pipeline may
+  silent act, so a hold can follow it. `charivo.perform()` emits the pair for
+  every line (voiced when a TTS manager is attached), and an app running its
+  own speech pipeline may emit them too. A streamed line also emits
+  `performance:segment` per sentence, and `perform()` renders each segment as
+  its own message
 - optional mouse tracking
 
 In normal app code, wire the manager to `Charivo` rather than handling these
@@ -140,8 +143,11 @@ charivo.emit("avatar:expression", {
 charivo.emit("avatar:release", { source: "game", channel: "expression" });
 ```
 
-`source` defaults to `"app"` and `priority` to `"explicit"`. `hold` defaults per
-channel:
+`source` defaults to `"app"` and `priority` to `"explicit"`. A claim may also
+carry a `claimId`, and an `avatar:release` that names one ends the source's live
+claim on that channel only when that claim carries the same id, so an old
+release can never clear a newer claim from the same source. A release without
+a `claimId` works as before. `hold` defaults per channel:
 
 | Channel | Kind | Default hold | Base (no live claim) |
 | --- | --- | --- | --- |
@@ -151,6 +157,19 @@ channel:
 
 Lip sync is not a claim channel: `tts:audio:start`, `tts:audio:end` and
 `tts:lipsync:update` drive it directly.
+
+### Claims From The Body
+
+`charivo.react({ source, hold, expression, gaze, motion, priority? })` makes
+these claims for you. It defaults to `reflex` priority, gives each reaction a
+fresh `claimId`, and returns a handle whose `release()` emits one
+`avatar:release` naming that id for each channel it claimed. It never takes the
+speech floor, so it works while a line is being spoken and during realtime.
+
+A line's own affect, `perform({ text, affect })`, claims the expression from
+source `"performance"` at `explicit` priority. A voiced line holds it with
+`{ performance: id }`, so it ends when the line does; an unvoiced one has no
+hold and takes the channel's default. The motion is emitted muted.
 
 ### Priority
 

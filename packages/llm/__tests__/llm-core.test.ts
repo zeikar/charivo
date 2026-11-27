@@ -603,6 +603,104 @@ describe("LLMManager typed input", () => {
       "e2",
     ]);
   });
+
+  describe("standalone replies", () => {
+    const contents = (manager: { getHistory(): Message[] }) =>
+      manager.getHistory().map((msg) => msg.content);
+
+    it("keeps a full window of standalone replies across every eviction", () => {
+      const manager = createLLMManager(new MockClient(), {
+        maxHistoryTurns: 2,
+      });
+
+      for (let index = 1; index <= 7; index += 1) {
+        manager.addToHistory(typed("character", `s${index}`), {
+          standalone: true,
+        });
+        if (index >= 4) {
+          expect(contents(manager)).toEqual(
+            [index - 3, index - 2, index - 1, index].map((n) => `s${n}`),
+          );
+        }
+      }
+    });
+
+    it("still drops a reply whose prompt was evicted, stopping at a standalone one", () => {
+      const manager = createLLMManager(new MockClient(), {
+        maxHistoryTurns: 2,
+      });
+      manager.addToHistory(typed("user", "u1"));
+      manager.addToHistory(typed("character", "r1"));
+      manager.addToHistory(typed("character", "s1"), { standalone: true });
+      manager.addToHistory(typed("character", "s2"), { standalone: true });
+      manager.addToHistory(typed("character", "s3"), { standalone: true });
+
+      expect(contents(manager)).toEqual(["s1", "s2", "s3"]);
+    });
+
+    it("drops leading replies added without the option, as before", () => {
+      const manager = createLLMManager(new MockClient(), {
+        maxHistoryTurns: 2,
+      });
+      manager.addToHistory(typed("user", "u1"));
+      manager.addToHistory(typed("character", "r1"));
+      manager.addToHistory(typed("character", "r2"));
+      manager.addToHistory(typed("character", "r3"));
+      manager.addToHistory(typed("character", "r4"));
+
+      expect(contents(manager)).toEqual(["r4"]);
+    });
+
+    it("stores the reply to an ephemeral request as standalone", async () => {
+      const manager = createLLMManager(new MockClient(), {
+        maxHistoryTurns: 2,
+      });
+      manager.setCharacter(character);
+      manager.addToHistory(typed("user", "u0"));
+      manager.addToHistory(typed("character", "r0"));
+      const reply = await manager.generateResponse(
+        typed("direction", "open the show"),
+        { ephemeral: true },
+      );
+      manager.addToHistory(typed("user", "u1"));
+      manager.addToHistory(typed("character", "r1"));
+
+      // u0 is evicted and takes r0 with it; the ephemeral reply stays.
+      expect(contents(manager)).toEqual([reply, "u1", "r1"]);
+    });
+
+    it("keeps a leading standalone reply in the request window", async () => {
+      const client = new MockClient();
+      const manager = createLLMManager(client, { maxHistoryTurns: 2 });
+      manager.setCharacter(character);
+      manager.addToHistory(typed("user", "u0"));
+      manager.addToHistory(typed("character", "s0"), { standalone: true });
+      manager.addToHistory(typed("user", "u1"));
+      manager.addToHistory(typed("character", "r1"));
+
+      await manager.generateResponse(typed("user", "u2"));
+
+      expect(
+        client.call.mock.calls[0]![0].slice(1).map((msg) => msg.content),
+      ).toEqual(["s0", "u1", "r1", "u2"]);
+    });
+
+    it("drops a leading reply added without the option from the request window", async () => {
+      const client = new MockClient();
+      const manager = createLLMManager(client, { maxHistoryTurns: 2 });
+      manager.setCharacter(character);
+      manager.addToHistory(typed("user", "u0"));
+      manager.addToHistory(typed("character", "r0"));
+      manager.addToHistory(typed("user", "u1"));
+      manager.addToHistory(typed("character", "r1"));
+
+      await manager.generateResponse(typed("user", "u2"));
+
+      expect(
+        client.call.mock.calls[0]![0].slice(1).map((msg) => msg.content),
+      ).toEqual(["u1", "r1", "u2"]);
+    });
+  });
 });
 
 describe("ResponseMessageBuilder", () => {
@@ -2156,6 +2254,85 @@ describe("LLMManager tool loop", () => {
       expect(
         emit.mock.calls.filter(([event]) => event === "avatar:motion"),
       ).toHaveLength(2);
+    });
+  });
+
+  describe("interceptProjection", () => {
+    const expressionAndMotionProjector: ToolResultProjector = ({
+      output,
+      emit: project,
+    }) => {
+      project("avatar:expression", {
+        expressionId: String(output.expressionId),
+      });
+      project("avatar:motion", { group: "idle", index: 0 });
+    };
+
+    const buildManager = (emit: CharivoEventEmitter) => {
+      const { client } = buildToolClient([
+        { content: "", toolCalls: [buildToolCall()] },
+        { content: FINAL_TEXT },
+      ]);
+      const manager = new LLMManager(client, {
+        tools: [buildExpressionTool(expressionHandler)],
+        resultProjectors: [expressionAndMotionProjector],
+      });
+      manager.setEventEmitter(emit);
+      manager.setCharacter(character);
+      return manager;
+    };
+
+    it("takes the events it returns true for and lets the rest through", async () => {
+      const { eventEmitter, emit } = buildEmitterSpy();
+      const manager = buildManager(eventEmitter);
+      const intercept = vi.fn(
+        (event: string, _payload: unknown) => event === "avatar:expression",
+      );
+
+      const response = await manager.generateResponse(
+        buildUserMessage("hello"),
+        { interceptProjection: intercept },
+      );
+
+      expect(response).toBe(FINAL_TEXT);
+      expect(intercept.mock.calls).toEqual([
+        ["avatar:expression", { expressionId: "smile" }],
+        ["avatar:motion", { group: "idle", index: 0 }],
+      ]);
+      expect(emit.mock.calls.map(([event]) => event)).toEqual([
+        "tool:call",
+        "tool:result",
+        "avatar:motion",
+      ]);
+      expect(emit).toHaveBeenCalledWith("avatar:motion", {
+        group: "idle",
+        index: 0,
+      });
+    });
+
+    it("is not called once the request is cancelled", async () => {
+      let cancelled = false;
+      const emit = vi.fn((event: string) => {
+        if (event === "avatar:expression") {
+          cancelled = true;
+        }
+      });
+      const manager = buildManager({ emit });
+      const intercept = vi.fn((_event: string, _payload: unknown) => false);
+
+      await manager.generateResponse(buildUserMessage("hello"), {
+        isCancelled: () => cancelled,
+        interceptProjection: intercept,
+      });
+
+      // Offered the expression, which supersedes the request when emitted;
+      // the motion that follows is neither offered nor emitted.
+      expect(intercept.mock.calls.map(([event]) => event)).toEqual([
+        "avatar:expression",
+      ]);
+      expect(
+        emit.mock.calls.filter(([event]) => event === "avatar:motion"),
+      ).toEqual([]);
     });
   });
 });

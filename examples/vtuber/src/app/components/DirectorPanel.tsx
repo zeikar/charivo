@@ -39,9 +39,9 @@ const SOURCE_LABELS: Record<Line["source"], string> = {
   segment: "Segment cue",
 };
 
-// The idle cue lives only in the line's prompt, behind its envelope tag.
+// The idle cue lives only in the line's input.
 function idleCueText(line: Line): string {
-  return line.prompt.replace(/^\[DIRECTOR\]\s*/, "");
+  return line.input.text;
 }
 
 function describeEvent(event: ShowEvent, line: Line | null): string {

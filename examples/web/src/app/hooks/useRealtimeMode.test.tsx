@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Character, Charivo, RealtimeSessionConfig } from "@charivo/core";
 import { clickElement, renderComponent } from "../test-utils/render-component";
 import { useChatStore } from "../stores/useChatStore";
@@ -13,10 +13,14 @@ import {
 } from "../api/demo-limits";
 import { useRealtimeMode } from "./useRealtimeMode";
 
-const { prepareAudio, startSession } = vi.hoisted(() => ({
-  prepareAudio: vi.fn(),
-  startSession: vi.fn(),
-}));
+const { prepareAudio, startSession, stopSession, disconnect } = vi.hoisted(
+  () => ({
+    prepareAudio: vi.fn(),
+    startSession: vi.fn(),
+    stopSession: vi.fn(),
+    disconnect: vi.fn(),
+  }),
+);
 
 // The manager is faked because what is under test is the config the hook hands
 // *to* it. The rest of `@charivo/realtime` stays real: `realtime-instructions`
@@ -29,6 +33,7 @@ vi.mock("@charivo/realtime", async (importOriginal) => {
     createRealtimeManager: () => ({
       prepareAudio,
       startSession,
+      stopSession,
       getRegisteredTools: () => [],
     }),
   };
@@ -37,15 +42,23 @@ vi.mock("@charivo/realtime", async (importOriginal) => {
 // The real client eagerly builds its transport adapter table, which the faked
 // manager would never use.
 vi.mock("@charivo/realtime/remote", () => ({
-  createRemoteRealtimeClient: () => ({}),
+  createRemoteRealtimeClient: () => ({ disconnect }),
 }));
 
 const initialStoreState = useChatStore.getState();
 
 let heldCharacter: Character | null = null;
 
+const interrupt = vi.fn();
+const brainInterrupt = vi.fn();
+const attachRealtime = vi.fn();
+const detachRealtime = vi.fn();
+
 const charivo = {
-  attachRealtime: () => {},
+  interrupt,
+  getBrain: () => ({ interrupt: brainInterrupt }),
+  attachRealtime,
+  detachRealtime,
   getCurrentCharacter: () => heldCharacter,
 } as unknown as Charivo;
 
@@ -93,8 +106,125 @@ beforeEach(() => {
   // leaning on whatever the store happens to default to.
   useCharacterStore.setState({ selectedCharacter: "Haru" });
   heldCharacter = CHARACTER_CONFIGS.Haru.character;
-  prepareAudio.mockClear();
-  startSession.mockClear();
+  prepareAudio.mockReset();
+  startSession.mockReset();
+  disconnect.mockReset().mockResolvedValue(undefined);
+  interrupt.mockReset().mockResolvedValue(undefined);
+  brainInterrupt.mockReset().mockResolvedValue(undefined);
+  attachRealtime.mockReset();
+  detachRealtime.mockReset();
+});
+
+describe("useRealtimeMode switching from cascade speech", () => {
+  // The hook reports each failure these tests cause.
+  let consoleError: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  /**
+   * prepareAudio must run under the click, and attachRealtime() refuses while
+   * cascade speech has not been confirmed stopped.
+   */
+  it("prepares audio, then stops cascade speech, then attaches, then starts", async () => {
+    await toggleRealtimeModeOn();
+
+    const order = (mock: ReturnType<typeof vi.fn>) =>
+      mock.mock.invocationCallOrder[0];
+
+    expect(order(prepareAudio)).toBeLessThan(order(brainInterrupt));
+    expect(order(brainInterrupt)).toBeLessThan(order(interrupt));
+    expect(order(interrupt)).toBeLessThan(order(attachRealtime));
+    expect(order(attachRealtime)).toBeLessThan(order(startSession));
+    expect(useChatStore.getState().isRealtimeMode).toBe(true);
+  });
+
+  it("detaches the manager it attached when startSession rejects", async () => {
+    startSession.mockRejectedValue(new Error("bootstrap failed"));
+
+    await toggleRealtimeModeOn();
+
+    expect(attachRealtime).toHaveBeenCalledTimes(1);
+    expect(detachRealtime).toHaveBeenCalledTimes(1);
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(useChatStore.getState().isRealtimeMode).toBe(false);
+  });
+
+  it("disconnects its client without attaching or detaching when interrupt() rejects", async () => {
+    interrupt.mockRejectedValue(new Error("device busy"));
+
+    await toggleRealtimeModeOn();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(attachRealtime).not.toHaveBeenCalled();
+    expect(detachRealtime).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+    expect(useChatStore.getState().isRealtimeMode).toBe(false);
+  });
+
+  it("leaves the discarded instance alone when the chat is rebuilt while interrupt() is pending", async () => {
+    interrupt.mockImplementation(async () => {
+      useChatStore.setState({ charivo: {} as unknown as Charivo });
+    });
+
+    await toggleRealtimeModeOn();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(attachRealtime).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+    expect(useChatStore.getState().isRealtimeMode).toBe(false);
+  });
+
+  it("stops the session instead of publishing it when the chat is rebuilt during startSession()", async () => {
+    stopSession.mockReset().mockResolvedValue(undefined);
+    startSession.mockImplementation(async () => {
+      useChatStore.setState({ charivo: {} as unknown as Charivo });
+    });
+
+    await toggleRealtimeModeOn();
+
+    expect(stopSession).toHaveBeenCalledTimes(1);
+    expect(detachRealtime).toHaveBeenCalledTimes(1);
+    expect(useChatStore.getState().isRealtimeMode).toBe(false);
+  });
+
+  it("leaves the replacement chat's state alone when a discarded startSession() rejects", async () => {
+    startSession.mockImplementation(async () => {
+      useChatStore.setState({
+        charivo: {} as unknown as Charivo,
+        isConnected: true,
+        isConnecting: true,
+        realtimeError: null,
+      });
+      throw new Error("late failure");
+    });
+
+    await toggleRealtimeModeOn();
+
+    const state = useChatStore.getState();
+    expect(state.isConnected).toBe(true);
+    expect(state.isConnecting).toBe(true);
+    expect(state.realtimeError).toBeNull();
+    expect(detachRealtime).toHaveBeenCalledTimes(1);
+  });
+
+  it("disconnects its client without detaching when attachRealtime() throws", async () => {
+    attachRealtime.mockImplementation(() => {
+      throw new Error("speech not stopped");
+    });
+
+    await toggleRealtimeModeOn();
+
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(detachRealtime).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+    expect(useChatStore.getState().isRealtimeMode).toBe(false);
+  });
 });
 
 describe.each(PROVIDER_CASES)(

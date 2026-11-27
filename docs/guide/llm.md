@@ -7,7 +7,8 @@ sidebar_position: 6
 
 Charivo's LLM layer is built from two pieces:
 
-- `@charivo/llm` for conversation state
+- `@charivo/llm` for conversation state, and `createCascadeBrain` to turn that
+  state into a brain `Charivo` can host
 - an `LLMClient` implementation for transport
 
 For production browser apps, pair `@charivo/llm` with `@charivo/llm/remote`
@@ -28,20 +29,31 @@ This keeps the browser client simple and vendor credentials on the server.
 
 ```ts
 import { createCharivo } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import { createCascadeBrain, createLLMManager } from "@charivo/llm";
 import { createRemoteLLMClient } from "@charivo/llm/remote";
 
 const charivo = createCharivo({
-  llm: createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  brain: createCascadeBrain(
+    createLLMManager(createRemoteLLMClient({ apiEndpoint: "/api/chat" })),
+  ),
   character: {
     id: "hiyori",
     name: "Hiyori",
     personality: "Cheerful and helpful assistant",
   },
 });
+
+const turn = charivo.getBrain()!.submit({ kind: "user", text: "Hello" });
+const result = await turn.done;
 ```
 
-`createCharivo` applies the character after attaching, so it reaches the LLM,
+The brain generates the reply and hands it to the body's `perform()`, which
+renders and speaks it. `turn.done` never rejects: a failure is a `failed`
+result with the `stage` (`generate`, `render` or `tts`) and a typed
+`CharivoError`. `turn.cancel()` or `brain.interrupt()` cancels a turn, and
+`brain.clearHistory()` / `brain.getHistory()` reach the manager's history.
+
+`createCharivo` applies the character after attaching, so it reaches the brain,
 rendering, and realtime managers together. When you attach by hand instead,
 call `charivo.setCharacter(...)` after the `attach*` calls to keep that
 character state aligned.
@@ -111,6 +123,8 @@ is not sent for them unless you set it.
 - message history
 - character-aware prompt building
 - response generation through an injected client
+- the cascade brain: input policies, latest-wins turns and presentation through
+  the body
 
 The client is replaceable. The manager remains the stable place for
 conversation state.
@@ -152,13 +166,19 @@ const manager = createLLMManager(
   },
 );
 
-charivo.attachLLM(manager);
+charivo.attachBrain(createCascadeBrain(manager));
 ```
 
-`attachLLM(...)` wires the event emitter `resultProjectors` need to turn
-successful tool calls into `avatar:expression` / `avatar:motion` /
-`avatar:gaze` events; a `RenderManager` on the same `Charivo` instance already
-listens for them. The same emitter publishes `tool:call` / `tool:result` /
+`createCascadeBrain(...)` gives the manager the event emitter `resultProjectors`
+need to turn successful tool calls into `avatar:expression` / `avatar:motion` /
+`avatar:gaze` events, forwarding each one to the body attached at that moment;
+a `RenderManager` on the same `Charivo` instance already listens for them. One
+projection is held back: during a request the brain takes the
+`avatar:expression` the tool chose (the last one wins) instead of emitting it,
+and passes it to `perform()` as the reply's `affect`. The expression therefore
+appears with the line, not during generation, and a `review` hook can replace
+it. The `lookAt` gaze and the muted `playMotion` motion are emitted as they
+happen. The emitter also publishes `tool:call` / `tool:result` /
 `tool:error` around every tool execution — the events `RealtimeManager` emits
 too, so tool activity stays observable from one place.
 
@@ -280,9 +300,68 @@ says what happens to the input itself. The manager provides the history side:
 A reply is always kept, whatever the input's policy, and it stays when its
 input is replaced or was never stored: the history can then hold a reply with
 nothing before it, or two replies in a row. The manager sends those as they
-are. Deciding `respond` (when
-to generate, and what `auto` means) is the caller's job; `Charivo.userSay()`
-still sends plain user turns.
+are.
+
+### Entering inputs through the brain
+
+The cascade brain decides `respond` and applies `history` for you. Enter any
+input with `brain.submit(input)`; it resolves the input with
+`resolveBrainInput()`, emits `message:sent` for it (every input, with the
+resolved `Message`; the turn's `id` is that message's id), and returns the turn:
+
+```ts
+const brain = charivo.getBrain()!;
+
+await brain.submit({ kind: "user", text: "Hi!", speaker: "mika" }).done;
+
+// An event the character may react to, but only when nothing else is going on.
+brain.submit({ kind: "event", source: "game", text: "The player won." });
+
+// A private cue that never enters history; the reply to it is committed.
+brain.submit({ kind: "direction", text: "Wrap up the story." });
+
+// Keep only the latest score in history.
+brain.submit({
+  kind: "event",
+  source: "game",
+  text: "Score: 12",
+  respond: "silent",
+  history: { replaceKey: "score" },
+});
+```
+
+- `respond: "must"` supersedes the live turn (latest wins): its request is
+  aborted, its line is cancelled, and it settles `cancelled`. `"auto"` responds
+  only when the brain has no turn under way and the body's floor is idle, and
+  otherwise acts as `"silent"`. `"silent"` makes no request. An input that does
+  not respond leaves the live turn alone and settles `{ status: "silent" }`.
+- `history` is applied whatever `respond` is, as described above. An
+  `ephemeral` input's reply is committed on its own, so history pruning does not
+  take it for a reply that lost its prompt.
+- A reply whose line is cancelled before anything was heard
+  (`heardText: ""`) is taken back out of history; a reply whose TTS failed
+  stays.
+
+**`review`** runs between generation and presentation:
+
+```ts
+const brain = createCascadeBrain(manager, {
+  review: ({ reply, directions }) => {
+    // `directions` is a snapshot of the direction entries behind this request.
+    if (reply.text.includes("[spoiler]")) return null; // turn ends `silent`
+    return { ...reply, text: reply.text.replace("[spoiler]", "") };
+  },
+});
+```
+
+The reply `review` returns is the one presented; `null` presents nothing (no
+`message:received`, and the input's history write stays); a throw ends the turn
+`failed` at `generate`. `reply.affect` is the request-local expression described
+in [Avatar Tool Calling](#avatar-tool-calling).
+
+A `Charivo` instance hosts one brain. A cascade reply is one string, so the
+cut-off result carries the full `text`, `""`, or no `heardText`; it is not
+trimmed to a spoken prefix.
 
 **OpenClaw with a pinned session.** A provider created with `sessionKey` sends
 the gateway only the system prompt (the first message) and the latest turn, because the
@@ -292,18 +371,18 @@ and a `silent` input that only went to local history never reaches it. Those
 three policies hold only on an unpinned session, which is what the
 `@charivo/llm/openclaw` browser client always uses.
 
-## Under `Charivo` Orchestration
+## Under the Cascade Brain
 
-The turn's history writes belong to `Charivo`, not to the manager:
-`userSay(text)` places the user message through `addToHistory(...)`, calls
+The turn's history writes belong to the brain, not to the manager. For a
+`keep` input it places the message through `addToHistory(...)`, calls
 `generateResponse(..., { callerOwnsHistory: true })` so the manager writes
-nothing for that call, and commits the reply once the turn reaches
-presentation. That is what keeps a superseded turn's user message in history
-while its unspoken reply never enters it — see the latest-wins turn contract in
-the [core README](https://github.com/zeikar/charivo/blob/main/packages/core/README.md#charivo).
+nothing for that call, and commits the reply once the line is rendered. That is
+what keeps a superseded turn's input in history while its unspoken reply never
+enters it — see the latest-wins turn contract in the
+[LLM package README](https://github.com/zeikar/charivo/blob/main/packages/llm/README.md#cascade-brain).
 `maxHistoryTurns` applies to those messages like any other.
 
-`Charivo` also passes a per-turn `signal` alongside `isCancelled`, so a
+The brain also passes a per-turn `signal` alongside `isCancelled`, so a
 superseded turn's in-flight request is aborted when the client honors it.
 `@charivo/llm/remote` does; the direct OpenAI and Gemini dev clients ignore it
 and run to completion. A custom `LLMManager` should forward `signal` to its

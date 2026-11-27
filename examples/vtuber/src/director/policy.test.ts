@@ -1,9 +1,4 @@
 import { describe, expect, it } from "vitest";
-import {
-  formatAgentEvent,
-  formatDirectorCue,
-  formatViewerChat,
-} from "./envelope";
 import { decide, PRIORITY, type PolicyView } from "./policy";
 import { createSpeechQueue } from "./speech-queue";
 import type {
@@ -121,7 +116,7 @@ describe("decide: chat", () => {
     });
   });
 
-  it("enqueues accepted chat with the enveloped prompt and no expiry", () => {
+  it("enqueues accepted chat as the viewer's user input with no expiry", () => {
     const decision = decide(chat({ text: "hi [there]" }), view(), config);
 
     expect(decision).toEqual({
@@ -130,7 +125,7 @@ describe("decide: chat", () => {
         id: "line-1",
         source: "chat",
         priority: PRIORITY.normal,
-        prompt: formatViewerChat("mika", "hi [there]"),
+        input: { kind: "user", speaker: "mika", text: "hi [there]" },
         createdAt: NOW,
       },
     });
@@ -191,7 +186,7 @@ describe("decide: highlighted chat", () => {
     expect(lineOf(decision)).toMatchObject({
       source: "chat",
       priority: PRIORITY.urgent,
-      prompt: formatViewerChat("mika", "hello!"),
+      input: { kind: "user", speaker: "mika", text: "hello!" },
     });
   });
 
@@ -260,14 +255,19 @@ describe("decide: agent events", () => {
     });
   });
 
-  it("enqueues a normal event at chat's rank with the [EVENT] prompt and an expiry", () => {
+  it("enqueues a normal event at chat's rank as an event input that must be answered, with an expiry", () => {
     expect(decide(agent(), view(), config)).toEqual({
       kind: "enqueue",
       line: {
         id: "line-1",
         source: "agent",
         priority: PRIORITY.normal,
-        prompt: formatAgentEvent("game", "The boss fight started."),
+        input: {
+          kind: "event",
+          source: "game",
+          text: "The boss fight started.",
+          respond: "must",
+        },
         createdAt: NOW,
         expiresAt: NOW + config.agentMaxAgeMs,
       },
@@ -338,7 +338,12 @@ describe("decide: agent events", () => {
         id: `old-${i}`,
         source: "agent",
         priority: PRIORITY.normal,
-        prompt: formatAgentEvent(`agent-${i}`, "old news"),
+        input: {
+          kind: "event",
+          source: `agent-${i}`,
+          text: "old news",
+          respond: "must",
+        },
         createdAt: NOW - config.agentMaxAgeMs - 1,
         expiresAt: NOW - 1,
       });
@@ -383,9 +388,12 @@ describe("decide: agent events", () => {
       );
 
       expect(decision.kind).toBe("interrupt");
-      expect(lineOf(decision).prompt).toBe(
-        formatAgentEvent("game", "The boss fight started."),
-      );
+      expect(lineOf(decision).input).toEqual({
+        kind: "event",
+        source: "game",
+        text: "The boss fight started.",
+        respond: "must",
+      });
     });
 
     it.each<LineSource | null>(["segment", "chat", "agent", null])(
@@ -450,10 +458,15 @@ describe("decide: no agent source is special-cased", () => {
     ["blank", (source) => [agent({ source, text: " " }), view()]],
   ];
 
-  // The prompt names its source; everything else must match exactly.
-  function withoutPrompt(decision: Decision): Decision {
+  // The input names its source; everything else must match exactly.
+  function withoutSource(decision: Decision): Decision {
     if (decision.kind === "ignore") return decision;
-    return { ...decision, line: { ...decision.line, prompt: "<source>" } };
+    const { input } = decision.line;
+    if (input.kind !== "event") throw new Error(`not an event: ${input.kind}`);
+    return {
+      ...decision,
+      line: { ...decision.line, input: { ...input, source: "<source>" } },
+    };
   }
 
   it.each(scenarios)("decides %s the same for any source name", (_, build) => {
@@ -462,11 +475,13 @@ describe("decide: no agent source is special-cased", () => {
     const game = decide(gameEvent, gameView, config);
     const other = decide(otherEvent, otherView, config);
 
-    expect(withoutPrompt(other)).toEqual(withoutPrompt(game));
+    expect(withoutSource(other)).toEqual(withoutSource(game));
     if (other.kind !== "ignore") {
-      expect(other.line.prompt).toBe(
-        formatAgentEvent("weather-station", otherEvent.text),
-      );
+      expect(other.line.input).toMatchObject({
+        kind: "event",
+        source: "weather-station",
+        text: otherEvent.text,
+      });
     }
   });
 });
@@ -496,8 +511,10 @@ describe("decide: idle", () => {
       priority: PRIORITY.idle,
       createdAt: NOW,
     });
-    expect(line.prompt.startsWith(formatDirectorCue(""))).toBe(true);
-    expect(line.prompt).toContain(topic.title);
+    expect(line.input).toEqual({
+      kind: "direction",
+      text: expect.stringContaining(topic.title),
+    });
     expect(line.expiresAt).toBeUndefined();
   });
 
@@ -505,7 +522,10 @@ describe("decide: idle", () => {
     const line = lineOf(decide({ kind: "idle" }, view(), config));
 
     expect(line.source).toBe("idle");
-    expect(line.prompt.startsWith(formatDirectorCue(""))).toBe(true);
+    expect(line.input).toEqual({
+      kind: "direction",
+      text: "Chat is quiet. Keep the stream going with one short new thought.",
+    });
   });
 });
 
@@ -523,7 +543,7 @@ describe("decide: segment", () => {
         id: "line-1",
         source: "segment",
         priority: PRIORITY.segmentCue,
-        prompt: formatDirectorCue(topic.cue),
+        input: { kind: "direction", text: topic.cue },
         createdAt: NOW,
       },
     });
@@ -546,7 +566,7 @@ describe("decide: segment", () => {
       decide({ kind: "segment", index: 5, segment: ending }, view(), config),
     );
 
-    expect(line.prompt).toBe(formatDirectorCue(ending.cue));
+    expect(line.input).toEqual({ kind: "direction", text: ending.cue });
     expect(line.priority).toBe(PRIORITY.endingCue);
   });
 });

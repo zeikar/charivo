@@ -18,7 +18,7 @@ export type CascadeTimings = {
   turnMs: number | null;
   totalMs: number | null;
   /**
-   * `tts:start` to `tts:audio:start`. Small on the Gemini leg's streaming
+   * `performance:start` to `tts:audio:start`. Small on the Gemini leg's streaming
    * path (first chunk scheduled into Web Audio), close to the full synthesis
    * time on the buffered path (nothing plays until the whole reply arrives)
    * -- the number that shows whether the streaming branch actually fired.

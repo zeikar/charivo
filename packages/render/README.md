@@ -46,6 +46,12 @@ await renderManager.loadModel("/live2d/hiyori/hiyori.model3.json");
   the highest live claim is shown, a tie going to the newest. A claim with no
   `hold` gets the channel default: an expression lasts for the speech it
   accompanies, a gaze 1,200 ms. `avatar:release` ends a source's claims early
+- stores a claim's optional `claimId` with the claim it accepts: an
+  `avatar:release` that names a `claimId` ends the source's live claim on that
+  channel only when the claim carries the same id, so a stale release (such as
+  an old `react()` handle's) never clears a newer claim from the same source,
+  and a claim the manager ignored never takes a handle away from the one still
+  showing. A release without a `claimId` works as before
 - releases an expression through `stopExpression` when its last claim ends, if
   the renderer supports it: speech-scoped claims end with their speech span (a
   voiced `performance:start` to `performance:end`, or else `tts:audio:start` to

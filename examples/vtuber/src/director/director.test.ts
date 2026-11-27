@@ -13,6 +13,7 @@ import {
   type DirectorConfig,
   type DirectorLogEntry,
   type ExternalShowEvent,
+  type LineInput,
   type ShowEvent,
   type ShowEventSource,
   type ShowPlan,
@@ -51,8 +52,21 @@ vi.mock("./segment-scheduler", async (importOriginal) => {
   };
 });
 
-const IDLE_PROMPT =
-  "[DIRECTOR] Chat is quiet. Keep the stream going with one short new thought.";
+function chatIn(speaker: string, text: string): LineInput {
+  return { kind: "user", speaker, text };
+}
+
+function eventIn(source: string, text: string): LineInput {
+  return { kind: "event", source, text, respond: "must" };
+}
+
+function cueIn(text: string): LineInput {
+  return { kind: "direction", text };
+}
+
+const IDLE_INPUT = cueIn(
+  "Chat is quiet. Keep the stream going with one short new thought.",
+);
 
 // No segments, so these tests see the loop without any segment cue.
 const plan: ShowPlan = { segments: [] };
@@ -98,8 +112,8 @@ function say(viewer: string, text = `hi from ${viewer}`): ExternalShowEvent {
   return { kind: "chat", viewer, text };
 }
 
-function prompts(port: { calls: readonly { prompt: string }[] }): string[] {
-  return port.calls.map((call) => call.prompt);
+function inputs(port: { calls: readonly { input: LineInput }[] }): LineInput[] {
+  return port.calls.map((call) => call.input);
 }
 
 function starts(port: { calls: readonly { startedAt: number }[] }): number[] {
@@ -158,7 +172,7 @@ describe("createDirector: one line at a time", () => {
     expect(director.getSnapshot().status).toBe("running");
     emit!(say("mika"));
     expect(log.map((entry) => entry.kind)).toEqual(["decision", "line-start"]);
-    expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika"]);
+    expect(inputs(port)).toEqual([chatIn("mika", "hi from mika")]);
   });
 
   it("handles a source that emits synchronously inside its own start()", async () => {
@@ -173,16 +187,16 @@ describe("createDirector: one line at a time", () => {
 
     director.start();
 
-    expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika"]);
+    expect(inputs(port)).toEqual([chatIn("mika", "hi from mika")]);
     expect(director.getSnapshot()).toMatchObject({
       status: "running",
-      inFlight: { prompt: "[CHAT] mika: hi from mika" },
+      inFlight: { input: chatIn("mika", "hi from mika") },
     });
     expect(log.filter((entry) => entry.kind === "line-start")).toHaveLength(1);
 
     // Nothing was left half-started: the idle timer follows the line as usual.
     await vi.advanceTimersByTimeAsync(1_000 + 5_000);
-    expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika", IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([chatIn("mika", "hi from mika"), IDLE_INPUT]);
     expect(starts(port)).toEqual([0, 6_000]);
     expect(port.peakUnsettled).toBe(1);
   });
@@ -203,8 +217,10 @@ describe("createDirector: one line at a time", () => {
 
     chat.push(say("mika", "hello!"));
 
-    expect(prompts(port)).toEqual(["[CHAT] mika: hello!"]);
-    expect(director.getSnapshot().inFlight?.prompt).toBe("[CHAT] mika: hello!");
+    expect(inputs(port)).toEqual([chatIn("mika", "hello!")]);
+    expect(director.getSnapshot().inFlight?.input).toEqual(
+      chatIn("mika", "hello!"),
+    );
   });
 
   it("starts a line only when no speak() is unsettled, then serves the queue by priority", async () => {
@@ -229,19 +245,19 @@ describe("createDirector: one line at a time", () => {
     });
 
     expect(port.calls).toHaveLength(1);
-    expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
-      "[EVENT] radio: breaking",
-      "[CHAT] second: hi from second",
-      "[EVENT] game: ambient",
+    expect(director.getSnapshot().queue.map((line) => line.input)).toEqual([
+      eventIn("radio", "breaking"),
+      chatIn("second", "hi from second"),
+      eventIn("game", "ambient"),
     ]);
 
     await vi.advanceTimersByTimeAsync(12_000);
 
-    expect(prompts(port)).toEqual([
-      "[CHAT] first: hi from first",
-      "[EVENT] radio: breaking",
-      "[CHAT] second: hi from second",
-      "[EVENT] game: ambient",
+    expect(inputs(port)).toEqual([
+      chatIn("first", "hi from first"),
+      eventIn("radio", "breaking"),
+      chatIn("second", "hi from second"),
+      eventIn("game", "ambient"),
     ]);
     expect(starts(port)).toEqual([0, 3_000, 6_000, 9_000]);
     expect(port.peakUnsettled).toBe(1);
@@ -325,7 +341,7 @@ describe("createDirector: idle speech", () => {
     await vi.advanceTimersByTimeAsync(4_999);
     expect(port.calls).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port)).toEqual([IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([IDLE_INPUT]);
     expect(director.getSnapshot().inFlight?.source).toBe("idle");
 
     // The line plays 2 s, then another 5 s of silence before the next one.
@@ -343,7 +359,7 @@ describe("createDirector: idle speech", () => {
     await vi.advanceTimersByTimeAsync(20_000 + 4_999);
     expect(port.calls).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika", IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([chatIn("mika", "hi from mika"), IDLE_INPUT]);
     expect(starts(port)).toEqual([0, 25_000]);
     expect(port.peakUnsettled).toBe(1);
   });
@@ -354,7 +370,7 @@ describe("createDirector: chat ordering (criterion 2)", () => {
     {
       name: "a chat",
       input: say("mika", "what game is this?"),
-      prompt: "[CHAT] mika: what game is this?",
+      expected: chatIn("mika", "what game is this?"),
     },
     {
       name: "a normal agent event from a second source",
@@ -364,11 +380,11 @@ describe("createDirector: chat ordering (criterion 2)", () => {
         text: "Found diamonds.",
         priority: "normal",
       } satisfies ExternalShowEvent,
-      prompt: "[EVENT] game: Found diamonds.",
+      expected: eventIn("game", "Found diamonds."),
     },
   ])(
     "speaks $name emitted mid-utterance after the current line, before idle filler, without interrupting it",
-    async ({ input, prompt }) => {
+    async ({ input, expected }) => {
       const { director, chat, agents, port } = setup({
         port: { durationMs: 4_000 },
       });
@@ -380,19 +396,19 @@ describe("createDirector: chat ordering (criterion 2)", () => {
       (input.kind === "chat" ? chat : agents).push(input);
 
       expect(port.calls).toHaveLength(1);
-      expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
-        prompt,
+      expect(director.getSnapshot().queue.map((line) => line.input)).toEqual([
+        expected,
       ]);
 
       await vi.advanceTimersByTimeAsync(3_000);
-      expect(prompts(port)).toEqual([IDLE_PROMPT, prompt]);
+      expect(inputs(port)).toEqual([IDLE_INPUT, expected]);
       expect(starts(port)).toEqual([5_000, 9_000]);
       expect(port.calls[0].result?.status).toBe("completed");
       expect(port.interruptCalls).toBe(0);
 
       // The next filler waits for idleAfterMs of silence after the answer.
       await vi.advanceTimersByTimeAsync(4_000 + 5_000);
-      expect(prompts(port)).toEqual([IDLE_PROMPT, prompt, IDLE_PROMPT]);
+      expect(inputs(port)).toEqual([IDLE_INPUT, expected, IDLE_INPUT]);
       expect(port.peakUnsettled).toBe(1);
     },
   );
@@ -420,7 +436,7 @@ describe("createDirector: log", () => {
           kind: "enqueue",
           line: expect.objectContaining({
             id: "line-1",
-            prompt: "[CHAT] mika: hello!",
+            input: chatIn("mika", "hello!"),
           }),
         },
       },
@@ -478,15 +494,15 @@ describe("createDirector: log", () => {
     chat.push(say("rin"));
     await vi.advanceTimersByTimeAsync(20_000);
 
-    expect(prompts(port)).toEqual([
-      "[CHAT] mika: hi from mika",
-      "[CHAT] rin: hi from rin",
+    expect(inputs(port)).toEqual([
+      chatIn("mika", "hi from mika"),
+      chatIn("rin", "hi from rin"),
     ]);
     expect(log).toContainEqual({
       kind: "line-dropped",
       at: 20_000,
       line: expect.objectContaining({
-        prompt: "[EVENT] game: Found diamonds.",
+        input: eventIn("game", "Found diamonds."),
       }),
       reason: "stale",
     });
@@ -517,7 +533,7 @@ describe("createDirector: log", () => {
     await vi.advanceTimersByTimeAsync(4_999);
     expect(port.calls).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika", IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([chatIn("mika", "hi from mika"), IDLE_INPUT]);
     expect(starts(port)).toEqual([0, 25_000]);
   });
 
@@ -596,7 +612,7 @@ describe("createDirector: minimum interval", () => {
       "idle",
     ]);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port)).toEqual(["[CHAT] a: hi from a", IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([chatIn("a", "hi from a"), IDLE_INPUT]);
     expect(starts(port)).toEqual([0, 7_000]);
   });
 
@@ -620,11 +636,11 @@ describe("createDirector: minimum interval", () => {
     await vi.advanceTimersByTimeAsync(6_989);
     expect(port.calls).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port).slice(1)).toEqual(["[CHAT] b: hi from b"]);
+    expect(inputs(port).slice(1)).toEqual([chatIn("b", "hi from b")]);
     await vi.advanceTimersByTimeAsync(7_000);
-    expect(prompts(port).slice(1)).toEqual([
-      "[CHAT] b: hi from b",
-      "[EVENT] game: low",
+    expect(inputs(port).slice(1)).toEqual([
+      chatIn("b", "hi from b"),
+      eventIn("game", "low"),
     ]);
     expect(starts(port)).toEqual([0, 7_000, 14_000]);
   });
@@ -652,12 +668,12 @@ describe("createDirector: minimum interval", () => {
 
     // Re-armed after b settles, by the usual after-drain rule.
     await vi.advanceTimersByTimeAsync(10 + 1_000);
-    expect(prompts(port)).toEqual([
-      "[CHAT] a: hi from a",
-      "[CHAT] b: hi from b",
+    expect(inputs(port)).toEqual([
+      chatIn("a", "hi from a"),
+      chatIn("b", "hi from b"),
     ]);
     await vi.advanceTimersByTimeAsync(7_000 - 1_010);
-    expect(prompts(port).at(-1)).toBe(IDLE_PROMPT);
+    expect(inputs(port).at(-1)).toEqual(IDLE_INPUT);
     expect(starts(port)).toEqual([0, 7_000, 14_000]);
   });
 });
@@ -704,7 +720,10 @@ describe("createDirector: failed lines", () => {
       await vi.advanceTimersByTimeAsync(4_999);
       expect(port.calls).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
-      expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika", IDLE_PROMPT]);
+      expect(inputs(port)).toEqual([
+        chatIn("mika", "hi from mika"),
+        IDLE_INPUT,
+      ]);
       expect(starts(port)).toEqual([0, 6_000]);
     },
   );
@@ -753,7 +772,7 @@ describe("createDirector: backoff after a failed line", () => {
     await vi.advanceTimersByTimeAsync(5_999);
     expect(port.calls).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-    expect(prompts(port)).toEqual(["[CHAT] a: hi from a", IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([chatIn("a", "hi from a"), IDLE_INPUT]);
     expect(starts(port)).toEqual([0, 6_000]);
   });
 
@@ -772,13 +791,13 @@ describe("createDirector: backoff after a failed line", () => {
     chat.push(say("c"));
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(port.calls.map((call) => call.prompt.slice(0, 10))).toEqual([
-      "[CHAT] a: ",
-      "[CHAT] b: ",
-      "[CHAT] c: ",
-      "[DIRECTOR]",
-      "[DIRECTOR]",
-      "[DIRECTOR]",
+    expect(inputs(port)).toEqual([
+      chatIn("a", "hi from a"),
+      chatIn("b", "hi from b"),
+      chatIn("c", "hi from c"),
+      IDLE_INPUT,
+      IDLE_INPUT,
+      IDLE_INPUT,
     ]);
     expect(starts(port)).toEqual([0, 6_000, 12_000, 18_000, 24_000, 30_000]);
     expect(director.getSnapshot().status).toBe("running");
@@ -809,10 +828,10 @@ describe("createDirector: a port whose speak() rejects or throws", () => {
   ])(
     "treats $name as a failed line carrying its message and carries on",
     async ({ throws, reason, error }) => {
-      const calls: string[] = [];
+      const calls: LineInput[] = [];
       const port: CharacterPort = {
-        speak: (prompt) => {
-          calls.push(prompt);
+        speak: (input) => {
+          calls.push(input);
           if (calls.length > 1) {
             return Promise.resolve({
               status: "completed",
@@ -843,7 +862,7 @@ describe("createDirector: a port whose speak() rejects or throws", () => {
       expect(log.filter((entry) => entry.kind === "line-end")).toEqual([
         expect.objectContaining({
           line: expect.objectContaining({
-            prompt: "[CHAT] mika: hi from mika",
+            input: chatIn("mika", "hi from mika"),
           }),
           result: { status: "failed", text: "", error },
         }),
@@ -862,7 +881,11 @@ describe("createDirector: a port whose speak() rejects or throws", () => {
 describe("createDirector: subscribers", () => {
   it("delivers batches in order, each with its own snapshot, when a listener pushes an event", () => {
     const { director, chat } = setup({ port: { durationMs: 1_000 } });
-    type Seen = { kinds: string[]; queued: number; inFlight: string | null };
+    type Seen = {
+      kinds: string[];
+      queued: number;
+      inFlight: LineInput | null;
+    };
     const first: Seen[] = [];
     const second: Seen[] = [];
     const record =
@@ -875,7 +898,7 @@ describe("createDirector: subscribers", () => {
               : entry.kind,
           ),
           queued: snapshot.queue.length,
-          inFlight: snapshot.inFlight?.prompt ?? null,
+          inFlight: snapshot.inFlight?.input ?? null,
         });
     let pushed = false;
     director.subscribe((snapshot) => {
@@ -896,12 +919,12 @@ describe("createDirector: subscribers", () => {
       {
         kinds: ["decision:mika", "line-start"],
         queued: 0,
-        inFlight: "[CHAT] mika: hi from mika",
+        inFlight: chatIn("mika", "hi from mika"),
       },
       {
         kinds: ["decision:rin"],
         queued: 1,
-        inFlight: "[CHAT] mika: hi from mika",
+        inFlight: chatIn("mika", "hi from mika"),
       },
     ];
     expect(first).toEqual(expected);
@@ -931,7 +954,7 @@ describe("createDirector: subscribers", () => {
       expect(() => chat.push(say("mika"))).not.toThrow();
 
       expect(director.getSnapshot().status).toBe("running");
-      expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika"]);
+      expect(inputs(port)).toEqual([chatIn("mika", "hi from mika")]);
       expect(after).toEqual([0, 1]);
       expect(log.map((entry) => entry.kind)).toEqual([
         "decision",
@@ -941,7 +964,10 @@ describe("createDirector: subscribers", () => {
       for (const callback of reported) expect(callback).toThrow(boom);
 
       await vi.advanceTimersByTimeAsync(1_000 + 5_000);
-      expect(prompts(port)).toEqual(["[CHAT] mika: hi from mika", IDLE_PROMPT]);
+      expect(inputs(port)).toEqual([
+        chatIn("mika", "hi from mika"),
+        IDLE_INPUT,
+      ]);
     } finally {
       microtasks.mockRestore();
     }
@@ -953,7 +979,7 @@ describe("createDirector: segments", () => {
     const { director, port, log } = setup({ plan: showPlan });
     director.start();
 
-    expect(prompts(port)).toEqual(["[DIRECTOR] Open."]);
+    expect(inputs(port)).toEqual([cueIn("Open.")]);
     expect(director.getSnapshot().segmentIndex).toBe(0);
     expect(log).toContainEqual({
       kind: "segment",
@@ -973,15 +999,12 @@ describe("createDirector: segments", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(director.getSnapshot().segmentIndex).toBe(1);
     expect(port.calls).toHaveLength(1);
-    expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
-      "[DIRECTOR] Talk games.",
+    expect(director.getSnapshot().queue.map((line) => line.input)).toEqual([
+      cueIn("Talk games."),
     ]);
 
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(prompts(port)).toEqual([
-      "[DIRECTOR] Open.",
-      "[DIRECTOR] Talk games.",
-    ]);
+    expect(inputs(port)).toEqual([cueIn("Open."), cueIn("Talk games.")]);
     expect(starts(port)).toEqual([0, 15_000]);
     expect(port.calls[0].result?.status).toBe("completed");
     expect(port.interruptCalls).toBe(0);
@@ -1007,14 +1030,11 @@ describe("createDirector: segments", () => {
     ]);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
-      "[DIRECTOR] Talk games.",
+    expect(director.getSnapshot().queue.map((line) => line.input)).toEqual([
+      cueIn("Talk games."),
     ]);
     await vi.advanceTimersByTimeAsync(4_000);
-    expect(prompts(port)).toEqual([
-      "[DIRECTOR] Open.",
-      "[DIRECTOR] Talk games.",
-    ]);
+    expect(inputs(port)).toEqual([cueIn("Open."), cueIn("Talk games.")]);
     expect(starts(port)).toEqual([0, 9_000]);
   });
 
@@ -1024,7 +1044,7 @@ describe("createDirector: segments", () => {
       port: {
         durationMs: 1_000,
         respond: (call) =>
-          call.prompt === "[DIRECTOR] Open."
+          call.input.text === "Open."
             ? { status: "failed", text: "", error: "HTTP 429" }
             : { status: "completed", text: `Reply ${call.index + 1}.` },
       },
@@ -1039,14 +1059,16 @@ describe("createDirector: segments", () => {
     });
 
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(prompts(port)).toEqual([
-      "[DIRECTOR] Open.",
-      '[DIRECTOR] Chat is quiet. Keep the current topic, "Hello", going with one short new thought.',
+    expect(inputs(port)).toEqual([
+      cueIn("Open."),
+      cueIn(
+        'Chat is quiet. Keep the current topic, "Hello", going with one short new thought.',
+      ),
     ]);
 
     await vi.advanceTimersByTimeAsync(4_000);
     expect(director.getSnapshot().segmentIndex).toBe(1);
-    expect(prompts(port).at(-1)).toBe("[DIRECTOR] Talk games.");
+    expect(inputs(port).at(-1)).toEqual(cueIn("Talk games."));
     expect(starts(port)).toEqual([0, 6_000, 10_000]);
   });
 });
@@ -1061,7 +1083,7 @@ describe("createDirector: interrupt", () => {
         text: "big news!",
         highlighted: true,
       } satisfies ExternalShowEvent,
-      prompt: "[CHAT] mika: big news!",
+      expected: chatIn("mika", "big news!"),
     },
     {
       name: "a high agent event",
@@ -1071,7 +1093,7 @@ describe("createDirector: interrupt", () => {
         text: "Boss appeared.",
         priority: "high",
       } satisfies ExternalShowEvent,
-      prompt: "[EVENT] game: Boss appeared.",
+      expected: eventIn("game", "Boss appeared."),
     },
   ];
   // Filler starts at 5 s and is cut at 6 s. With a 7 s interval nothing may
@@ -1095,7 +1117,7 @@ describe("createDirector: interrupt", () => {
 
   it.each(cases)(
     "cuts idle filler for $name ($order): one interrupt(), no retry, the line waits for both and for the interval",
-    async ({ input, prompt, slow, startsAt }) => {
+    async ({ input, expected, slow, startsAt }) => {
       const fake = createFakePort({
         durationMs: 10_000,
         ...(slow === "speak" && { cancelSettlesAfterMs: 8_000 }),
@@ -1134,7 +1156,7 @@ describe("createDirector: interrupt", () => {
       await vi.advanceTimersByTimeAsync(startsAt - 6_000 - 1);
       expect(fake.calls).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
-      expect(prompts(fake)).toEqual([IDLE_PROMPT, prompt]);
+      expect(inputs(fake)).toEqual([IDLE_INPUT, expected]);
       expect(starts(fake)).toEqual([5_000, startsAt]);
       expect(fake.peakUnsettled).toBe(1);
 
@@ -1190,11 +1212,11 @@ describe("createDirector: interrupt", () => {
     ]);
 
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(prompts(port).slice(2)).toEqual(["[DIRECTOR] Talk games."]);
+    expect(inputs(port).slice(2)).toEqual([cueIn("Talk games.")]);
     await vi.advanceTimersByTimeAsync(3_000);
-    expect(prompts(port).slice(2)).toEqual([
-      "[DIRECTOR] Talk games.",
-      "[CHAT] mika: hey!",
+    expect(inputs(port).slice(2)).toEqual([
+      cueIn("Talk games."),
+      chatIn("mika", "hey!"),
     ]);
     expect(port.interruptCalls).toBe(1);
   });
@@ -1212,11 +1234,11 @@ describe("createDirector: interrupt", () => {
     expect(port.interruptCalls).toBe(1);
 
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(prompts(port)).toEqual([IDLE_PROMPT, "[CHAT] mika: one"]);
+    expect(inputs(port)).toEqual([IDLE_INPUT, chatIn("mika", "one")]);
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(prompts(port).slice(1)).toEqual([
-      "[CHAT] mika: one",
-      "[CHAT] rin: two",
+    expect(inputs(port).slice(1)).toEqual([
+      chatIn("mika", "one"),
+      chatIn("rin", "two"),
     ]);
     expect(port.peakUnsettled).toBe(1);
   });
@@ -1231,7 +1253,7 @@ describe("createDirector: ending", () => {
         port: {
           durationMs: 2_000,
           respond: (call) =>
-            call.prompt === "[DIRECTOR] Say goodbye." && endStatus === "failed"
+            call.input.text === "Say goodbye." && endStatus === "failed"
               ? { status: "failed", text: "", error: "HTTP 503" }
               : { status: "completed", text: `Reply ${call.index + 1}.` },
         },
@@ -1243,7 +1265,7 @@ describe("createDirector: ending", () => {
       expect(director.getSnapshot()).toMatchObject({
         status: "running",
         segmentIndex: 2,
-        inFlight: { prompt: "[DIRECTOR] Say goodbye." },
+        inFlight: { input: cueIn("Say goodbye.") },
       });
       // Chat arriving once the ending has started is ignored, not queued
       // behind it to be wiped when the show finishes.
@@ -1294,19 +1316,19 @@ describe("createDirector: ending order", () => {
     await vi.advanceTimersByTimeAsync(3_000);
     chat.push(say("rin"));
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(director.getSnapshot().queue.map((line) => line.prompt)).toEqual([
-      "[CHAT] rin: hi from rin",
-      "[DIRECTOR] Say goodbye.",
+    expect(director.getSnapshot().queue.map((line) => line.input)).toEqual([
+      chatIn("rin", "hi from rin"),
+      cueIn("Say goodbye."),
     ]);
 
     chat.push(say("mika"));
     expect(director.getSnapshot().counters.eventsIgnored).toBe(1);
 
     await vi.advanceTimersByTimeAsync(20_000);
-    expect(prompts(port)).toEqual([
-      "[DIRECTOR] Open.",
-      "[CHAT] rin: hi from rin",
-      "[DIRECTOR] Say goodbye.",
+    expect(inputs(port)).toEqual([
+      cueIn("Open."),
+      chatIn("rin", "hi from rin"),
+      cueIn("Say goodbye."),
     ]);
     expect(director.getSnapshot().status).toBe("finished");
   });
@@ -1354,7 +1376,7 @@ describe("createDirector: stop()", () => {
     expect(log).toContainEqual({
       kind: "line-end",
       at: 5_000,
-      line: expect.objectContaining({ prompt: "[DIRECTOR] Open." }),
+      line: expect.objectContaining({ input: cueIn("Open.") }),
       result: { status: "cancelled", text: "" },
       leak: false,
     });
@@ -1366,7 +1388,7 @@ describe("createDirector: stop()", () => {
       decision: { kind: "ignore", reason: "show-not-running" },
     });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prompts(port)).toEqual(["[DIRECTOR] Open."]);
+    expect(inputs(port)).toEqual([cueIn("Open.")]);
     expect(port.interruptCalls).toBe(1);
   });
 
@@ -1401,7 +1423,7 @@ describe("createDirector: stop()", () => {
       result: { status: "cancelled" },
     });
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prompts(port)).toEqual([IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([IDLE_INPUT]);
     expect(port.interruptCalls).toBe(1);
     expect(director.getSnapshot().status).toBe("stopped");
   });
@@ -1455,7 +1477,7 @@ describe("createDirector: stop()", () => {
     expect(vi.getTimerCount()).toBe(0);
     external.push(say("mika"));
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prompts(port)).toEqual(["[DIRECTOR] Open."]);
+    expect(inputs(port)).toEqual([cueIn("Open.")]);
     expect(
       log.some(
         (entry) => entry.kind === "decision" && entry.event.kind === "chat",
@@ -1628,7 +1650,7 @@ describe("createDirector: a rejected interrupt", () => {
     expect(director.getSnapshot().counters.linesSpoken).toBe(1);
     chat.push(say("sora"));
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(prompts(port)).toEqual([IDLE_PROMPT]);
+    expect(inputs(port)).toEqual([IDLE_INPUT]);
     expect(director.getSnapshot().status).toBe("failed");
     expect(vi.getTimerCount()).toBe(0);
     await expectNoUnhandledRejection();
@@ -1671,7 +1693,7 @@ describe("createDirector: a rejected interrupt", () => {
         result: expect.objectContaining({ status: "completed" }),
       }),
     ]);
-    expect(prompts(port)).toEqual(["[DIRECTOR] Open."]);
+    expect(inputs(port)).toEqual([cueIn("Open.")]);
     expect(director.getSnapshot().status).toBe("failed");
     expect(vi.getTimerCount()).toBe(0);
     await expectNoUnhandledRejection();
@@ -1713,9 +1735,9 @@ describe("createDirector: a listener that pushes on every publish", () => {
 describe("createFakePort", () => {
   it("can give each line its own duration by call index", async () => {
     const port = createFakePort({ durationMs: (index) => (index + 1) * 100 });
-    void port.speak("a");
+    void port.speak(cueIn("a"));
     await vi.advanceTimersByTimeAsync(100);
-    void port.speak("b");
+    void port.speak(cueIn("b"));
     await vi.advanceTimersByTimeAsync(200);
     expect(port.calls.map((call) => call.endedAt)).toEqual([100, 300]);
   });
@@ -1723,7 +1745,9 @@ describe("createFakePort", () => {
   it("settles the cancelled speak() before interrupt() resolves by default", async () => {
     const port = createFakePort({ durationMs: 10_000 });
     const order: string[] = [];
-    void port.speak("a").then((result) => order.push(`speak:${result.status}`));
+    void port
+      .speak(cueIn("a"))
+      .then((result) => order.push(`speak:${result.status}`));
     await port.interrupt().then(() => order.push("interrupt"));
     expect(order).toEqual(["speak:cancelled", "interrupt"]);
   });
@@ -1734,7 +1758,9 @@ describe("createFakePort", () => {
       cancelSettlesAfterMs: 50,
     });
     const order: string[] = [];
-    void port.speak("a").then((result) => order.push(`speak:${result.status}`));
+    void port
+      .speak(cueIn("a"))
+      .then((result) => order.push(`speak:${result.status}`));
     await port.interrupt().then(() => order.push("interrupt"));
     expect(order).toEqual(["interrupt"]);
     await vi.advanceTimersByTimeAsync(50);

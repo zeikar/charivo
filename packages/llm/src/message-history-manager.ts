@@ -153,14 +153,14 @@ export class MessageHistoryManager {
     return evicted;
   }
 
-  /** Drop the leading character messages and report them in their original order. */
-  removeLeadingCharacterMessages(): Message[] {
+  /**
+   * Drop the leading messages `isStranded` matches, up to the first it does
+   * not, and report them in their original order.
+   */
+  removeLeadingStranded(isStranded: (message: Message) => boolean): Message[] {
     let count = 0;
     // Stop before the last entry: the newest message is never a stranded reply.
-    while (
-      count < this.history.length - 1 &&
-      this.history[count].type === "character"
-    ) {
+    while (count < this.history.length - 1 && isStranded(this.history[count])) {
       count += 1;
     }
 

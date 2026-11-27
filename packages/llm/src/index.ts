@@ -5,3 +5,9 @@ export {
   type ResolvedBrainInput,
 } from "./brain-input";
 export { type DirectionRole } from "./message-converter";
+export {
+  createCascadeBrain,
+  type CascadeBrainOptions,
+  type CascadeReply,
+  type CascadeReviewInput,
+} from "./cascade-brain";

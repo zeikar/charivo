@@ -183,6 +183,38 @@ describe("createAvatarDirector", () => {
     });
   });
 
+  describe("performanceId", () => {
+    it("binds the expression to the performance with a hold", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.say("Hello there!", { performanceId: "perf-1" });
+      calls[0]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(emissions).toEqual([
+        [
+          "avatar:expression",
+          {
+            expressionId: "happy",
+            source: "avatar-director",
+            priority: "inferred",
+            hold: { performance: "perf-1" },
+          },
+        ],
+      ]);
+    });
+
+    it("emits no hold without a performanceId", async () => {
+      const { director, calls, emissions } = setup();
+
+      director.say("Hello there!");
+      calls[0]?.result.resolve({ expressionId: "happy" });
+      await flush();
+
+      expect(emissions[0]?.[1]).not.toHaveProperty("hold");
+    });
+  });
+
   describe("validation against the catalog", () => {
     it("drops an unknown expression id", async () => {
       const { director, calls, emissions } = setup();

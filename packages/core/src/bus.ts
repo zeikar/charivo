@@ -4,6 +4,9 @@ type ListenerStore = {
   [K in keyof EventMap]?: Array<(data: EventMap[K]) => void>;
 };
 
+/** Sees every emitted event before its listeners do. */
+type EventTap = <K extends keyof EventMap>(event: K, data: EventMap[K]) => void;
+
 export class EventBus implements CharivoEventBus {
   // Object.create(null), not {}: EventMap is open to declaration merging, so
   // an augmented event may be named after an Object.prototype member
@@ -11,6 +14,9 @@ export class EventBus implements CharivoEventBus {
   // inherit a truthy value, so `??=` skips the array init and on()/emit()
   // throw. A null-prototype store has no inherited keys.
   private listeners: ListenerStore = Object.create(null);
+
+  /** `tap` is the bus owner's own, so `clear()` keeps it. */
+  constructor(private readonly tap?: EventTap) {}
 
   on<K extends keyof EventMap>(
     event: K,
@@ -21,6 +27,7 @@ export class EventBus implements CharivoEventBus {
   }
 
   emit<K extends keyof EventMap>(event: K, data: EventMap[K]): void {
+    this.tap?.(event, data);
     // Each listener is isolated: one that throws must not stop the listeners
     // queued behind it, and emit() must stay non-throwing for its callers,
     // which are frequently mid-teardown or inside a provider callback.

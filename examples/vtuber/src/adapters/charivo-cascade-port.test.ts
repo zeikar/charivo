@@ -3,35 +3,42 @@ import {
   isCharivoError,
   type Character,
   type Charivo,
+  type ConversationBrain,
   type LLMClient,
   type LLMMessage,
   type TTSManager,
 } from "@charivo/core";
-import { createLLMManager } from "@charivo/llm";
+import {
+  createCascadeBrain,
+  createLLMManager,
+  type CascadeBrainOptions,
+} from "@charivo/llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDirector,
   createPushSource,
   DEFAULT_DIRECTOR_CONFIG,
-  SHOW_PROTOCOL_INSTRUCTIONS,
   type ShowPlan,
 } from "../director";
 import {
-  formatAgentEvent,
-  formatDirectorCue,
-  formatViewerChat,
-} from "../director/envelope";
-import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../app/lib/show-plan";
+  agentEventInput,
+  directorCueInput,
+  viewerChatInput,
+} from "../director/line-input";
 import {
-  applyShowProtocol,
-  createCharivoCascadePort,
-} from "./charivo-cascade-port";
+  reviewReply,
+  STAGE_DIRECTION_REPLY_MESSAGE,
+} from "../app/lib/reply-review";
+import { DEFAULT_SHOW_PLAN, SHOW_DIRECTOR_CONFIG } from "../app/lib/show-plan";
+import { createCharivoCascadePort } from "./charivo-cascade-port";
 
 const CHARACTER: Character = {
   id: "hiyori",
   name: "Hiyori",
   personality: "Cheerful and curious.",
 };
+
+const CUE = directorCueInput("Say hello.");
 
 const SHORT_PLAN: ShowPlan = {
   segments: [
@@ -130,21 +137,24 @@ function setup(
     reply?: (index: number) => string | Error;
     durationMs?: number;
     stopDelayMs?: number;
+    review?: CascadeBrainOptions["review"];
   } = {},
 ) {
   const llm = createScriptedClient(options.reply);
   const tts = createFakeTTS(options);
+  const brain: ConversationBrain = createCascadeBrain(
+    createLLMManager(llm.client, { directionRole: "user" }),
+    { review: options.review ?? reviewReply },
+  );
   const charivo: Charivo = createCharivo({
-    llm: createLLMManager(llm.client),
+    brain,
     tts,
-    character: applyShowProtocol(CHARACTER),
+    character: CHARACTER,
   });
   const cancelledIds: string[] = [];
-  charivo.on("turn:cancelled", ({ userMessageId }) =>
-    cancelledIds.push(userMessageId),
-  );
-  const port = createCharivoCascadePort(charivo);
-  return { llm, tts, charivo, port, cancelledIds };
+  charivo.on("turn:cancelled", ({ turnId }) => cancelledIds.push(turnId));
+  const port = createCharivoCascadePort(brain);
+  return { llm, tts, brain, charivo, port, cancelledIds };
 }
 
 beforeEach(() => {
@@ -159,7 +169,7 @@ describe("createCharivoCascadePort", () => {
   it("resolves completed with the reply once the TTS speak() has resolved", async () => {
     const { port, tts } = setup({ durationMs: 1_000 });
     let settled = false;
-    const speaking = port.speak("[DIRECTOR] Say hello.").then((result) => {
+    const speaking = port.speak(CUE).then((result) => {
       settled = true;
       expect(tts.utterances[0]?.settled).toBe(true);
       return result;
@@ -183,11 +193,9 @@ describe("createCharivoCascadePort", () => {
     });
     const sentIds: string[] = [];
     charivo.on("message:sent", ({ message }) => sentIds.push(message.id));
-    const speaking = port.speak("[DIRECTOR] Say hello.");
+    const speaking = port.speak(CUE);
     await vi.advanceTimersByTimeAsync(500);
     expect(tts.utterances).toHaveLength(1);
-    // userSay() stops leftover audio before each turn; that stop is not ours.
-    tts.order.length = 0;
 
     const interrupting = port
       .interrupt()
@@ -202,19 +210,8 @@ describe("createCharivoCascadePort", () => {
     ]);
     expect(sentIds).toHaveLength(1);
     expect(cancelledIds).toEqual(sentIds);
-    await expect(speaking).resolves.toMatchObject({ status: "cancelled" });
-  });
-
-  it("ignores a turn:cancelled naming another message id", async () => {
-    const { port, charivo } = setup({ durationMs: 1_000 });
-    const speaking = port.speak("[DIRECTOR] Say hello.");
-    await vi.advanceTimersByTimeAsync(500);
-
-    charivo.emit("turn:cancelled", { userMessageId: "someone-else" });
-    await vi.advanceTimersByTimeAsync(500);
-
     await expect(speaking).resolves.toEqual({
-      status: "completed",
+      status: "cancelled",
       text: "Reply 1.",
     });
   });
@@ -223,30 +220,51 @@ describe("createCharivoCascadePort", () => {
     const { port } = setup({
       reply: () => new Error("Text is longer than 500 characters."),
     });
-    await expect(port.speak("[DIRECTOR] Say hello.")).resolves.toEqual({
+    await expect(port.speak(CUE)).resolves.toEqual({
       status: "failed",
       text: "",
       error: "Text is longer than 500 characters.",
     });
   });
 
-  it("resolves failed with the message when TTS speak() rejects (tts:error)", async () => {
-    const { port, tts, charivo } = setup();
-    const ttsErrors: string[] = [];
-    charivo.on("tts:error", ({ error }) => ttsErrors.push(error.message));
+  it("resolves failed with the reply and the message when TTS speak() rejects", async () => {
+    const { port, tts } = setup();
     tts.speakError = new Error("Speech synthesis failed.");
 
-    await expect(port.speak("[DIRECTOR] Say hello.")).resolves.toEqual({
+    await expect(port.speak(CUE)).resolves.toEqual({
       status: "failed",
       text: "Reply 1.",
       error: "Speech synthesis failed.",
     });
-    expect(ttsErrors).toEqual(["Speech synthesis failed."]);
+  });
+
+  it("resolves failed and speaks nothing when the review withholds a reply repeating the cue", async () => {
+    const cue =
+      "The stream is ending. Thank the viewers for hanging out and say a warm goodbye.";
+    const { port, tts } = setup({ reply: () => `Okay. ${cue}` });
+
+    await expect(port.speak(directorCueInput(cue))).resolves.toEqual({
+      status: "failed",
+      text: "",
+      error: STAGE_DIRECTION_REPLY_MESSAGE,
+    });
+    expect(tts.utterances).toHaveLength(0);
+  });
+
+  it("resolves failed when the brain gives no reply", async () => {
+    const { port, tts } = setup({ review: () => null });
+
+    await expect(port.speak(CUE)).resolves.toEqual({
+      status: "failed",
+      text: "",
+      error: "The character gave no reply.",
+    });
+    expect(tts.utterances).toHaveLength(0);
   });
 
   it("rejects interrupt() with Charivo's error when the TTS stop rejects", async () => {
     const { port, tts } = setup();
-    void port.speak("[DIRECTOR] Say hello.");
+    void port.speak(CUE);
     await vi.advanceTimersByTimeAsync(500);
     tts.stopError = new Error("Audio device is gone.");
 
@@ -285,9 +303,9 @@ describe("createCharivoCascadePort", () => {
   });
 
   it("is unusable for good once an interrupt has rejected", async () => {
-    const { port, tts, llm, charivo } = setup();
+    const { port, tts, llm, brain } = setup();
     expect(port.isUsable()).toBe(true);
-    void port.speak("[DIRECTOR] Say hello.");
+    void port.speak(CUE);
     await vi.advanceTimersByTimeAsync(500);
     tts.stopError = new Error("Audio device is gone.");
     await expect(port.interrupt()).rejects.toThrow("Audio device is gone.");
@@ -296,10 +314,10 @@ describe("createCharivoCascadePort", () => {
     // Even once the audio could be stopped again, there is no way back.
     tts.stopError = null;
     await vi.advanceTimersByTimeAsync(5_000);
-    const userSay = vi.spyOn(charivo, "userSay");
+    const submit = vi.spyOn(brain, "submit");
     const requestsBefore = llm.requests.length;
 
-    await expect(port.speak("[DIRECTOR] Say hello.")).resolves.toMatchObject({
+    await expect(port.speak(CUE)).resolves.toMatchObject({
       status: "failed",
       error: expect.any(String),
     });
@@ -320,27 +338,47 @@ describe("createCharivoCascadePort", () => {
 
     expect(results.length).toBeGreaterThan(0);
     expect(new Set(results)).toEqual(new Set(["failed"]));
-    expect(userSay).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
     expect(llm.requests).toHaveLength(requestsBefore);
     expect(port.isUsable()).toBe(false);
   });
-});
 
-describe("dispose", () => {
-  it("removes every listener the port added to Charivo", () => {
-    const charivo = createCharivo();
-    const on = vi.spyOn(charivo, "on");
-    const off = vi.spyOn(charivo, "off");
-    const port = createCharivoCascadePort(charivo);
-    expect(on).toHaveBeenCalled();
-    expect(off).not.toHaveBeenCalled();
-
-    port.dispose();
-
-    expect(off.mock.calls).toHaveLength(on.mock.calls.length);
-    for (const [event, listener] of on.mock.calls) {
-      expect(off).toHaveBeenCalledWith(event, listener);
+  it("keeps viewer lines and agent events in history, and never a cue", async () => {
+    const { port, llm, brain } = setup({ durationMs: 10 });
+    const inputs = [
+      directorCueInput("Greet the viewers."),
+      viewerChatInput("mika", "hi!"),
+      agentEventInput("weather", "It started raining."),
+    ];
+    for (const input of inputs) {
+      const speaking = port.speak(input);
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(speaking).resolves.toMatchObject({ status: "completed" });
     }
+
+    // The cue reached the model once, in its own request.
+    expect(llm.requests[0]?.at(-1)).toEqual({
+      role: "user",
+      content: expect.stringContaining("Greet the viewers."),
+    });
+    const history = brain.getHistory();
+    expect(history.map((message) => message.type)).toEqual([
+      "character",
+      "user",
+      "character",
+      "event",
+      "character",
+    ]);
+    expect(history[1]).toMatchObject({
+      type: "user",
+      source: "mika",
+      content: "hi!",
+    });
+    expect(history[3]).toMatchObject({
+      type: "event",
+      source: "weather",
+      content: "It started raining.",
+    });
   });
 });
 
@@ -361,50 +399,5 @@ describe("a Director on the cascade port", () => {
     expect(director.getSnapshot().counters.linesFailed).toBe(0);
     expect(cancelledIds).toEqual([]);
     expect(tts.peakConcurrent).toBe(1);
-  });
-});
-
-describe("applyShowProtocol", () => {
-  it("keeps the personality and appends the show protocol", () => {
-    expect(applyShowProtocol(CHARACTER)).toEqual({
-      ...CHARACTER,
-      personality: `Cheerful and curious.\n\n${SHOW_PROTOCOL_INSTRUCTIONS}`,
-    });
-    expect(applyShowProtocol({ id: "a", name: "A" }).personality).toBe(
-      SHOW_PROTOCOL_INSTRUCTIONS,
-    );
-  });
-
-  it("sends the protocol as system prompt and each input with its envelope tag", async () => {
-    const { port, llm, charivo } = setup({ durationMs: 10 });
-    const cue = formatDirectorCue("Greet the viewers.");
-    const prompts = [
-      cue,
-      formatViewerChat("mika", "hi!"),
-      formatAgentEvent("weather", "It started raining."),
-    ];
-    for (const prompt of prompts) {
-      const speaking = port.speak(prompt);
-      await vi.advanceTimersByTimeAsync(10);
-      await expect(speaking).resolves.toMatchObject({ status: "completed" });
-    }
-
-    expect(llm.requests.map((request) => request.at(-1))).toEqual([
-      { role: "user", content: expect.stringMatching(/^\[DIRECTOR\] /) },
-      { role: "user", content: expect.stringMatching(/^\[CHAT\] /) },
-      { role: "user", content: expect.stringMatching(/^\[EVENT\] /) },
-    ]);
-    for (const request of llm.requests) {
-      expect(request[0]).toEqual({
-        role: "system",
-        content: expect.stringContaining(SHOW_PROTOCOL_INSTRUCTIONS),
-      });
-    }
-
-    // The known limitation this example reports: userSay() is the only way
-    // in, so a cue is stored as though a viewer had said it.
-    expect(charivo.getHistory()).toContainEqual(
-      expect.objectContaining({ type: "user", content: cue }),
-    );
   });
 });

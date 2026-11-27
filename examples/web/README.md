@@ -328,6 +328,33 @@ itself once the turn actually runs.
 
 That split keeps renderer lifecycle separate from conversation/session lifecycle.
 
+### Chat on the brain
+
+`useCharivoChat` builds the LLM manager with the avatar tools, wraps it in
+`createCascadeBrain(llmManager)` from `@charivo/llm`, and passes it to
+`createCharivo({ renderer, brain })`. Sending a message is
+`charivo.getBrain()?.submit({ kind: "user", text }).done`. The settled
+`BrainTurnResult` says whether generation or render failed (`stage`), and
+`done` never rejects.
+
+- **Transcript.** The render manager's message callback (`setMessageCallback`)
+  delivers the character's lines only. The user's own message arrives once from
+  the brain as `message:sent`, and the hook adds it when `message.type` is
+  `"user"`.
+- **Speaking indicator.** It follows `floor:changed`: the character is speaking
+  while `floor.state` is `"speaking"`.
+- **Reactions.** The reaction buttons call `charivo.react({ expression, gaze,
+  source: "reaction", priority: "reflex", hold })`. A reaction never takes the
+  floor, so the face overrides a reply in progress for its hold, then falls
+  back to it.
+- **Realtime toggle order.** `useRealtimeMode` awaits `charivo.interrupt()` and
+  then calls `attachRealtime(manager)`: `attachRealtime()` throws while a
+  performance holds the floor or cancelled speech is still unsettled. While the
+  session is attached `perform()` is refused and `getFloor()` is
+  `{ state: "realtime" }`; `react()` still works. Leaving realtime stops the
+  session first, then calls `detachRealtime()`, which never touches the
+  session. A failed start detaches again so playback is not left reserved.
+
 ## Credits
 
 The bundled Live2D models are © Live2D Inc. and are included only to
