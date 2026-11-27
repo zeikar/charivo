@@ -1582,6 +1582,56 @@ describe("overlapping teardown", () => {
     expect(charivo.dispose()).not.toBe(first);
   });
 
+  it("refuses attachRealtime() from a listener during dispose()", async () => {
+    const charivo = new Charivo();
+    const realtime = new StubRealtimeManager();
+    charivo.attachRealtime(realtime);
+    let refused: unknown;
+    charivo.on("floor:changed", ({ floor }) => {
+      if (floor.state === "idle" && refused === undefined) {
+        try {
+          charivo.attachRealtime(new StubRealtimeManager());
+        } catch (error) {
+          refused = error;
+        }
+      }
+    });
+
+    await charivo.dispose();
+
+    expect(refused).toBeInstanceOf(CharivoStateError);
+    expect(charivo.getRealtimeManager()).toBeUndefined();
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
+  });
+
+  it("reports a brain cleanup failure as a dispose error with its cause", async () => {
+    const charivo = new Charivo();
+    const failure = new CharivoProviderError("stop failed");
+    const brain = {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(async () => {
+        throw failure;
+      }),
+    } satisfies ConversationBrain;
+    charivo.attachBrain(brain);
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      name: "CharivoDisposeError",
+      cause: failure,
+    });
+  });
+
   it("joins the teardown in progress from a performance:end listener", async () => {
     const charivo = new Charivo();
     const tts = Object.assign(new ReportingTTSManager(), {

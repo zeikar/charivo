@@ -309,6 +309,11 @@ export class Floor {
    * anything changes, so `attachRealtime()` can check first.
    */
   assertRealtimeAdmissible(): void {
+    if (this.teardown) {
+      throw new CharivoStateError(
+        "attachRealtime() was called while disposing",
+      );
+    }
     if (this.holder) {
       throw new CharivoStateError(
         "attachRealtime() was called while a performance holds the floor",

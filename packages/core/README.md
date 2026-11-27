@@ -320,7 +320,7 @@ and `perform()` is refused. `react()` still works, and `critical` finds no
 performance to cancel.
 
 `attachRealtime()` throws `CharivoStateError` while a performance holds the
-floor or cancelled speech is unsettled. It is allowed once the floor is free and
+floor, while cancelled speech is unsettled, or while `dispose()` is in progress. It is allowed once the floor is free and
 every manager with cancelled speech has confirmed its stop: `await
 charivo.interrupt()` first, and when that rejects, attaching stays refused until
 a later stop on that manager succeeds. Leaving realtime, stop the session before

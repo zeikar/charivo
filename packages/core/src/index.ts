@@ -19,7 +19,6 @@ import {
 import {
   CharivoDisposeError,
   CharivoStateError,
-  toCharivoError,
   type CharivoError,
 } from "./errors";
 
@@ -574,19 +573,22 @@ export class Charivo implements CharacterBody {
     // asynchronous cleanup included.
     this.floor.beginTeardown();
 
+    // Every failure surfaces as a dispose error whose cause is the original,
+    // whichever step or caller (the brain's cleanup, say) produced it.
     const recordError = (error: unknown, fallbackMessage: string): void => {
-      const typedError = toCharivoError("dispose", error, fallbackMessage);
-      if (!firstError) {
-        firstError = typedError;
+      if (firstError) {
+        return;
       }
+      firstError =
+        error instanceof CharivoDisposeError
+          ? error
+          : new CharivoDisposeError(
+              error instanceof Error ? error.message : fallbackMessage,
+              { cause: error },
+            );
     };
-
-    // A TTS stop fails with the same type whichever stop failed: a dispose
-    // error whose cause is the provider error.
     const recordStopFailure = (error: unknown): void => {
-      const message =
-        error instanceof Error ? error.message : "Failed to stop TTS";
-      recordError(new CharivoDisposeError(message, { cause: error }), message);
+      recordError(error, "Failed to stop TTS");
     };
 
     // The brain first: it cancels its live turn, which settles the floor's
