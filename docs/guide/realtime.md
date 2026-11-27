@@ -115,12 +115,12 @@ works, and a `critical` reaction finds no performance to cancel. The body never
 calls the realtime manager's `interrupt()` or `sendMessage()`.
 
 `attachRealtime(...)` also throws `CharivoStateError` while a performance holds
-the floor, while cancelled speech has not confirmed its stop, or while
-`dispose()` is in progress, so cascade speech has ended before realtime starts. When switching from cascade, `await
-charivo.interrupt()` first; if that rejects, the speech could not be stopped
-and attaching stays refused until a later `interrupt()` succeeds. When leaving
-realtime, stop the session before `detachRealtime()`, which never touches the
-session.
+the floor, while cancelled speech has not confirmed its stop, or from a
+`dispose()` call until its teardown is done, so cascade speech has ended before
+realtime starts. When switching from cascade, `await charivo.interrupt()`
+first; if that rejects, the speech could not be stopped and attaching stays
+refused until a later `interrupt()` succeeds. When leaving realtime, stop the
+session before `detachRealtime()`, which never touches the session.
 
 For iOS-safe lip-sync, prepare audio from a user gesture before the first
 realtime session. Pass the same session config to both calls — `prepareAudio`

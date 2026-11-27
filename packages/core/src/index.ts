@@ -19,6 +19,8 @@ import {
 import {
   CharivoDisposeError,
   CharivoStateError,
+  getErrorMessage,
+  isCharivoError,
   type CharivoError,
 } from "./errors";
 
@@ -428,9 +430,10 @@ export class Charivo implements CharacterBody {
    *
    * Realtime holds playback until {@link Charivo.detachRealtime}: the floor is
    * `realtime` and `perform()` is refused. Throws `CharivoStateError` while a
-   * performance holds the floor or cancelled speech has not been confirmed
-   * stopped; await {@link Charivo.interrupt} first, and when that rejects,
-   * attaching stays refused until a later stop succeeds.
+   * performance holds the floor, while cancelled speech has not been
+   * confirmed stopped, or until a {@link Charivo.dispose} teardown is done; await
+   * {@link Charivo.interrupt} first, and when that rejects, attaching stays
+   * refused until a later stop succeeds.
    *
    * When the manager's `setEventEmitter()` or `setCharacter()` throws, the
    * error is rethrown with realtime detached and the floor idle, as after
@@ -531,10 +534,13 @@ export class Charivo implements CharacterBody {
 
   /**
    * Tear the instance down: the brain, the floor and its unsettled speech,
-   * realtime, TTS, STT and the renderer, then clear the bus. `perform()` is
-   * refused from the call until it settles. A call made while a teardown is
-   * in progress returns that same promise; once it settles the instance can
-   * be reused.
+   * realtime, TTS, STT and the renderer, then clear the bus. `perform()` and
+   * `attachRealtime()` throw `CharivoStateError` from the call until that
+   * teardown is done; the returned promise settles a few microtasks later,
+   * and the instance can be reused from then. A call made before it settles
+   * returns that same promise. The teardown goes on past a failing step, and
+   * the promise rejects with the first failure as a `CharivoDisposeError`
+   * whose `cause` is the original error.
    */
   dispose(): Promise<void> {
     if (this.disposing) {
@@ -579,13 +585,13 @@ export class Charivo implements CharacterBody {
       if (firstError) {
         return;
       }
+      // By code, so a dispose error from another copy of core is not wrapped.
       firstError =
-        error instanceof CharivoDisposeError
+        isCharivoError(error) && error.code === "CHARIVO_DISPOSE_ERROR"
           ? error
-          : new CharivoDisposeError(
-              error instanceof Error ? error.message : fallbackMessage,
-              { cause: error },
-            );
+          : new CharivoDisposeError(getErrorMessage(error, fallbackMessage), {
+              cause: error,
+            });
     };
     const recordStopFailure = (error: unknown): void => {
       recordError(error, "Failed to stop TTS");

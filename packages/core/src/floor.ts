@@ -143,6 +143,10 @@ interface StopAttempt {
    * rejection is not logged as well (P5).
    */
   waited: boolean;
+  /** The stop rejected; set when `settled` resolves with its error. */
+  failed: boolean;
+  /** `dispose()` took it as its attempt on the manager, so it is not retried. */
+  taken: boolean;
 }
 
 /** The single holder of playback, and the runs of the performances it admits. */
@@ -167,9 +171,10 @@ export class Floor {
   private readonly deliveries: Array<() => void> = [];
   private delivering = false;
   /**
-   * Set while disposing, until `clear()`: the stops `dispose()` issued or
-   * joined for the speech it cancelled, by manager. Nothing may speak again
-   * meanwhile, so a successful stop no longer settles speech.
+   * Set while disposing, until `clear()`: by manager, the stop `dispose()`
+   * takes as its attempt there, which is the first one issued during the
+   * teardown by anyone, or the next one once that has failed. `perform()` is
+   * refused meanwhile.
    */
   private teardown?: Map<TTSManager, StopAttempt>;
 
@@ -390,6 +395,7 @@ export class Floor {
       // attached by then.
       const attempt = this.stopCancelledSpeech(holder);
       if (attempt) {
+        attempt.taken = true;
         teardown.set(holder.ttsManager!, attempt);
       }
       this.produce("floor:changed", { floor: this.getFloor() });
@@ -398,30 +404,50 @@ export class Floor {
 
     // Every manager with unsettled speech, the attached one included: its
     // speech may have been cancelled before disposal began, and the teardown
-    // may not reach `stop()` for it if TTS is detached meanwhile.
-    for (const manager of this.unsettled.keys()) {
-      if (!teardown.has(manager)) {
-        teardown.set(manager, this.stopManager(manager));
-      }
-    }
-    const stops = new Set<StopAttempt>(teardown.values());
-    for (const stop of stops) {
+    // may not reach `stop()` for it if TTS is detached meanwhile. Also every
+    // manager a stop was issued on during the teardown (the brain's cleanup
+    // cancelling its turn, say), so that stop is retried if it has failed.
+    const managers = new Set([...teardown.keys(), ...this.unsettled.keys()]);
+    const stops = new Set<StopAttempt>();
+    for (const manager of managers) {
+      const stop = this.takeForTeardown(teardown, manager);
       stop.waited = true;
+      stops.add(stop);
     }
     const failures = await Promise.all([...stops].map((stop) => stop.settled));
     return failures.filter((failure) => failure !== undefined);
   }
 
   /**
-   * `dispose()`'s own stop of the attached manager (P9): joins the stop in
-   * progress there or issues one, so the manager is stopped once, and its
-   * success settles that manager's speech like any other stop.
+   * `dispose()`'s own stop of the attached manager (P9): reuses the attempt
+   * the teardown already has there, or issues one, so the manager is stopped
+   * once, and its success settles that manager's speech like any other stop.
    */
   stop(manager: TTSManager): Promise<void> {
-    // The attempt `dispose()` already made on this manager is the one stop.
     return this.outcome([
-      this.teardown?.get(manager) ?? this.stopManager(manager),
+      this.teardown
+        ? this.takeForTeardown(this.teardown, manager)
+        : this.stopManager(manager),
     ]);
+  }
+
+  /**
+   * `dispose()`'s attempt on `manager`: the stop recorded during the
+   * teardown, unless that one had already failed before `dispose()` took it,
+   * in which case one fresh stop (or the one in progress) replaces it.
+   */
+  private takeForTeardown(
+    teardown: Map<TTSManager, StopAttempt>,
+    manager: TTSManager,
+  ): StopAttempt {
+    const recorded = teardown.get(manager);
+    const stop =
+      recorded && (recorded.taken || !recorded.failed)
+        ? recorded
+        : this.stopManager(manager);
+    stop.taken = true;
+    teardown.set(manager, stop);
+    return stop;
   }
 
   /** Forgets every stop and unsettled speech, once `dispose()` is done. */
@@ -750,21 +776,26 @@ export class Floor {
   }
 
   /**
-   * One stop on `manager`, or the one already in progress there. Success
-   * settles that manager's speech; a rejection keeps it unsettled and is
-   * logged when nothing takes its outcome (P5).
-   */
-  /**
    * During a teardown, the first stop on each manager is the teardown's own
-   * attempt for it, so `stop()` reuses it instead of stopping that manager
+   * attempt for it, so `dispose()` reuses it instead of stopping that manager
    * again, whoever issued it (the brain's cleanup cancelling its turn, say).
+   * A later stop replaces one that failed before `dispose()` took it.
    */
   private recordForTeardown(manager: TTSManager, stop: StopAttempt): void {
-    if (this.teardown && !this.teardown.has(manager)) {
+    if (!this.teardown) {
+      return;
+    }
+    const recorded = this.teardown.get(manager);
+    if (!recorded || (recorded.failed && !recorded.taken)) {
       this.teardown.set(manager, stop);
     }
   }
 
+  /**
+   * One stop on `manager`, or the one already in progress there. Success
+   * settles that manager's speech; a rejection keeps it unsettled and is
+   * logged when nothing takes its outcome (P5).
+   */
   private stopManager(
     manager: TTSManager,
     cancelled?: PerformanceRecord,
@@ -782,6 +813,8 @@ export class Floor {
     let finish!: (failure: CharivoError | undefined) => void;
     const stop: StopAttempt = {
       waited: false,
+      failed: false,
+      taken: false,
       settled: new Promise((resolve) => {
         finish = resolve;
       }),
@@ -804,6 +837,7 @@ export class Floor {
         },
         (error: unknown) => {
           this.stops.delete(manager);
+          stop.failed = true;
           const failure = toCharivoError(
             "provider",
             error,

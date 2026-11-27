@@ -23,6 +23,8 @@ row below is a plain rename or a change of where the thing lives.
 | User messages passed to `RenderManager.render` | read from `message:sent` |
 | `connectAvatarDirectorToCascade` | `connectAvatarDirectorToPerformances` |
 | vtuber cue envelope (`[DIRECTOR]`, `[EVENT]`, `[CHAT]`), `applyShowProtocol`, `withEnvelopeTagGuard` | `direction` / `event` / `user` inputs and the brain's `review` hook; the Director keeps its queue |
+| `dispose()` rejects with a failing step's own `CharivoError` code | `dispose()` always rejects with `CHARIVO_DISPOSE_ERROR`, the original as `cause` |
+| `attachRealtime()` accepted during `dispose()` | `attachRealtime()` and `perform()` throw `CharivoStateError` until the teardown is done |
 
 ## Before And After
 
@@ -189,3 +191,29 @@ anything is shown or spoken. It returns the reply to present, returns `null`
 to say nothing, or throws to fail the turn. The Director keeps its own queue
 and pacing; only the way a line reaches the character changed.
 `examples/vtuber` is the worked example.
+
+### Disposing
+
+```ts
+// Before: a typed CharivoError kept its own code
+try {
+  await charivo.dispose();
+} catch (error) {
+  if (isCharivoError(error) && error.code === "CHARIVO_PROVIDER_ERROR") {
+    // ...
+  }
+}
+
+// After: every failure is a dispose error; the original is its cause
+try {
+  await charivo.dispose();
+} catch (error) {
+  if (isCharivoError(error) && error.code === "CHARIVO_DISPOSE_ERROR") {
+    const original = error.cause;
+  }
+}
+```
+
+From the `dispose()` call until its teardown is done, `perform()` and
+`attachRealtime()` throw `CharivoStateError`, and a second `dispose()` returns
+the same promise.

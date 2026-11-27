@@ -1723,6 +1723,190 @@ describe("overlapping teardown", () => {
   });
 });
 
+describe("a stop issued during the teardown (P9)", () => {
+  function brainWithCleanup(cleanup: () => Promise<void>): ConversationBrain {
+    return {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(cleanup),
+    };
+  }
+
+  it("retries once when the brain's cleanup stop failed", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    charivo.attachBrain(
+      brainWithCleanup(async () => {
+        const cancelling = handle.cancel();
+        tts.stops[0]!.reject(new Error("stop failed"));
+        await cancelling.catch(() => undefined);
+      }),
+    );
+
+    const disposing = charivo.dispose();
+    await flush();
+    expect(tts.stop).toHaveBeenCalledTimes(2);
+    tts.stops[1]!.resolve();
+
+    await expect(disposing).resolves.toBeUndefined();
+    expect(tts.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports its own retry's failure and does not stop the manager a third time", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    charivo.attachBrain(
+      brainWithCleanup(async () => {
+        const cancelling = handle.cancel();
+        tts.stops[0]!.reject(new Error("stop failed"));
+        await cancelling.catch(() => undefined);
+      }),
+    );
+
+    const disposing = charivo.dispose();
+    const outcome = disposing.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await flush();
+    const retryFailure = new Error("retry failed");
+    tts.stops[1]!.reject(retryFailure);
+
+    await expect(outcome).resolves.toMatchObject({
+      code: "CHARIVO_DISPOSE_ERROR",
+      cause: { cause: retryFailure },
+    });
+    expect(tts.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not report a failed stop that a later stop during the teardown confirmed", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    let finishCleanup!: () => void;
+    charivo.attachBrain(
+      brainWithCleanup(
+        () =>
+          new Promise<void>((resolve) => {
+            finishCleanup = resolve;
+          }),
+      ),
+    );
+
+    const disposing = charivo.dispose();
+    const first = charivo.interrupt();
+    tts.stops[0]!.reject(new Error("stop failed"));
+    await expect(first).rejects.toBeInstanceOf(CharivoProviderError);
+    const second = charivo.interrupt();
+    tts.stops[1]!.resolve();
+    await second;
+    finishCleanup();
+
+    await expect(disposing).resolves.toBeUndefined();
+    expect(tts.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not stop a detached manager again after a stop confirmed during the teardown", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    // Issued before the teardown, so only its success can settle the speech.
+    void charivo.interrupt();
+    charivo.detachTTS();
+    charivo.attachBrain(
+      brainWithCleanup(async () => {
+        tts.stops[0]!.resolve();
+        await flush();
+      }),
+    );
+
+    const disposing = charivo.dispose();
+    await flush();
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    for (const stop of tts.stops.slice(1)) {
+      stop.resolve();
+    }
+    await expect(disposing).resolves.toBeUndefined();
+  });
+});
+
+describe("dispose() errors", () => {
+  it("keeps the message of a non-Error thrown by the brain's cleanup", async () => {
+    const charivo = new Charivo();
+    charivo.attachBrain({
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(() => Promise.reject("cleanup failed")),
+    });
+
+    await expect(charivo.dispose()).rejects.toMatchObject({
+      code: "CHARIVO_DISPOSE_ERROR",
+      message: "cleanup failed",
+      cause: "cleanup failed",
+    });
+  });
+
+  it("passes through a dispose error from another copy of core", async () => {
+    const charivo = new Charivo();
+    // What isCharivoError() recognises from a duplicated @charivo/core.
+    const foreign = Object.assign(new Error("foreign dispose failed"), {
+      code: "CHARIVO_DISPOSE_ERROR",
+      [Symbol.for("@charivo/core/CharivoError")]: true,
+    });
+    charivo.attachBrain({
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(() => Promise.reject(foreign)),
+    });
+
+    await expect(charivo.dispose()).rejects.toBe(foreign);
+  });
+});
+
 describe("handle.cancel() during dispose()", () => {
   it("gets the outcome of the stop the teardown issues", async () => {
     const charivo = new Charivo();

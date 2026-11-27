@@ -26,3 +26,5 @@ Charivo is now the body and the conversation brain is an adapter. See `docs/hist
 - User messages are no longer rendered; read them from `message:sent`.
 - `connectAvatarDirectorToCascade` is removed; use `connectAvatarDirectorToPerformances`.
 - `attachRealtime()` throws while a performance holds the floor or cancelled speech has not been confirmed stopped, and `perform()` throws while realtime is attached.
+- `dispose()` now rejects with a `CharivoDisposeError` (`CHARIVO_DISPOSE_ERROR`) for every failure, with the original error as `cause`; a typed `CharivoError` no longer passes through with its own code.
+- `perform()` and `attachRealtime()` throw `CharivoStateError` from a `dispose()` call until its teardown is done, and overlapping `dispose()` calls share one promise.

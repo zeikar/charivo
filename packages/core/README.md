@@ -133,12 +133,20 @@ releases any held expression, without destroying the manager, so it remains
 reusable. Calling `attachRenderer(newManager)` automatically disconnects the
 previously-attached manager before wiring the new one.
 
-`dispose()` first awaits `brain.dispose?.()` and detaches the brain, so the
-brain's live turn is cancelled before the floor is torn down. It then cancels
-the floor's performance and, for each speech whose stop is unconfirmed, joins
-the stop in progress or makes one stop attempt on the manager that speech is
-on, and runs the existing teardown. A failure goes into the first-error report
-(`CharivoDisposeError`) and teardown continues.
+`dispose()` refuses `perform()` and `attachRealtime()` with
+`CharivoStateError` from the call until its teardown is done, and overlapping
+calls share one promise. It first awaits `brain.dispose?.()` and detaches the
+brain, so the brain's live turn is cancelled before the floor is torn down. It
+then cancels the floor's performance and, for each speech whose stop is
+unconfirmed, joins the stop in progress or makes one stop attempt on the
+manager that speech is on, and runs the existing teardown. A stop issued on a
+manager during the teardown by anyone (the brain's cleanup cancelling its turn,
+an `interrupt()`) counts as dispose's attempt for that manager; if it has
+already failed when the teardown reaches the manager, `dispose()` retries it
+once. A failure goes into the first-error report as a `CharivoDisposeError`
+whose `cause` is the original error, and teardown continues. The promise
+settles a few microtasks after the teardown is done, and the instance can be
+reused from then.
 
 ### Body API
 
@@ -163,9 +171,9 @@ a `PerformanceHandle` (named so because `Performance` is a DOM global):
   floor (the latest call wins, even from inside an event listener), or
   `"reject"`.
 - `perform()` throws `CharivoStateError` synchronously when `text` is neither a
-  string nor an async iterable, when realtime holds playback, while `dispose()`
-  is in progress, or when the floor is held and `whenBusy` is `"reject"`.
-  Otherwise the floor is yours before it returns.
+  string nor an async iterable, when realtime holds playback, from a
+  `dispose()` call until its teardown is done, or when the floor is held and
+  `whenBusy` is `"reject"`. Otherwise the floor is yours before it returns.
 - `started` resolves `true` once the line (a stream's first segment) has
   rendered, or reached that step with no renderer attached, and `false` when
   the performance ended first. It never resolves inside the `perform()` call,
@@ -320,8 +328,8 @@ and `perform()` is refused. `react()` still works, and `critical` finds no
 performance to cancel.
 
 `attachRealtime()` throws `CharivoStateError` while a performance holds the
-floor, while cancelled speech is unsettled, or while `dispose()` is in progress. It is allowed once the floor is free and
-every manager with cancelled speech has confirmed its stop: `await
+floor, while cancelled speech is unsettled, or from a `dispose()` call until its
+teardown is done. It is allowed once the floor is free and every manager with cancelled speech has confirmed its stop: `await
 charivo.interrupt()` first, and when that rejects, attaching stays refused until
 a later stop on that manager succeeds. Leaving realtime, stop the session before
 `detachRealtime()`; detaching never touches the session. The body never calls

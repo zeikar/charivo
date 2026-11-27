@@ -106,8 +106,9 @@ export type PerformanceStatus = "completed" | "cancelled" | "failed";
 /**
  * A line for `perform()`. `perform()` throws `CharivoStateError` synchronously
  * when `text` is neither a string nor an async iterable, while realtime holds
- * playback, while `dispose()` is in progress, or when the floor is held and
- * `whenBusy` is `"reject"`; otherwise it holds the floor before it returns.
+ * playback, from a `dispose()` call until its teardown is done, or when the
+ * floor is held and `whenBusy` is `"reject"`; otherwise it holds the floor
+ * before it returns.
  */
 export interface PerformRequest {
   /**
