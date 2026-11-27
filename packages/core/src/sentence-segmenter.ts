@@ -54,28 +54,20 @@ export function createSentenceSegmenter(): SentenceSegmenter {
       if (c === "\n") {
         cutAt(i);
         i++;
-      } else if (CJK_TERMINATORS.has(c)) {
+      } else if (CJK_TERMINATORS.has(c) || TERMINATORS.has(c)) {
+        // A CJK run needs no whitespace after it and absorbs Latin marks.
+        const cjk = CJK_TERMINATORS.has(c);
         let j = i;
         while (
           j < all.length &&
-          (CJK_TERMINATORS.has(all[j]) || TERMINATORS.has(all[j]))
+          (TERMINATORS.has(all[j]) || (cjk && CJK_TERMINATORS.has(all[j])))
         ) {
           j++;
         }
         while (j < all.length && CLOSERS.has(all[j])) j++;
-        // No whitespace is needed after these, but the run may still grow.
+        // Not confirmed until the next character arrives, or at flush.
         if (j === all.length) break;
-        cutAt(j);
-        i = j;
-      } else if (TERMINATORS.has(c)) {
-        let j = i;
-        while (j < all.length && TERMINATORS.has(all[j])) j++;
-        while (j < all.length && CLOSERS.has(all[j])) j++;
-        if (j === all.length) {
-          // Not confirmed until the next character arrives, or at flush.
-          break;
-        }
-        if (/\s/.test(all[j])) cutAt(j);
+        if (cjk || /\s/.test(all[j])) cutAt(j);
         i = j;
       } else {
         i++;
@@ -84,13 +76,7 @@ export function createSentenceSegmenter(): SentenceSegmenter {
     scan = i;
 
     if (final) {
-      const rest = all.slice(spanStart);
-      if (SPEAKABLE.test(rest)) {
-        out.push({
-          text: rest.trim(),
-          end: spanStart + rest.trimEnd().length,
-        });
-      }
+      cutAt(all.length);
       all = "";
       spanStart = 0;
       scan = 0;

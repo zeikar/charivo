@@ -154,19 +154,13 @@ export class MessageHistoryManager {
   }
 
   /**
-   * Drop the leading character messages, up to the first standalone one, and
-   * report them in their original order.
+   * Drop the leading messages `isStranded` matches, up to the first it does
+   * not, and report them in their original order.
    */
-  removeLeadingCharacterMessages(
-    isStandalone: (message: Message) => boolean,
-  ): Message[] {
+  removeLeadingStranded(isStranded: (message: Message) => boolean): Message[] {
     let count = 0;
     // Stop before the last entry: the newest message is never a stranded reply.
-    while (
-      count < this.history.length - 1 &&
-      this.history[count].type === "character" &&
-      !isStandalone(this.history[count])
-    ) {
+    while (count < this.history.length - 1 && isStranded(this.history[count])) {
       count += 1;
     }
 

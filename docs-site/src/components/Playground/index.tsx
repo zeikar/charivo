@@ -303,9 +303,7 @@ export default function Playground(): ReactNode {
         origin: "playground",
       });
     } catch (error) {
-      setLineError(
-        `Couldn't play that line: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      setLineError(`Couldn't play that line: ${messageOf(error)}`);
       return;
     }
     pendingLine.current = line;

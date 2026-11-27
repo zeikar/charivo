@@ -92,7 +92,13 @@ export class Charivo implements CharacterBody {
   private readonly floor: Floor;
 
   constructor() {
-    this.eventBus = new EventBus();
+    // The floor sees audio start ahead of every application listener, and
+    // keeps seeing it after dispose() clears the bus (P6).
+    this.eventBus = new EventBus((event) => {
+      if (event === "tts:audio:start") {
+        this.floor.onAudioStart();
+      }
+    });
     this.floor = new Floor(this.eventBus, {
       getRenderManager: () => this.renderManager,
       getTTSManager: () => this.ttsManager,
@@ -614,7 +620,6 @@ export class Charivo implements CharacterBody {
     this.isRealtimeMode = false;
     this.floor.clear();
     this.eventBus.clear();
-    this.floor.installAudioWatch();
 
     return this.finishDispose(firstError);
   }

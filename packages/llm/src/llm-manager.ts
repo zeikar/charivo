@@ -178,8 +178,8 @@ export class LLMManager {
       // eviction-bearing prune drops it, so a deliberately character-first
       // history - a reply committed after clearHistory() - survives.
       evicted.push(
-        ...this.historyManager.removeLeadingCharacterMessages((message) =>
-          this.standaloneReplies.has(message),
+        ...this.historyManager.removeLeadingStranded((message) =>
+          this.isStrandable(message),
         ),
       );
     }
@@ -626,15 +626,16 @@ export class LLMManager {
     const cut = historyMessages.length < this.historyManager.size();
     const first = historyMessages[0];
 
-    if (
-      cut &&
-      first?.type === "character" &&
-      !this.standaloneReplies.has(first)
-    ) {
+    if (cut && first && this.isStrandable(first)) {
       return historyMessages.slice(1);
     }
 
     return historyMessages;
+  }
+
+  /** A reply that loses its prompt when what precedes it is cut away. */
+  private isStrandable(message: Message): boolean {
+    return message.type === "character" && !this.standaloneReplies.has(message);
   }
 }
 

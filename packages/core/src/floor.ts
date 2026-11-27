@@ -61,9 +61,10 @@ interface PerformanceRecord {
    * on one that can. Until then `heardText` is `""` (P6).
    */
   mayBeHeard: boolean;
-  /** It was cancelled (P5), not ended on its own. */
-  cancelled: boolean;
-  /** The stop its cancellation issued or joined, when a `speak()` was in flight. */
+  /**
+   * The stop its cancellation issued or joined, when a `speak()` was in
+   * flight. Only a cancelled record has one.
+   */
   stop?: StopAttempt;
   /** What the first `handle.cancel()` returned; later calls return it too (P5). */
   cancelOutcome?: Promise<void>;
@@ -91,6 +92,11 @@ function voiceOptions(
         voice: character.voice.voiceId,
       }
     : undefined;
+}
+
+/** A performance that ended on its own, all of it heard. */
+function completed(record: PerformanceRecord): PerformanceResult {
+  return { status: "completed", text: record.text, heardText: record.text };
 }
 
 /**
@@ -123,7 +129,8 @@ const LEFT = Symbol("left");
 
 /** A line's failed step, for its run to end the performance with. */
 interface StepFailure {
-  failedAt: "render" | "tts";
+  /** Absent for a stream's iterator failure (S5). */
+  failedAt?: "render" | "tts";
   error: CharivoError;
 }
 
@@ -159,29 +166,28 @@ export class Floor {
    */
   private readonly deliveries: Array<() => void> = [];
   private delivering = false;
-  /** The stops `dispose()` issued for the speech it cancelled, by manager. */
-  private readonly teardownStops = new Map<TTSManager, StopAttempt>();
-  /** Nothing may speak again: a successful stop no longer settles speech. */
-  private tearingDown = false;
+  /**
+   * Set while disposing, until `clear()`: the stops `dispose()` issued or
+   * joined for the speech it cancelled, by manager. Nothing may speak again
+   * meanwhile, so a successful stop no longer settles speech.
+   */
+  private teardown?: Map<TTSManager, StopAttempt>;
 
   constructor(
     private readonly emitter: CharivoEventBus,
     private readonly host: FloorHost,
-  ) {
-    this.installAudioWatch();
-  }
+  ) {}
 
   /**
-   * Registered ahead of every application listener (at construction, and
-   * again right after the bus is cleared): a listener that cancels from inside
-   * `tts:audio:start` must already see the speech as possibly heard (P6).
+   * P6: a reporting manager's audio start, heard while its `speak()` is in
+   * flight, means playback may have begun. The body calls it for every
+   * `tts:audio:start` ahead of every application listener, so a listener that
+   * cancels from inside that event already sees the speech as possibly heard.
    */
-  installAudioWatch(): void {
-    this.emitter.on("tts:audio:start", () => {
-      if (this.holder?.speaking) {
-        this.holder.mayBeHeard = true;
-      }
-    });
+  onAudioStart(): void {
+    if (this.holder?.speaking) {
+      this.holder.mayBeHeard = true;
+    }
   }
 
   getFloor(): FloorState {
@@ -212,7 +218,7 @@ export class Floor {
       );
     }
 
-    if (this.tearingDown) {
+    if (this.teardown) {
       throw new CharivoStateError("perform() was called while disposing");
     }
 
@@ -242,7 +248,6 @@ export class Floor {
       startDelivered: false,
       speaking: false,
       mayBeHeard: false,
-      cancelled: false,
       resolveStarted,
       resolveDone,
     };
@@ -311,9 +316,7 @@ export class Floor {
     }
     if (this.unsettled.size > 0) {
       // The stop that failed, when one has: the old voice may still be audible.
-      const failure = [...this.unsettled.values()].find(
-        (error) => error !== undefined,
-      );
+      const failure = this.unsettledFailure();
       throw new CharivoStateError(
         "attachRealtime() was called while cancelled speech has not been stopped; await interrupt() first",
         failure ? { cause: failure } : {},
@@ -338,15 +341,7 @@ export class Floor {
    * first of those stops that failed.
    */
   interrupt(fallback: TTSManager | undefined): Promise<void> {
-    const holder = this.holder;
-    let supplied: StopAttempt | undefined;
-    if (holder) {
-      this.holder = undefined;
-      this.displace(holder);
-      this.produce("floor:changed", { floor: this.getFloor() });
-      supplied = this.stopCancelledSpeech(holder);
-    }
-
+    const supplied = this.vacate();
     const stops = new Set<StopAttempt>();
     if (supplied) {
       stops.add(supplied);
@@ -370,20 +365,18 @@ export class Floor {
    * `perform()` until `clear()`.
    */
   async dispose(): Promise<CharivoError[]> {
-    this.tearingDown = true;
+    const teardown = (this.teardown ??= new Map());
     const holder = this.holder;
     if (holder) {
       this.holder = undefined;
       this.displace(holder);
-      const speech = holder.speaking ? holder.ttsManager : undefined;
-      if (speech) {
-        // One attempt on the manager the speech is on, registered before
-        // performance:end is delivered, so a handle.cancel() from a listener
-        // and this teardown await the same outcome whichever manager is
-        // attached by then.
-        this.markUnsettled(speech);
-        const attempt = this.stopManager(speech, holder);
-        this.teardownStops.set(speech, attempt);
+      // One attempt on the manager the speech is on, registered before
+      // performance:end is delivered, so a handle.cancel() from a listener
+      // and this teardown await the same outcome whichever manager is
+      // attached by then.
+      const attempt = this.stopCancelledSpeech(holder);
+      if (attempt) {
+        teardown.set(holder.ttsManager!, attempt);
       }
       this.produce("floor:changed", { floor: this.getFloor() });
       this.deliver();
@@ -393,11 +386,11 @@ export class Floor {
     // speech may have been cancelled before disposal began, and the teardown
     // may not reach `stop()` for it if TTS is detached meanwhile.
     for (const manager of this.unsettled.keys()) {
-      if (!this.teardownStops.has(manager)) {
-        this.teardownStops.set(manager, this.stopManager(manager));
+      if (!teardown.has(manager)) {
+        teardown.set(manager, this.stopManager(manager));
       }
     }
-    const stops = new Set<StopAttempt>(this.teardownStops.values());
+    const stops = new Set<StopAttempt>(teardown.values());
     for (const stop of stops) {
       stop.waited = true;
     }
@@ -413,14 +406,13 @@ export class Floor {
   stop(manager: TTSManager): Promise<void> {
     // The attempt `dispose()` already made on this manager is the one stop.
     return this.outcome([
-      this.teardownStops.get(manager) ?? this.stopManager(manager),
+      this.teardown?.get(manager) ?? this.stopManager(manager),
     ]);
   }
 
   /** Forgets every stop and unsettled speech, once `dispose()` is done. */
   clear(): void {
-    this.teardownStops.clear();
-    this.tearingDown = false;
+    this.teardown = undefined;
     this.stops.clear();
     this.unsettled.clear();
   }
@@ -437,11 +429,7 @@ export class Floor {
     }
 
     await this.present(record, record.id, record.text, () =>
-      this.finish(record, {
-        status: "completed",
-        text: record.text,
-        heardText: record.text,
-      }),
+      this.finish(record, completed(record)),
     );
   }
 
@@ -544,11 +532,7 @@ export class Floor {
       }
 
       if (step.done) {
-        this.finish(record, {
-          status: "completed",
-          text: record.text,
-          heardText: record.text,
-        });
+        this.finish(record, completed(record));
         return;
       }
     }
@@ -613,16 +597,18 @@ export class Floor {
         this.fail(record, {
           failedAt: "tts",
           error:
-            [...this.unsettled.values()].find(
-              (failure) => failure !== undefined,
-            ) ??
+            this.unsettledFailure() ??
             new CharivoStateError("Cancelled speech has not been stopped yet"),
         });
         return;
       }
 
       record.speaking = true;
-      this.watchAudio(record, ttsManager);
+      // P6: a manager that cannot report audio start may have begun playback
+      // as soon as it was asked.
+      if (!ttsManager.setEventEmitter) {
+        record.mayBeHeard = true;
+      }
       let speechFailure: CharivoError | undefined;
       try {
         await ttsManager.speak(content, voiceOptions(this.host.getCharacter()));
@@ -657,12 +643,14 @@ export class Floor {
 
   /** The stream's iterator failed: `failed` with no `failedAt` (S5). */
   private failStream(record: PerformanceRecord, error: unknown): void {
-    this.finish(record, {
-      status: "failed",
-      text: record.text,
-      ...heardSoFar(record),
+    this.fail(record, {
       error: toCharivoError("provider", error, "The text stream failed"),
     });
+  }
+
+  /** The error of the first failed stop among the unsettled speech, if any. */
+  private unsettledFailure(): CharivoError | undefined {
+    return [...this.unsettled.values()].find((error) => error !== undefined);
   }
 
   /** Waits until no stop is in progress on any manager. */
@@ -676,37 +664,34 @@ export class Floor {
     }
   }
 
-  /**
-   * P6: a reporting manager's audio start, heard while its `speak()` is in
-   * flight, means playback may have begun. A manager that cannot report it
-   * may have begun as soon as it was asked.
-   */
-  private watchAudio(record: PerformanceRecord, manager: TTSManager): void {
-    if (!manager.setEventEmitter) {
-      record.mayBeHeard = true;
-    }
-  }
-
   /** `handle.cancel()` (P5); `perform()` keeps the first call's outcome. */
   private cancel(record: PerformanceRecord): Promise<void> {
-    if (record.cancelled) {
-      return this.outcome(record.stop ? [record.stop] : []);
-    }
-    if (record.result) {
+    if (!record.result) {
+      // Only the holder is still running.
+      this.cancelHolder();
+    } else if (record.result.status !== "cancelled") {
       // It ended on its own: nothing to stop.
       return Promise.resolve();
     }
-    // Only the holder is still running.
-    const stop = this.cancelHolder();
-    return this.outcome(stop ? [stop] : []);
+    return this.outcome(record.stop ? [record.stop] : []);
   }
 
   /**
-   * Cancels the holder, if any (P5), and returns the stop that issued. A
-   * critical reflex (A6) calls it without waiting, so a rejected stop is
-   * logged.
+   * Cancels the holder, if any (P5). A critical reflex (A6) calls it without
+   * waiting, so a rejected stop is logged.
    */
-  cancelHolder(): StopAttempt | undefined {
+  cancelHolder(): void {
+    this.vacate();
+    this.deliver();
+  }
+
+  /**
+   * Cancels the holder, if any (P5), without delivering: frees the floor,
+   * produces the floor:changed, then issues the stop of its speech, which it
+   * returns. The stop comes after the change is produced, so a perform()
+   * reentering from it is ordered after it (P10).
+   */
+  private vacate(): StopAttempt | undefined {
     const holder = this.holder;
     if (!holder) {
       return undefined;
@@ -714,9 +699,7 @@ export class Floor {
     this.holder = undefined;
     this.displace(holder);
     this.produce("floor:changed", { floor: this.getFloor() });
-    const stop = this.stopCancelledSpeech(holder);
-    this.deliver();
-    return stop;
+    return this.stopCancelledSpeech(holder);
   }
 
   /**
@@ -724,7 +707,6 @@ export class Floor {
    * the floor:changed and supplies the stop (`stopCancelledSpeech`).
    */
   private displace(record: PerformanceRecord): void {
-    record.cancelled = true;
     this.settle(record, {
       status: "cancelled",
       text: record.text,
@@ -788,7 +770,7 @@ export class Floor {
       .then(
         () => {
           this.stops.delete(manager);
-          if (!this.tearingDown) {
+          if (!this.teardown) {
             this.unsettled.delete(manager);
           }
           return undefined;
@@ -867,11 +849,6 @@ export class Floor {
    * (decision 6).
    */
   private startAffect(record: PerformanceRecord): void {
-    this.produceAffect(record);
-    this.deliver();
-  }
-
-  private produceAffect(record: PerformanceRecord): void {
     const { expressionId, motion } = record.affect;
     if (expressionId !== undefined) {
       this.produce("avatar:expression", {
@@ -896,6 +873,7 @@ export class Floor {
         });
       });
     }
+    this.deliver();
   }
 
   private produce<K extends keyof EventMap>(event: K, data: EventMap[K]): void {

@@ -314,15 +314,14 @@ export class GateableLLMClient implements LLMClient {
 }
 
 /**
- * Custom LLMManager stub: only a manager can call back into Charivo, so the
- * reentrancy tests need one. It records the order of its addToHistory
- * arguments, which is the Charivo-side write ordering under test.
+ * Custom LLMManager stub that records the order of its addToHistory
+ * arguments, which is the Charivo-side write ordering under test, and the
+ * inputs it generates for. Like any conforming manager, it never calls back
+ * into the brain from addToHistory.
  */
 export class RecordingLLMManager implements LLMManager {
   readonly added: Message[] = [];
   readonly generated: Message[] = [];
-  /** Runs inside addToHistory -- the one place a manager can reenter Charivo. */
-  onAdd: (message: Message) => void = () => undefined;
   onGenerate: (message: Message) => void = () => undefined;
   emitter?: CharivoEventEmitter;
 
@@ -332,7 +331,6 @@ export class RecordingLLMManager implements LLMManager {
   getHistory = vi.fn((): Message[] => []);
   addToHistory = vi.fn((message: Message): HistoryRollback => {
     this.added.push(message);
-    this.onAdd(message);
     return () => undefined;
   });
   generateResponse = vi.fn(

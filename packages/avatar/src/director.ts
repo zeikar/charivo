@@ -262,7 +262,6 @@ export function connectAvatarDirectorToPerformances(
       return;
     }
     active = false;
-    inferring = null;
     bus.off("performance:start", onStart);
     bus.off("performance:segment", onSegment);
     bus.off("performance:end", onEnd);

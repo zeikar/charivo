@@ -110,6 +110,16 @@ export function useRealtimeMode() {
       null;
     let attached = false;
     const ownsChat = () => useChatStore.getState().charivo === charivo;
+    const releaseClient = (
+      client: ReturnType<typeof createRemoteRealtimeClient>,
+    ) => {
+      void client.disconnect().catch((cleanupError: unknown) => {
+        console.error(
+          "❌ Failed to release the realtime client:",
+          cleanupError,
+        );
+      });
+    };
 
     try {
       console.log("🌐 Enabling Realtime mode...");
@@ -182,12 +192,7 @@ export function useRealtimeMode() {
       // The chat is rebuilt when the TTS setting changes. The rebuilt chat's
       // controls cannot reach a session started on this discarded instance.
       if (!ownsChat()) {
-        void realtimeClient.disconnect().catch((cleanupError: unknown) => {
-          console.error(
-            "❌ Failed to release the realtime client:",
-            cleanupError,
-          );
-        });
+        releaseClient(realtimeClient);
         return;
       }
       charivo.attachRealtime(realtimeManager);
@@ -217,12 +222,7 @@ export function useRealtimeMode() {
         charivo.detachRealtime();
       } else if (realtimeClient) {
         // Releases the audio prepareAudio warmed.
-        void realtimeClient.disconnect().catch((cleanupError: unknown) => {
-          console.error(
-            "❌ Failed to release the realtime client:",
-            cleanupError,
-          );
-        });
+        releaseClient(realtimeClient);
       }
       // The store belongs to the replacement chat once this one was discarded.
       if (ownsChat()) {
