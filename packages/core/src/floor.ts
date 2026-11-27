@@ -749,6 +749,17 @@ export class Floor {
    * settles that manager's speech; a rejection keeps it unsettled and is
    * logged when nothing takes its outcome (P5).
    */
+  /**
+   * During a teardown, the first stop on each manager is the teardown's own
+   * attempt for it, so `stop()` reuses it instead of stopping that manager
+   * again, whoever issued it (the brain's cleanup cancelling its turn, say).
+   */
+  private recordForTeardown(manager: TTSManager, stop: StopAttempt): void {
+    if (this.teardown && !this.teardown.has(manager)) {
+      this.teardown.set(manager, stop);
+    }
+  }
+
   private stopManager(
     manager: TTSManager,
     cancelled?: PerformanceRecord,
@@ -758,6 +769,7 @@ export class Floor {
       if (cancelled) {
         cancelled.stop = inProgress;
       }
+      this.recordForTeardown(manager, inProgress);
       return inProgress;
     }
     // Registered before the manager is called: a stop that re-enters (a
@@ -770,6 +782,7 @@ export class Floor {
       }),
     };
     this.stops.set(manager, stop);
+    this.recordForTeardown(manager, stop);
     if (cancelled) {
       // Visible before the manager runs, so a handle.cancel() from inside its
       // events returns this same outcome.

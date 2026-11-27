@@ -538,10 +538,34 @@ export class Charivo implements CharacterBody {
    * be reused.
    */
   dispose(): Promise<void> {
-    this.disposing ??= this.runDispose().finally(() => {
-      this.disposing = undefined;
+    if (this.disposing) {
+      return this.disposing;
+    }
+    // Stored before the teardown starts: its synchronous part delivers
+    // events, and a listener calling dispose() must join this one.
+    let settle!: { resolve: () => void; reject: (error: unknown) => void };
+    const shared = new Promise<void>((resolve, reject) => {
+      settle = { resolve, reject };
     });
-    return this.disposing;
+    this.disposing = shared;
+    // Cleared before it settles, so a caller awaiting it can reuse the
+    // instance at once.
+    const release = (): void => {
+      if (this.disposing === shared) {
+        this.disposing = undefined;
+      }
+    };
+    void this.runDispose().then(
+      () => {
+        release();
+        settle.resolve();
+      },
+      (error: unknown) => {
+        release();
+        settle.reject(error);
+      },
+    );
+    return shared;
   }
 
   private async runDispose(): Promise<void> {

@@ -1582,6 +1582,62 @@ describe("overlapping teardown", () => {
     expect(charivo.dispose()).not.toBe(first);
   });
 
+  it("joins the teardown in progress from a performance:end listener", async () => {
+    const charivo = new Charivo();
+    const tts = Object.assign(new ReportingTTSManager(), {
+      dispose: vi.fn(async () => undefined),
+    });
+    charivo.attachTTS(tts);
+    charivo.perform({ text: "Hello there." });
+    await flush();
+    let nested: Promise<void> | undefined;
+    charivo.on("performance:end", () => {
+      nested ??= charivo.dispose();
+    });
+
+    const outer = charivo.dispose();
+    await flush();
+
+    expect(nested).toBe(outer);
+    for (const stop of tts.stops) {
+      stop.resolve();
+    }
+    await outer;
+    expect(tts.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not stop the attached manager again after the brain's cleanup stopped it", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    const brain = {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(async () => {
+        const cancelling = handle.cancel();
+        tts.stops[0]!.resolve();
+        await cancelling;
+      }),
+    } satisfies ConversationBrain;
+    charivo.attachBrain(brain);
+
+    await expect(charivo.dispose()).resolves.toBeUndefined();
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("does not stop a manager again after the brain's cleanup stopped it", async () => {
     const charivo = new Charivo();
     const tts = new ReportingTTSManager();
