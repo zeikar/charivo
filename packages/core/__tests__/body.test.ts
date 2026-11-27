@@ -1516,6 +1516,50 @@ describe("Charivo.interrupt() on the floor (P7)", () => {
   });
 });
 
+describe("perform() while the brain's cleanup is pending", () => {
+  it("refuses a perform() made right after dispose() starts", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    let finishCleanup!: () => void;
+    const brain = {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishCleanup = resolve;
+          }),
+      ),
+    } satisfies ConversationBrain;
+    charivo.attachBrain(brain);
+
+    const disposing = charivo.dispose();
+
+    expect(() => charivo.perform({ text: "Too late." })).toThrow(
+      CharivoStateError,
+    );
+    expect(tts.speak).not.toHaveBeenCalled();
+    finishCleanup();
+    await flush();
+    for (const stop of tts.stops) {
+      stop.resolve();
+    }
+    await disposing;
+    expect(tts.speak).not.toHaveBeenCalled();
+  });
+});
+
 describe("handle.cancel() during dispose()", () => {
   it("gets the outcome of the stop the teardown issues", async () => {
     const charivo = new Charivo();

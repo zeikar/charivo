@@ -530,6 +530,9 @@ export class Charivo implements CharacterBody {
 
   async dispose(): Promise<void> {
     let firstError: CharivoError | null = null;
+    // Closed to new performances for the whole teardown, the brain's
+    // asynchronous cleanup included.
+    this.floor.beginTeardown();
 
     const recordError = (error: unknown, fallbackMessage: string): void => {
       const typedError = toCharivoError("dispose", error, fallbackMessage);

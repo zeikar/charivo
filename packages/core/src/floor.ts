@@ -358,6 +358,15 @@ export class Floor {
   }
 
   /**
+   * Refuses `perform()` from here until `clear()`. `Charivo.dispose()` calls it
+   * first, before it awaits the brain's cleanup, so no performance is admitted
+   * at any point of the teardown.
+   */
+  beginTeardown(): void {
+    this.teardown ??= new Map();
+  }
+
+  /**
    * The floor's part of `dispose()` before the teardown (P9): settles the
    * holder cancelled and makes one stop attempt, or joins the one in
    * progress, for each manager with unsettled speech. `stop` reuses the

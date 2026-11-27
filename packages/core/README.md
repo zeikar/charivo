@@ -163,9 +163,9 @@ a `PerformanceHandle` (named so because `Performance` is a DOM global):
   floor (the latest call wins, even from inside an event listener), or
   `"reject"`.
 - `perform()` throws `CharivoStateError` synchronously when `text` is neither a
-  string nor an async iterable, when realtime holds playback, or when the floor
-  is held and `whenBusy` is `"reject"`. Otherwise the floor is yours before it
-  returns.
+  string nor an async iterable, when realtime holds playback, while `dispose()`
+  is in progress, or when the floor is held and `whenBusy` is `"reject"`.
+  Otherwise the floor is yours before it returns.
 - `started` resolves `true` once the line (a stream's first segment) has
   rendered, or reached that step with no renderer attached, and `false` when
   the performance ended first. It never resolves inside the `perform()` call,
