@@ -1560,6 +1560,63 @@ describe("perform() while the brain's cleanup is pending", () => {
   });
 });
 
+describe("overlapping teardown", () => {
+  it("shares one dispose() between overlapping calls", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+
+    const first = charivo.dispose();
+    const second = charivo.dispose();
+
+    expect(second).toBe(first);
+    expect(() => charivo.perform({ text: "Too late." })).toThrow(
+      CharivoStateError,
+    );
+    await flush();
+    for (const stop of tts.stops) {
+      stop.resolve();
+    }
+    await first;
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    expect(charivo.dispose()).not.toBe(first);
+  });
+
+  it("does not stop a manager again after the brain's cleanup stopped it", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    tts.startAudio();
+    // The speaking manager is detached, so only the cancel stops it.
+    charivo.detachTTS();
+    const brain = {
+      setBody: vi.fn((_body: CharacterBody | null) => undefined),
+      setCharacter: vi.fn((_character: Character) => undefined),
+      submit: vi.fn(
+        (_input: BrainInput): BrainTurn => ({
+          id: "turn-1",
+          done: new Promise<BrainTurnResult>(() => undefined),
+          cancel: vi.fn(async () => undefined),
+        }),
+      ),
+      interrupt: vi.fn(async () => undefined),
+      clearHistory: vi.fn(() => undefined),
+      getHistory: vi.fn((): Message[] => []),
+      dispose: vi.fn(async () => {
+        const cancelling = handle.cancel();
+        tts.stops[0]!.resolve();
+        await cancelling;
+      }),
+    } satisfies ConversationBrain;
+    charivo.attachBrain(brain);
+
+    await expect(charivo.dispose()).resolves.toBeUndefined();
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("handle.cancel() during dispose()", () => {
   it("gets the outcome of the stop the teardown issues", async () => {
     const charivo = new Charivo();

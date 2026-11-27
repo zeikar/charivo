@@ -779,9 +779,9 @@ export class Floor {
       .then(
         () => {
           this.stops.delete(manager);
-          if (!this.teardown) {
-            this.unsettled.delete(manager);
-          }
+          // Settled by any stop that succeeds, during a teardown too: perform()
+          // is refused for the whole teardown, so nothing can speak over it.
+          this.unsettled.delete(manager);
           return undefined;
         },
         (error: unknown) => {

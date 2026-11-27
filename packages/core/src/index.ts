@@ -89,6 +89,8 @@ export class Charivo implements CharacterBody {
   private isRealtimeMode = false;
   private affectMap: AffectMap | null = null;
   private reactionSeq = 0;
+  /** The teardown in progress; overlapping dispose() calls share it. */
+  private disposing?: Promise<void>;
   private readonly floor: Floor;
 
   constructor() {
@@ -528,7 +530,21 @@ export class Charivo implements CharacterBody {
     this.eventBus.emit(event, data);
   }
 
-  async dispose(): Promise<void> {
+  /**
+   * Tear the instance down: the brain, the floor and its unsettled speech,
+   * realtime, TTS, STT and the renderer, then clear the bus. `perform()` is
+   * refused from the call until it settles. A call made while a teardown is
+   * in progress returns that same promise; once it settles the instance can
+   * be reused.
+   */
+  dispose(): Promise<void> {
+    this.disposing ??= this.runDispose().finally(() => {
+      this.disposing = undefined;
+    });
+    return this.disposing;
+  }
+
+  private async runDispose(): Promise<void> {
     let firstError: CharivoError | null = null;
     // Closed to new performances for the whole teardown, the brain's
     // asynchronous cleanup included.
