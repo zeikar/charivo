@@ -1,5 +1,12 @@
 # @charivo/stt
 
+## 0.11.8
+
+### Patch Changes
+
+- Updated dependencies [4e245ba]
+  - @charivo/core@0.42.0
+
 ## 0.11.7
 
 ### Patch Changes
