@@ -2425,3 +2425,65 @@ describe("cascade brain: tool-chosen expressions", () => {
     ]);
   });
 });
+
+describe("cascade brain: retired while its performance starts", () => {
+  it("speaks nothing and keeps the reply out of history when a performance:start listener interrupts", async () => {
+    const { charivo, brain, tts } = createHarness({ tts: true });
+    charivo.on("performance:start", () => {
+      void brain.interrupt();
+    });
+
+    const result = await brain.submit({ kind: "user", text: "A" }).done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.status).toBe("cancelled");
+    expect(tts.speak).not.toHaveBeenCalled();
+    expect(transcript(brain.getHistory())).toEqual(["user:A"]);
+  });
+});
+
+describe("cascade brain: retired from performance:start with affect", () => {
+  it("plays no expression or motion for a turn its start listener interrupts", async () => {
+    const { charivo, brain } = createHarness({
+      tts: true,
+      review: () => ({
+        text: "edited",
+        affect: { expression: "smile", motion: { group: "Happy", index: 1 } },
+      }),
+    });
+    const avatar: string[] = [];
+    charivo.on("avatar:expression", () => avatar.push("expression"));
+    charivo.on("avatar:motion", () => avatar.push("motion"));
+    charivo.on("performance:start", () => {
+      void brain.interrupt();
+    });
+
+    await brain.submit({ kind: "user", text: "A" }).done;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(avatar).toEqual([]);
+  });
+});
+
+describe("cascade brain: one owning body", () => {
+  it("refuses a second body until the first detaches, leaving the second without a brain", () => {
+    const { charivo: first, brain } = createHarness();
+    const second = createCharivo({ character });
+
+    expect(() => second.attachBrain(brain)).toThrow(CharivoStateError);
+    expect(second.getBrain()).toBeUndefined();
+
+    first.detachBrain();
+    second.attachBrain(brain);
+    expect(second.getBrain()).toBe(brain);
+  });
+
+  it("leaves the receiving body's own brain and turn alone when the refusal comes", () => {
+    const { brain } = createHarness();
+    const other = createHarness();
+
+    expect(() => other.charivo.attachBrain(brain)).toThrow(CharivoStateError);
+
+    expect(other.charivo.getBrain()).toBe(other.brain);
+  });
+});

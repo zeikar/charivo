@@ -66,6 +66,18 @@ export {
   readResponseErrorMessage,
 } from "./fetch-with-timeout";
 
+/**
+ * The one body each attached brain belongs to. Kept on `globalThis`, since the
+ * ESM and CommonJS builds are separate module instances that must still see
+ * the same owners.
+ */
+const BRAIN_OWNED_MESSAGE =
+  "The brain is attached to another Charivo instance; detach it there first";
+const BRAIN_OWNERS_KEY = Symbol.for("@charivo/core.brainOwners");
+const brainOwners: WeakMap<ConversationBrain, Charivo> = ((
+  globalThis as { [BRAIN_OWNERS_KEY]?: WeakMap<ConversationBrain, Charivo> }
+)[BRAIN_OWNERS_KEY] ??= new WeakMap());
+
 export class Charivo implements CharacterBody {
   private eventBus: EventBus;
   private renderManager?: RenderManager;
@@ -198,9 +210,43 @@ export class Charivo implements CharacterBody {
    * detached first.
    */
   attachBrain(brain: ConversationBrain): void {
-    this.detachBrain();
+    // Two bodies would share one history and cancel each other's turns on
+    // detach. Checked before the current brain is detached, so a refusal
+    // changes nothing here.
+    const owner = brainOwners.get(brain);
+    if (owner && owner !== this) {
+      throw new CharivoStateError(BRAIN_OWNED_MESSAGE);
+    }
+    // Reserved before the outgoing brain's detach callback can run, so that
+    // callback cannot hand the incoming brain to another body.
+    brainOwners.set(brain, this);
+    try {
+      this.detachBrain();
+    } catch (error) {
+      if (this.brain !== brain && brainOwners.get(brain) === this) {
+        brainOwners.delete(brain);
+      }
+      throw error;
+    }
+    if (this.brain !== undefined) {
+      // The detach callback attached a newer brain here; it wins.
+      if (brainOwners.get(brain) === this && this.brain !== brain) {
+        brainOwners.delete(brain);
+      }
+      return;
+    }
+    // Re-reserved: detaching this very brain released it.
+    brainOwners.set(brain, this);
     this.brain = brain;
-    brain.setBody(this);
+    try {
+      brain.setBody(this);
+    } catch (error) {
+      if (this.brain === brain) {
+        this.brain = undefined;
+        brainOwners.delete(brain);
+      }
+      throw error;
+    }
     // setBody() may have attached another brain; this one is then detached.
     if (this.brain === brain && this.character) {
       brain.setCharacter(this.character);
@@ -210,7 +256,14 @@ export class Charivo implements CharacterBody {
   detachBrain(): void {
     const brain = this.brain;
     this.brain = undefined;
-    brain?.setBody(null);
+    try {
+      brain?.setBody(null);
+    } finally {
+      // Released after the callback, so the brain stays owned while it runs.
+      if (brain && this.brain !== brain && brainOwners.get(brain) === this) {
+        brainOwners.delete(brain);
+      }
+    }
   }
 
   getBrain(): ConversationBrain | undefined {
@@ -503,7 +556,7 @@ export class Charivo implements CharacterBody {
     }
 
     // The floor's performance and the speech it left unsettled go first (P9).
-    for (const failure of await this.floor.dispose(this.ttsManager)) {
+    for (const failure of await this.floor.dispose()) {
       recordStopFailure(failure);
     }
 
@@ -561,6 +614,7 @@ export class Charivo implements CharacterBody {
     this.isRealtimeMode = false;
     this.floor.clear();
     this.eventBus.clear();
+    this.floor.installAudioWatch();
 
     return this.finishDispose(firstError);
   }
@@ -602,6 +656,11 @@ export interface CharivoOptions {
  * `attachRealtime()` does.
  */
 export function createCharivo(options: CharivoOptions = {}): Charivo {
+  // Before any manager is wired to the new instance: a refused call must not
+  // take the supplied managers' events away from the instance running now.
+  if (options.brain && brainOwners.has(options.brain)) {
+    throw new CharivoStateError(BRAIN_OWNED_MESSAGE);
+  }
   const charivo = new Charivo();
 
   if (options.renderer) {
@@ -625,7 +684,14 @@ export function createCharivo(options: CharivoOptions = {}): Charivo {
   }
 
   if (options.character) {
-    charivo.setCharacter(options.character);
+    try {
+      charivo.setCharacter(options.character);
+    } catch (error) {
+      // The caller never gets this instance, so nothing else could release
+      // the brain it holds.
+      charivo.detachBrain();
+      throw error;
+    }
   }
 
   return charivo;

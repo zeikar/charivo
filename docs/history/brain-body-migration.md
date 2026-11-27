@@ -88,10 +88,9 @@ await charivo.interrupt();
 
 // After: speech only
 await charivo.interrupt();
-// A turn still generating is cancelled through the turn or the brain
-const brain = createCascadeBrain(llm); // the brain passed to createCharivo
-const turn = brain.submit({ kind: "user", text });
-await turn.cancel(); // or: await brain.interrupt();
+// A turn still generating is cancelled through the brain attached to the body
+await charivo.getBrain()?.interrupt();
+// or through the handle `submit()` returned: await turn.cancel();
 ```
 
 `attachRealtime()` throws while a performance holds the floor or cancelled

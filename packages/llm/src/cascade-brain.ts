@@ -125,8 +125,7 @@ class CascadeBrain implements ConversationBrain {
 
   setBody(body: CharacterBody | null): void {
     this.body = body;
-    // Only detaching retires the live turn; moving to another body does not
-    // (B2), and the turn presents what remains of it on the body it started on.
+    // Only detaching retires the live turn.
     const live = this.live;
     if (body === null && live) {
       this.cancelTurn(live).catch(logStopFailure);
@@ -628,6 +627,12 @@ class CascadeBrain implements ConversationBrain {
       return;
     }
     turn.performance = performance;
+    if (!this.isLive(turn)) {
+      // Retired while perform() delivered its start events, before the
+      // handle could be recorded: stop it before anything is shown or heard.
+      performance.cancel().catch(logStopFailure);
+      return;
+    }
 
     // The commit runs as a continuation of `started`, attached before
     // anything else can, so by the body's P3 it runs before speak() is

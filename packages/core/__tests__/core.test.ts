@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   Charivo,
   CharivoError,
+  CharivoStateError,
   CharivoTransportError,
   createCharivo,
 } from "@charivo/core";
@@ -699,6 +700,111 @@ describe("Charivo brain port", () => {
     expect(first.setBody).toHaveBeenLastCalledWith(null);
     expect(second.setBody).toHaveBeenCalledWith(charivo);
     expect(charivo.getBrain()).toBe(second);
+  });
+
+  it("refuses a brain another instance owns without touching its current brain", () => {
+    const first = new Charivo();
+    const second = new Charivo();
+    const shared = createBrain();
+    const own = createBrain();
+    first.attachBrain(shared);
+    second.attachBrain(own);
+
+    expect(() => second.attachBrain(shared)).toThrow(CharivoStateError);
+
+    expect(second.getBrain()).toBe(own);
+    expect(own.setBody).not.toHaveBeenLastCalledWith(null);
+    expect(shared.setBody).toHaveBeenCalledTimes(1);
+
+    first.detachBrain();
+    second.attachBrain(shared);
+    expect(second.getBrain()).toBe(shared);
+  });
+
+  it("keeps the incoming brain from another body while the outgoing brain's detach runs", () => {
+    const first = new Charivo();
+    const second = new Charivo();
+    const outgoing = createBrain();
+    const incoming = createBrain();
+    first.attachBrain(outgoing);
+    let refusal: unknown;
+    outgoing.setBody.mockImplementation((body) => {
+      if (body === null) {
+        try {
+          second.attachBrain(incoming);
+        } catch (error) {
+          refusal = error;
+        }
+      }
+    });
+
+    first.attachBrain(incoming);
+
+    expect(refusal).toBeInstanceOf(CharivoStateError);
+    expect(first.getBrain()).toBe(incoming);
+    expect(second.getBrain()).toBeUndefined();
+  });
+
+  it("keeps a newer brain the detach callback attached, and releases the incoming one", () => {
+    const charivo = new Charivo();
+    const other = new Charivo();
+    const outgoing = createBrain();
+    const incoming = createBrain();
+    const newer = createBrain();
+    charivo.attachBrain(outgoing);
+    outgoing.setBody.mockImplementation((body) => {
+      if (body === null) {
+        charivo.attachBrain(newer);
+      }
+    });
+
+    charivo.attachBrain(incoming);
+
+    expect(charivo.getBrain()).toBe(newer);
+    expect(() => other.attachBrain(incoming)).not.toThrow();
+  });
+
+  it("shares the ownership registry through globalThis", () => {
+    const brain = createBrain();
+    new Charivo().attachBrain(brain);
+
+    const registry = (globalThis as Record<symbol, unknown>)[
+      Symbol.for("@charivo/core.brainOwners")
+    ] as WeakMap<object, unknown>;
+    expect(registry.has(brain)).toBe(true);
+  });
+
+  it("leaves the running instance's TTS wiring alone when createCharivo() refuses an owned brain", () => {
+    const brain = createBrain();
+    const tts = {
+      speak: vi.fn(),
+      stop: vi.fn(),
+      setVoice: vi.fn(),
+      isSupported: vi.fn(() => true),
+      setEventEmitter: vi.fn(),
+    };
+    createCharivo({ brain, tts });
+    expect(tts.setEventEmitter).toHaveBeenCalledTimes(1);
+
+    expect(() => createCharivo({ brain, tts })).toThrow(CharivoStateError);
+
+    expect(tts.setEventEmitter).toHaveBeenCalledTimes(1);
+  });
+
+  it("detaches the brain when createCharivo() fails to set the character", () => {
+    const brain = createBrain();
+    brain.setCharacter.mockImplementationOnce(() => {
+      throw new Error("bad character");
+    });
+
+    expect(() =>
+      createCharivo({
+        brain,
+        character: { id: "c", name: "C" },
+      }),
+    ).toThrow("bad character");
+
+    expect(() => new Charivo().attachBrain(brain)).not.toThrow();
   });
 
   it("detachBrain gives the brain a null body and forgets it", () => {

@@ -1197,6 +1197,8 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
         (result.stage === "generate" || result.stage === "render")
       ) {
         setLlmError(result.error.message);
+      } else if (result?.status === "failed" && result.stage === "tts") {
+        setTtsError(result.error.message);
       }
     } catch (error) {
       setLlmError(
@@ -1205,7 +1207,7 @@ export function useCharivoChat({ canvasContainerRef }: UseCharivoChatOptions) {
     } finally {
       setIsLoading(false);
     }
-  }, [charivo, input, setInput, setIsLoading, setLlmError]);
+  }, [charivo, input, setInput, setIsLoading, setLlmError, setTtsError]);
 
   const playExpression = useCallback(
     (expressionId: string) => {

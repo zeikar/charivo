@@ -109,6 +109,7 @@ export function useRealtimeMode() {
     let realtimeClient: ReturnType<typeof createRemoteRealtimeClient> | null =
       null;
     let attached = false;
+    const ownsChat = () => useChatStore.getState().charivo === charivo;
 
     try {
       console.log("🌐 Enabling Realtime mode...");
@@ -171,13 +172,34 @@ export function useRealtimeMode() {
       // It stays ahead of every other await: it has to run under the click.
       await realtimeManager.prepareAudio?.(sessionConfig);
 
-      // attachRealtime() refuses while cascade speech holds the floor or has
-      // not been confirmed stopped, so stop it first.
+      // A reply still generating would otherwise land on the realtime floor
+      // (or speak after a switch back), so cancel the brain's turn first.
+      // attachRealtime() also refuses while cascade speech holds the floor or
+      // has not been confirmed stopped, so stop that too.
+      await charivo.getBrain()?.interrupt();
       await charivo.interrupt();
+
+      // The chat is rebuilt when the TTS setting changes. The rebuilt chat's
+      // controls cannot reach a session started on this discarded instance.
+      if (!ownsChat()) {
+        void realtimeClient.disconnect().catch((cleanupError: unknown) => {
+          console.error(
+            "❌ Failed to release the realtime client:",
+            cleanupError,
+          );
+        });
+        return;
+      }
       charivo.attachRealtime(realtimeManager);
       attached = true;
 
       await realtimeManager.startSession(sessionConfig);
+
+      if (!ownsChat()) {
+        await realtimeManager.stopSession();
+        charivo.detachRealtime();
+        return;
+      }
 
       setIsRealtimeMode(true);
 
@@ -202,12 +224,17 @@ export function useRealtimeMode() {
           );
         });
       }
-      setIsRealtimeMode(false);
-      setIsConnected(false);
-      resetRealtimeUiState();
-      setRealtimeError(toRealtimeErrorMessage(error));
+      // The store belongs to the replacement chat once this one was discarded.
+      if (ownsChat()) {
+        setIsRealtimeMode(false);
+        setIsConnected(false);
+        resetRealtimeUiState();
+        setRealtimeError(toRealtimeErrorMessage(error));
+      }
     } finally {
-      setIsConnecting(false);
+      if (ownsChat()) {
+        setIsConnecting(false);
+      }
     }
   }, [
     charivo,

@@ -1050,6 +1050,25 @@ describe("heardText of a cancelled or failed string (P6)", () => {
     });
   });
 
+  it("is omitted when a tts:audio:start listener cancels from inside the event", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    // Registered before the floor's own watch, which begins at speak().
+    let cancel: () => void = () => {};
+    charivo.on("tts:audio:start", () => cancel());
+    const handle = charivo.perform({ text: "Hello there." });
+    cancel = () => void handle.cancel();
+    await flush();
+
+    tts.startAudio();
+
+    expect(handle.result).toEqual({
+      status: "cancelled",
+      text: "Hello there.",
+    });
+  });
+
   it("is omitted on a manager without setEventEmitter once speak() was called", async () => {
     const charivo = new Charivo();
     const tts = new SilentTTSManager();
@@ -1290,6 +1309,67 @@ describe("Charivo.interrupt() on the floor (P7)", () => {
     expect(second.stop).not.toHaveBeenCalled();
   });
 
+  it("joins the stop in progress when a listener interrupts from inside the manager's stop()", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    charivo.perform({ text: "Hello there." });
+    await flush();
+    let reentered: Promise<void> | undefined;
+    charivo.on("tts:audio:end", () => {
+      reentered ??= charivo.interrupt();
+    });
+    const originalStop = tts.stop.getMockImplementation()!;
+    tts.stop.mockImplementation(() => {
+      tts.startAudio();
+      charivo.emit("tts:audio:end", {});
+      return originalStop();
+    });
+
+    const interrupting = charivo.interrupt();
+    let reenteredDone = false;
+    void reentered!.then(() => {
+      reenteredDone = true;
+    });
+    await flush();
+
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    expect(reenteredDone).toBe(false);
+    expect(() => charivo.attachRealtime(new StubRealtimeManager())).toThrow(
+      CharivoStateError,
+    );
+
+    tts.stops[0]!.resolve();
+    await interrupting;
+    await reentered;
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a handle.cancel() from inside the manager's stop() the outcome of that stop", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    let reentered: Promise<void> | undefined;
+    charivo.on("tts:audio:end", () => {
+      reentered ??= handle.cancel();
+    });
+    const originalStop = tts.stop.getMockImplementation()!;
+    tts.stop.mockImplementation(() => {
+      charivo.emit("tts:audio:end", {});
+      return originalStop();
+    });
+
+    const interrupting = charivo.interrupt();
+    const outcomes = Promise.allSettled([interrupting, reentered!]);
+    tts.stops[0]!.reject(new Error("stop failed"));
+
+    const [outer, inner] = await outcomes;
+    expect(outer.status).toBe("rejected");
+    expect(inner.status).toBe("rejected");
+  });
+
   it("cancels an unvoiced holder and stops a manager attached afterwards once", async () => {
     const charivo = new Charivo();
     const renderer = new RecordingRenderManager();
@@ -1436,6 +1516,105 @@ describe("Charivo.interrupt() on the floor (P7)", () => {
   });
 });
 
+describe("handle.cancel() during dispose()", () => {
+  it("gets the outcome of the stop the teardown issues", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    let cancelling: Promise<void> | undefined;
+    charivo.on("performance:end", () => {
+      cancelling ??= handle.cancel();
+    });
+
+    const disposing = charivo.dispose();
+    const outcomes = Promise.allSettled([disposing, cancelling!]);
+    await flush();
+    expect(tts.stop).toHaveBeenCalledTimes(1);
+    tts.stops[0]!.reject(new Error("stop failed"));
+
+    const [outer, inner] = await outcomes;
+    expect(outer.status).toBe("rejected");
+    expect(inner.status).toBe("rejected");
+  });
+});
+
+describe("dispose() when the attached TTS manager changes", () => {
+  it("gives handle.cancel() and dispose() the speaking manager's stop failure after a replacement before dispose()", async () => {
+    const charivo = new Charivo();
+    const first = new ReportingTTSManager();
+    const second = new ReportingTTSManager();
+    charivo.attachTTS(first);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    charivo.attachTTS(second);
+    let cancelling: Promise<void> | undefined;
+    charivo.on("performance:end", () => {
+      cancelling ??= handle.cancel();
+    });
+
+    const disposing = charivo.dispose();
+    const outcomes = Promise.allSettled([disposing, cancelling!]);
+    await flush();
+    expect(first.stop).toHaveBeenCalledTimes(1);
+    first.stops[0]!.reject(new Error("stop failed"));
+    await flush();
+    second.stops[0]?.resolve();
+
+    const [outer, inner] = await outcomes;
+    expect(inner.status).toBe("rejected");
+    expect(outer.status).toBe("rejected");
+  });
+
+  it("stops the speaking manager when the listener replaces TTS during performance:end", async () => {
+    const charivo = new Charivo();
+    const first = new ReportingTTSManager();
+    const second = new ReportingTTSManager();
+    charivo.attachTTS(first);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    let cancelling: Promise<void> | undefined;
+    charivo.on("performance:end", () => {
+      charivo.attachTTS(second);
+      cancelling ??= handle.cancel();
+    });
+
+    const disposing = charivo.dispose();
+    const outcomes = Promise.allSettled([disposing, cancelling!]);
+    await flush();
+    expect(first.stop).toHaveBeenCalledTimes(1);
+    first.stops[0]!.reject(new Error("stop failed"));
+    await flush();
+    second.stops[0]?.resolve();
+
+    const [outer, inner] = await outcomes;
+    expect(inner.status).toBe("rejected");
+    expect(outer.status).toBe("rejected");
+  });
+});
+
+describe("the floor's audio watch after dispose()", () => {
+  it("still marks speech heard before a tts:audio:start listener cancels, on a body reused after dispose()", async () => {
+    const charivo = new Charivo();
+    await charivo.dispose();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    let cancel: () => void = () => {};
+    charivo.on("tts:audio:start", () => cancel());
+    const handle = charivo.perform({ text: "Hello there." });
+    cancel = () => void handle.cancel();
+    await flush();
+
+    tts.startAudio();
+
+    expect(handle.result).toEqual({
+      status: "cancelled",
+      text: "Hello there.",
+    });
+  });
+});
+
 describe("Charivo.dispose() and the floor (P9)", () => {
   it("settles the floor's performance cancelled and stops the attached manager once", async () => {
     const charivo = new Charivo();
@@ -1529,15 +1708,19 @@ describe("Charivo.dispose() and the floor (P9)", () => {
     });
   });
 
-  it("speaks nothing for a perform() made from a listener while dispose() has yet to stop the cancelled speech", async () => {
+  it("refuses a perform() made from a listener while dispose() has yet to stop the cancelled speech", async () => {
     const charivo = new Charivo();
     const tts = new ReportingTTSManager();
     charivo.attachTTS(tts);
     const handle = charivo.perform({ text: "First." });
     await flush();
-    let next: PerformanceHandle | undefined;
+    let refusal: unknown;
     charivo.on("performance:end", () => {
-      next ??= charivo.perform({ text: "Second." });
+      try {
+        charivo.perform({ text: "Second." });
+      } catch (error) {
+        refusal = error;
+      }
     });
 
     const disposing = charivo.dispose();
@@ -1546,15 +1729,33 @@ describe("Charivo.dispose() and the floor (P9)", () => {
     expect(handle.result).toEqual(
       expect.objectContaining({ status: "cancelled" }),
     );
-    expect(next).toBeDefined();
+    expect(refusal).toBeInstanceOf(CharivoStateError);
+    expect(charivo.getFloor()).toEqual({ state: "idle" });
     expect(tts.speak).toHaveBeenCalledTimes(1);
     expect(tts.stop).toHaveBeenCalledTimes(1);
     tts.stops[0]!.resolve();
     await disposing;
-    await expect(next!.done).resolves.toEqual(
-      expect.objectContaining({ status: "failed", failedAt: "tts" }),
-    );
     expect(tts.speak).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops the attached manager of an already cancelled performance when TTS is detached right after dispose()", async () => {
+    const charivo = new Charivo();
+    const tts = new ReportingTTSManager();
+    charivo.attachTTS(tts);
+    const handle = charivo.perform({ text: "Hello there." });
+    await flush();
+    const cancelling = expect(handle.cancel()).rejects.toThrow("device busy");
+    tts.stops[0]!.reject(new Error("device busy"));
+    await cancelling;
+
+    const disposing = charivo.dispose();
+    charivo.detachTTS();
+    const failure = disposing.catch((error: unknown) => error);
+    await flush();
+    expect(tts.stop).toHaveBeenCalledTimes(2);
+    tts.stops[1]!.reject(new Error("still stuck"));
+
+    expect(await failure).toBeInstanceOf(CharivoError);
   });
 
   it("stops the attached manager once when interrupt() runs while dispose() has yet to stop it", async () => {
@@ -2720,14 +2921,16 @@ describe("perform() affect (A2, A3)", () => {
       text: "Hello there.",
       affect: { expression: { affect: "joy" } },
     });
+    // Affect is the run's first step, a turn after perform() returns.
+    await flush();
 
-    expect(events.map(({ event }) => event)).toEqual([
+    expect(events.map(({ event }) => event).slice(0, 4)).toEqual([
       "floor:changed",
       "performance:start",
       "avatar:expression",
       "avatar:motion",
     ]);
-    expect(events.every(({ rendered }) => !rendered)).toBe(true);
+    expect(events.slice(0, 4).every(({ rendered }) => !rendered)).toBe(true);
     expect(events[1]!.data).toEqual(
       expect.objectContaining({ voiced: true, affectResolved: true }),
     );
@@ -2791,7 +2994,7 @@ describe("perform() affect (A2, A3)", () => {
     );
   });
 
-  it("sets affectResolved true and emits that event alone for a cue resolved to only an expression or only a motion", () => {
+  it("sets affectResolved true and emits that event alone for a cue resolved to only an expression or only a motion", async () => {
     const charivo = new Charivo();
     charivo.setAffectMap(affectMap);
     const events = recordAffectEvents(charivo);
@@ -2800,10 +3003,12 @@ describe("perform() affect (A2, A3)", () => {
       text: "One.",
       affect: { expression: { affect: "calm" } },
     });
+    await flush();
     charivo.perform({
       text: "Two.",
       affect: { motion: { group: "Nod", index: 2 } },
     });
+    await flush();
 
     expect(events.map(({ event }) => event)).toEqual([
       "floor:changed",
@@ -2811,13 +3016,16 @@ describe("perform() affect (A2, A3)", () => {
       "avatar:expression",
       "performance:end",
       "floor:changed",
+      "floor:changed",
       "performance:start",
       "avatar:motion",
+      "performance:end",
+      "floor:changed",
     ]);
     expect(events[1]!.data).toEqual(
       expect.objectContaining({ affectResolved: true }),
     );
-    expect(events[5]!.data).toEqual(
+    expect(events[6]!.data).toEqual(
       expect.objectContaining({ affectResolved: true }),
     );
   });
@@ -2843,7 +3051,7 @@ describe("perform() affect (A2, A3)", () => {
     );
   });
 
-  it("resolves through the map set last, and through none after setAffectMap(null)", () => {
+  it("resolves through the map set last, and through none after setAffectMap(null)", async () => {
     const charivo = new Charivo();
     const expressions: string[] = [];
     charivo.on("avatar:expression", ({ expressionId }) => {
@@ -2852,12 +3060,16 @@ describe("perform() affect (A2, A3)", () => {
     const joy = { expression: { affect: "joy" } };
 
     charivo.perform({ text: "One.", affect: joy });
+    await flush();
     charivo.setAffectMap(affectMap);
     charivo.perform({ text: "Two.", affect: joy });
+    await flush();
     charivo.setAffectMap({ joy: { expressionId: "grin" } });
     charivo.perform({ text: "Three.", affect: joy });
+    await flush();
     charivo.setAffectMap(null);
     charivo.perform({ text: "Four.", affect: joy });
+    await flush();
 
     expect(expressions).toEqual(["smile", "grin"]);
   });
@@ -2928,6 +3140,27 @@ describe("perform() affect (A2, A3)", () => {
     expect(events.filter(({ event }) => event.startsWith("avatar:"))).toEqual(
       [],
     );
+  });
+});
+
+describe("perform() affect and a cancel right after it returns (A3)", () => {
+  it("emits no expression or motion for a handle cancelled before perform()'s caller yields", async () => {
+    const charivo = new Charivo();
+    charivo.setAffectMap({
+      joy: { expressionId: "smile", motion: { group: "Happy", index: 1 } },
+    });
+    const avatar: string[] = [];
+    charivo.on("avatar:expression", () => avatar.push("expression"));
+    charivo.on("avatar:motion", () => avatar.push("motion"));
+
+    const handle = charivo.perform({
+      text: "Hello there.",
+      affect: { expression: { affect: "joy" } },
+    });
+    void handle.cancel();
+    await flush();
+
+    expect(avatar).toEqual([]);
   });
 });
 
